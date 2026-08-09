@@ -4,7 +4,7 @@ import * as readline from "readline";
 import { parseMarkdownToEditPlan } from "./parser/patch-parser.js";
 import { parsePlanRobust } from "./parser/json-repair.js";
 import { applyPatch } from "./patch/patch-applier.js";
-import { PlaywrightController } from "./providers/playwright-controller.js";
+import { PlaywrightController, ProviderConfig } from "./providers/playwright-controller.js";
 import { ProviderRegistry } from "./providers/provider-registry.js";
 import { runCommand, detectSyntaxChecks, normalizeCommand } from "./verification/command-runner.js";
 import { getProjectContext } from "./context/context-engine.js";
@@ -250,7 +250,30 @@ function buildFollowUp(command: string, output: string, priorFiles: string[]): s
 }
 
 
-async function buildMode(prompt: string, workspace: string, providerId: string, autonomy: string, stepIndex: number, stepDetail: string, goalSummary: string) {
+interface StepRequest {
+  prompt: string;
+  workspace: string;
+  autonomy: string;
+  stepIndex: number;
+  stepDetail: string;
+  goalSummary: string;
+}
+
+interface StepOutcome {
+  success: boolean;
+  appliedFiles?: string[];
+  error?: string;
+  lastError?: string;
+  raw?: string;
+}
+
+/**
+ * One build step against an already-open browser and thread. Returns its outcome
+ * rather than emitting, so a long-lived session can call it repeatedly without
+ * the caller having to parse stdout.
+ */
+async function runBuildStep(controller: PlaywrightController, config: ProviderConfig, req: StepRequest): Promise<StepOutcome> {
+  const { prompt, workspace, autonomy, stepIndex, stepDetail, goalSummary } = req;
   const maxFollowUps = 2;
   const ctx = getProjectContext(workspace, prompt);
 
@@ -289,121 +312,126 @@ async function buildMode(prompt: string, workspace: string, providerId: string, 
     ? "Overall project goal: " + (goalSummary || prompt) + "\n\n" + stepDetail
     : prompt;
 
-  // Step 0 opens the build's thread; later steps rejoin it so they can see what
-  // earlier steps said.
-  const { controller, config } = await openProviderForBuild(providerId, workspace, isFirstStep);
-  try {
-    // The ledger is reached through the controller so there is exactly one
-    // derivation of the sessions.json path; a second one would silently diverge.
-    const ledger = isFirstStep ? {} : controller.getLedger();
-    const delta = computeDelta(allFiles, ledger);
-    const relevant = selectRelevantFiles({ files: delta.candidates, stepDetail: stepDetail, prompt: prompt });
-    controller.saveLedger(nextLedger(ledger, allFiles, relevant.map((r) => r.path), stepIndex));
+  // The ledger is reached through the controller so there is exactly one
+  // derivation of the sessions.json path; a second one would silently diverge.
+  const ledger = isFirstStep ? {} : controller.getLedger();
+  const delta = computeDelta(allFiles, ledger);
+  const relevant = selectRelevantFiles({ files: delta.candidates, stepDetail: stepDetail, prompt: prompt });
+  controller.saveLedger(nextLedger(ledger, allFiles, relevant.map((r) => r.path), stepIndex));
 
-    const filtered = allFiles
-      .map(function (f) { return f.path; })
-      .filter(function (f) { return isFirstStep || delta.newPaths.indexOf(f) !== -1; })
-      .slice(0, 40);
+  const filtered = allFiles
+    .map(function (f) { return f.path; })
+    .filter(function (f) { return isFirstStep || delta.newPaths.indexOf(f) !== -1; })
+    .slice(0, 40);
 
-    console.log("Step " + (stepIndex + 1) + ": including " + relevant.length + " files (signatures)" +
-      (isFirstStep ? "" : ", skipped " + delta.unchangedCount + " the thread already has") +
-      (relevant.length ? " (" + relevant.map(f => f.path + ":" + f.content.length + "c").join(", ") + ")" : ""));
+  console.log("Step " + (stepIndex + 1) + ": including " + relevant.length + " files (signatures)" +
+    (isFirstStep ? "" : ", skipped " + delta.unchangedCount + " the thread already has") +
+    (relevant.length ? " (" + relevant.map(f => f.path + ":" + f.content.length + "c").join(", ") + ")" : ""));
 
-    let prevCount = await controller.countMessages(config);
-    let prevContent = await controller.getLastMessageText(config);
-    // The thread has already been shown the project structure; re-sending it
-    // every step duplicates what it holds. New paths arrive via `filtered`.
-    await controller.sendPrompt(buildPrompt(effectivePrompt, isFirstStep ? ctx.tree : "", relevant, filtered, isFirstStep), config);
-    let response = await controller.waitForResponse(config, prevCount, prevContent);
-    let plan = parseMarkdownToEditPlan(response);
-    let attempt = 0;
-    let reasked = false;
+  let prevCount = await controller.countMessages(config);
+  let prevContent = await controller.getLastMessageText(config);
+  // The thread has already been shown the project structure; re-sending it
+  // every step duplicates what it holds. New paths arrive via `filtered`.
+  await controller.sendPrompt(buildPrompt(effectivePrompt, isFirstStep ? ctx.tree : "", relevant, filtered, isFirstStep), config);
+  let response = await controller.waitForResponse(config, prevCount, prevContent);
+  let plan = parseMarkdownToEditPlan(response);
+  let attempt = 0;
+  let reasked = false;
 
-    while (true) {
-      if (plan.changes.length === 0) {
-        if (!reasked) {
-          reasked = true;
-          console.log("No changes parsed; asking AI to resend strict JSON...");
-          prevCount = await controller.countMessages(config);
-          prevContent = await controller.getLastMessageText(config);
-          await controller.sendPrompt(REASK_PROMPT, config);
-          response = await controller.waitForResponse(config, prevCount, prevContent);
-          plan = parseMarkdownToEditPlan(response);
-          continue;
-        }
-        emit({ success: false, error: "No file changes found in AI response.", raw: response });
-        return;
+  while (true) {
+    if (plan.changes.length === 0) {
+      if (!reasked) {
+        reasked = true;
+        console.log("No changes parsed; asking AI to resend strict JSON...");
+        prevCount = await controller.countMessages(config);
+        prevContent = await controller.getLastMessageText(config);
+        await controller.sendPrompt(REASK_PROMPT, config);
+        response = await controller.waitForResponse(config, prevCount, prevContent);
+        plan = parseMarkdownToEditPlan(response);
+        continue;
       }
+      return { success: false, error: "No file changes found in AI response.", raw: response };
+    }
 
-      const applyResult = applyPatch(workspace, plan);
-      let failed: { command: string; output: string } | null = null;
+    const applyResult = applyPatch(workspace, plan);
+    let failed: { command: string; output: string } | null = null;
 
-      // The model authored these files, so the thread already knows their
-      // contents. The pre-step scan cannot capture them — it runs before the
-      // step exists — so without this they are re-sent next step as though the
-      // thread had never seen them, and the delta never fires.
-      if (applyResult.appliedFiles.length > 0) {
-        const authored: WorkspaceFile[] = [];
-        for (const rel of applyResult.appliedFiles) {
-          try {
-            authored.push({
-              path: rel.replace(/\\/g, "/"),
-              content: fs.readFileSync(path.join(workspace, rel), "utf-8"),
-              mtimeMs: 0,
-            });
-          } catch { /* a file that vanished is simply not recorded */ }
-        }
-        if (authored.length > 0) {
-          controller.saveLedger(
-            nextLedger(controller.getLedger(), authored, authored.map((a) => a.path), stepIndex)
-          );
-        }
+    // The model authored these files, so the thread already knows their
+    // contents. The pre-step scan cannot capture them — it runs before the
+    // step exists — so without this they are re-sent next step as though the
+    // thread had never seen them, and the delta never fires.
+    if (applyResult.appliedFiles.length > 0) {
+      const authored: WorkspaceFile[] = [];
+      for (const rel of applyResult.appliedFiles) {
+        try {
+          authored.push({
+            path: rel.replace(/\\/g, "/"),
+            content: fs.readFileSync(path.join(workspace, rel), "utf-8"),
+            mtimeMs: 0,
+          });
+        } catch { /* a file that vanished is simply not recorded */ }
       }
+      if (authored.length > 0) {
+        controller.saveLedger(
+          nextLedger(controller.getLedger(), authored, authored.map((a) => a.path), stepIndex)
+        );
+      }
+    }
 
-      if (!applyResult.success) {
-        failed = { command: "apply patch", output: applyResult.errors.join("\n") };
-      } else {
-        const checks: string[] = [];
-        for (const c of plan.changes) for (const s of detectSyntaxChecks(c.filePath)) checks.push(s);
-        for (const cmd of checks) {
-          console.log("RUNNING_CHECK: " + cmd);
-          const r = await runCommand(cmd, workspace);
-          console.log("CHECK_RESULT: " + (r.success ? "PASS" : "FAIL"));
+    if (!applyResult.success) {
+      failed = { command: "apply patch", output: applyResult.errors.join("\n") };
+    } else {
+      const checks: string[] = [];
+      for (const c of plan.changes) for (const s of detectSyntaxChecks(c.filePath)) checks.push(s);
+      for (const cmd of checks) {
+        console.log("RUNNING_CHECK: " + cmd);
+        const r = await runCommand(cmd, workspace);
+        console.log("CHECK_RESULT: " + (r.success ? "PASS" : "FAIL"));
+        if (!r.success) { failed = { command: cmd, output: r.output }; break; }
+      }
+      if (!failed && plan.commands) {
+        for (const suggested of plan.commands) {
+          // Rewrite interpreter names that do not exist here before the user
+          // approves, so what they see is what actually runs.
+          const cmd = normalizeCommand(suggested);
+          if (cmd !== suggested) console.log("NORMALIZED_COMMAND: " + suggested + "  ->  " + cmd);
+          console.log("REQUESTING_COMMAND: " + cmd);
+          const ok = await askApproval(cmd, workspace, autonomy);
+          if (!ok) { console.log("COMMAND_DENIED: " + cmd); continue; }
+          console.log("RUNNING_COMMAND: " + cmd);
+          const r = await runCommand(cmd, workspace, 60000);
+          console.log("COMMAND_RESULT: " + (r.success ? "PASS" : "FAIL"));
+          if (r.output) projLog(r.output.slice(0, 2000));
           if (!r.success) { failed = { command: cmd, output: r.output }; break; }
         }
-        if (!failed && plan.commands) {
-          for (const suggested of plan.commands) {
-            // Rewrite interpreter names that do not exist here before the user
-            // approves, so what they see is what actually runs.
-            const cmd = normalizeCommand(suggested);
-            if (cmd !== suggested) console.log("NORMALIZED_COMMAND: " + suggested + "  ->  " + cmd);
-            console.log("REQUESTING_COMMAND: " + cmd);
-            const ok = await askApproval(cmd, workspace, autonomy);
-            if (!ok) { console.log("COMMAND_DENIED: " + cmd); continue; }
-            console.log("RUNNING_COMMAND: " + cmd);
-            const r = await runCommand(cmd, workspace, 60000);
-            console.log("COMMAND_RESULT: " + (r.success ? "PASS" : "FAIL"));
-            if (r.output) projLog(r.output.slice(0, 2000));
-            if (!r.success) { failed = { command: cmd, output: r.output }; break; }
-          }
-        }
       }
-
-      if (!failed) { emit({ success: true, appliedFiles: applyResult.appliedFiles }); return; }
-
-      attempt++;
-      console.log("TEST_FAILED: " + failed.command);
-      if (attempt > maxFollowUps) {
-        emit({ success: false, error: "Still failing after " + maxFollowUps + " fix attempts.", lastError: failed.output });
-        return;
-      }
-      console.log("FOLLOW_UP: sending error back to AI (attempt " + attempt + ")");
-      prevCount = await controller.countMessages(config);
-      prevContent = await controller.getLastMessageText(config);
-      await controller.sendPrompt(buildFollowUp(failed.command, failed.output, filtered), config);
-      response = await controller.waitForResponse(config, prevCount, prevContent);
-      plan = parseMarkdownToEditPlan(response);
     }
+
+    if (!failed) return { success: true, appliedFiles: applyResult.appliedFiles };
+
+    attempt++;
+    console.log("TEST_FAILED: " + failed.command);
+    if (attempt > maxFollowUps) {
+      return { success: false, error: "Still failing after " + maxFollowUps + " fix attempts.", lastError: failed.output };
+    }
+    console.log("FOLLOW_UP: sending error back to AI (attempt " + attempt + ")");
+    prevCount = await controller.countMessages(config);
+    prevContent = await controller.getLastMessageText(config);
+    await controller.sendPrompt(buildFollowUp(failed.command, failed.output, filtered), config);
+    response = await controller.waitForResponse(config, prevCount, prevContent);
+    plan = parseMarkdownToEditPlan(response);
+  }
+}
+
+async function buildMode(prompt: string, workspace: string, providerId: string, autonomy: string, stepIndex: number, stepDetail: string, goalSummary: string) {
+  // Step 0 opens the build's thread; later steps rejoin it so they can see what
+  // earlier steps said.
+  const { controller, config } = await openProviderForBuild(providerId, workspace, stepIndex <= 0);
+  try {
+    emit(await runBuildStep(controller, config, {
+      prompt: prompt, workspace: workspace, autonomy: autonomy,
+      stepIndex: stepIndex, stepDetail: stepDetail, goalSummary: goalSummary,
+    }));
   } finally { await controller.close(); }
 }
 
