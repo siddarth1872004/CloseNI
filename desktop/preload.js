@@ -2,6 +2,13 @@ const { contextBridge, ipcRenderer } = require("electron");
 contextBridge.exposeInMainWorld("api", {
   selectFolder: function () { return ipcRenderer.invoke("select-folder"); },
   runAgent: function (payload) { return ipcRenderer.invoke("run-agent", payload); },
+  startSession: function (workspace, provider, autonomy, headed) {
+    return ipcRenderer.invoke("start-session", { workspace: workspace, provider: provider, autonomy: autonomy, headed: headed });
+  },
+  sendStep: function (index, detail, goal) {
+    return ipcRenderer.invoke("send-step", { index: index, detail: detail, goal: goal });
+  },
+  endSession: function () { return ipcRenderer.invoke("end-session"); },
   runCommand: function (p) { return ipcRenderer.invoke("run-command", p); },
   git: function (p) { return ipcRenderer.invoke("git", p); },
   readFile: function (p) { return ipcRenderer.invoke("read-file", p); },

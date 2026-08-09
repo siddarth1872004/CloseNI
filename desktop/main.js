@@ -100,9 +100,82 @@ ipcMain.handle("run-agent", function (event, payload) {
 });
 
 ipcMain.on("approval-response", function (event, approved) {
-  if (agentProc && agentProc.stdin.writable) {
-    agentProc.stdin.write(JSON.stringify({ approved: approved }) + "\n");
+  // A build may be running as a long-lived session rather than a per-step
+  // process; the reply has to reach whichever one asked.
+  const proc = sessionProc || agentProc;
+  if (proc && proc.stdin.writable) {
+    proc.stdin.write(JSON.stringify({ approved: approved }) + "\n");
   }
+});
+
+let sessionProc = null;
+const pendingSteps = new Map();
+
+ipcMain.handle("start-session", function (event, payload) {
+  return new Promise(function (resolve) {
+    if (sessionProc) { resolve({ ok: true }); return; }
+    const headed = payload.headed ? "1" : "0";
+    let proc;
+    try {
+      proc = spawn("node", [agentPath(), "build-session", payload.workspace, payload.provider, payload.autonomy || "ask"],
+        { cwd: path.join(__dirname, ".."), env: Object.assign({}, process.env, { AGENT_HEADED: headed }) });
+    } catch (e) {
+      resolve({ ok: false, error: String(e) });
+      return;
+    }
+    sessionProc = proc;
+    let lineBuf = "";
+    let settled = false;
+
+    proc.stdout.on("data", function (d) {
+      lineBuf += d.toString();
+      let idx;
+      while ((idx = lineBuf.indexOf("\n")) !== -1) {
+        const line = lineBuf.substring(0, idx).replace(/\r$/, "");
+        lineBuf = lineBuf.substring(idx + 1);
+        const m = line.match(/^SESSION_EVENT: (.*)$/);
+        if (!m) { routeLine(line); continue; }
+        let ev;
+        try { ev = JSON.parse(m[1]); } catch (e) { continue; }
+        if (ev.type === "ready" && !settled) { settled = true; resolve({ ok: true }); }
+        if (ev.type === "step-result") {
+          const done = pendingSteps.get(ev.index);
+          if (done) { pendingSteps.delete(ev.index); done(ev); }
+        }
+      }
+    });
+    proc.stderr.on("data", function (d) { routeLine(d.toString()); });
+    proc.on("close", function () {
+      sessionProc = null;
+      for (const done of pendingSteps.values()) done({ success: false, error: "session ended" });
+      pendingSteps.clear();
+      if (!settled) { settled = true; resolve({ ok: false, error: "session exited before ready" }); }
+    });
+    proc.on("error", function (e) {
+      sessionProc = null;
+      if (!settled) { settled = true; resolve({ ok: false, error: String(e) }); }
+    });
+  });
+});
+
+ipcMain.handle("send-step", function (event, payload) {
+  return new Promise(function (resolve) {
+    if (!sessionProc || !sessionProc.stdin.writable) { resolve({ success: false, error: "no session" }); return; }
+    pendingSteps.set(payload.index, resolve);
+    sessionProc.stdin.write(JSON.stringify({
+      type: "step", index: payload.index, detail: payload.detail, goal: payload.goal, prompt: payload.detail
+    }) + "\n");
+  });
+});
+
+ipcMain.handle("end-session", function () {
+  if (!sessionProc) return Promise.resolve();
+  const proc = sessionProc;
+  sessionProc = null;
+  try { proc.stdin.write(JSON.stringify({ type: "close" }) + "\n"); } catch (e) {}
+  // The session closes its browser before exiting; kill only if it hangs.
+  setTimeout(function () { try { proc.kill(); } catch (e) {} }, 10000);
+  return Promise.resolve();
 });
 
 ipcMain.handle("run-command", function (event, payload) {
