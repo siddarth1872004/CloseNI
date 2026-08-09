@@ -8,6 +8,9 @@ import { PlaywrightController } from "./providers/playwright-controller.js";
 import { ProviderRegistry } from "./providers/provider-registry.js";
 import { runCommand, detectSyntaxChecks, normalizeCommand } from "./verification/command-runner.js";
 import { getProjectContext } from "./context/context-engine.js";
+import { selectRelevantFiles, WorkspaceFile } from "./context/relevance.js";
+
+const SOURCE_FILE = /\.(py|js|cjs|mjs|ts|tsx|jsx|rs|go|java|c|h|cpp|hpp|cc)$/;
 
 const rl = readline.createInterface({ input: process.stdin, terminal: false });
 const lineQueue: string[] = [];
@@ -158,7 +161,7 @@ function walk(dir: string, out: string[]) {
     if (e.name.startsWith(".")) continue;
     const p = path.join(dir, e.name);
     if (e.isDirectory()) walk(p, out);
-    else if (p.endsWith(".py") || p.endsWith(".js")) out.push(p);
+    else if (SOURCE_FILE.test(e.name)) out.push(p);
   }
 }
 
@@ -221,40 +224,14 @@ function buildFollowUp(command: string, output: string, priorFiles: string[]): s
     "Wrap the JSON in a \`\`\`json code block. Allowed modes: create, overwrite, search_replace.";
 }
 
-function extractSignatures(src: string, filePath: string): string {
-  if (filePath.endsWith(".py")) {
-    const lines = src.split("\n");
-    const out: string[] = [];
-    let depth = 0;
-    for (const raw of lines) {
-      const line = raw.replace(/\s+$/, "");
-      if (/^(import|from)\s/.test(line)) out.push(line);
-      else if (/^class\s+/.test(line)) { out.push(line); depth = 1; }
-      else if (/^def\s+/.test(line) && depth === 0) out.push(line);
-      else if (depth > 0 && /^\s{4}(def|@)/.test(line)) out.push(line);
-      else if (depth > 0 && /^\S/.test(line)) depth = 0;
-    }
-    return out.slice(0, 40).join("\n");
-  }
-  if (filePath.endsWith(".js") || filePath.endsWith(".ts")) {
-    const lines = src.split("\n");
-    const out: string[] = [];
-    for (const raw of lines) {
-      const line = raw.replace(/\s+$/, "");
-      if (/^import\s|^export\s|^(const|let|var|function|class|async function)\s/.test(line)) out.push(line);
-    }
-    return out.slice(0, 40).join("\n");
-  }
-  return "";
-}
 
 async function buildMode(prompt: string, workspace: string, providerId: string, autonomy: string, stepIndex: number, stepDetail: string, goalSummary: string) {
   const maxFollowUps = 2;
   const ctx = getProjectContext(workspace, prompt);
 
-  // Smart context: scan ALL existing files in workspace (from prior steps) and pick the most relevant ones
-  // This is the KEY fix - step N sees what steps 1..N-1 created
-  const allFiles: { path: string; content: string }[] = [];
+  // Step N has to be told what steps 1..N-1 produced, or it guesses at the names
+  // it imports. Collect everything in the workspace and let the ranker choose.
+  const allFiles: WorkspaceFile[] = [];
   try {
     const priorPaths: string[] = [];
     const walkStack = [workspace];
@@ -263,55 +240,25 @@ async function buildMode(prompt: string, workspace: string, providerId: string, 
       let entries: fs.Dirent[] = [];
       try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { continue; }
       for (const e of entries) {
-        if (["node_modules", ".git", ".agent-backups", "__pycache__", "dist", "build", "venv", "env", ".venv"].indexOf(e.name) !== -1) continue;
+        if (["node_modules", ".git", ".agent-backups", "__pycache__", "dist", "build", "venv", "env", ".venv", "target"].indexOf(e.name) !== -1) continue;
         if (e.name.startsWith(".")) continue;
         const p = path.join(dir, e.name);
         if (e.isDirectory()) walkStack.push(p);
-        else if (e.name.endsWith(".py") || e.name.endsWith(".js") || e.name.endsWith(".ts")) priorPaths.push(p);
+        else if (SOURCE_FILE.test(e.name)) priorPaths.push(p);
       }
     }
     for (const p of priorPaths) {
       try {
-        const content = fs.readFileSync(p, "utf-8");
-        allFiles.push({ path: path.relative(workspace, p).replace(/\\/g, "/"), content: content });
+        allFiles.push({
+          path: path.relative(workspace, p).replace(/\\/g, "/"),
+          content: fs.readFileSync(p, "utf-8"),
+          mtimeMs: fs.statSync(p).mtimeMs,
+        });
       } catch {}
     }
   } catch {}
 
-  // Score files: prioritize files that share package roots or keywords with expected files
-  const expectedMatch = stepDetail.match(/Expected files: (.+?)(?:\n|$)/);
-  const expectedFiles = expectedMatch ? expectedMatch[1].split(",").map(f => f.trim()).filter(Boolean) : [];
-
-  const scored = allFiles.map(f => {
-    let score = 0;
-    const dir = f.path.split("/").slice(0, -1).join("/");
-    for (const ef of expectedFiles) {
-      const edir = ef.split("/").slice(0, -1).join("/");
-      if (dir === edir) score += 10;
-      else if (dir && edir && (dir.startsWith(edir) || edir.startsWith(dir))) score += 5;
-      if (f.path.indexOf(path.basename(ef)) !== -1) score += 3;
-    }
-    // Also boost by keyword match in prompt/stepDetail
-    const words = (prompt + " " + stepDetail).toLowerCase().split(/\W+/).filter(w => w.length > 3);
-    for (const w of words) {
-      if (f.path.toLowerCase().indexOf(w) !== -1) score += 2;
-    }
-    return { ...f, score: score };
-  });
-
-  // Penalize large files - they're implementation-heavy, not public-API useful
-  for (const s of scored) {
-    if (s.content.length > 3000) s.score -= 5;
-    if (s.content.length > 8000) s.score -= 10;
-  }
-  scored.sort((a, b) => b.score - a.score);
-
-  // Use signature extraction instead of raw content - keeps prompts small and focused
-  const relevant = scored.slice(0, 4).map(f => {
-    const sig = extractSignatures(f.content, f.path);
-    const finalContent = sig.length > 10 && sig.length < 800 ? sig : f.content.slice(0, 600);
-    return { path: f.path, content: finalContent };
-  }).filter(f => f.content.length > 0);
+  const relevant = selectRelevantFiles({ files: allFiles, stepDetail: stepDetail, prompt: prompt });
 
   console.log("Step " + (stepIndex + 1) + ": including " + relevant.length + " files (signatures) from prior steps" +
     (relevant.length ? " (" + relevant.map(f => f.path + ":" + f.content.length + "c").join(", ") + ")" : ""));

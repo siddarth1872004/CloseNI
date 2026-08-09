@@ -16,6 +16,7 @@ const { parseMarkdownToEditPlan } = require(path.join(DIST, "parser/patch-parser
 const { parsePlanRobust } = require(path.join(DIST, "parser/json-repair.js"));
 const { applyPatch } = require(path.join(DIST, "patch/patch-applier.js"));
 const { PlaywrightController } = require(path.join(DIST, "providers/playwright-controller.js"));
+const { selectRelevantFiles, extractSignatures } = require(path.join(DIST, "context/relevance.js"));
 
 const F = "```";
 let pass = 0;
@@ -86,6 +87,90 @@ function testPlanParsing() {
 
   p = parsePlanRobust("no json whatsoever here");
   check("unparseable plan returns null", p === null);
+}
+
+function testRelevance() {
+  section("context selection");
+
+  // The workspace exactly as it stood when the real run reached step 5. Steps 1-4
+  // produced models, storage, services and cli; step 5 writes main.py at the root
+  // and has to import from cli/handlers.py.
+  let t = 1000;
+  const f = (p, content) => ({ path: p, content: content, mtimeMs: (t += 1000) });
+  const todoWorkspace = [
+    f("src/models/__init__.py", "from .task import Task\n"),
+    f("src/models/task.py", "class Task:\n    def __init__(self, title):\n        self.title = title\n"),
+    f("src/storage/__init__.py", "from .json_storage import JsonStorage\n"),
+    f("src/storage/json_storage.py", "import json\n\nclass JsonStorage:\n    def load(self):\n        pass\n"),
+    f("src/services/__init__.py", "from .task_service import TaskService\n"),
+    f("src/services/task_service.py", "class TaskService:\n    def add(self, t):\n        pass\n"),
+    f("src/cli/parser.py", "import argparse\n\ndef create_parser():\n    pass\n"),
+    // Written last, by step 4 — and the one main.py must import from.
+    f("src/cli/handlers.py", "def handle_add(a):\n    pass\ndef handle_remove(a):\n    pass\ndef handle_done(a):\n    pass\n"),
+    f("src/cli/__init__.py", "from .parser import create_parser\n"),
+  ];
+  const step5 = "Overall: Build a to-do CLI\n\nExecute ONLY this step: Implement Main Entry Point. Create the entrypoint. Expected files: main.py";
+
+  const picked = selectRelevantFiles({ files: todoWorkspace, stepDetail: step5, prompt: "build a todo cli" });
+  const pickedPaths = picked.map((p) => p.path);
+
+  check("selects something", picked.length > 0);
+  check(
+    "includes the handlers module the entrypoint imports",
+    pickedPaths.includes("src/cli/handlers.py"),
+    pickedPaths.join(", ")
+  );
+  check(
+    "the handler names are visible to the model",
+    picked.some((p) => p.path === "src/cli/handlers.py" && p.content.includes("handle_remove")),
+    JSON.stringify(picked.find((p) => p.path === "src/cli/handlers.py"))
+  );
+  check("recent work outranks older work", pickedPaths.indexOf("src/cli/handlers.py") < pickedPaths.indexOf("src/models/task.py") || !pickedPaths.includes("src/models/task.py"), pickedPaths.join(", "));
+
+  // Deterministic: same input, same context, regardless of walk order.
+  const shuffled = todoWorkspace.slice().reverse();
+  const again = selectRelevantFiles({ files: shuffled, stepDetail: step5, prompt: "build a todo cli" });
+  check("selection is deterministic", JSON.stringify(again.map((p) => p.path)) === JSON.stringify(pickedPaths), again.map((p) => p.path).join(", "));
+
+  // Same-directory work still wins when the step targets a subdirectory.
+  const stepInCli = "Execute ONLY this step: Extend the CLI. Expected files: src/cli/commands.py";
+  const cliPick = selectRelevantFiles({ files: todoWorkspace, stepDetail: stepInCli, prompt: "cli" }).map((p) => p.path);
+  check("directory match still applies", cliPick.includes("src/cli/parser.py") && cliPick.includes("src/cli/handlers.py"), cliPick.join(", "));
+
+  // Budget: a pile of large files must not blow up the prompt.
+  const many = [];
+  for (let i = 0; i < 40; i++) many.push({ path: "src/mod" + i + ".py", content: "def f" + i + "():\n    pass\n".repeat(200), mtimeMs: 1000 + i });
+  const bounded = selectRelevantFiles({ files: many, stepDetail: "Expected files: main.py", prompt: "x", budgetChars: 1200 });
+  const totalChars = bounded.reduce((n, p) => n + p.content.length, 0);
+  check("respects the character budget", bounded.length <= 8 && totalChars <= 1200 + 800, "files=" + bounded.length + " chars=" + totalChars);
+  check("always returns at least one file", bounded.length >= 1);
+
+  check("empty workspace yields nothing", selectRelevantFiles({ files: [], stepDetail: "x", prompt: "y" }).length === 0);
+
+  section("signature extraction");
+  check(
+    "python: keeps defs and imports, drops bodies",
+    (() => {
+      const s = extractSignatures("import os\n\nclass A:\n    def go(self):\n        secret_body = 1\n        return secret_body\n", "a.py");
+      return s.includes("import os") && s.includes("class A:") && s.includes("def go") && !s.includes("secret_body");
+    })()
+  );
+  check(
+    "javascript: picks up module.exports",
+    extractSignatures("const x = 1;\nfunction go() { return 2; }\nmodule.exports = { go };\n", "a.js").includes("module.exports"),
+    extractSignatures("const x = 1;\nfunction go() { return 2; }\nmodule.exports = { go };\n", "a.js")
+  );
+  check(
+    "rust: picks up pub fn and struct",
+    (() => {
+      const s = extractSignatures("use std::io;\n\npub struct Store {}\n\npub fn load() -> u32 {\n    42\n}\n", "a.rs");
+      return s.includes("pub struct Store") && s.includes("pub fn load") && !s.includes("42");
+    })()
+  );
+  check(
+    "java: picks up declarations",
+    extractSignatures("package app;\n\npublic class Main {\n    public static void main(String[] a) {}\n}\n", "Main.java").includes("public class Main"),
+  );
 }
 
 function testPatchApplier() {
@@ -193,6 +278,7 @@ async function testBrowserExtraction() {
 (async () => {
   testEditPlanParsing();
   testPlanParsing();
+  testRelevance();
   testPatchApplier();
   await testBrowserExtraction();
 

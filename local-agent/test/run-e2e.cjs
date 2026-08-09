@@ -481,6 +481,37 @@ async function main() {
     fs.rmSync(ws, { recursive: true, force: true });
   }
 
+  // ------------------------- root-level step gets the modules it must import from
+  section("a step writing a root-level file still sees the package it imports");
+  {
+    const ws = mkWorkspace();
+    // Mirrors the real run: earlier steps built models/storage/services, the most
+    // recent step built the cli package, and now main.py has to import from it.
+    const write = (rel, body) => {
+      const p = path.join(ws, rel);
+      fs.mkdirSync(path.dirname(p), { recursive: true });
+      fs.writeFileSync(p, body);
+      return p;
+    };
+    write("src/models/task.py", "class Task:\n    def __init__(self, title):\n        self.title = title\n");
+    write("src/storage/json_storage.py", "import json\n\nclass JsonStorage:\n    def load(self):\n        pass\n");
+    write("src/services/task_service.py", "class TaskService:\n    def add(self, t):\n        pass\n");
+    const handlers = write("src/cli/handlers.py", "def handle_add(a):\n    pass\ndef handle_remove(a):\n    pass\n");
+    // Make the cli package unambiguously the newest work.
+    const now = Date.now();
+    fs.utimesSync(handlers, new Date(now), new Date(now));
+
+    mock.setReplies([F + 'json\n{"files":[{"path":"main.py","mode":"create","content":"print(1)\\n"}]}\n' + F]);
+    const stepDetail = "Overall: Build a to-do CLI\n\nExecute ONLY this step: Implement Main Entry Point. Expected files: main.py";
+    const { result } = await runAgent(["browser", stepDetail, ws, "mock", "auto", "4", stepDetail, "Build a to-do CLI"]);
+
+    check("step succeeds", !!result && result.success === true, JSON.stringify(result));
+    const sent = mock.prompts()[0] || "";
+    check("prompt includes the handlers module", sent.includes("src/cli/handlers.py"), sent.slice(0, 400));
+    check("prompt exposes the real handler names", sent.includes("handle_remove"), "handler names missing from prompt");
+    fs.rmSync(ws, { recursive: true, force: true });
+  }
+
   await mock.close();
   fs.rmSync(profileRoot, { recursive: true, force: true });
   fs.rmSync(PROVIDER_DIR, { recursive: true, force: true });
