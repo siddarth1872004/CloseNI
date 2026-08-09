@@ -1,6 +1,6 @@
 # CloseNI Roadmap
 
-28 items, grouped into 9 sub-projects. Each sub-project gets its own design spec
+28 items, grouped into 9 sub-projects. **2 of 9 complete** (1 · Conversation & context core, 9 · Housekeeping). Each sub-project gets its own design spec
 and implementation plan under `docs/superpowers/`, and is expected to leave the
 application working on its own.
 
@@ -102,19 +102,24 @@ Roadmap item 28. **Depends on sub-project 7** being presentable.
 - **28. Releases page, Windows + Linux packages** — `todo`. electron-builder
   produces NSIS/`.exe` and AppImage/`.deb`; staying on Electron keeps this simple.
 
-## 9 · Housekeeping
+## 9 · Housekeeping — DONE
 
-Roadmap items 23, 24, 25. No dependencies. The only sub-project that could be
-finished in a single sitting.
+Roadmap items 23, 24, 25.
 
-- **23. Emoji cleanup** — `todo`. Exactly one source file:
-  `local-agent/src/providers/provider-registry.ts` (`📋`, `❌`). This is the line
-  that prints four times per build step.
-- **24. Junk & redundant files** — `partial`. 16 legacy scripts archived to
+- **23. Emoji cleanup** — `done`. The two lines in
+  `local-agent/src/providers/provider-registry.ts` were the only emoji in the
+  project's own source; everything else lives in third-party `node_modules`.
+- **24. Junk & redundant files** — `done`. 16 legacy scripts archived to
   `scripts/legacy/`; `__pycache__`, backups, stale compiled duplicates and a
-  stray Flask app are git-ignored. **37 empty `.ts` stub files remain** in
-  `local-agent/src/` and `vscode-extension/src/`.
-- **25. QoL across all features** — `todo`.
+  stray Flask app git-ignored; **46 empty files deleted** — 37 `.ts` stubs
+  across `local-agent/src` and `vscode-extension/src`, 8 dead sample fixtures,
+  and an unreferenced `config/safety.json`. The three `.gitkeep` files stay:
+  they are what keep `storage/runs`, `storage/backups` and
+  `storage/browser-profiles` in the repository.
+- **25. QoL across all features** — `done` for this sub-project's scope. QoL
+  belonging to a specific feature is tracked with that feature.
+
+Verified at 81 unit + 95 end-to-end with a clean build after the deletions.
 
 ---
 
