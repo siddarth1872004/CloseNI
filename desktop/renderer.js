@@ -411,6 +411,23 @@ window.CN = {
   getProvider: function () { return provider; },
   getPlan: function () { return currentPlan; },
   runAgent: runAgent,
+  isHeaded: function () { const cb = $("show-browser"); return cb ? cb.checked : false; },
+  startSession: function (ws, prov, autonomy) {
+    try {
+      const cb = $("show-browser");
+      return window.api.startSession(ws, prov, autonomy, cb ? cb.checked : false)
+        .catch(function (e) { return { ok: false, error: String(e) }; });
+    } catch (e) { return Promise.resolve({ ok: false, error: String(e) }); }
+  },
+  sendStep: function (index, detail, goal) {
+    try {
+      return window.api.sendStep(index, detail, goal)
+        .catch(function (e) { return { success: false, error: String(e) }; });
+    } catch (e) { return Promise.resolve({ success: false, error: String(e) }); }
+  },
+  endSession: function () {
+    try { return window.api.endSession().catch(function () {}); } catch (e) { return Promise.resolve(); }
+  },
   log: log,
   toast: toast,
   escapeHtml: escapeHtml,

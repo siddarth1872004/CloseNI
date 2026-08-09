@@ -2,6 +2,10 @@
   const CN = window.CN;
   let steps = [];
   let running = false, paused = false, skipNext = false, stopRequested = false;
+  // A build runs through one long-lived agent session when it can; retryFailed
+  // and any fallback keep using the per-step spawn.
+  let sessionOn = false;
+  function sessionActive() { return sessionOn; }
   let selected = -1;
 
   function $(id) { return document.getElementById(id); }
@@ -97,7 +101,9 @@
       "\n\nExecute ONLY this step: " + (s.title || "") + ". " + (s.detail || "") +
       (s.files && s.files.length ? " Expected files: " + s.files.join(", ") : "");
     const args = ["browser", stepDetail, ws, CN.getProvider(), "ask", String(i), stepDetail, (plan && plan.summary) || ""];
-    const res = await CN.runAgent(args);
+    const res = sessionActive()
+      ? await CN.sendStep(i, stepDetail, (plan && plan.summary) || "")
+      : await CN.runAgent(args);
 
     if (res && res.success) {
       const filesArr = [];
@@ -143,6 +149,11 @@
     running = true; stopRequested = false; paused = false;
     buttons("running");
 
+    const started = await CN.startSession(CN.getWorkspace(), CN.getProvider(), "ask");
+    sessionOn = !!(started && started.ok);
+    if (!sessionOn) CN.log("session unavailable, falling back to a browser per step: " + ((started && started.error) || "unknown"), "step");
+    else CN.log("build session ready - one browser for the whole build", "step");
+
     for (let i = 0; i < steps.length; i++) {
       if (stopRequested) break;
       while (paused && !stopRequested) await sleep(500);
@@ -158,6 +169,8 @@
       progress((i + 1) / steps.length);
       if (!ok) break;
     }
+
+    if (sessionOn) { await CN.endSession(); sessionOn = false; }
 
     running = false;
     buttons("idle");
