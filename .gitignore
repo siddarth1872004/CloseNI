@@ -1,0 +1,43 @@
+node_modules/
+dist/
+out/
+*.log
+.env
+.env.*
+.vscode-test/
+*.vsix
+.DS_Store
+Thumbs.db
+local-agent/storage/runs/*
+!local-agent/storage/runs/.gitkeep
+local-agent/storage/backups/*
+!local-agent/storage/backups/.gitkeep
+local-agent/storage/browser-profiles/*
+!local-agent/storage/browser-profiles/.gitkeep
+
+# Per-machine state, not source: these hold chat thread URLs.
+local-agent/storage/sessions.json
+local-agent/storage/last-chat-url.json
+
+# Backups the agent writes while patching a workspace.
+.agent-backups/
+
+# Stale compiled output checked in beside the TypeScript sources; the real build
+# goes to shared/dist.
+shared/src/*.js
+shared/src/*.js.map
+shared/src/*.d.ts
+
+# A Flask to-do app generated while testing the agent — not part of CloseNI.
+# Delete the directory and this block once you no longer want it around.
+app/
+run.py
+requirements.txt
+
+# Provider fixtures written by the e2e suite.
+local-agent/test/fixtures/providers/
+
+__pycache__/
+*.py[cod]
+instance/
+

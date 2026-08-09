@@ -1,0 +1,498 @@
+/*
+ * End-to-end tests for the agent's chat / plan / build modes.
+ *
+ * These spawn the real CLI (dist/index.js) against a mock chat provider, so the
+ * full path runs for real: Playwright drives a browser, the reply is extracted
+ * from the DOM, parsed, applied to a workspace, and syntax checked. Only the
+ * model's answers are faked.
+ *
+ * Needs Playwright's chromium; skips cleanly if it is unavailable.
+ */
+const { spawn } = require("child_process");
+const fs = require("fs");
+const os = require("os");
+const path = require("path");
+const { createMockProvider } = require("./mock-provider.cjs");
+
+const AGENT = path.join(__dirname, "..", "dist", "index.js");
+const PROVIDER_DIR = path.join(__dirname, "fixtures", "providers");
+const F = "```";
+
+let pass = 0;
+let fail = 0;
+const failures = [];
+
+function check(name, cond, extra) {
+  if (cond) {
+    pass++;
+    console.log("  ok   " + name);
+  } else {
+    fail++;
+    failures.push(name);
+    console.log("  FAIL " + name + (extra ? "\n         -> " + String(extra).slice(0, 500) : ""));
+  }
+}
+
+function section(name) {
+  console.log("\n" + name);
+}
+
+function writeProviderConfig(baseUrl, profileDir) {
+  fs.mkdirSync(PROVIDER_DIR, { recursive: true });
+  fs.writeFileSync(
+    path.join(PROVIDER_DIR, "mock.json"),
+    JSON.stringify(
+      {
+        id: "mock",
+        name: "Mock Provider",
+        kind: "web",
+        baseUrl: baseUrl,
+        requiresLogin: false,
+        enabled: false,
+        selectors: {
+          chatInput: "#input",
+          sendButton: "#send",
+          stopButton: "#nonexistent-stop",
+          assistantMessage: ".assistant-msg",
+          codeBlock: "pre code",
+          copyButton: "#nonexistent-copy",
+        },
+        completionRules: { waitForStopButtonDisappear: false, waitForCopyButton: false, stableMs: 500, maxWaitMs: 30000 },
+        profileDir: profileDir,
+      },
+      null,
+      2
+    )
+  );
+}
+
+/** Run the agent CLI and return its parsed AGENT_OUTPUT block plus raw logs. */
+function runAgent(args, opts = {}) {
+  return new Promise((resolve) => {
+    const proc = spawn(process.execPath, [AGENT].concat(args), {
+      cwd: path.join(__dirname, "..", ".."),
+      env: { ...process.env, AGENT_PROVIDER_DIR: PROVIDER_DIR, ...(opts.env || {}) },
+    });
+    let out = "";
+    proc.stdout.on("data", (d) => {
+      out += d.toString();
+      // Auto-answer approval prompts so the command flow can be exercised.
+      if (opts.approve !== undefined && out.includes("APPROVAL_REQUEST:") && !proc.__answered) {
+        proc.__answered = true;
+        proc.stdin.write(JSON.stringify({ approved: opts.approve }) + "\n");
+      }
+    });
+    proc.stderr.on("data", (d) => (out += d.toString()));
+    const timer = setTimeout(() => proc.kill(), opts.timeoutMs || 120000);
+    proc.on("close", () => {
+      clearTimeout(timer);
+      let result = null;
+      const s = out.indexOf("AGENT_OUTPUT_START");
+      const e = out.indexOf("AGENT_OUTPUT_END");
+      if (s !== -1 && e !== -1) {
+        const lines = out
+          .substring(s + 18, e)
+          .split(/\r?\n/)
+          .map((l) => l.trim())
+          .filter((l) => l.startsWith("{"));
+        if (lines.length) {
+          try { result = JSON.parse(lines[lines.length - 1]); } catch { /* leave null */ }
+        }
+      }
+      resolve({ result, out });
+    });
+  });
+}
+
+function mkWorkspace() {
+  return fs.mkdtempSync(path.join(os.tmpdir(), "agentic-e2e-ws-"));
+}
+
+function spawnSyncNode(args, cwd) {
+  const { spawnSync } = require("child_process");
+  const r = spawnSync(process.execPath, args, { cwd: cwd, encoding: "utf8", timeout: 20000 });
+  return { status: r.status, stdout: r.stdout || "", stderr: r.stderr || "" };
+}
+
+async function main() {
+  const mock = createMockProvider();
+  const baseUrl = await mock.listen();
+  const profileRoot = fs.mkdtempSync(path.join(os.tmpdir(), "agentic-e2e-profile-"));
+  writeProviderConfig(baseUrl, path.join(profileRoot, "profiles", "mock"));
+  console.log("mock provider at " + baseUrl);
+
+  // Probe: if chromium can't launch here, skip the whole suite rather than
+  // reporting a wall of failures unrelated to the code under test.
+  const probeWs = mkWorkspace();
+  mock.setReplies([F + 'json\n{"summary":"probe","steps":[{"title":"t","detail":"d","files":["a.py"]}]}\n' + F]);
+  const probe = await runAgent(["plan", "probe", probeWs, "mock"], { timeoutMs: 90000 });
+  if (!probe.result && /Executable doesn't exist|error while loading shared libraries/.test(probe.out)) {
+    console.log("\n  skip (chromium unavailable)");
+    await mock.close();
+    fs.rmSync(probeWs, { recursive: true, force: true });
+    fs.rmSync(profileRoot, { recursive: true, force: true });
+    console.log("\nPASS — 0 passed, 0 failed (skipped)");
+    return 0;
+  }
+  fs.rmSync(probeWs, { recursive: true, force: true });
+
+  // ---------------------------------------------------------------- plan mode
+  section("plan mode");
+  {
+    const ws = mkWorkspace();
+    mock.setReplies([
+      F +
+        'json\n{"summary":"Build a todo API","steps":[' +
+        '{"title":"Model","detail":"Create the model","files":["models.py"]},' +
+        '{"title":"Routes","detail":"Create the routes","files":["routes.py"]}' +
+        "]}\n" +
+        F,
+    ]);
+    const { result } = await runAgent(["plan", "make me a todo api", ws, "mock"]);
+    check("returns a plan", !!result && result.success === true, JSON.stringify(result));
+    check("plan has both steps", !!result && result.plan && result.plan.steps.length === 2, JSON.stringify(result && result.plan));
+    check("plan keeps the summary", !!result && result.plan && result.plan.summary === "Build a todo API");
+    const sent = mock.prompts();
+    check("prompt carries the user request", sent.length > 0 && sent[0].includes("make me a todo api"));
+    fs.rmSync(ws, { recursive: true, force: true });
+  }
+
+  // -------------------------------------------------- plan mode: re-ask path
+  section("plan mode — re-ask when the first reply is prose");
+  {
+    const ws = mkWorkspace();
+    mock.setReplies([
+      "Sure! I'd love to help you build that. What database would you like to use?",
+      F + 'json\n{"summary":"after reask","steps":[{"title":"S","detail":"D","files":["x.py"]}]}\n' + F,
+    ]);
+    const { result } = await runAgent(["plan", "build a thing", ws, "mock"]);
+    check("recovers a plan after re-asking", !!result && result.success === true && result.plan.summary === "after reask", JSON.stringify(result));
+    const sent = mock.prompts();
+    check("a second prompt was actually sent", sent.length === 2, "sent " + sent.length);
+    check("second prompt is the re-ask", sent.length === 2 && sent[1].includes("machine-readable"));
+    fs.rmSync(ws, { recursive: true, force: true });
+  }
+
+  // --------------------------------------------------------------- build mode
+  section("build mode — writes files to the workspace");
+  {
+    const ws = mkWorkspace();
+    mock.setReplies([
+      F +
+        'json\n{"files":[' +
+        '{"path":"app/models.py","mode":"create","content":"class Todo:\\n    def __init__(self, title):\\n        self.title = title\\n"},' +
+        '{"path":"app/routes.py","mode":"create","content":"from app.models import Todo\\n\\ndef index():\\n    return []\\n"}' +
+        "]}\n" +
+        F,
+    ]);
+    const { result } = await runAgent(["browser", "build it", ws, "mock", "auto", "0", "Create the model layer", "Todo API"]);
+    check("build reports success", !!result && result.success === true, JSON.stringify(result));
+    check("models.py written to disk", fs.existsSync(path.join(ws, "app/models.py")));
+    check("routes.py written to disk", fs.existsSync(path.join(ws, "app/routes.py")));
+    check(
+      "file content is real code, not escaped junk",
+      fs.readFileSync(path.join(ws, "app/models.py"), "utf8").includes("def __init__(self, title):")
+    );
+    check("appliedFiles reported back", !!result && Array.isArray(result.appliedFiles) && result.appliedFiles.length === 2, JSON.stringify(result && result.appliedFiles));
+    fs.rmSync(ws, { recursive: true, force: true });
+  }
+
+  // ------------------------------------------------- build mode: cross-step context
+  section("build mode — later steps see earlier files");
+  {
+    const ws = mkWorkspace();
+    fs.mkdirSync(path.join(ws, "app"), { recursive: true });
+    fs.writeFileSync(path.join(ws, "app/models.py"), "class Todo:\n    def __init__(self, title):\n        self.title = title\n");
+    mock.setReplies([F + 'json\n{"files":[{"path":"app/routes.py","mode":"create","content":"from app.models import Todo\\n"}]}\n' + F]);
+    const { result } = await runAgent(["browser", "step 2", ws, "mock", "auto", "1", "Add routes. Expected files: app/routes.py", "Todo API"]);
+    check("step 2 succeeds", !!result && result.success === true, JSON.stringify(result));
+    const sent = mock.prompts();
+    check("prompt mentions the existing file", sent.length > 0 && sent[0].includes("app/models.py"), sent[0] && sent[0].slice(0, 300));
+    check("prompt includes its signature", sent.length > 0 && sent[0].includes("class Todo:"));
+    fs.rmSync(ws, { recursive: true, force: true });
+  }
+
+  // ------------------------------------------------------ build mode: self-heal
+  section("build mode — self-heals broken code");
+  {
+    const ws = mkWorkspace();
+    mock.setReplies([
+      // Invalid Python: the syntax check must catch this and trigger a follow-up.
+      F + 'json\n{"files":[{"path":"broken.py","mode":"create","content":"def f(:\\n    return 1\\n"}]}\n' + F,
+      F + 'json\n{"files":[{"path":"broken.py","mode":"overwrite","content":"def f():\\n    return 1\\n"}]}\n' + F,
+    ]);
+    const { result, out } = await runAgent(["browser", "make f", ws, "mock", "auto", "0", "Write f", "goal"], { timeoutMs: 150000 });
+    check("recovers and reports success", !!result && result.success === true, JSON.stringify(result));
+    check("a failure was detected first", out.includes("TEST_FAILED"), "no TEST_FAILED in log");
+    check("a follow-up was sent", out.includes("FOLLOW_UP"), "no FOLLOW_UP in log");
+    check("final file on disk is the fixed version", fs.readFileSync(path.join(ws, "broken.py"), "utf8").includes("def f():"));
+    const sent = mock.prompts();
+    check("follow-up prompt carries the error", sent.length >= 2 && /SyntaxError|failed when tested/i.test(sent[1]), sent[1] && sent[1].slice(0, 200));
+    fs.rmSync(ws, { recursive: true, force: true });
+  }
+
+  // -------------------------------------------------- build mode: gives up cleanly
+  section("build mode — gives up after repeated failures");
+  {
+    const ws = mkWorkspace();
+    mock.setReplies([F + 'json\n{"files":[{"path":"bad.py","mode":"overwrite","content":"def f(:\\n"}]}\n' + F]);
+    const { result } = await runAgent(["browser", "x", ws, "mock", "auto", "0", "Write f", "goal"], { timeoutMs: 180000 });
+    check("reports failure rather than hanging", !!result && result.success === false, JSON.stringify(result));
+    check("failure message mentions the attempts", !!result && /fix attempts/i.test(result.error || ""), result && result.error);
+    fs.rmSync(ws, { recursive: true, force: true });
+  }
+
+  // ------------------------------------------------------- command approval flow
+  section("build mode — command approval");
+  {
+    const ws = mkWorkspace();
+    // Uses node rather than python so the test does not depend on a Python install.
+    const reply =
+      F + 'json\n{"files":[{"path":"ok.js","mode":"create","content":"console.log(1);\\n"}],"commands":["node -e \\"console.log(42)\\""]}\n' + F;
+
+    mock.setReplies([reply]);
+    const denied = await runAgent(["browser", "x", ws, "mock", "ask", "0", "Write ok", "goal"], { approve: false, timeoutMs: 150000 });
+    check("asks for approval before running a command", denied.out.includes("APPROVAL_REQUEST:"), "no APPROVAL_REQUEST");
+    check("respects a denial", denied.out.includes("COMMAND_DENIED"), "command was not denied");
+    check("still succeeds when the command is skipped", !!denied.result && denied.result.success === true, JSON.stringify(denied.result));
+
+    mock.setReplies([reply]);
+    const approved = await runAgent(["browser", "y", ws, "mock", "ask", "0", "Write ok", "goal"], { approve: true, timeoutMs: 150000 });
+    check("runs the command once approved", approved.out.includes("RUNNING_COMMAND"), "command never ran");
+    check("command output is reported", approved.out.includes("42"), "no command output");
+    fs.rmSync(ws, { recursive: true, force: true });
+  }
+
+  // --------------------------------------------------------------- chat mode
+  section("chat mode");
+  {
+    const ws = mkWorkspace();
+    mock.setReplies(["You should use Flask with SQLite for a small project like this."]);
+    const { result } = await runAgent(["chat", "what stack should I use?", ws, "mock"]);
+    check("returns an answer", !!result && result.success === true, JSON.stringify(result));
+    check("answer carries the reply text", !!result && /Flask with SQLite/.test(result.answer || ""), result && result.answer);
+    fs.rmSync(ws, { recursive: true, force: true });
+  }
+
+  // ------------------------------------------------------------- headed mode
+  section("headed mode (AGENT_HEADED)");
+  {
+    const ws = mkWorkspace();
+    mock.setReplies([F + 'json\n{"summary":"h","steps":[{"title":"t","detail":"d","files":["a.py"]}]}\n' + F]);
+    const headless = await runAgent(["plan", "x", ws, "mock"], { env: { AGENT_HEADED: "0" } });
+    check("defaults to headless", headless.out.includes("(headless)"), "launch line: " + (headless.out.match(/Launching browser.*/) || [""])[0]);
+
+    mock.setReplies([F + 'json\n{"summary":"h","steps":[{"title":"t","detail":"d","files":["a.py"]}]}\n' + F]);
+    const headed = await runAgent(["plan", "x", ws, "mock"], { env: { AGENT_HEADED: "1" } });
+    check("AGENT_HEADED=1 launches headed", headed.out.includes("HEADED"), "launch line: " + (headed.out.match(/Launching browser.*/) || [""])[0]);
+    check("headed run still returns a plan", !!headed.result && headed.result.success === true, JSON.stringify(headed.result));
+    fs.rmSync(ws, { recursive: true, force: true });
+  }
+
+  // ------------------------------------------------------------ revise mode
+  section("revise mode");
+  {
+    const ws = mkWorkspace();
+    mock.setReplies([F + 'json\n{"summary":"revised","steps":[{"title":"A","detail":"a","files":["a.py"]},{"title":"B","detail":"b","files":["b.py"]}]}\n' + F]);
+    const { result } = await runAgent(["revise", "split step 1 into two", ws, "mock"]);
+    check("returns a revised plan", !!result && result.success === true && result.plan.summary === "revised", JSON.stringify(result));
+    check("revision request reaches the model", mock.prompts()[0].includes("split step 1 into two"));
+    fs.rmSync(ws, { recursive: true, force: true });
+  }
+
+  // ----------------------------------------------------------- testall mode
+  section("testall mode");
+  {
+    const ws = mkWorkspace();
+    fs.writeFileSync(path.join(ws, "good.js"), "const a = 1;\nconsole.log(a);\n");
+    const okRun = await runAgent(["testall", "x", ws, "mock"]);
+    check("passes on valid files", !!okRun.result && okRun.result.success === true, JSON.stringify(okRun.result));
+    check("counts the checks it ran", !!okRun.result && okRun.result.passed >= 1, JSON.stringify(okRun.result));
+
+    fs.writeFileSync(path.join(ws, "bad.js"), "function ( {\n");
+    const badRun = await runAgent(["testall", "x", ws, "mock"]);
+    check("fails when a file is broken", !!badRun.result && badRun.result.success === false, JSON.stringify(badRun.result));
+    check("reports the failure count", !!badRun.result && badRun.result.failed >= 1, JSON.stringify(badRun.result));
+    fs.rmSync(ws, { recursive: true, force: true });
+  }
+
+  // ------------------------------------------- oversized args spilled to a file
+  section("oversized prompt spilled to a temp file");
+  {
+    const ws = mkWorkspace();
+    // The desktop app writes args over 8000 chars to a temp file and passes the
+    // path; the agent has to read it back or the model receives a filename.
+    const marker = "SPILLED_MARKER_" + Date.now();
+    const bigDetail = "Build the thing. " + marker + " " + "x".repeat(9000);
+    const spill = path.join(os.tmpdir(), "agent-prompt-" + Date.now() + "-6.txt");
+    fs.writeFileSync(spill, bigDetail, "utf-8");
+
+    mock.setReplies([F + 'json\n{"files":[{"path":"spilled.js","mode":"create","content":"console.log(1);\\n"}]}\n' + F]);
+    const { result } = await runAgent(["browser", "short", ws, "mock", "auto", "0", spill, "goal"]);
+    check("build succeeds with a spilled arg", !!result && result.success === true, JSON.stringify(result));
+    const sent = mock.prompts()[0] || "";
+    check("model receives the file contents, not the path", sent.includes(marker), sent.slice(0, 200));
+    check("the temp path itself is not sent as the prompt", !sent.includes(path.basename(spill)));
+    fs.rmSync(spill, { force: true });
+    fs.rmSync(ws, { recursive: true, force: true });
+  }
+
+  // ------------------------------------ back-to-back runs on the same profile
+  section("consecutive runs reuse the browser profile cleanly");
+  {
+    const ws = mkWorkspace();
+    let allOk = true;
+    let detail = "";
+    for (let i = 0; i < 3; i++) {
+      mock.setReplies([F + 'json\n{"files":[{"path":"step' + i + '.js","mode":"create","content":"console.log(' + i + ');\\n"}]}\n' + F]);
+      const { result } = await runAgent(["browser", "s" + i, ws, "mock", "auto", String(i), "Write step " + i, "goal"]);
+      if (!result || result.success !== true) { allOk = false; detail = "step " + i + ": " + JSON.stringify(result); break; }
+    }
+    check("three consecutive steps all succeed", allOk, detail);
+    check("all three files exist", [0, 1, 2].every((i) => fs.existsSync(path.join(ws, "step" + i + ".js"))));
+    fs.rmSync(ws, { recursive: true, force: true });
+  }
+
+  // ------------------------------------- full plan -> multi-step build -> run
+  section("full run: plan, build every step, execute the result");
+  {
+    const ws = mkWorkspace();
+
+    const plan = {
+      summary: "Build a small todo library",
+      steps: [
+        { title: "Store", detail: "Create the store", files: ["src/store.js"] },
+        { title: "Todo", detail: "Create the todo service", files: ["src/todo.js"] },
+        { title: "Entry", detail: "Create the entrypoint", files: ["src/index.js"] },
+      ],
+    };
+    mock.setReplies([F + "json\n" + JSON.stringify(plan) + "\n" + F]);
+    const planRun = await runAgent(["plan", "build a todo library", ws, "mock"]);
+    check("plan comes back with 3 steps", !!planRun.result && planRun.result.plan.steps.length === 3, JSON.stringify(planRun.result));
+
+    // Each step's code depends on what the previous step exported.
+    const stepReplies = [
+      '{"files":[{"path":"src/store.js","mode":"create","content":"class Store {\\n  constructor() { this.items = []; }\\n  add(item) { this.items.push(item); return item; }\\n  all() { return this.items; }\\n}\\n\\nmodule.exports = { Store };\\n"}]}',
+      '{"files":[{"path":"src/todo.js","mode":"create","content":"const { Store } = require(\'./store\');\\n\\nclass TodoService {\\n  constructor() { this.store = new Store(); }\\n  create(title) { return this.store.add({ title, done: false }); }\\n  list() { return this.store.all(); }\\n}\\n\\nmodule.exports = { TodoService };\\n"}]}',
+      '{"files":[{"path":"src/index.js","mode":"create","content":"const { TodoService } = require(\'./todo\');\\n\\nconst svc = new TodoService();\\nsvc.create(\'write tests\');\\nsvc.create(\'ship it\');\\nconsole.log(JSON.stringify(svc.list()));\\n"}]}',
+    ];
+
+    const built = [];
+    for (let i = 0; i < plan.steps.length; i++) {
+      const s = plan.steps[i];
+      const stepDetail =
+        "Overall: " + plan.summary + "\n\nExecute ONLY this step: " + s.title + ". " + s.detail +
+        " Expected files: " + s.files.join(", ");
+      mock.setReplies([F + "json\n" + stepReplies[i] + "\n" + F]);
+      const { result } = await runAgent(["browser", stepDetail, ws, "mock", "auto", String(i), stepDetail, plan.summary]);
+      built.push(!!result && result.success === true);
+      if (i > 0) {
+        // The step's prompt should carry what earlier steps produced.
+        const sent = mock.prompts()[0] || "";
+        check("step " + (i + 1) + " prompt includes prior file " + plan.steps[i - 1].files[0], sent.includes(plan.steps[i - 1].files[0]), sent.slice(0, 300));
+      }
+    }
+    check("all 3 build steps succeed", built.every(Boolean), JSON.stringify(built));
+
+    // The real proof: the generated project runs and behaves.
+    const run = spawnSyncNode(["src/index.js"], ws);
+    check("generated project executes", run.status === 0, run.stderr);
+    let parsed = null;
+    try { parsed = JSON.parse((run.stdout || "").trim()); } catch { /* leave null */ }
+    check("cross-step imports resolved at runtime", Array.isArray(parsed) && parsed.length === 2, run.stdout + run.stderr);
+    check("output is the expected data", !!parsed && parsed[0].title === "write tests" && parsed[1].done === false, JSON.stringify(parsed));
+
+    fs.rmSync(ws, { recursive: true, force: true });
+  }
+
+  // ------------------------------------------- timeout comes from the config
+  section("response timeout honours provider config");
+  {
+    const ws = mkWorkspace();
+    // Rewrite the config with a short ceiling and make the provider never answer,
+    // so the run has to hit that ceiling rather than a hardcoded 120s.
+    const cfgPath = path.join(PROVIDER_DIR, "mock.json");
+    const original = fs.readFileSync(cfgPath, "utf8");
+    const cfg = JSON.parse(original);
+    cfg.completionRules.maxWaitMs = 15000;
+    fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2));
+
+    mock.setReplies(["never delivered"]);
+    mock.setReplyDelay(60000); // longer than the configured ceiling
+    const started = Date.now();
+    const { out } = await runAgent(["plan", "x", ws, "mock"], { timeoutMs: 90000 });
+    const elapsed = Date.now() - started;
+    mock.setReplyDelay(0);
+
+    check("log announces the configured timeout", out.includes("(15s timeout)"), (out.match(/Waiting for AI response.*/) || [""])[0]);
+    check("gives up near the configured ceiling, not 120s", elapsed < 70000, "took " + Math.round(elapsed / 1000) + "s");
+    check("reports the configured value on timeout", out.includes("Timeout after 15s"), (out.match(/Timeout after.*/) || [""])[0]);
+
+    fs.writeFileSync(cfgPath, original);
+    fs.rmSync(ws, { recursive: true, force: true });
+  }
+
+  // --------------------------------- short follow-up reply, re-rendered in place
+  section("detects a follow-up reply that is shorter than the one before it");
+  {
+    const ws = mkWorkspace();
+    // Reproduces a real hang: the chat UI re-renders the last bubble instead of
+    // adding one (so the message count never grows) and the fix reply is shorter
+    // than the answer it replaces. Detection used to need "50 chars longer", so
+    // the agent sat in "AI is thinking" until it timed out, then extracted the
+    // reply that had been sitting there the whole time.
+    mock.setRenderMode("replace");
+    const longBroken =
+      "Here is a thorough implementation with extensive commentary. ".repeat(12) +
+      "\n" + F + 'json\n{"files":[{"path":"m.js","mode":"create","content":"function f( {\\n"}]}\n' + F;
+    const shortFix = F + 'json\n{"files":[{"path":"m.js","mode":"overwrite","content":"function f() {}\\n"}]}\n' + F;
+    mock.setReplies([longBroken, shortFix]);
+
+    const started = Date.now();
+    const { result, out } = await runAgent(["browser", "x", ws, "mock", "auto", "0", "Write f", "goal"], { timeoutMs: 180000 });
+    const elapsed = Date.now() - started;
+    mock.setRenderMode("append");
+
+    check("build recovers", !!result && result.success === true, JSON.stringify(result));
+    check("both replies were detected as they arrived", (out.match(/Response started!/g) || []).length === 2, "started count: " + (out.match(/Response started!/g) || []).length);
+    check("never fell back to the timeout path", !out.includes("Timeout after"), (out.match(/Timeout after.*/) || [""])[0]);
+    check("did not sit in 'AI is thinking'", !out.includes("AI is thinking"), "thinking lines: " + (out.match(/AI is thinking/g) || []).length);
+    check("finished promptly", elapsed < 90000, "took " + Math.round(elapsed / 1000) + "s");
+    fs.rmSync(ws, { recursive: true, force: true });
+  }
+
+  // ------------------------------------- model-suggested `python` gets rewritten
+  section("rewrites a suggested `python` command to the interpreter that exists");
+  {
+    const ws = mkWorkspace();
+    mock.setReplies([
+      F + 'json\n{"files":[{"path":"hello.py","mode":"create","content":"print(\'hi\')\\n"}],"commands":["python hello.py"]}\n' + F,
+    ]);
+    const { result, out } = await runAgent(["browser", "x", ws, "mock", "auto", "0", "Write hello", "goal"], { timeoutMs: 150000 });
+
+    const hasRealPython = require("child_process").spawnSync("python --version", { shell: true, stdio: "ignore" }).status === 0;
+    if (hasRealPython) {
+      check("skipped: this machine has a real `python`", true);
+    } else {
+      check("command was normalized", out.includes("NORMALIZED_COMMAND"), (out.match(/REQUESTING_COMMAND.*/) || [""])[0]);
+      check("no 'python: not found' failure", !out.includes("python: not found"), (out.match(/.*not found.*/) || [""])[0]);
+      check("step succeeds first time, no retry burned", !!result && result.success === true && !out.includes("FOLLOW_UP"), JSON.stringify(result));
+    }
+    fs.rmSync(ws, { recursive: true, force: true });
+  }
+
+  await mock.close();
+  fs.rmSync(profileRoot, { recursive: true, force: true });
+  fs.rmSync(PROVIDER_DIR, { recursive: true, force: true });
+
+  console.log("\n" + (fail === 0 ? "PASS" : "FAIL") + " — " + pass + " passed, " + fail + " failed");
+  if (failures.length) console.log("failed: " + failures.join(", "));
+  return fail === 0 ? 0 : 1;
+}
+
+main()
+  .then((code) => process.exit(code))
+  .catch((e) => {
+    console.error("e2e runner threw:", e);
+    process.exit(1);
+  });

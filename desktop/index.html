@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>CloseNI</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="app">
+  <aside id="rail">
+    <div id="wordmark">Close<span>NI</span></div>
+    <nav>
+      <button class="nav-btn active" data-mode="chat"><i>01</i>Chat</button>
+      <button class="nav-btn" data-mode="build"><i>02</i>Builder</button>
+      <button class="nav-btn" data-mode="test"><i>03</i>Test</button>
+      <button class="nav-btn" data-mode="research"><i>04</i>Research</button>
+      <button class="nav-btn" data-mode="push"><i>05</i>Ship</button>
+    </nav>
+    <div id="rail-bottom">
+      <div class="micro">Workspace</div>
+      <div id="workspace-label">none selected</div>
+      <button id="browse-btn" class="btn">Browse</button>
+      <div class="micro" style="margin-top:10px;">Chat Session</div>
+      <select id="chat-select" style="margin-bottom:6px;">
+        <option value="new">+ New Chat</option>
+      </select>
+      <button id="new-chat-btn" class="btn" style="font-size:10px;padding:4px 8px;">New Chat</button>
+      <div class="micro" style="margin-top:10px;">Provider</div>
+      <select id="provider-select">
+        <option value="deepseek">DeepSeek</option>
+        <option value="qwen-studio">Qwen Studio</option>
+      </select>
+      <div style="display:flex;align-items:center;gap:6px;margin-top:12px;">
+        <input type="checkbox" id="show-browser" style="width:auto;flex:none;accent-color:var(--txt);">
+        <label for="show-browser" style="font-size:11px;color:var(--dim);cursor:pointer;">Show Browser</label>
+      </div>
+    </div>
+  </aside>
+  <main id="main">
+    <header id="topbar">
+      <span id="mode-title">CHAT</span>
+      <span id="status-line">idle</span>
+    </header>
+
+    <section id="panel-chat" class="panel active">
+      <div id="chat-view">
+        <div id="chat-column">
+          <div id="chat-flow"></div>
+          <div id="chat-bar">
+            <textarea id="chat-input" placeholder="Ask anything..."></textarea>
+            <button id="chat-send" class="btn invert">Send</button>
+          </div>
+          <button id="generate-plan" class="btn">Generate Implementation Plan</button>
+        </div>
+        <div id="plan-sidebar" class="hidden">
+          <div id="plan-head">
+            <div class="micro">Implementation Plan</div>
+            <button id="close-plan" class="btn">×</button>
+          </div>
+          <div id="plan-content"></div>
+          <div id="plan-actions">
+            <button id="edit-plan" class="btn">Suggest Changes</button>
+            <button id="build-plan" class="btn invert">Build with this</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="panel-build" class="panel">
+      <div id="builder-toolbar">
+        <button id="builder-start" class="btn invert">Start Build</button>
+        <button id="builder-pause" class="btn" style="display:none;">Pause</button>
+        <button id="builder-resume" class="btn" style="display:none;">Resume</button>
+        <button id="builder-skip" class="btn" style="display:none;">Skip Step</button>
+        <button id="builder-retry" class="btn" style="display:none;">Retry Failed</button>
+        <button id="builder-stop" class="btn" style="display:none;">Stop</button>
+        <div id="builder-progress-wrap"><div id="builder-progress"></div></div>
+        <span id="builder-status">idle</span>
+      </div>
+      <div id="builder-view">
+        <div id="builder-sidebar">
+          <div class="micro">Steps</div>
+          <div id="step-list"></div>
+        </div>
+        <div id="builder-main">
+          <div id="builder-empty">No plan loaded. Go to Chat, describe your idea, hit Generate Implementation Plan, then Build with this.</div>
+          <div id="step-detail" class="hidden">
+            <div id="step-detail-head">
+              <div class="micro" id="step-detail-label"></div>
+              <div id="step-detail-status"></div>
+            </div>
+            <div id="step-detail-body">
+              <div id="step-files"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="panel-test" class="panel">
+      <div class="micro">Test</div>
+      <button id="test-check" class="btn">Syntax-check all files</button>
+      <div class="row">
+        <input id="test-cmd" placeholder="custom command, e.g. python src/main.py">
+        <button id="test-run" class="btn">Run</button>
+      </div>
+    </section>
+
+    <section id="panel-research" class="panel">
+      <div class="micro">Research</div>
+      <div class="row">
+        <input id="research-q" placeholder="e.g. Python Flask SQLite patterns">
+        <button id="research-go" class="btn invert">Search</button>
+      </div>
+      <div id="research-results">
+        <div class="research-col"><div class="micro">Web</div><div id="res-web"></div></div>
+        <div class="research-col"><div class="micro">GitHub repos</div><div id="res-gh"></div></div>
+      </div>
+    </section>
+
+    <section id="panel-push" class="panel">
+      <div class="micro">Ship</div>
+      <div class="row"><button id="git-init" class="btn">git init</button><button id="git-status" class="btn">git status</button></div>
+      <div class="row"><input id="commit-msg" placeholder="commit message"><button id="git-commit" class="btn">commit all</button></div>
+      <div class="row"><input id="remote-url" placeholder="https://github.com/you/repo.git"><button id="git-push" class="btn">push origin</button></div>
+      <div class="hint">First push triggers a one-time GitHub sign-in via Windows.</div>
+    </section>
+
+    <div id="log-row">
+      <div class="log-box"><div class="micro">Agent</div><div id="log"></div></div>
+      <div class="log-box"><div class="micro">Project</div><div id="plog"></div></div>
+    </div>
+  </main>
+</div>
+
+<div id="approval-modal">
+  <div id="approval-card">
+    <div class="micro">Permission Required</div>
+    <p>The agent wants to run:</p>
+    <pre id="approval-cmd"></pre>
+    <div class="row">
+      <button id="approve-yes" class="btn invert">Allow</button>
+      <button id="approve-no" class="btn">Deny</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-stack"></div>
+<script src="renderer.js"></script>
+<script src="builder.js"></script>
+</body>
+</html>

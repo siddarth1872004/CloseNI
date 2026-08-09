@@ -1,0 +1,23 @@
+{
+  "name": "@agentic/local-agent",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "node test/run-tests.cjs",
+    "test:e2e": "node test/run-e2e.cjs",
+    "test:all": "node test/run-tests.cjs && node test/run-e2e.cjs",
+    "start": "node dist/index.js",
+    "test:browser": "node dist/index.js browser",
+    "test:patch": "node dist/index.js patch"
+  },
+  "dependencies": {
+    "@agentic/shared": "*",
+    "playwright": "^1.40.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.5.4"
+  }
+}

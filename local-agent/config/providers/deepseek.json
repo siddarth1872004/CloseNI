@@ -1,0 +1,23 @@
+{
+  "id": "deepseek",
+  "name": "DeepSeek Chat",
+  "kind": "web",
+  "baseUrl": "https://chat.deepseek.com/",
+  "requiresLogin": true,
+  "enabled": true,
+  "selectors": {
+    "chatInput": "textarea[placeholder], div[contenteditable=\"true\"], textarea",
+    "sendButton": "button[type=\"submit\"], button[data-testid=\"send-button\"]",
+    "stopButton": "button[data-testid=\"stop-button\"]",
+    "assistantMessage": "[data-testid=\"assistant-message\"], .markdown-body, [class*=\"message\"][class*=\"assistant\"]",
+    "codeBlock": "pre code",
+    "copyButton": "button[class*=\"copy\"]"
+  },
+  "completionRules": {
+    "waitForStopButtonDisappear": true,
+    "waitForCopyButton": true,
+    "stableMs": 3000,
+    "maxWaitMs": 120000
+  },
+  "profileDir": "local-agent/storage/browser-profiles/deepseek"
+}

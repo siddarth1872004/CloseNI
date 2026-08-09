@@ -1,0 +1,20 @@
+{
+  "name": "agentic-web-coder",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "shared",
+    "local-agent",
+    "vscode-extension"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.5.4"
+  },
+  "dependencies": {
+    "playwright": "^1.62.1"
+  }
+}

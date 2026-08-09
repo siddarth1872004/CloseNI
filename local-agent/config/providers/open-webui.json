@@ -1,0 +1,11 @@
+{
+  "id": "open-webui",
+  "name": "Open WebUI",
+  "kind": "local",
+  "baseUrl": "http://localhost:8080/",
+  "requiresLogin": false,
+  "enabled": false,
+  "selectors": {},
+  "completionRules": {},
+  "profileDir": ""
+}
