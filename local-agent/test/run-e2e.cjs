@@ -520,6 +520,31 @@ async function main() {
     check("promptsForThread is empty for an unknown id", mock.promptsForThread("nope").length === 0);
   }
 
+  // ------------------------------------- every step of a build shares a thread
+  section("build steps share one chat thread");
+  {
+    const ws = mkWorkspace();
+    mock.resetThreads();
+
+    for (let i = 0; i < 3; i++) {
+      mock.setReplies([F + 'json\n{"files":[{"path":"s' + i + '.js","mode":"create","content":"console.log(' + i + ');\\n"}]}\n' + F]);
+      const detail = "Execute ONLY this step: step " + i + ". Expected files: s" + i + ".js";
+      const { result } = await runAgent(["browser", detail, ws, "mock", "auto", String(i), detail, "goal"]);
+      check("step " + i + " succeeds", !!result && result.success === true, JSON.stringify(result));
+    }
+
+    check("all three steps used ONE thread", mock.threadCount() === 1, "threads: " + mock.threadCount());
+    check("that thread saw three prompts", mock.promptsForThread("1").length === 3, "prompts: " + mock.promptsForThread("1").length);
+
+    // A new build (step 0 again) must NOT reuse the previous run's thread.
+    mock.setReplies([F + 'json\n{"files":[{"path":"fresh.js","mode":"create","content":"console.log(9);\\n"}]}\n' + F]);
+    const d0 = "Execute ONLY this step: step 0. Expected files: fresh.js";
+    await runAgent(["browser", d0, ws, "mock", "auto", "0", d0, "goal"]);
+    check("a new build starts a new thread", mock.threadCount() === 2, "threads: " + mock.threadCount());
+
+    fs.rmSync(ws, { recursive: true, force: true });
+  }
+
   await mock.close();
   fs.rmSync(profileRoot, { recursive: true, force: true });
   fs.rmSync(PROVIDER_DIR, { recursive: true, force: true });

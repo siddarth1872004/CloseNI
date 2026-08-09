@@ -66,6 +66,26 @@ async function openProvider(providerId: string, fresh: boolean = false, workspac
   return { controller: controller, config: config };
 }
 
+/** Build steps share one thread: step 0 starts it, later steps resume it. */
+async function openProviderForBuild(providerId: string, workspace: string, isFirstStep: boolean) {
+  const registry = new ProviderRegistry();
+  registry.loadProviders();
+  const config = registry.getProvider(providerId);
+  if (!config) throw new Error("Provider not found: " + providerId);
+  const controller = new PlaywrightController(config);
+  controller.setWorkspace(workspace);
+  controller.setThreadKind("build");
+  await controller.launch(config);
+  if (isFirstStep) {
+    controller.clearBuildThreadForWorkspace();
+    await controller.navigateFresh(config);
+  } else {
+    await controller.navigateToBuildThread(config);
+  }
+  await controller.waitForLogin();
+  return { controller: controller, config: config };
+}
+
 async function chatMode(prompt: string, providerId: string, workspace: string = "") {
   const { controller, config } = await openProvider(providerId, true, workspace);  // FRESH chat
   try {
@@ -274,8 +294,9 @@ async function buildMode(prompt: string, workspace: string, providerId: string, 
     ? "Overall project goal: " + (goalSummary || prompt) + "\n\n" + stepDetail
     : prompt;
 
-  // Build steps use a FRESH chat to avoid primed-thread confusion
-  const { controller, config } = await openProvider(providerId, true, workspace);
+  // Step 0 opens the build's thread; later steps rejoin it so they can see what
+  // earlier steps said.
+  const { controller, config } = await openProviderForBuild(providerId, workspace, stepIndex <= 0);
   try {
     let prevCount = await controller.countMessages(config);
     let prevContent = await controller.getLastMessageText(config);
