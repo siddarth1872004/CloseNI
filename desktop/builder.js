@@ -80,11 +80,45 @@
         head.onclick = function () { const bb = fc.querySelector(".file-body"); if (bb) bb.classList.toggle("open"); };
         const bb = document.createElement("div");
         bb.className = "file-body";
-        bb.innerHTML = "<pre>" + CN.escapeHtml(f.content || "") + "</pre>";
+        if (f.diff && f.diff.length) {
+          bb.innerHTML = "<pre>" + f.diff.map(function (r) {
+            const mark = r.type === "add" ? "+" : r.type === "remove" ? "-" : " ";
+            return '<span class="diff-line ' + r.type + '">' + CN.escapeHtml(mark + " " + r.text) + "</span>";
+          }).join("") + "</pre>";
+        } else {
+          bb.innerHTML = "<pre>" + CN.escapeHtml(f.content || "") + "</pre>";
+        }
         fc.appendChild(head); fc.appendChild(bb);
         body.appendChild(fc);
       });
     }
+  }
+
+  // Reads the written file and, when applyPatch made a backup, the version it
+  // replaced, so the card can show a diff rather than a wall of content.
+  async function loadFileDiffs(ws, res) {
+    const out = [];
+    for (const af of (res.appliedFiles || [])) {
+      let after = "";
+      let before = "";
+      try {
+        const fr = await CN.readFile(ws + "/" + af, { full: true });
+        if (fr && fr.ok) after = fr.text;
+      } catch (e) {}
+      if (res.backupDir) {
+        try {
+          const br = await CN.readFile(res.backupDir + "/" + af, { full: true });
+          if (br && br.ok) before = br.text;
+        } catch (e) { /* no backup entry means the file was created */ }
+      }
+      out.push({
+        path: af,
+        mode: before ? "overwrite" : "create",
+        content: after,
+        diff: window.CNDiff ? window.CNDiff.diffLines(before, after) : null,
+      });
+    }
+    return out;
   }
 
   async function runOne(i) {
@@ -106,15 +140,7 @@
       : await CN.runAgent(args);
 
     if (res && res.success) {
-      const filesArr = [];
-      for (const af of (res.appliedFiles || [])) {
-        let content = "[could not load]";
-        try {
-          const fr = await CN.readFile(ws + "/" + af);
-          if (fr && fr.ok) content = fr.text + (fr.truncated ? "\n... (truncated)" : "");
-        } catch (e) {}
-        filesArr.push({ path: af, mode: "written", content: content });
-      }
+      const filesArr = await loadFileDiffs(ws, res);
       s.result = { files: filesArr };
       setStatusOf(i, "done");
       CN.log("step " + (i + 1) + " done: " + (res.appliedFiles || []).join(", "), "ok");
@@ -199,4 +225,34 @@
   $("builder-retry").onclick = function () { CN.retryFailed(); };
 
   if (CN.getPlan()) CN.setPlan(CN.getPlan());
+
+  $("suggest-send").onclick = async function () {
+    const input = $("suggest-input");
+    const text = (input.value || "").trim();
+    if (!text) return;
+    if (selected < 0 || !steps[selected]) { CN.toast("Select a step first", "err"); return; }
+    if (steps[selected].status === "pending" || steps[selected].status === "running") {
+      CN.toast("That step has not finished yet", "err"); return;
+    }
+    input.disabled = true;
+    $("suggest-send").disabled = true;
+    CN.log("suggesting on step " + (selected + 1) + ": " + text, "step");
+    const res = await CN.suggest(selected, text);
+    input.disabled = false;
+    $("suggest-send").disabled = false;
+    if (res && res.success) {
+      input.value = "";
+      steps[selected].result = { files: await loadFileDiffs(CN.getWorkspace(), res) };
+      selectStep(selected);
+      CN.log("suggestion applied: " + (res.appliedFiles || []).join(", "), "ok");
+      CN.toast("Change applied");
+    } else {
+      CN.log("suggestion failed: " + ((res && res.error) || "unknown"), "err");
+      CN.toast((res && res.error) || "Suggestion failed", "err");
+    }
+  };
+  $("suggest-input").addEventListener("keydown", function (e) {
+    if (e.key === "Enter") { e.preventDefault(); $("suggest-send").click(); }
+  });
+
 })();
