@@ -624,6 +624,31 @@ async function main() {
     fs.rmSync(ws, { recursive: true, force: true });
   }
 
+  // ------------------------------------ the delta actually shrinks the prompt
+  section("prompt size stays bounded as a build grows");
+  {
+    const ws = mkWorkspace();
+    mock.resetThreads();
+    const sizes = [];
+
+    for (let i = 0; i < 4; i++) {
+      mock.setReplies([F + 'json\n{"files":[{"path":"src/mod' + i + '.js","mode":"create","content":"function m' + i + '() { return ' + i + '; }\\nmodule.exports = { m' + i + ' };\\n"}]}\n' + F]);
+      const detail = "Execute ONLY this step: step " + i + ". Expected files: src/mod" + i + ".js";
+      const { result } = await runAgent(["browser", detail, ws, "mock", "auto", String(i), detail, "goal"]);
+      check("step " + i + " succeeds", !!result && result.success === true, JSON.stringify(result));
+      sizes.push((mock.prompts()[0] || "").length);
+    }
+
+    check("prompts recorded for all four steps", sizes.length === 4 && sizes.every((s) => s > 0), sizes.join(","));
+    // Without the delta each prompt grows as the project does, because every step
+    // re-listed the whole workspace. With it, a step is told only about what its
+    // predecessor just wrote, so the last step is no heavier than the second.
+    check("step 4 is no larger than step 2", sizes[3] <= sizes[1], "sizes: " + sizes.join(","));
+    check("prompts stay bounded as the project grows", Math.max(...sizes) - Math.min(...sizes) < 2500, "sizes: " + sizes.join(","));
+
+    fs.rmSync(ws, { recursive: true, force: true });
+  }
+
   await mock.close();
   fs.rmSync(profileRoot, { recursive: true, force: true });
   fs.rmSync(PROVIDER_DIR, { recursive: true, force: true });
