@@ -1,6 +1,7 @@
 import { chromium, BrowserContext, Page } from "playwright";
 import * as path from "path";
 import * as fs from "fs";
+import { readSessions, writeSessions, getBuildThread, setBuildThread, clearBuildThread } from "../session-store.js";
 
 export interface ProviderConfig {
   id: string;
@@ -56,6 +57,9 @@ export class PlaywrightController {
   private sessionStoreFile: string = "";
   private workspace: string = "";
   private isHeaded: boolean = false;
+  // Build steps share a thread that is tracked separately from the Chat/Plan
+  // thread, so the two never overwrite each other in sessions.json.
+  private threadKind: "chat" | "build" = "chat";
 
   constructor(config: ProviderConfig) {
     const storageDir = path.join(config.profileDir, "..", "..");
@@ -69,21 +73,23 @@ export class PlaywrightController {
   }
 
   private loadSessions(): any {
-    try {
-      if (!this.sessionStoreFile || !fs.existsSync(this.sessionStoreFile)) return {};
-      return JSON.parse(fs.readFileSync(this.sessionStoreFile, "utf-8"));
-    } catch (e) {
-      return {};
-    }
+    return readSessions(this.sessionStoreFile);
   }
 
   private saveSessions(sessions: any) {
-    try {
-      if (!this.sessionStoreFile) return;
-      const dir = path.dirname(this.sessionStoreFile);
-      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(this.sessionStoreFile, JSON.stringify(sessions, null, 2), "utf-8");
-    } catch (e) {}
+    writeSessions(this.sessionStoreFile, sessions);
+  }
+
+  setThreadKind(kind: "chat" | "build") {
+    this.threadKind = kind;
+  }
+
+  getBuildThreadUrl(): string | null {
+    return getBuildThread(this.sessionStoreFile, this.workspace);
+  }
+
+  clearBuildThreadForWorkspace() {
+    clearBuildThread(this.sessionStoreFile, this.workspace);
   }
 
   getChatUrlForWorkspace(workspace: string): string | null {
@@ -94,6 +100,10 @@ export class PlaywrightController {
 
   setChatUrlForWorkspace(workspace: string, url: string, title?: string) {
     if (!workspace) return;
+    if (this.threadKind === "build") {
+      setBuildThread(this.sessionStoreFile, workspace, url);
+      return;
+    }
     const sessions = this.loadSessions();
     if (!sessions[workspace]) sessions[workspace] = { chats: [], activeChat: null };
     sessions[workspace].activeChat = url;
@@ -144,6 +154,29 @@ export class PlaywrightController {
     }
     console.log("Starting new chat for workspace: " + this.workspace);
     await this.page.goto(config.baseUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
+  }
+
+  /**
+   * Resume this workspace's build thread. Returns false (and lands on a fresh
+   * chat) when there is nothing to resume or the saved thread will not load.
+   */
+  async navigateToBuildThread(config: ProviderConfig): Promise<boolean> {
+    if (!this.page) throw new Error("Browser not launched");
+    const saved = this.getBuildThreadUrl();
+    if (!saved) {
+      await this.navigateFresh(config);
+      return false;
+    }
+    console.log("Resuming build thread: " + saved);
+    try {
+      await this.page.goto(saved, { waitUntil: "domcontentloaded", timeout: 30000 });
+      await this.page.waitForSelector(config.selectors.chatInput, { timeout: 5000, state: "visible" });
+      return true;
+    } catch {
+      console.log("Build thread would not load; starting a fresh one.");
+      await this.navigateFresh(config);
+      return false;
+    }
   }
 
   async navigateFresh(config: ProviderConfig): Promise<void> {

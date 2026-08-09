@@ -309,6 +309,25 @@ async function testBrowserExtraction() {
 
     c.createNewChat("/my/ws");
     check("new chat clears the active thread", c.getChatUrlForWorkspace("/my/ws") === null);
+
+    // A build thread is tracked separately from the Chat/Plan thread, so the two
+    // never overwrite each other.
+    const readStore = () => JSON.parse(fs.readFileSync(storeFile, "utf-8"));
+    c.setWorkspace("/my/ws");
+    c.setThreadKind("build");
+    c.setChatUrlForWorkspace("/my/ws", "https://example.test/c/build-1");
+    check("build kind writes activeBuildThread", readStore()["/my/ws"].activeBuildThread === "https://example.test/c/build-1", JSON.stringify(readStore()["/my/ws"]));
+    check("build kind leaves activeChat untouched", readStore()["/my/ws"].activeChat !== "https://example.test/c/build-1");
+    check("getBuildThreadUrl reads it back", c.getBuildThreadUrl() === "https://example.test/c/build-1");
+
+    c.setThreadKind("chat");
+    c.setChatUrlForWorkspace("/my/ws", "https://example.test/a/chat-1");
+    check("chat kind still writes activeChat", readStore()["/my/ws"].activeChat === "https://example.test/a/chat-1");
+    check("writing the chat thread preserves the build thread", readStore()["/my/ws"].activeBuildThread === "https://example.test/c/build-1");
+
+    c.clearBuildThreadForWorkspace();
+    check("build thread can be cleared", c.getBuildThreadUrl() === null);
+    check("clearing the build thread preserves activeChat", readStore()["/my/ws"].activeChat === "https://example.test/a/chat-1");
   } finally {
     await c.close();
     fs.rmSync(root, { recursive: true, force: true });
