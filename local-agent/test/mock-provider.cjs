@@ -18,6 +18,9 @@ function createMockProvider() {
   const prompts = [];
   let replyDelayMs = 0;
   let renderMode = "append";
+  /** threadId -> { prompts: string[], replies: string[] } */
+  const threads = new Map();
+  let nextThreadId = 1;
 
   const page = `<!doctype html>
 <html><head><meta charset="utf-8"><title>Mock Chat</title></head>
@@ -38,6 +41,10 @@ async function send() {
     body: text
   });
   var body = await res.json();
+  // Real chat sites move you onto a per-thread URL after the first message.
+  if (body.threadId && location.pathname.indexOf('/c/') !== 0) {
+    history.replaceState({}, '', '/c/' + body.threadId);
+  }
   // Render the reply the way a chat UI would: markdown-ish HTML with fenced code
   // becoming <pre><code>, so the agent's extraction logic sees a realistic DOM.
   var msg = document.createElement('div');
@@ -70,22 +77,42 @@ document.getElementById('input').addEventListener('keydown', function (e) {
 </script>
 </body></html>`;
 
+  const escapeHtml = (s) =>
+    String(s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+
   const server = http.createServer((req, res) => {
     if (req.method === "POST" && req.url === "/__reply") {
       let body = "";
       req.on("data", (c) => (body += c));
       req.on("end", () => {
+        // The page tells us which thread it is on via the Referer path.
+        const ref = req.headers.referer || "";
+        const m = ref.match(/\/c\/([^/?#]+)/);
+        const threadId = m ? m[1] : String(nextThreadId++);
+        if (!threads.has(threadId)) threads.set(threadId, { prompts: [], replies: [] });
+        const thread = threads.get(threadId);
+
         prompts.push(body);
+        thread.prompts.push(body);
         const reply = queued.length > 1 ? queued.shift() : (queued[0] ?? "(no reply queued)");
+        thread.replies.push(reply);
+
         setTimeout(() => {
           res.writeHead(200, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ reply: reply, renderMode: renderMode }));
+          res.end(JSON.stringify({ reply: reply, renderMode: renderMode, threadId: threadId }));
         }, replyDelayMs);
       });
       return;
     }
+
+    // Replay a thread's assistant messages so a resumed thread is not blank.
+    const m = req.url.match(/^\/c\/([^/?#]+)/);
+    const prior = m && threads.has(m[1]) ? threads.get(m[1]).replies : [];
+    const seeded = prior
+      .map((r) => '<div class="markdown-body assistant-msg"><p>' + escapeHtml(r) + "</p></div>")
+      .join("");
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-    res.end(page);
+    res.end(page.replace('<div id="thread"></div>', '<div id="thread">' + seeded + "</div>"));
   });
 
   return {
@@ -111,6 +138,18 @@ document.getElementById('input').addEventListener('keydown', function (e) {
     /** Every prompt the agent sent, in order — lets tests assert on prompt content. */
     prompts() {
       return prompts.slice();
+    },
+    /** How many distinct chat threads have been created. */
+    threadCount() {
+      return threads.size;
+    },
+    promptsForThread(id) {
+      return threads.has(id) ? threads.get(id).prompts.slice() : [];
+    },
+    /** Reset thread state between sections so counts do not leak. */
+    resetThreads() {
+      threads.clear();
+      nextThreadId = 1;
     },
   };
 }

@@ -512,6 +512,14 @@ async function main() {
     fs.rmSync(ws, { recursive: true, force: true });
   }
 
+  // -------------------------------------------------- mock models real threads
+  section("mock provider models threads");
+  {
+    mock.resetThreads();
+    check("starts with no threads", mock.threadCount() === 0, "threads: " + mock.threadCount());
+    check("promptsForThread is empty for an unknown id", mock.promptsForThread("nope").length === 0);
+  }
+
   await mock.close();
   fs.rmSync(profileRoot, { recursive: true, force: true });
   fs.rmSync(PROVIDER_DIR, { recursive: true, force: true });
