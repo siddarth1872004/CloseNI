@@ -15,7 +15,10 @@ const path = require("path");
 const { createMockProvider } = require("./mock-provider.cjs");
 
 const AGENT = path.join(__dirname, "..", "dist", "index.js");
-const PROVIDER_DIR = path.join(__dirname, "fixtures", "providers");
+// Unique per run. A fixed path under the repo means two suites running at once
+// delete each other's provider config mid-run, which surfaces as the baffling
+// "Provider not found: mock" rather than as the collision it is.
+const PROVIDER_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "agentic-e2e-providers-"));
 const F = "```";
 
 let pass = 0;
@@ -381,6 +384,8 @@ async function main() {
     ];
 
     const built = [];
+    // Everything the build thread has been told, accumulated as the steps run.
+    let conversation = "";
     for (let i = 0; i < plan.steps.length; i++) {
       const s = plan.steps[i];
       const stepDetail =
@@ -389,10 +394,15 @@ async function main() {
       mock.setReplies([F + "json\n" + stepReplies[i] + "\n" + F]);
       const { result } = await runAgent(["browser", stepDetail, ws, "mock", "auto", String(i), stepDetail, plan.summary]);
       built.push(!!result && result.success === true);
+      conversation += "\n" + (mock.prompts()[0] || "");
       if (i > 0) {
-        // The step's prompt should carry what earlier steps produced.
-        const sent = mock.prompts()[0] || "";
-        check("step " + (i + 1) + " prompt includes prior file " + plan.steps[i - 1].files[0], sent.includes(plan.steps[i - 1].files[0]), sent.slice(0, 300));
+        // A step must know what earlier steps produced. That knowledge used to be
+        // re-pasted into every prompt; now it lives in the shared thread, so this
+        // asserts against the conversation so far rather than the latest prompt.
+        // Checking only that the newest prompt omits the file would pass even if
+        // the model had never been told about it at all.
+        const priorFile = plan.steps[i - 1].files[0];
+        check("step " + (i + 1) + " can see prior file " + priorFile + " in the thread", conversation.includes(priorFile), conversation.slice(-300));
       }
     }
     check("all 3 build steps succeed", built.every(Boolean), JSON.stringify(built));
@@ -569,6 +579,72 @@ async function main() {
     check("step 1 resumed rather than starting fresh", out.includes("Resuming build thread:"), (out.match(/Starting fresh chat.*/) || [""])[0]);
     check("step 1 landed in the same thread", mock.threadCount() === 1, "threads: " + mock.threadCount());
     check("the thread holds both prompts", mock.promptsForThread("1").length === 2, "thread prompts: " + mock.promptsForThread("1").length);
+
+    fs.rmSync(ws, { recursive: true, force: true });
+  }
+
+  // --------------------------------- later steps are not re-told what they know
+  section("later steps receive only the delta");
+  {
+    const ws = mkWorkspace();
+    mock.resetThreads();
+
+    // Step 0: two files created. Its prompt is the full-context baseline.
+    mock.setReplies([F + 'json\n{"files":[' +
+      '{"path":"src/alpha.js","mode":"create","content":"function alpha() {}\\nmodule.exports = { alpha };\\n"},' +
+      '{"path":"src/beta.js","mode":"create","content":"function beta() {}\\nmodule.exports = { beta };\\n"}' +
+      ']}\n' + F]);
+    const d0 = "Execute ONLY this step: step 0. Expected files: src/alpha.js, src/beta.js";
+    await runAgent(["browser", d0, ws, "mock", "auto", "0", d0, "goal"]);
+    const step0Prompt = mock.prompts()[0] || "";
+
+    // Step 1: nothing on disk changed, so the thread already has both files.
+    mock.setReplies([F + 'json\n{"files":[{"path":"src/gamma.js","mode":"create","content":"const { alpha } = require(\'./alpha\');\\n"}]}\n' + F]);
+    const d1 = "Execute ONLY this step: step 1. Expected files: src/gamma.js";
+    const { result } = await runAgent(["browser", d1, ws, "mock", "auto", "1", d1, "goal"]);
+    const step1Prompt = mock.prompts()[0] || "";
+
+    check("step 1 succeeds", !!result && result.success === true, JSON.stringify(result));
+    check("step 1 does not resend alpha's signatures", !step1Prompt.includes("module.exports = { alpha }"), step1Prompt.slice(0, 400));
+    // Asserted semantically rather than by length: when nothing has changed the
+    // two prompts differ by only a few dozen characters, so a size comparison
+    // would be decided by the step's wording rather than by the delta.
+    check("step 1 carries no file signatures at all", !/^--- /m.test(step1Prompt), (step1Prompt.match(/^--- .*/gm) || []).join(" "));
+    check("step 1 does not repeat the project structure", !step1Prompt.includes("Project Structure:"), step1Prompt.slice(0, 300));
+
+    // Step 2: a file the thread was shown has been rewritten on disk behind its
+    // back. That must be re-sent or the model works from a stale belief.
+    fs.writeFileSync(path.join(ws, "src/alpha.js"), "function alpha(x) { return x; }\nmodule.exports = { alpha, RENAMED };\n");
+    mock.setReplies([F + 'json\n{"files":[{"path":"src/delta.js","mode":"create","content":"console.log(1);\\n"}]}\n' + F]);
+    const d2 = "Execute ONLY this step: step 2. Expected files: src/delta.js";
+    await runAgent(["browser", d2, ws, "mock", "auto", "2", d2, "goal"]);
+    const step2Prompt = mock.prompts()[0] || "";
+    check("a file changed on disk is re-sent", step2Prompt.includes("RENAMED"), step2Prompt.slice(0, 400));
+
+    fs.rmSync(ws, { recursive: true, force: true });
+  }
+
+  // ------------------------------------ the delta actually shrinks the prompt
+  section("prompt size stays bounded as a build grows");
+  {
+    const ws = mkWorkspace();
+    mock.resetThreads();
+    const sizes = [];
+
+    for (let i = 0; i < 4; i++) {
+      mock.setReplies([F + 'json\n{"files":[{"path":"src/mod' + i + '.js","mode":"create","content":"function m' + i + '() { return ' + i + '; }\\nmodule.exports = { m' + i + ' };\\n"}]}\n' + F]);
+      const detail = "Execute ONLY this step: step " + i + ". Expected files: src/mod" + i + ".js";
+      const { result } = await runAgent(["browser", detail, ws, "mock", "auto", String(i), detail, "goal"]);
+      check("step " + i + " succeeds", !!result && result.success === true, JSON.stringify(result));
+      sizes.push((mock.prompts()[0] || "").length);
+    }
+
+    check("prompts recorded for all four steps", sizes.length === 4 && sizes.every((s) => s > 0), sizes.join(","));
+    // Without the delta each prompt grows as the project does, because every step
+    // re-listed the whole workspace. With it, a step is told only about what its
+    // predecessor just wrote, so the last step is no heavier than the second.
+    check("step 4 is no larger than step 2", sizes[3] <= sizes[1], "sizes: " + sizes.join(","));
+    check("prompts stay bounded as the project grows", Math.max(...sizes) - Math.min(...sizes) < 2500, "sizes: " + sizes.join(","));
 
     fs.rmSync(ws, { recursive: true, force: true });
   }

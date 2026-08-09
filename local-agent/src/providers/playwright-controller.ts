@@ -1,7 +1,7 @@
 import { chromium, BrowserContext, Page } from "playwright";
 import * as path from "path";
 import * as fs from "fs";
-import { readSessions, writeSessions, getBuildThread, setBuildThread, clearBuildThread } from "../session-store.js";
+import { readSessions, writeSessions, getBuildThread, setBuildThread, resetBuildRun, getBuildLedger, setBuildLedger, BuildLedger } from "../session-store.js";
 
 export interface ProviderConfig {
   id: string;
@@ -88,8 +88,17 @@ export class PlaywrightController {
     return getBuildThread(this.sessionStoreFile, this.workspace);
   }
 
-  clearBuildThreadForWorkspace() {
-    clearBuildThread(this.sessionStoreFile, this.workspace);
+  /** Thread and ledger belong to the same run and are cleared together. */
+  resetBuildRunForWorkspace() {
+    resetBuildRun(this.sessionStoreFile, this.workspace);
+  }
+
+  getLedger(): BuildLedger {
+    return getBuildLedger(this.sessionStoreFile, this.workspace);
+  }
+
+  saveLedger(ledger: BuildLedger) {
+    setBuildLedger(this.sessionStoreFile, this.workspace, ledger);
   }
 
   getChatUrlForWorkspace(workspace: string): string | null {

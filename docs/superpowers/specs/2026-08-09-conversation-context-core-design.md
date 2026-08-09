@@ -81,7 +81,18 @@ no longer loads.
 
 Stop re-sending what the thread already holds.
 
-- The session keeps a ledger: `Map<relativePath, { contentHash, sentAtStep }>`.
+- The build run keeps a ledger of what the thread has been shown, stored in
+  `sessions.json` beside `activeBuildThread` and reset whenever a build starts.
+
+  **Correction to an earlier draft of this spec:** the ledger was described as
+  living in memory for the lifetime of the session. That assumed Phase 3's
+  long-lived process. Phase 2 lands before Phase 3, while every step is still a
+  separate process that exits, so an in-memory ledger would be empty on each step
+  and the delta would never fire. It has to be persisted. Content hashing means
+  a stale ledger self-corrects — a hash that no longer matches is re-sent — so
+  persistence does not introduce the staleness class of bug that motivated
+  keeping it in memory.
+
 - Before each step, hash every source file. A file is *new* if absent from the
   ledger and *changed* if its hash differs from what was sent.
 - Rank only new and changed files through the existing `selectRelevantFiles`;

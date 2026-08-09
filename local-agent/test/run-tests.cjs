@@ -126,7 +126,82 @@ function testSessionStore() {
     return store.getBuildThread(file, "/a") === "https://x/1" && store.getBuildThread(file, "/b") === "https://x/2";
   })());
 
+  // --- build ledger
+  const lf = path.join(dir, "ledger.json");
+  check("missing ledger reads as empty", JSON.stringify(store.getBuildLedger(lf, "/ws")) === "{}");
+
+  store.setBuildLedger(lf, "/ws", { "a.py": { hash: "h1", step: 0 }, "b.py": { hash: null, step: 0 } });
+  const led = store.getBuildLedger(lf, "/ws");
+  check("ledger round-trips", led["a.py"].hash === "h1" && led["b.py"].hash === null, JSON.stringify(led));
+  check("ledger records the step", led["a.py"].step === 0);
+
+  store.setBuildThread(lf, "/ws", "https://chat.example.com/c/run1");
+  store.setBuildLedger(lf, "/ws", { "a.py": { hash: "h2", step: 1 } });
+  check("ledger and thread coexist", store.getBuildThread(lf, "/ws") === "https://chat.example.com/c/run1" && store.getBuildLedger(lf, "/ws")["a.py"].hash === "h2");
+
+  store.resetBuildRun(lf, "/ws");
+  check("resetBuildRun clears the thread", store.getBuildThread(lf, "/ws") === null);
+  check("resetBuildRun clears the ledger", JSON.stringify(store.getBuildLedger(lf, "/ws")) === "{}");
+
+  // The desktop app's fields must survive a reset.
+  const s2 = store.readSessions(lf);
+  s2["/ws"].activeChat = "https://chat.example.com/c/keepme";
+  store.writeSessions(lf, s2);
+  store.setBuildLedger(lf, "/ws", { "z.py": { hash: "h9", step: 3 } });
+  store.resetBuildRun(lf, "/ws");
+  check("resetBuildRun leaves activeChat alone", store.readSessions(lf)["/ws"].activeChat === "https://chat.example.com/c/keepme");
+
   fs.rmSync(dir, { recursive: true, force: true });
+}
+
+function testDelta() {
+  section("delta context");
+  const delta = require(path.join(DIST, "context/delta.js"));
+  const f = (p, c) => ({ path: p, content: c, mtimeMs: 1000 });
+
+  check("hash is stable", delta.hashContent("abc") === delta.hashContent("abc"));
+  check("hash differs on different content", delta.hashContent("abc") !== delta.hashContent("abd"));
+
+  const files = [f("a.py", "one"), f("b.py", "two"), f("c.py", "three")];
+
+  // Empty ledger: everything is new, which keeps step 0 identical to today.
+  const first = delta.computeDelta(files, {});
+  check("empty ledger makes every file a candidate", first.candidates.length === 3, "candidates: " + first.candidates.length);
+  check("empty ledger reports every path as new", first.newPaths.length === 3);
+  check("empty ledger has nothing unchanged", first.unchangedCount === 0);
+
+  // After sending a.py and b.py, and listing c.py in the tree only.
+  const ledger = delta.nextLedger({}, files, ["a.py", "b.py"], 0);
+  check("sent files record a hash", ledger["a.py"].hash === delta.hashContent("one"));
+  check("listed-only files record a null hash", ledger["c.py"].hash === null, JSON.stringify(ledger["c.py"]));
+  check("ledger records the step", ledger["a.py"].step === 0);
+
+  const second = delta.computeDelta(files, ledger);
+  check("unchanged sent files are not candidates", !second.candidates.some((x) => x.path === "a.py"), second.candidates.map((x) => x.path).join(","));
+  check("listed-only files are still candidates", second.candidates.some((x) => x.path === "c.py"));
+  check("nothing is newly appeared", second.newPaths.length === 0, second.newPaths.join(","));
+  check("unchanged files are counted", second.unchangedCount === 2, "unchanged: " + second.unchangedCount);
+
+  // A file rewritten between steps must be re-sent — this is the drift correction.
+  const edited = [f("a.py", "one EDITED"), f("b.py", "two"), f("c.py", "three")];
+  const third = delta.computeDelta(edited, ledger);
+  check("a changed file becomes a candidate again", third.candidates.some((x) => x.path === "a.py"), third.candidates.map((x) => x.path).join(","));
+  check("a changed file is not reported as new", third.newPaths.indexOf("a.py") === -1);
+
+  // A file created by the previous step appears in the tree delta.
+  const grown = edited.concat([f("d.py", "four")]);
+  const fourth = delta.computeDelta(grown, ledger);
+  check("a brand new file is reported as new", fourth.newPaths.length === 1 && fourth.newPaths[0] === "d.py", fourth.newPaths.join(","));
+
+  // Deleting a file must not resurrect it or throw.
+  const shrunk = [f("a.py", "one")];
+  const fifth = delta.computeDelta(shrunk, ledger);
+  check("deleted files are simply absent", fifth.candidates.length === 0 && fifth.newPaths.length === 0, JSON.stringify(fifth.newPaths));
+
+  check("ledger carries forward untouched entries", (() => {
+    const l2 = delta.nextLedger(ledger, files, [], 1);
+    return l2["a.py"].hash === delta.hashContent("one") && l2["a.py"].step === 0;
+  })());
 }
 
 function testRelevance() {
@@ -325,7 +400,7 @@ async function testBrowserExtraction() {
     check("chat kind still writes activeChat", readStore()["/my/ws"].activeChat === "https://example.test/a/chat-1");
     check("writing the chat thread preserves the build thread", readStore()["/my/ws"].activeBuildThread === "https://example.test/c/build-1");
 
-    c.clearBuildThreadForWorkspace();
+    c.resetBuildRunForWorkspace();
     check("build thread can be cleared", c.getBuildThreadUrl() === null);
     check("clearing the build thread preserves activeChat", readStore()["/my/ws"].activeChat === "https://example.test/a/chat-1");
   } finally {
@@ -338,6 +413,7 @@ async function testBrowserExtraction() {
   testEditPlanParsing();
   testPlanParsing();
   testSessionStore();
+  testDelta();
   testRelevance();
   testPatchApplier();
   await testBrowserExtraction();
