@@ -25,9 +25,9 @@ export class ProviderRegistry {
         const content = fs.readFileSync(filePath, "utf-8");
         const config: ProviderConfig = JSON.parse(content);
         this.providers.set(config.id, config);
-        console.log(`📋 Loaded provider: ${config.name} (${config.id})`);
+        console.log(`Loaded provider: ${config.name} (${config.id})`);
       } catch (error: any) {
-        console.error(`❌ Failed to load provider config: ${file} - ${error.message}`);
+        console.error(`Failed to load provider config: ${file} - ${error.message}`);
       }
     }
   }
