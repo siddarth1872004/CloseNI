@@ -89,6 +89,46 @@ function testPlanParsing() {
   check("unparseable plan returns null", p === null);
 }
 
+function testSessionStore() {
+  section("session store");
+  const store = require(path.join(DIST, "session-store.js"));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "agentic-sess-"));
+  const file = path.join(dir, "sessions.json");
+
+  check("missing file reads as empty", JSON.stringify(store.readSessions(file)) === "{}");
+  check("missing build thread is null", store.getBuildThread(file, "/ws") === null);
+
+  store.setBuildThread(file, "/ws", "https://chat.example.com/c/abc");
+  check("build thread round-trips", store.getBuildThread(file, "/ws") === "https://chat.example.com/c/abc");
+
+  // The desktop app owns activeChat and chats. Writing a build thread must not
+  // disturb them.
+  const existing = store.readSessions(file);
+  existing["/ws"].activeChat = "https://chat.example.com/c/zzz";
+  existing["/ws"].chats = [{ url: "https://chat.example.com/c/zzz", title: "T", createdAt: "2026-01-01" }];
+  store.writeSessions(file, existing);
+  store.setBuildThread(file, "/ws", "https://chat.example.com/c/def");
+  const after = store.readSessions(file);
+  check("activeChat preserved", after["/ws"].activeChat === "https://chat.example.com/c/zzz");
+  check("chats preserved", after["/ws"].chats.length === 1);
+  check("build thread updated", after["/ws"].activeBuildThread === "https://chat.example.com/c/def");
+
+  store.clearBuildThread(file, "/ws");
+  check("cleared build thread reads null", store.getBuildThread(file, "/ws") === null);
+  check("clearing leaves activeChat alone", store.readSessions(file)["/ws"].activeChat === "https://chat.example.com/c/zzz");
+
+  fs.writeFileSync(file, "{ this is not json");
+  check("corrupt file reads as empty", JSON.stringify(store.readSessions(file)) === "{}");
+
+  check("workspaces are independent", (() => {
+    store.setBuildThread(file, "/a", "https://x/1");
+    store.setBuildThread(file, "/b", "https://x/2");
+    return store.getBuildThread(file, "/a") === "https://x/1" && store.getBuildThread(file, "/b") === "https://x/2";
+  })());
+
+  fs.rmSync(dir, { recursive: true, force: true });
+}
+
 function testRelevance() {
   section("context selection");
 
@@ -278,6 +318,7 @@ async function testBrowserExtraction() {
 (async () => {
   testEditPlanParsing();
   testPlanParsing();
+  testSessionStore();
   testRelevance();
   testPatchApplier();
   await testBrowserExtraction();
