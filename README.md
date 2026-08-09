@@ -126,6 +126,32 @@ Starting a new build clears the thread, and with it the ability to revise the
 previous one.
 
 
+## Permissions
+
+The sidebar's Permissions setting controls what happens when a build wants to run
+a terminal command:
+
+- **Ask each command** (default) — a modal per command, the original behaviour.
+- **Auto-allow** — commands run without prompting, so a long build finishes
+  unattended.
+- **Never run commands** — commands are skipped. Files are still written and
+  syntax checked; nothing executes.
+
+Anything unrecognised falls back to asking, so a missing or corrupted setting
+cannot silently run unapproved commands. A command skipped by policy logs
+`COMMAND_DENIED` exactly as a manual denial does, so the self-heal path does not
+mistake "did not run" for "failed". The choice is stored in `localStorage`, so it
+is per-machine and survives a restart.
+
+## Test and Run
+
+**Syntax-check all files** reports one row per check with its command and
+outcome, plus a summary. **Run Project** detects the entry point — `scripts.start`,
+then `package.json` `main`, then `main.py`, `src/main.py`, `app.py`, `index.js`,
+`src/index.js` — and runs it, reporting that it found nothing rather than
+guessing. Output appears in the tab as well as the Project log.
+
+
 ## Notes
 
 - Chat threads per workspace are stored in `local-agent/storage/sessions.json`.

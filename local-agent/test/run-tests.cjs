@@ -238,6 +238,47 @@ function testDiff() {
   check("trailing newline is not a spurious line", diffLines("a\n", "a\n").every((r) => r.type === "same"), JSON.stringify(diffLines("a\n", "a\n")));
 }
 
+function testApprovalPolicy() {
+  section("approval policy");
+  // Its own module rather than index.js, which calls main() on import and would
+  // launch the agent just by being required.
+  const { decideApproval } = require(path.join(DIST, "verification/approval-policy.js"));
+
+  check("auto allows without asking", decideApproval("auto") === "allow");
+  check("never denies without asking", decideApproval("never") === "deny");
+  check("ask prompts", decideApproval("ask") === "ask");
+  // An unset or unrecognised policy must be the safe one: prompt rather than
+  // silently running commands the user never approved.
+  check("unknown value prompts", decideApproval("banana") === "ask");
+  check("empty value prompts", decideApproval("") === "ask");
+  check("undefined prompts", decideApproval(undefined) === "ask");
+}
+
+function testEntrypoint() {
+  section("entry point detection");
+  const { detectEntrypoint } = require(path.join(__dirname, "..", "..", "desktop", "entrypoint.js"));
+
+  check("npm start wins when scripts.start exists",
+    detectEntrypoint(["package.json", "index.js"], { scripts: { start: "node ." } }) === "npm start");
+  check("package main is used when there is no start script",
+    detectEntrypoint(["package.json", "app.js"], { main: "app.js" }) === "node app.js");
+  check("a package.json with neither falls through to files",
+    detectEntrypoint(["package.json", "index.js"], {}) === "node index.js");
+
+  check("main.py at the root", detectEntrypoint(["main.py"], null) === "python3 main.py");
+  check("src/main.py", detectEntrypoint(["src/main.py"], null) === "python3 src/main.py");
+  check("app.py", detectEntrypoint(["app.py"], null) === "python3 app.py");
+  check("index.js", detectEntrypoint(["index.js"], null) === "node index.js");
+  check("src/index.js", detectEntrypoint(["src/index.js"], null) === "node src/index.js");
+
+  check("root main.py beats src/main.py", detectEntrypoint(["src/main.py", "main.py"], null) === "python3 main.py");
+  check("python beats javascript when both exist", detectEntrypoint(["index.js", "main.py"], null) === "python3 main.py");
+
+  // Returning null is a real answer: better than running something arbitrary.
+  check("nothing recognisable yields null", detectEntrypoint(["README.md", "notes.txt"], null) === null);
+  check("an empty workspace yields null", detectEntrypoint([], null) === null);
+}
+
 function testRelevance() {
   section("context selection");
 
@@ -449,6 +490,8 @@ async function testBrowserExtraction() {
   testSessionStore();
   testDelta();
   testDiff();
+  testApprovalPolicy();
+  testEntrypoint();
   testRelevance();
   testPatchApplier();
   await testBrowserExtraction();

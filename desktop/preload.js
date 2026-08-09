@@ -3,6 +3,7 @@ contextBridge.exposeInMainWorld("api", {
   selectFolder: function () { return ipcRenderer.invoke("select-folder"); },
   runAgent: function (payload) { return ipcRenderer.invoke("run-agent", payload); },
   suggest: function (payload) { return ipcRenderer.invoke("suggest", payload); },
+  listFiles: function (workspace) { return ipcRenderer.invoke("list-files", workspace); },
   startSession: function (workspace, provider, autonomy, headed) {
     return ipcRenderer.invoke("start-session", { workspace: workspace, provider: provider, autonomy: autonomy, headed: headed });
   },

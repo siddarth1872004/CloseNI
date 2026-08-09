@@ -1,6 +1,6 @@
 # CloseNI Roadmap
 
-28 items, grouped into 9 sub-projects. **2 of 9 complete** (1 · Conversation & context core, 9 · Housekeeping). Each sub-project gets its own design spec
+28 items, grouped into 9 sub-projects. **3 of 9 complete** (1 · Conversation & context core, 6 · Builder IDE experience, 9 · Housekeeping). Each sub-project gets its own design spec
 and implementation plan under `docs/superpowers/`, and is expected to leave the
 application working on its own.
 
@@ -77,7 +77,7 @@ All of it needs a credential story the app does not have yet.
 - **14. GitHub Actions + external tooling** — `todo`.
 - **15. Skills, personas, GitHub skill-`md`** — `todo`.
 
-## 6 · Builder IDE experience — HALF DONE
+## 6 · Builder IDE experience — DONE
 
 Roadmap items 16, 17, 18, 22. Benefits from sub-project 1 but is not blocked by it.
 
@@ -87,10 +87,12 @@ Roadmap items 16, 17, 18, 22. Benefits from sub-project 1 but is not blocked by 
 - **17. Suggestion / fix chat after generation and after tests** — `done`. Any
   completed step can be revised through its build thread; changes do not cascade
   to later steps, and a missing thread is refused rather than guessed at.
-- **18. Test/Run section complete** — `partial`. `testall` works and is tested;
-  the Run and Ship sides are thin.
-- **22. Permissions: auto-allow / review / ask** — `partial`. Approve and deny both
-  work end to end and are tested; there is no policy setting or UI for it.
+- **18. Test/Run section complete** — `done`. The Test tab reports per-check
+  pass/fail with a summary and shows command output in place; Run Project
+  detects the entry point and runs it.
+- **22. Permissions: auto-allow / review / ask** — `done`. Three modes in the
+  sidebar, persisted, feeding both build call sites. An unrecognised value
+  falls back to asking.
 
 ## 7 · Visual identity & polish
 

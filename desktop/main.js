@@ -235,6 +235,24 @@ ipcMain.handle("git", function (event, payload) {
   });
 });
 
+ipcMain.handle("list-files", function (event, workspace) {
+  // The renderer has no directory access; entry point detection needs a listing.
+  const out = [];
+  const skip = ["node_modules", ".git", ".agent-backups", "__pycache__", "dist", "build", "venv", ".venv", "target"];
+  function walkDir(dir, prefix) {
+    let entries = [];
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch (e) { return; }
+    for (const e of entries) {
+      if (skip.indexOf(e.name) !== -1 || e.name.startsWith(".")) continue;
+      const rel = prefix ? prefix + "/" + e.name : e.name;
+      if (e.isDirectory()) { if (rel.split("/").length < 4) walkDir(path.join(dir, e.name), rel); }
+      else out.push(rel);
+    }
+  }
+  try { walkDir(workspace, ""); return { ok: true, files: out }; }
+  catch (e) { return { ok: false, error: e.message, files: [] }; }
+});
+
 ipcMain.handle("read-file", function (event, arg) {
   // Accepts a bare path (existing callers, capped) or { path, full }. Diffing a
   // truncated file would read every line past the cap as a deletion.
