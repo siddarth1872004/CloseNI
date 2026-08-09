@@ -89,6 +89,46 @@ function testPlanParsing() {
   check("unparseable plan returns null", p === null);
 }
 
+function testSessionStore() {
+  section("session store");
+  const store = require(path.join(DIST, "session-store.js"));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "agentic-sess-"));
+  const file = path.join(dir, "sessions.json");
+
+  check("missing file reads as empty", JSON.stringify(store.readSessions(file)) === "{}");
+  check("missing build thread is null", store.getBuildThread(file, "/ws") === null);
+
+  store.setBuildThread(file, "/ws", "https://chat.example.com/c/abc");
+  check("build thread round-trips", store.getBuildThread(file, "/ws") === "https://chat.example.com/c/abc");
+
+  // The desktop app owns activeChat and chats. Writing a build thread must not
+  // disturb them.
+  const existing = store.readSessions(file);
+  existing["/ws"].activeChat = "https://chat.example.com/c/zzz";
+  existing["/ws"].chats = [{ url: "https://chat.example.com/c/zzz", title: "T", createdAt: "2026-01-01" }];
+  store.writeSessions(file, existing);
+  store.setBuildThread(file, "/ws", "https://chat.example.com/c/def");
+  const after = store.readSessions(file);
+  check("activeChat preserved", after["/ws"].activeChat === "https://chat.example.com/c/zzz");
+  check("chats preserved", after["/ws"].chats.length === 1);
+  check("build thread updated", after["/ws"].activeBuildThread === "https://chat.example.com/c/def");
+
+  store.clearBuildThread(file, "/ws");
+  check("cleared build thread reads null", store.getBuildThread(file, "/ws") === null);
+  check("clearing leaves activeChat alone", store.readSessions(file)["/ws"].activeChat === "https://chat.example.com/c/zzz");
+
+  fs.writeFileSync(file, "{ this is not json");
+  check("corrupt file reads as empty", JSON.stringify(store.readSessions(file)) === "{}");
+
+  check("workspaces are independent", (() => {
+    store.setBuildThread(file, "/a", "https://x/1");
+    store.setBuildThread(file, "/b", "https://x/2");
+    return store.getBuildThread(file, "/a") === "https://x/1" && store.getBuildThread(file, "/b") === "https://x/2";
+  })());
+
+  fs.rmSync(dir, { recursive: true, force: true });
+}
+
 function testRelevance() {
   section("context selection");
 
@@ -269,6 +309,25 @@ async function testBrowserExtraction() {
 
     c.createNewChat("/my/ws");
     check("new chat clears the active thread", c.getChatUrlForWorkspace("/my/ws") === null);
+
+    // A build thread is tracked separately from the Chat/Plan thread, so the two
+    // never overwrite each other.
+    const readStore = () => JSON.parse(fs.readFileSync(storeFile, "utf-8"));
+    c.setWorkspace("/my/ws");
+    c.setThreadKind("build");
+    c.setChatUrlForWorkspace("/my/ws", "https://example.test/c/build-1");
+    check("build kind writes activeBuildThread", readStore()["/my/ws"].activeBuildThread === "https://example.test/c/build-1", JSON.stringify(readStore()["/my/ws"]));
+    check("build kind leaves activeChat untouched", readStore()["/my/ws"].activeChat !== "https://example.test/c/build-1");
+    check("getBuildThreadUrl reads it back", c.getBuildThreadUrl() === "https://example.test/c/build-1");
+
+    c.setThreadKind("chat");
+    c.setChatUrlForWorkspace("/my/ws", "https://example.test/a/chat-1");
+    check("chat kind still writes activeChat", readStore()["/my/ws"].activeChat === "https://example.test/a/chat-1");
+    check("writing the chat thread preserves the build thread", readStore()["/my/ws"].activeBuildThread === "https://example.test/c/build-1");
+
+    c.clearBuildThreadForWorkspace();
+    check("build thread can be cleared", c.getBuildThreadUrl() === null);
+    check("clearing the build thread preserves activeChat", readStore()["/my/ws"].activeChat === "https://example.test/a/chat-1");
   } finally {
     await c.close();
     fs.rmSync(root, { recursive: true, force: true });
@@ -278,6 +337,7 @@ async function testBrowserExtraction() {
 (async () => {
   testEditPlanParsing();
   testPlanParsing();
+  testSessionStore();
   testRelevance();
   testPatchApplier();
   await testBrowserExtraction();

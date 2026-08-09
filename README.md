@@ -65,8 +65,12 @@ to avoid touching the shipped ones), set `AGENT_PROVIDER_DIR`.
 2. `desktop/main.js` spawns `local-agent/dist/index.js`. Arguments longer than
    8000 chars are spilled to a temp file and the path is passed instead; the agent
    reads those back (`resolveArg`).
-3. The agent opens a **fresh** chat per step, sends a prompt containing the project
-   tree plus signatures of the most relevant existing files, and waits for the reply.
+3. Step 0 of a build opens a **fresh** chat thread and records its URL in
+   `sessions.json` as `activeBuildThread`; every later step of the same build
+   resumes that thread, so a step can see what earlier steps said. The prompt
+   still carries the project tree plus signatures of the most relevant existing
+   files. One-shot modes (chat, plan, revise, research, testall) keep opening a
+   fresh chat each time.
 4. The reply is parsed into file changes, applied under the workspace, and syntax
    checked. Failures are sent back to the model for up to two retries.
 

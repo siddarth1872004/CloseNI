@@ -153,6 +153,23 @@ account.
 New coverage per phase is listed above. Each phase is complete only when its
 tests pass and the desktop app has been launched and driven.
 
+## Known issue: intermittent empty plan
+
+Observed once during Phase 1: plan mode returned a result object with no `plan`
+field, against the local mock provider, and passed on the next run of identical
+code. The reply pulled off the page that one time did not parse into a plan.
+
+This is a race between the reply being complete and `waitForResponse` deciding it
+is complete — the same class of defect as the "AI is thinking" hang fixed earlier,
+where detection and reality disagree. Against a real provider it would present as
+"Generate Implementation Plan" silently returning nothing.
+
+Not fixed here, because Phase 1 does not touch response handling and a fix without
+a reliable reproduction would be a guess. Phase 2 revisits what is sent and read
+per step and is the right place to address it. The end-to-end assertions that
+dereference `result.plan` are now guarded so a recurrence reports the actual
+result rather than throwing an uninformative `TypeError`.
+
 ## Consequences
 
 - Threads grow within a build run. A plan with many long steps may approach
