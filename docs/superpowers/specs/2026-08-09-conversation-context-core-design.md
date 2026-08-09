@@ -175,11 +175,18 @@ is complete — the same class of defect as the "AI is thinking" hang fixed earl
 where detection and reality disagree. Against a real provider it would present as
 "Generate Implementation Plan" silently returning nothing.
 
-Not fixed here, because Phase 1 does not touch response handling and a fix without
-a reliable reproduction would be a guess. Phase 2 revisits what is sent and read
-per step and is the right place to address it. The end-to-end assertions that
+Not fixed in Phase 1, because Phase 1 does not touch response handling and a fix
+without a reliable reproduction would be a guess. The end-to-end assertions that
 dereference `result.plan` are now guarded so a recurrence reports the actual
 result rather than throwing an uninformative `TypeError`.
+
+**Correction.** This section originally named Phase 2 as the place to fix it.
+That was wrong: Phase 2 changed what is *sent* to the model, while this race is
+in how a reply is *read*. Phase 2 shipped without addressing it and the bug
+remains open. Phase 3 owns `waitForResponse` across a whole build rather than a
+single step, which is the first point where the reply lifecycle is genuinely
+being reworked — but this should be treated as its own defect with its own
+reproduction, not as something a phase picks up in passing.
 
 ## Consequences
 
