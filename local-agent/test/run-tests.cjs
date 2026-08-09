@@ -154,6 +154,56 @@ function testSessionStore() {
   fs.rmSync(dir, { recursive: true, force: true });
 }
 
+function testDelta() {
+  section("delta context");
+  const delta = require(path.join(DIST, "context/delta.js"));
+  const f = (p, c) => ({ path: p, content: c, mtimeMs: 1000 });
+
+  check("hash is stable", delta.hashContent("abc") === delta.hashContent("abc"));
+  check("hash differs on different content", delta.hashContent("abc") !== delta.hashContent("abd"));
+
+  const files = [f("a.py", "one"), f("b.py", "two"), f("c.py", "three")];
+
+  // Empty ledger: everything is new, which keeps step 0 identical to today.
+  const first = delta.computeDelta(files, {});
+  check("empty ledger makes every file a candidate", first.candidates.length === 3, "candidates: " + first.candidates.length);
+  check("empty ledger reports every path as new", first.newPaths.length === 3);
+  check("empty ledger has nothing unchanged", first.unchangedCount === 0);
+
+  // After sending a.py and b.py, and listing c.py in the tree only.
+  const ledger = delta.nextLedger({}, files, ["a.py", "b.py"], 0);
+  check("sent files record a hash", ledger["a.py"].hash === delta.hashContent("one"));
+  check("listed-only files record a null hash", ledger["c.py"].hash === null, JSON.stringify(ledger["c.py"]));
+  check("ledger records the step", ledger["a.py"].step === 0);
+
+  const second = delta.computeDelta(files, ledger);
+  check("unchanged sent files are not candidates", !second.candidates.some((x) => x.path === "a.py"), second.candidates.map((x) => x.path).join(","));
+  check("listed-only files are still candidates", second.candidates.some((x) => x.path === "c.py"));
+  check("nothing is newly appeared", second.newPaths.length === 0, second.newPaths.join(","));
+  check("unchanged files are counted", second.unchangedCount === 2, "unchanged: " + second.unchangedCount);
+
+  // A file rewritten between steps must be re-sent — this is the drift correction.
+  const edited = [f("a.py", "one EDITED"), f("b.py", "two"), f("c.py", "three")];
+  const third = delta.computeDelta(edited, ledger);
+  check("a changed file becomes a candidate again", third.candidates.some((x) => x.path === "a.py"), third.candidates.map((x) => x.path).join(","));
+  check("a changed file is not reported as new", third.newPaths.indexOf("a.py") === -1);
+
+  // A file created by the previous step appears in the tree delta.
+  const grown = edited.concat([f("d.py", "four")]);
+  const fourth = delta.computeDelta(grown, ledger);
+  check("a brand new file is reported as new", fourth.newPaths.length === 1 && fourth.newPaths[0] === "d.py", fourth.newPaths.join(","));
+
+  // Deleting a file must not resurrect it or throw.
+  const shrunk = [f("a.py", "one")];
+  const fifth = delta.computeDelta(shrunk, ledger);
+  check("deleted files are simply absent", fifth.candidates.length === 0 && fifth.newPaths.length === 0, JSON.stringify(fifth.newPaths));
+
+  check("ledger carries forward untouched entries", (() => {
+    const l2 = delta.nextLedger(ledger, files, [], 1);
+    return l2["a.py"].hash === delta.hashContent("one") && l2["a.py"].step === 0;
+  })());
+}
+
 function testRelevance() {
   section("context selection");
 
@@ -363,6 +413,7 @@ async function testBrowserExtraction() {
   testEditPlanParsing();
   testPlanParsing();
   testSessionStore();
+  testDelta();
   testRelevance();
   testPatchApplier();
   await testBrowserExtraction();
