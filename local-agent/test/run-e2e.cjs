@@ -760,6 +760,24 @@ async function main() {
     fs.rmSync(ws, { recursive: true, force: true });
   }
 
+  // ------------------------------------- testall reports each check, not a count
+  section("testall reports per-check results");
+  {
+    const ws = mkWorkspace();
+    fs.writeFileSync(path.join(ws, "good.js"), "const a = 1;\nconsole.log(a);\n");
+    fs.writeFileSync(path.join(ws, "bad.js"), "function ( {\n");
+    const run = await runAgent(["testall", "x", ws, "mock"]);
+
+    check("testall still reports counts", !!run.result && run.result.passed >= 1 && run.result.failed >= 1, JSON.stringify(run.result));
+    check("testall reports a results array", !!run.result && Array.isArray(run.result.results), JSON.stringify(run.result));
+    check("results has one entry per check", !!run.result && run.result.results.length === run.result.passed + run.result.failed, JSON.stringify(run.result && run.result.results));
+    check("each result names its command", !!run.result && run.result.results.every((r) => typeof r.command === "string" && r.command.length > 0), JSON.stringify(run.result && run.result.results));
+    check("the broken file is marked failed", !!run.result && run.result.results.some((r) => r.success === false && r.command.includes("bad.js")), JSON.stringify(run.result && run.result.results));
+    check("the good file is marked passed", !!run.result && run.result.results.some((r) => r.success === true && r.command.includes("good.js")), JSON.stringify(run.result && run.result.results));
+
+    fs.rmSync(ws, { recursive: true, force: true });
+  }
+
   await mock.close();
   fs.rmSync(profileRoot, { recursive: true, force: true });
   fs.rmSync(PROVIDER_DIR, { recursive: true, force: true });

@@ -30,6 +30,12 @@
         <option value="deepseek">DeepSeek</option>
         <option value="qwen-studio">Qwen Studio</option>
       </select>
+      <div class="micro" style="margin-top:14px;">Permissions</div>
+      <select id="autonomy-select">
+        <option value="ask">Ask each command</option>
+        <option value="auto">Auto-allow</option>
+        <option value="never">Never run commands</option>
+      </select>
       <div style="display:flex;align-items:center;gap:6px;margin-top:12px;">
         <input type="checkbox" id="show-browser" style="width:auto;flex:none;accent-color:var(--txt);">
         <label for="show-browser" style="font-size:11px;color:var(--dim);cursor:pointer;">Show Browser</label>
@@ -103,11 +109,16 @@
 
     <section id="panel-test" class="panel">
       <div class="micro">Test</div>
-      <button id="test-check" class="btn">Syntax-check all files</button>
       <div class="row">
-        <input id="test-cmd" placeholder="custom command, e.g. python src/main.py">
+        <button id="test-check" class="btn">Syntax-check all files</button>
+        <button id="test-run-project" class="btn invert">Run Project</button>
+      </div>
+      <div class="row">
+        <input id="test-cmd" placeholder="custom command, e.g. python3 src/main.py">
         <button id="test-run" class="btn">Run</button>
       </div>
+      <div id="test-summary" class="micro"></div>
+      <div id="test-results"></div>
     </section>
 
     <section id="panel-research" class="panel">
@@ -151,6 +162,7 @@
 
 <div id="toast-stack"></div>
 <script src="diff.js"></script>
+<script src="entrypoint.js"></script>
 <script src="renderer.js"></script>
 <script src="builder.js"></script>
 </body>

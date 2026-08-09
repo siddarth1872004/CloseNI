@@ -310,19 +310,86 @@ $("research-go").onclick = async function () {
   toast("Research done");
 };
 
+function renderTestResults(rows, summary) {
+  const sum = $("test-summary");
+  if (sum) sum.textContent = summary || "";
+  const box = $("test-results");
+  if (!box) return;
+  box.innerHTML = "";
+  (rows || []).forEach(function (r) {
+    const el = document.createElement("div");
+    el.className = "test-row " + (r.success ? "pass" : "fail");
+    el.innerHTML = '<span class="cmd">' + escapeHtml(r.command) + '</span><span class="verdict">' + (r.success ? "pass" : "fail") + "</span>";
+    box.appendChild(el);
+  });
+}
+
+function renderTestOutput(text) {
+  const box = $("test-results");
+  if (!box) return;
+  const el = document.createElement("div");
+  el.className = "test-output";
+  el.innerHTML = "<pre>" + escapeHtml(text || "(no output)") + "</pre>";
+  box.appendChild(el);
+}
+
+// The second argument is the prompt slot, which testall ignores. Kept rather
+// than tidied: changing the positional layout would break the mode.
 $("test-check").onclick = async function () {
   if (!workspace) { toast("Pick a workspace", "err"); return; }
   setStatus("testing");
-  await runAgent(["testall", "x", workspace, provider]);
+  renderTestResults([], "running syntax checks...");
+  const res = await runAgent(["testall", "x", workspace, provider]);
   setStatus("idle");
+  if (!res) { renderTestResults([], "check failed"); return; }
+  renderTestResults(res.results || [], (res.passed || 0) + " passed, " + (res.failed || 0) + " failed");
 };
+
 $("test-run").onclick = async function () {
   const cmd = $("test-cmd").value.trim();
   if (!cmd) { toast("Type a command", "err"); return; }
   if (!workspace) { toast("Pick a workspace", "err"); return; }
+  setStatus("running");
+  renderTestResults([], "running: " + cmd);
   const r = await window.api.runCommand({ command: cmd, cwd: workspace });
-  log(r.success ? "exit 0" : "non-zero exit", r.success ? "ok" : "err");
+  setStatus("idle");
+  renderTestResults([{ command: cmd, success: !!(r && r.success) }], (r && r.success) ? "command succeeded" : "command failed");
+  renderTestOutput(r && r.output);
 };
+
+$("test-run-project").onclick = async function () {
+  if (!workspace) { toast("Pick a workspace", "err"); return; }
+  const listing = await window.api.listFiles(workspace);
+  const files = (listing && listing.files) || [];
+  let pkg = null;
+  if (files.indexOf("package.json") !== -1) {
+    try {
+      const r = await window.api.readFile(workspace + "/package.json", { full: true });
+      if (r && r.ok) pkg = JSON.parse(r.text);
+    } catch (e) { /* an unreadable package.json just falls through to the file rules */ }
+  }
+  const cmd = window.CNEntry ? window.CNEntry.detectEntrypoint(files, pkg) : null;
+  if (!cmd) {
+    renderTestResults([], "no entry point found - try a custom command");
+    toast("No entry point found", "err");
+    return;
+  }
+  $("test-cmd").value = cmd;
+  setStatus("running");
+  renderTestResults([], "running: " + cmd);
+  const r = await window.api.runCommand({ command: cmd, cwd: workspace });
+  setStatus("idle");
+  renderTestResults([{ command: cmd, success: !!(r && r.success) }], (r && r.success) ? "project ran successfully" : "project exited with an error");
+  renderTestOutput(r && r.output);
+};
+
+// Persist the permission policy: a setting that resets on restart is a nuisance.
+(function () {
+  const sel = $("autonomy-select");
+  if (!sel) return;
+  try { const saved = localStorage.getItem("closeni.autonomy"); if (saved) sel.value = saved; } catch (e) {}
+  sel.onchange = function () { try { localStorage.setItem("closeni.autonomy", sel.value); } catch (e) {} };
+})();
 
 async function g(args) { return await window.api.git({ args: args, cwd: workspace }); }
 $("git-init").onclick = async function () { if (workspace) await g(["init", "-b", "main"]); else toast("Pick a workspace", "err"); };
@@ -409,6 +476,7 @@ $("new-chat-btn").onclick = function () {
 window.CN = {
   getWorkspace: function () { return workspace; },
   getProvider: function () { return provider; },
+  getAutonomy: function () { const s = $("autonomy-select"); return (s && s.value) || "ask"; },
   getPlan: function () { return currentPlan; },
   runAgent: runAgent,
   suggest: function (stepIndex, text) {

@@ -201,14 +201,16 @@ async function testAllMode(workspace: string) {
   const files: string[] = [];
   walk(workspace, files);
   let pass = 0; let fail = 0;
+  const results: { command: string; success: boolean }[] = [];
   for (const f of files) {
     for (const cmd of detectSyntaxChecks(path.relative(workspace, f))) {
       const r = await runCommand(cmd, workspace);
       console.log((r.success ? "PASS " : "FAIL ") + cmd);
+      results.push({ command: cmd, success: r.success });
       if (r.success) pass++; else { fail++; if (r.output) projLog(r.output.slice(0, 800)); }
     }
   }
-  emit({ success: fail === 0, passed: pass, failed: fail });
+  emit({ success: fail === 0, passed: pass, failed: fail, results: results });
 }
 
 function buildPrompt(userPrompt: string, tree: string, relevantFiles: { path: string; content: string }[], priorFiles: string[], isFirstStep: boolean): string {

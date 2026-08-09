@@ -134,7 +134,7 @@
     const stepDetail = "Overall: " + ((plan && plan.summary) || "") +
       "\n\nExecute ONLY this step: " + (s.title || "") + ". " + (s.detail || "") +
       (s.files && s.files.length ? " Expected files: " + s.files.join(", ") : "");
-    const args = ["browser", stepDetail, ws, CN.getProvider(), "ask", String(i), stepDetail, (plan && plan.summary) || ""];
+    const args = ["browser", stepDetail, ws, CN.getProvider(), CN.getAutonomy(), String(i), stepDetail, (plan && plan.summary) || ""];
     const res = sessionActive()
       ? await CN.sendStep(i, stepDetail, (plan && plan.summary) || "")
       : await CN.runAgent(args);
@@ -175,7 +175,7 @@
     running = true; stopRequested = false; paused = false;
     buttons("running");
 
-    const started = await CN.startSession(CN.getWorkspace(), CN.getProvider(), "ask");
+    const started = await CN.startSession(CN.getWorkspace(), CN.getProvider(), CN.getAutonomy());
     sessionOn = !!(started && started.ok);
     if (!sessionOn) CN.log("session unavailable, falling back to a browser per step: " + ((started && started.error) || "unknown"), "step");
     else CN.log("build session ready - one browser for the whole build", "step");
