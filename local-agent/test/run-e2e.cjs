@@ -723,6 +723,43 @@ async function main() {
     fs.rmSync(ws, { recursive: true, force: true });
   }
 
+  // ------------------------------------ revising a step through its build thread
+  section("suggest revises a step in the build thread");
+  {
+    const ws = mkWorkspace();
+    mock.resetThreads();
+
+    mock.setReplies([F + 'json\n{"files":[{"path":"src/store.js","mode":"create","content":"function add(x) { items.push(x); }\\n"}]}\n' + F]);
+    const d0 = "Execute ONLY this step: step 0. Expected files: src/store.js";
+    await runAgent(["browser", d0, ws, "mock", "auto", "0", d0, "goal"]);
+    check("the build created one thread", mock.threadCount() === 1, "threads: " + mock.threadCount());
+
+    mock.setReplies([F + 'json\n{"files":[{"path":"src/store.js","mode":"overwrite","content":"function add(x) { items.push(x); return x; }\\n"}]}\n' + F]);
+    const sug = await runAgent(["suggest", ws, "mock", "0", "make add() return the item"]);
+
+    check("suggest succeeds", !!sug.result && sug.result.success === true, JSON.stringify(sug.result));
+    check("suggest reuses the build thread", mock.threadCount() === 1, "threads: " + mock.threadCount());
+    check("suggest resumed rather than starting fresh", sug.out.includes("Resuming build thread:"), (sug.out.match(/Starting fresh chat.*/) || [""])[0]);
+    check("the suggestion text reached the model", (mock.prompts()[0] || "").includes("make add() return the item"), (mock.prompts()[0] || "").slice(0, 200));
+    check("the change was applied", fs.readFileSync(path.join(ws, "src/store.js"), "utf8").includes("return x"), fs.readFileSync(path.join(ws, "src/store.js"), "utf8"));
+    check("an overwrite reports a backup", !!sug.result && !!sug.result.backupDir, JSON.stringify(sug.result));
+
+    fs.rmSync(ws, { recursive: true, force: true });
+  }
+
+  // ----------------------------------- refusing rather than guessing blind
+  section("suggest refuses without a build thread");
+  {
+    const ws = mkWorkspace();
+    mock.resetThreads();
+    mock.setReplies([F + 'json\n{"files":[{"path":"x.js","mode":"create","content":"1;\\n"}]}\n' + F]);
+    const sug = await runAgent(["suggest", ws, "mock", "0", "change something"]);
+    check("suggest fails when there is no build thread", !!sug.result && sug.result.success === false, JSON.stringify(sug.result));
+    check("the reason names the missing thread", !!sug.result && /build/i.test(sug.result.error || ""), sug.result && sug.result.error);
+    check("no thread was created", mock.threadCount() === 0, "threads: " + mock.threadCount());
+    fs.rmSync(ws, { recursive: true, force: true });
+  }
+
   await mock.close();
   fs.rmSync(profileRoot, { recursive: true, force: true });
   fs.rmSync(PROVIDER_DIR, { recursive: true, force: true });

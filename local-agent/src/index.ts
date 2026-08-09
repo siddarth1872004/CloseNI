@@ -431,6 +431,54 @@ async function runBuildStep(controller: PlaywrightController, config: ProviderCo
   }
 }
 
+/**
+ * Revise one step of a finished or in-flight build. Resumes the build's thread
+ * so the model still has the whole build in view, then applies the reply through
+ * the same path a step uses.
+ */
+async function suggestMode(workspace: string, providerId: string, stepIndex: number, suggestion: string) {
+  const registry = new ProviderRegistry();
+  registry.loadProviders();
+  const config = registry.getProvider(providerId);
+  if (!config) { emit({ success: false, error: "Provider not found: " + providerId }); return; }
+
+  const controller = new PlaywrightController(config);
+  controller.setWorkspace(workspace);
+  controller.setThreadKind("build");
+
+  if (!controller.getBuildThreadUrl()) {
+    emit({ success: false, error: "No build thread for this workspace. Run a build before suggesting changes." });
+    return;
+  }
+
+  await controller.launch(config);
+  try {
+    // A fresh chat would answer confidently with none of the build in view, so
+    // a failed resume is a refusal rather than a fallback.
+    const resumed = await controller.navigateToBuildThread(config);
+    if (!resumed) {
+      emit({ success: false, error: "The build thread could not be reopened, so there is no context to revise against." });
+      return;
+    }
+    await controller.waitForLogin();
+
+    const detail =
+      "Revise ONLY what step " + (stepIndex + 1) + " produced. Change requested:\n" + suggestion +
+      "\n\nReply with the full updated contents of any file you change, using mode \"overwrite\".";
+
+    emit(await runBuildStep(controller, config, {
+      prompt: suggestion,
+      workspace: workspace,
+      autonomy: "auto",
+      stepIndex: stepIndex,
+      stepDetail: detail,
+      goalSummary: "",
+    }));
+  } finally {
+    await controller.close();
+  }
+}
+
 function sessionEvent(payload: any) {
   console.log("SESSION_EVENT: " + JSON.stringify(payload));
 }
@@ -666,6 +714,8 @@ async function main() {
     // Positional layout differs from the other modes: workspace and provider
     // come straight after the mode, because there is no per-step prompt.
     else if (mode === "build-session") await buildSessionMode(args[1] || path.resolve(process.cwd()), args[2] || "deepseek", args[3] || "auto");
+    // Positional layout: workspace, provider, step index, suggestion text.
+    else if (mode === "suggest") await suggestMode(args[1] || path.resolve(process.cwd()), args[2] || "deepseek", args[3] ? parseInt(args[3]) : 0, resolveArg(args[4]));
     else await buildMode(prompt, workspace, providerId, autonomy, stepIndex, stepDetail, goalSummary);
   } catch (e: any) {
     emit({ success: false, error: e.message });
