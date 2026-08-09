@@ -71,6 +71,21 @@ to avoid touching the shipped ones), set `AGENT_PROVIDER_DIR`.
    still carries the project tree plus signatures of the most relevant existing
    files. One-shot modes (chat, plan, revise, research, testall) keep opening a
    fresh chat each time.
+
+   From step 2 onward the prompt carries only a delta: signatures for files the
+   thread has never seen or whose content changed since it saw them, plus the
+   paths that appeared since the previous step. The project structure is sent
+   once, not with every step. What the thread already holds is not re-sent.
+
+   The ledger of what it has seen lives in `sessions.json` as `buildLedger` and
+   is cleared when a build starts. Files are recorded there both when their
+   signatures are sent *and* when the model writes them — the workspace scan runs
+   before a step executes, so files a step creates would otherwise never be
+   recorded and the delta would never fire.
+
+   Because a file that changed on disk is re-sent, a self-heal retry that
+   rewrote a file cannot leave the model reasoning from what it *proposed*
+   rather than what was actually applied.
 4. The reply is parsed into file changes, applied under the workspace, and syntax
    checked. Failures are sent back to the model for up to two retries.
 
