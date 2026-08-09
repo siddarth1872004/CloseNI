@@ -11,7 +11,7 @@ contextBridge.exposeInMainWorld("api", {
   endSession: function () { return ipcRenderer.invoke("end-session"); },
   runCommand: function (p) { return ipcRenderer.invoke("run-command", p); },
   git: function (p) { return ipcRenderer.invoke("git", p); },
-  readFile: function (p) { return ipcRenderer.invoke("read-file", p); },
+  readFile: function (p, opts) { return ipcRenderer.invoke("read-file", opts ? { path: p, full: !!opts.full } : p); },
   respondApproval: function (approved) { return ipcRenderer.send("approval-response", approved); },
   onLog: function (cb) { ipcRenderer.on("agent-log", function (e, line) { cb(line); }); },
   onPLog: function (cb) { ipcRenderer.on("project-log", function (e, line) { cb(line); }); },

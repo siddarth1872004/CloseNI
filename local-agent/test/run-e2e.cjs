@@ -699,6 +699,30 @@ async function main() {
     fs.rmSync(ws, { recursive: true, force: true });
   }
 
+  // ------------------------------- an overwrite reports where the old copy went
+  section("step results carry the backup directory");
+  {
+    const ws = mkWorkspace();
+    mock.resetThreads();
+
+    mock.setReplies([F + 'json\n{"files":[{"path":"m.js","mode":"create","content":"const v = 1;\\n"}]}\n' + F]);
+    const d0 = "Execute ONLY this step: step 0. Expected files: m.js";
+    const first = await runAgent(["browser", d0, ws, "mock", "auto", "0", d0, "goal"]);
+    check("create step succeeds", !!first.result && first.result.success === true, JSON.stringify(first.result));
+    check("a create reports no backup dir", !!first.result && !first.result.backupDir, JSON.stringify(first.result));
+
+    mock.setReplies([F + 'json\n{"files":[{"path":"m.js","mode":"overwrite","content":"const v = 2;\\n"}]}\n' + F]);
+    const d1 = "Execute ONLY this step: step 1. Expected files: m.js";
+    const second = await runAgent(["browser", d1, ws, "mock", "auto", "1", d1, "goal"]);
+    check("overwrite step succeeds", !!second.result && second.result.success === true, JSON.stringify(second.result));
+    check("an overwrite reports a backup dir", !!second.result && !!second.result.backupDir, JSON.stringify(second.result));
+    check("the backup holds the previous content",
+      !!second.result && !!second.result.backupDir && fs.readFileSync(path.join(second.result.backupDir, "m.js"), "utf8").includes("const v = 1"),
+      second.result && second.result.backupDir);
+
+    fs.rmSync(ws, { recursive: true, force: true });
+  }
+
   await mock.close();
   fs.rmSync(profileRoot, { recursive: true, force: true });
   fs.rmSync(PROVIDER_DIR, { recursive: true, force: true });

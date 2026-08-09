@@ -268,6 +268,8 @@ interface StepRequest {
 interface StepOutcome {
   success: boolean;
   appliedFiles?: string[];
+  /** Where applyPatch copied the previous version of any overwritten file. */
+  backupDir?: string;
   error?: string;
   lastError?: string;
   raw?: string;
@@ -413,7 +415,7 @@ async function runBuildStep(controller: PlaywrightController, config: ProviderCo
       }
     }
 
-    if (!failed) return { success: true, appliedFiles: applyResult.appliedFiles };
+    if (!failed) return { success: true, appliedFiles: applyResult.appliedFiles, backupDir: applyResult.backupDir };
 
     attempt++;
     console.log("TEST_FAILED: " + failed.command);

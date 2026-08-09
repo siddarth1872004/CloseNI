@@ -198,9 +198,14 @@ ipcMain.handle("git", function (event, payload) {
   });
 });
 
-ipcMain.handle("read-file", function (event, absPath) {
+ipcMain.handle("read-file", function (event, arg) {
+  // Accepts a bare path (existing callers, capped) or { path, full }. Diffing a
+  // truncated file would read every line past the cap as a deletion.
+  const absPath = typeof arg === "string" ? arg : arg && arg.path;
+  const full = typeof arg === "object" && arg && arg.full;
   try {
     const s = fs.readFileSync(absPath, "utf-8");
+    if (full) return { ok: true, text: s, truncated: false };
     return { ok: true, text: s.slice(0, 4000), truncated: s.length > 4000 };
   } catch (e) { return { ok: false, error: e.message }; }
 });
