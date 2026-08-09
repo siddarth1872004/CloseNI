@@ -102,6 +102,30 @@ to avoid touching the shipped ones), set `AGENT_PROVIDER_DIR`.
 4. The reply is parsed into file changes, applied under the workspace, and syntax
    checked. Failures are sent back to the model for up to two retries.
 
+## Revising a step
+
+The Builder shows what each step changed as a diff. `applyPatch` copies the
+previous version of every overwritten file into
+`<workspace>/.agent-backups/<timestamp>/` and reports that directory, so the
+renderer reads both versions and diffs them; a created file has no backup and
+renders as entirely added. Long runs of unchanged lines collapse so a small
+change in a large file stays readable.
+
+The suggestion box under a selected step runs
+`suggest <workspace> <provider> <stepIndex> <text>`, which resumes that build's
+chat thread and applies the reply through the same parse-apply-check path a
+build step uses. Because the thread is still open, the model has the whole build
+in view — "rename that function" needs no explanation of which function.
+
+If the build thread is missing or will not reopen, `suggest` refuses rather than
+starting a fresh chat. A model without the build conversation would answer
+confidently having never seen the code it is revising.
+
+Suggestions do not cascade: revising step 2 does not re-run steps 3 onward.
+Starting a new build clears the thread, and with it the ability to revise the
+previous one.
+
+
 ## Notes
 
 - Chat threads per workspace are stored in `local-agent/storage/sessions.json`.

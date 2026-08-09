@@ -77,12 +77,16 @@ All of it needs a credential story the app does not have yet.
 - **14. GitHub Actions + external tooling** — `todo`.
 - **15. Skills, personas, GitHub skill-`md`** — `todo`.
 
-## 6 · Builder IDE experience
+## 6 · Builder IDE experience — HALF DONE
 
 Roadmap items 16, 17, 18, 22. Benefits from sub-project 1 but is not blocked by it.
 
-- **16. IDE-like diff view in Builder** — `todo`.
-- **17. Suggestion / fix chat after generation and after tests** — `todo`.
+- **16. IDE-like diff view in Builder** — `done`. File cards show a line diff
+  against the backup `applyPatch` already writes, with long unchanged runs
+  collapsed.
+- **17. Suggestion / fix chat after generation and after tests** — `done`. Any
+  completed step can be revised through its build thread; changes do not cascade
+  to later steps, and a missing thread is refused rather than guessed at.
 - **18. Test/Run section complete** — `partial`. `testall` works and is tested;
   the Run and Ship sides are thin.
 - **22. Permissions: auto-allow / review / ask** — `partial`. Approve and deny both
