@@ -7,11 +7,21 @@ export interface ChatRef {
   createdAt: string;
 }
 
+export interface LedgerEntry {
+  /** Content hash of what the thread was shown. null = listed in the tree only. */
+  hash: string | null;
+  step: number;
+}
+
+export type BuildLedger = Record<string, LedgerEntry>;
+
 export interface WorkspaceSession {
   chats: ChatRef[];
   activeChat: string | null;
   /** Thread shared by every step of the current build run. */
   activeBuildThread?: string | null;
+  /** What that thread has already been shown. Reset when a build starts. */
+  buildLedger?: BuildLedger;
 }
 
 export type Sessions = Record<string, WorkspaceSession>;
@@ -63,5 +73,31 @@ export function clearBuildThread(file: string, workspace: string): void {
   if (!workspace) return;
   const sessions = readSessions(file);
   ensureEntry(sessions, workspace).activeBuildThread = null;
+  writeSessions(file, sessions);
+}
+
+export function getBuildLedger(file: string, workspace: string): BuildLedger {
+  if (!workspace) return {};
+  return readSessions(file)[workspace]?.buildLedger ?? {};
+}
+
+export function setBuildLedger(file: string, workspace: string, ledger: BuildLedger): void {
+  if (!workspace) return;
+  const sessions = readSessions(file);
+  ensureEntry(sessions, workspace).buildLedger = ledger;
+  writeSessions(file, sessions);
+}
+
+/**
+ * Start a fresh build run. Thread and ledger belong to the same run, so they are
+ * cleared together — clearing one without the other would show a new thread a
+ * delta computed against the old one's history.
+ */
+export function resetBuildRun(file: string, workspace: string): void {
+  if (!workspace) return;
+  const sessions = readSessions(file);
+  const entry = ensureEntry(sessions, workspace);
+  entry.activeBuildThread = null;
+  entry.buildLedger = {};
   writeSessions(file, sessions);
 }

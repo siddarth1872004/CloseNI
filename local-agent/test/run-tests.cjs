@@ -126,6 +126,31 @@ function testSessionStore() {
     return store.getBuildThread(file, "/a") === "https://x/1" && store.getBuildThread(file, "/b") === "https://x/2";
   })());
 
+  // --- build ledger
+  const lf = path.join(dir, "ledger.json");
+  check("missing ledger reads as empty", JSON.stringify(store.getBuildLedger(lf, "/ws")) === "{}");
+
+  store.setBuildLedger(lf, "/ws", { "a.py": { hash: "h1", step: 0 }, "b.py": { hash: null, step: 0 } });
+  const led = store.getBuildLedger(lf, "/ws");
+  check("ledger round-trips", led["a.py"].hash === "h1" && led["b.py"].hash === null, JSON.stringify(led));
+  check("ledger records the step", led["a.py"].step === 0);
+
+  store.setBuildThread(lf, "/ws", "https://chat.example.com/c/run1");
+  store.setBuildLedger(lf, "/ws", { "a.py": { hash: "h2", step: 1 } });
+  check("ledger and thread coexist", store.getBuildThread(lf, "/ws") === "https://chat.example.com/c/run1" && store.getBuildLedger(lf, "/ws")["a.py"].hash === "h2");
+
+  store.resetBuildRun(lf, "/ws");
+  check("resetBuildRun clears the thread", store.getBuildThread(lf, "/ws") === null);
+  check("resetBuildRun clears the ledger", JSON.stringify(store.getBuildLedger(lf, "/ws")) === "{}");
+
+  // The desktop app's fields must survive a reset.
+  const s2 = store.readSessions(lf);
+  s2["/ws"].activeChat = "https://chat.example.com/c/keepme";
+  store.writeSessions(lf, s2);
+  store.setBuildLedger(lf, "/ws", { "z.py": { hash: "h9", step: 3 } });
+  store.resetBuildRun(lf, "/ws");
+  check("resetBuildRun leaves activeChat alone", store.readSessions(lf)["/ws"].activeChat === "https://chat.example.com/c/keepme");
+
   fs.rmSync(dir, { recursive: true, force: true });
 }
 
