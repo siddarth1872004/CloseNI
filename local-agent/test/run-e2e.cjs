@@ -166,7 +166,7 @@ async function main() {
       F + 'json\n{"summary":"after reask","steps":[{"title":"S","detail":"D","files":["x.py"]}]}\n' + F,
     ]);
     const { result } = await runAgent(["plan", "build a thing", ws, "mock"]);
-    check("recovers a plan after re-asking", !!result && result.success === true && result.plan.summary === "after reask", JSON.stringify(result));
+    check("recovers a plan after re-asking", !!result && result.success === true && !!result.plan && result.plan.summary === "after reask", JSON.stringify(result));
     const sent = mock.prompts();
     check("a second prompt was actually sent", sent.length === 2, "sent " + sent.length);
     check("second prompt is the re-ask", sent.length === 2 && sent[1].includes("machine-readable"));
@@ -295,7 +295,7 @@ async function main() {
     const ws = mkWorkspace();
     mock.setReplies([F + 'json\n{"summary":"revised","steps":[{"title":"A","detail":"a","files":["a.py"]},{"title":"B","detail":"b","files":["b.py"]}]}\n' + F]);
     const { result } = await runAgent(["revise", "split step 1 into two", ws, "mock"]);
-    check("returns a revised plan", !!result && result.success === true && result.plan.summary === "revised", JSON.stringify(result));
+    check("returns a revised plan", !!result && result.success === true && !!result.plan && result.plan.summary === "revised", JSON.stringify(result));
     check("revision request reaches the model", mock.prompts()[0].includes("split step 1 into two"));
     fs.rmSync(ws, { recursive: true, force: true });
   }
@@ -368,7 +368,10 @@ async function main() {
     };
     mock.setReplies([F + "json\n" + JSON.stringify(plan) + "\n" + F]);
     const planRun = await runAgent(["plan", "build a todo library", ws, "mock"]);
-    check("plan comes back with 3 steps", !!planRun.result && planRun.result.plan.steps.length === 3, JSON.stringify(planRun.result));
+    // Guarded rather than dereferenced: plan mode has been seen, rarely, to
+    // return a result with no plan at all. Without the guard that surfaces as a
+    // bare TypeError with none of the evidence needed to chase it.
+    check("plan comes back with 3 steps", !!planRun.result && !!planRun.result.plan && planRun.result.plan.steps.length === 3, JSON.stringify(planRun.result));
 
     // Each step's code depends on what the previous step exported.
     const stepReplies = [
@@ -541,6 +544,31 @@ async function main() {
     const d0 = "Execute ONLY this step: step 0. Expected files: fresh.js";
     await runAgent(["browser", d0, ws, "mock", "auto", "0", d0, "goal"]);
     check("a new build starts a new thread", mock.threadCount() === 2, "threads: " + mock.threadCount());
+
+    fs.rmSync(ws, { recursive: true, force: true });
+  }
+
+  // ------------------------------- a later step can see an earlier step's reply
+  section("a resumed thread carries earlier messages");
+  {
+    const ws = mkWorkspace();
+    mock.resetThreads();
+    const MARKER = "ZEBRAFISH_TOKEN";
+
+    mock.setReplies([
+      "I will remember " + MARKER + ".\n" + F + 'json\n{"files":[{"path":"a.js","mode":"create","content":"console.log(1);\\n"}]}\n' + F,
+    ]);
+    const d0 = "Execute ONLY this step: step 0. Expected files: a.js";
+    await runAgent(["browser", d0, ws, "mock", "auto", "0", d0, "goal"]);
+
+    mock.setReplies([F + 'json\n{"files":[{"path":"b.js","mode":"create","content":"console.log(2);\\n"}]}\n' + F]);
+    const d1 = "Execute ONLY this step: step 1. Expected files: b.js";
+    const { result, out } = await runAgent(["browser", d1, ws, "mock", "auto", "1", d1, "goal"]);
+
+    check("step 1 succeeds", !!result && result.success === true, JSON.stringify(result));
+    check("step 1 resumed rather than starting fresh", out.includes("Resuming build thread:"), (out.match(/Starting fresh chat.*/) || [""])[0]);
+    check("step 1 landed in the same thread", mock.threadCount() === 1, "threads: " + mock.threadCount());
+    check("the thread holds both prompts", mock.promptsForThread("1").length === 2, "thread prompts: " + mock.promptsForThread("1").length);
 
     fs.rmSync(ws, { recursive: true, force: true });
   }
