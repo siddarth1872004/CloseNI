@@ -108,6 +108,43 @@ ipcMain.on("approval-response", function (event, approved) {
   }
 });
 
+ipcMain.handle("suggest", function (event, payload) {
+  return new Promise(function (resolve) {
+    let proc;
+    try {
+      proc = spawn("node", [agentPath(), "suggest", payload.workspace, payload.provider, String(payload.stepIndex), payload.text],
+        { cwd: path.join(__dirname, ".."), env: Object.assign({}, process.env, { AGENT_HEADED: payload.headed ? "1" : "0" }) });
+    } catch (e) { resolve({ success: false, error: String(e) }); return; }
+    agentProc = proc;
+    let output = "";
+    let lineBuf = "";
+    proc.stdout.on("data", function (d) {
+      const text = d.toString();
+      output += text;
+      lineBuf += text;
+      let idx;
+      while ((idx = lineBuf.indexOf("\n")) !== -1) {
+        const line = lineBuf.substring(0, idx).replace(/\r$/, "");
+        lineBuf = lineBuf.substring(idx + 1);
+        routeLine(line);
+      }
+    });
+    proc.stderr.on("data", function (d) { routeLine(d.toString()); });
+    proc.on("close", function () {
+      agentProc = null;
+      const start = output.indexOf("AGENT_OUTPUT_START");
+      const end = output.indexOf("AGENT_OUTPUT_END");
+      let result = null;
+      if (start !== -1 && end !== -1) {
+        const lines = output.substring(start + 18, end).split(/\r?\n/).map(function (l) { return l.trim(); }).filter(function (l) { return l.indexOf("{") === 0; });
+        if (lines.length) { try { result = JSON.parse(lines[lines.length - 1]); } catch (e) {} }
+      }
+      resolve(result || { success: false, error: "No structured output from agent." });
+    });
+    proc.on("error", function (e) { agentProc = null; resolve({ success: false, error: String(e) }); });
+  });
+});
+
 let sessionProc = null;
 const pendingSteps = new Map();
 
@@ -198,9 +235,14 @@ ipcMain.handle("git", function (event, payload) {
   });
 });
 
-ipcMain.handle("read-file", function (event, absPath) {
+ipcMain.handle("read-file", function (event, arg) {
+  // Accepts a bare path (existing callers, capped) or { path, full }. Diffing a
+  // truncated file would read every line past the cap as a deletion.
+  const absPath = typeof arg === "string" ? arg : arg && arg.path;
+  const full = typeof arg === "object" && arg && arg.full;
   try {
     const s = fs.readFileSync(absPath, "utf-8");
+    if (full) return { ok: true, text: s, truncated: false };
     return { ok: true, text: s.slice(0, 4000), truncated: s.length > 4000 };
   } catch (e) { return { ok: false, error: e.message }; }
 });

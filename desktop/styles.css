@@ -171,3 +171,12 @@ select{width:100%;}
 .step-card-status.failed{color:#fff;background:var(--mut);border-color:var(--mut);}
 .step-card-status.skipped{color:var(--mut);border-style:dashed;}
 .step-card-status.running{color:var(--txt);border-color:var(--txt);animation:pulse 1.4s infinite;}
+
+#suggest-bar{display:flex;gap:8px;padding:10px 12px;border-top:1px solid var(--line);background:#0b0b0d;}
+#suggest-input{flex:1;background:#050506;border:1px solid var(--line);color:var(--txt);padding:8px 10px;border-radius:3px;font-family:inherit;font-size:12px;}
+#suggest-input:disabled{opacity:.5;}
+.diff-line{display:block;white-space:pre-wrap;word-break:break-word;padding:0 4px;}
+.diff-line.add{background:#0d2416;color:#8fe0a8;}
+.diff-line.remove{background:#2a1214;color:#eda1a6;}
+.diff-line.same{color:var(--dim);}
+.diff-line.gap{color:var(--mut);font-style:italic;background:#0a0a0c;}

@@ -411,6 +411,16 @@ window.CN = {
   getProvider: function () { return provider; },
   getPlan: function () { return currentPlan; },
   runAgent: runAgent,
+  suggest: function (stepIndex, text) {
+    try {
+      const cb = $("show-browser");
+      return window.api.suggest({
+        workspace: workspace, provider: provider, stepIndex: stepIndex,
+        text: text, headed: cb ? cb.checked : false,
+      }).catch(function (e) { return { success: false, error: String(e) }; });
+    } catch (e) { return Promise.resolve({ success: false, error: String(e) }); }
+  },
+  readFile: function (p, opts) { return window.api.readFile(p, opts); },
   isHeaded: function () { const cb = $("show-browser"); return cb ? cb.checked : false; },
   startSession: function (ws, prov, autonomy) {
     try {
@@ -431,7 +441,6 @@ window.CN = {
   log: log,
   toast: toast,
   escapeHtml: escapeHtml,
-  readFile: function (p) { return window.api.readFile(p); },
   switchTab: switchTab,
   setPlan: function () {},
   startBuild: function () {},

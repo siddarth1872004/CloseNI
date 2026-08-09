@@ -2,6 +2,7 @@ const { contextBridge, ipcRenderer } = require("electron");
 contextBridge.exposeInMainWorld("api", {
   selectFolder: function () { return ipcRenderer.invoke("select-folder"); },
   runAgent: function (payload) { return ipcRenderer.invoke("run-agent", payload); },
+  suggest: function (payload) { return ipcRenderer.invoke("suggest", payload); },
   startSession: function (workspace, provider, autonomy, headed) {
     return ipcRenderer.invoke("start-session", { workspace: workspace, provider: provider, autonomy: autonomy, headed: headed });
   },
@@ -11,7 +12,7 @@ contextBridge.exposeInMainWorld("api", {
   endSession: function () { return ipcRenderer.invoke("end-session"); },
   runCommand: function (p) { return ipcRenderer.invoke("run-command", p); },
   git: function (p) { return ipcRenderer.invoke("git", p); },
-  readFile: function (p) { return ipcRenderer.invoke("read-file", p); },
+  readFile: function (p, opts) { return ipcRenderer.invoke("read-file", opts ? { path: p, full: !!opts.full } : p); },
   respondApproval: function (approved) { return ipcRenderer.send("approval-response", approved); },
   onLog: function (cb) { ipcRenderer.on("agent-log", function (e, line) { cb(line); }); },
   onPLog: function (cb) { ipcRenderer.on("project-log", function (e, line) { cb(line); }); },

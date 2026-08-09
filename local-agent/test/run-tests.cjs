@@ -204,6 +204,40 @@ function testDelta() {
   })());
 }
 
+function testDiff() {
+  section("line diff");
+  const { diffLines } = require(path.join(__dirname, "..", "..", "desktop", "diff.js"));
+  const types = (rows) => rows.map((r) => r.type).join(",");
+  const texts = (rows, t) => rows.filter((r) => r.type === t).map((r) => r.text);
+
+  check("identical files are all same", types(diffLines("a\nb", "a\nb")) === "same,same");
+
+  const added = diffLines("a\nc", "a\nb\nc");
+  check("an added line is marked add", texts(added, "add").join() === "b", JSON.stringify(added));
+  check("adding does not mark removals", texts(added, "remove").length === 0, JSON.stringify(added));
+
+  const removed = diffLines("a\nb\nc", "a\nc");
+  check("a removed line is marked remove", texts(removed, "remove").join() === "b", JSON.stringify(removed));
+
+  const changed = diffLines("a\nold\nc", "a\nnew\nc");
+  check("a changed line is a remove plus an add", texts(changed, "remove").join() === "old" && texts(changed, "add").join() === "new", JSON.stringify(changed));
+
+  // A created file has no previous version: everything is an addition.
+  const created = diffLines("", "x\ny");
+  check("empty before means all added", types(created) === "add,add", JSON.stringify(created));
+  check("empty both sides yields nothing", diffLines("", "").length === 0);
+
+  // Long unchanged runs collapse so a small change in a big file stays readable.
+  const big = Array.from({ length: 40 }, (_, i) => "line" + i).join("\n");
+  const collapsed = diffLines(big, big + "\nEXTRA");
+  check("long unchanged runs collapse to a gap", collapsed.some((r) => r.type === "gap"), types(collapsed).slice(0, 60));
+  check("collapsing keeps the change visible", collapsed.some((r) => r.type === "add" && r.text === "EXTRA"));
+  check("collapsed output is far shorter than the file", collapsed.length < 20, "rows: " + collapsed.length);
+
+  // Trailing newlines must not invent a phantom final line.
+  check("trailing newline is not a spurious line", diffLines("a\n", "a\n").every((r) => r.type === "same"), JSON.stringify(diffLines("a\n", "a\n")));
+}
+
 function testRelevance() {
   section("context selection");
 
@@ -414,6 +448,7 @@ async function testBrowserExtraction() {
   testPlanParsing();
   testSessionStore();
   testDelta();
+  testDiff();
   testRelevance();
   testPatchApplier();
   await testBrowserExtraction();
