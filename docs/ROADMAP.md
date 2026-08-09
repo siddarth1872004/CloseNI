@@ -12,34 +12,38 @@ listed per item. `done` — finished and verified by tests.
 
 ---
 
-## 1 · Conversation & context core — IN PROGRESS
+## 1 · Conversation & context core — DONE
 
 Roadmap items 1, 2, 3. Spec: `specs/2026-08-09-conversation-context-core-design.md`
 
-The foundation. Every step currently opens a brand-new chat, so nothing carries
-between steps and all context has to be rebuilt from disk each time.
+Every step used to open a brand-new chat, so nothing carried between steps and
+all context had to be rebuilt from disk each time.
 
 | Phase | What it does | Status |
 |---|---|---|
-| 1 | All steps of one build share a chat thread | in progress — plan written, 3 of 5 tasks committed |
-| 2 | Send only what the thread has not already seen | todo |
-| 3 | One long-lived process per build; browser opens once | todo |
+| 1 | All steps of one build share a chat thread | done — `plans/2026-08-09-build-thread-persistence.md` |
+| 2 | Send only what the thread has not already seen | done — `plans/2026-08-09-delta-context.md` |
+| 3 | One long-lived process per build; browser opens once | done — `plans/2026-08-09-build-session.md` |
 
-Plan for phase 1: `plans/2026-08-09-build-thread-persistence.md`
+- **1. Performance & session handling** — `done`. One Chromium launch per build
+  instead of one per step, one provider-registry load, one login check.
+- **2. Persistent conversations per project/session** — `done` within a build run.
+  Threads deliberately do not span separate runs; that was the design decision.
+- **3. Better prompts & parsing** — `done`. Prompts carry a delta rather than the
+  whole project each step, and the structure is sent once.
 
-- **1. Performance & session handling** — `partial`. Session handling fixed (IPC
-  handlers, browser lifecycle, response-detection hang). Raw speed is phase 3.
-- **2. Persistent conversations per project/session** — `partial`. Phase 1.
-- **3. Better prompts & parsing** — `partial`. Parsing is well covered by tests;
-  prompt content is phase 2.
+**Still open here:** the intermittent empty-plan race, recorded in the spec.
+Plan mode occasionally returns no plan and passes on the next identical run. It
+was not fixed by any of the three phases and needs its own reproduction.
 
 ## 2 · Provider platform
 
 Roadmap items 7, 8, 9, 10. Depends on nothing. Blocks sub-project 4.
 
 - **7. GLM + Qwen Studio** — `partial`. Qwen has a config and is enabled; there is
-  no GLM config; all four `*.adapter.ts` files are empty (0 bytes), so provider
-  behaviour lives entirely in JSON today.
+  no GLM config. Provider behaviour lives entirely in the JSON configs — the four
+  empty `*.adapter.ts` placeholders were deleted in sub-project 9, so any adapter
+  layer starts from nothing rather than from a stub.
 - **8. Model / tool / effort switching** — `todo`. Requires simulating clicks in
   the provider's UI, which is behaviour rather than config — this is the item that
   forces the adapter question.
@@ -151,7 +155,12 @@ depend on:
   commands (was failing every Python step); response-detection hanging for the
   full timeout on short replies; context ranking that omitted the module a step
   had to import from; dead IPC handlers behind the New Chat button.
-- Test suite from nothing to ~120 tests — unit plus an end-to-end suite that
-  drives the real CLI and a real browser against a mock chat provider.
+- Test suite from nothing to 176 tests (81 unit + 95 end-to-end) — unit coverage
+  plus a suite that drives the real CLI and a real browser against a mock chat
+  provider.
+- Two bugs found by reading code rather than by a failing test, both invisible to
+  the suite: build-session commands sharing stdin with the approval flow, which
+  would have denied every terminal command; and approval replies written to the
+  per-step process, which a session is not.
 - WSL environment made reproducible (`scripts/wsl-env.sh`).
 - Repository published to GitHub.
