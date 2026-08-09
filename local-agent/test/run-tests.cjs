@@ -400,7 +400,7 @@ async function testBrowserExtraction() {
     check("chat kind still writes activeChat", readStore()["/my/ws"].activeChat === "https://example.test/a/chat-1");
     check("writing the chat thread preserves the build thread", readStore()["/my/ws"].activeBuildThread === "https://example.test/c/build-1");
 
-    c.clearBuildThreadForWorkspace();
+    c.resetBuildRunForWorkspace();
     check("build thread can be cleared", c.getBuildThreadUrl() === null);
     check("clearing the build thread preserves activeChat", readStore()["/my/ws"].activeChat === "https://example.test/a/chat-1");
   } finally {

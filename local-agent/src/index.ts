@@ -9,6 +9,7 @@ import { ProviderRegistry } from "./providers/provider-registry.js";
 import { runCommand, detectSyntaxChecks, normalizeCommand } from "./verification/command-runner.js";
 import { getProjectContext } from "./context/context-engine.js";
 import { selectRelevantFiles, WorkspaceFile } from "./context/relevance.js";
+import { computeDelta, nextLedger } from "./context/delta.js";
 
 const SOURCE_FILE = /\.(py|js|cjs|mjs|ts|tsx|jsx|rs|go|java|c|h|cpp|hpp|cc)$/;
 
@@ -77,7 +78,7 @@ async function openProviderForBuild(providerId: string, workspace: string, isFir
   controller.setThreadKind("build");
   await controller.launch(config);
   if (isFirstStep) {
-    controller.clearBuildThreadForWorkspace();
+    controller.resetBuildRunForWorkspace();
     await controller.navigateFresh(config);
   } else {
     await controller.navigateToBuildThread(config);
@@ -199,7 +200,7 @@ async function testAllMode(workspace: string) {
   emit({ success: fail === 0, passed: pass, failed: fail });
 }
 
-function buildPrompt(userPrompt: string, tree: string, relevantFiles: { path: string; content: string }[], priorFiles: string[]): string {
+function buildPrompt(userPrompt: string, tree: string, relevantFiles: { path: string; content: string }[], priorFiles: string[], isFirstStep: boolean): string {
   let contextStr = "";
   if (tree) contextStr += "\n\nProject Structure:\n" + tree;
   if (relevantFiles.length > 0) {
@@ -207,7 +208,11 @@ function buildPrompt(userPrompt: string, tree: string, relevantFiles: { path: st
     for (const f of relevantFiles) contextStr += "\n--- " + f.path + " ---\n" + f.content + "\n";
   }
   if (priorFiles.length > 0) {
-    contextStr += "\n\nFiles ALREADY in the workspace (DO NOT recreate or collapse into these):\n";
+    // After the first step the thread already holds the earlier listing, so only
+    // what appeared since is worth the tokens.
+    contextStr += isFirstStep
+      ? "\n\nFiles ALREADY in the workspace (DO NOT recreate or collapse into these):\n"
+      : "\n\nNew files since the last step (DO NOT recreate or collapse into these):\n";
     for (const f of priorFiles) contextStr += "- " + f + "\n";
   }
   return "You are an autonomous coding agent assistant.\n" +
@@ -278,17 +283,7 @@ async function buildMode(prompt: string, workspace: string, providerId: string, 
     }
   } catch {}
 
-  const relevant = selectRelevantFiles({ files: allFiles, stepDetail: stepDetail, prompt: prompt });
-
-  console.log("Step " + (stepIndex + 1) + ": including " + relevant.length + " files (signatures) from prior steps" +
-    (relevant.length ? " (" + relevant.map(f => f.path + ":" + f.content.length + "c").join(", ") + ")" : ""));
-
-  const priorFiles: string[] = [];
-  walk(workspace, priorFiles);
-  const filtered = priorFiles
-    .map(function (f) { return path.relative(workspace, f).replace(/\\/g, "/"); })
-    .filter(function (f) { return !f.startsWith(".agent-backups") && !f.startsWith("."); })
-    .slice(0, 40);
+  const isFirstStep = stepIndex <= 0;
 
   const effectivePrompt = stepDetail
     ? "Overall project goal: " + (goalSummary || prompt) + "\n\n" + stepDetail
@@ -296,11 +291,29 @@ async function buildMode(prompt: string, workspace: string, providerId: string, 
 
   // Step 0 opens the build's thread; later steps rejoin it so they can see what
   // earlier steps said.
-  const { controller, config } = await openProviderForBuild(providerId, workspace, stepIndex <= 0);
+  const { controller, config } = await openProviderForBuild(providerId, workspace, isFirstStep);
   try {
+    // The ledger is reached through the controller so there is exactly one
+    // derivation of the sessions.json path; a second one would silently diverge.
+    const ledger = isFirstStep ? {} : controller.getLedger();
+    const delta = computeDelta(allFiles, ledger);
+    const relevant = selectRelevantFiles({ files: delta.candidates, stepDetail: stepDetail, prompt: prompt });
+    controller.saveLedger(nextLedger(ledger, allFiles, relevant.map((r) => r.path), stepIndex));
+
+    const filtered = allFiles
+      .map(function (f) { return f.path; })
+      .filter(function (f) { return isFirstStep || delta.newPaths.indexOf(f) !== -1; })
+      .slice(0, 40);
+
+    console.log("Step " + (stepIndex + 1) + ": including " + relevant.length + " files (signatures)" +
+      (isFirstStep ? "" : ", skipped " + delta.unchangedCount + " the thread already has") +
+      (relevant.length ? " (" + relevant.map(f => f.path + ":" + f.content.length + "c").join(", ") + ")" : ""));
+
     let prevCount = await controller.countMessages(config);
     let prevContent = await controller.getLastMessageText(config);
-    await controller.sendPrompt(buildPrompt(effectivePrompt, ctx.tree, relevant, filtered), config);
+    // The thread has already been shown the project structure; re-sending it
+    // every step duplicates what it holds. New paths arrive via `filtered`.
+    await controller.sendPrompt(buildPrompt(effectivePrompt, isFirstStep ? ctx.tree : "", relevant, filtered, isFirstStep), config);
     let response = await controller.waitForResponse(config, prevCount, prevContent);
     let plan = parseMarkdownToEditPlan(response);
     let attempt = 0;
@@ -324,6 +337,28 @@ async function buildMode(prompt: string, workspace: string, providerId: string, 
 
       const applyResult = applyPatch(workspace, plan);
       let failed: { command: string; output: string } | null = null;
+
+      // The model authored these files, so the thread already knows their
+      // contents. The pre-step scan cannot capture them — it runs before the
+      // step exists — so without this they are re-sent next step as though the
+      // thread had never seen them, and the delta never fires.
+      if (applyResult.appliedFiles.length > 0) {
+        const authored: WorkspaceFile[] = [];
+        for (const rel of applyResult.appliedFiles) {
+          try {
+            authored.push({
+              path: rel.replace(/\\/g, "/"),
+              content: fs.readFileSync(path.join(workspace, rel), "utf-8"),
+              mtimeMs: 0,
+            });
+          } catch { /* a file that vanished is simply not recorded */ }
+        }
+        if (authored.length > 0) {
+          controller.saveLedger(
+            nextLedger(controller.getLedger(), authored, authored.map((a) => a.path), stepIndex)
+          );
+        }
+      }
 
       if (!applyResult.success) {
         failed = { command: "apply patch", output: applyResult.errors.join("\n") };
