@@ -62,9 +62,22 @@ to avoid touching the shipped ones), set `AGENT_PROVIDER_DIR`.
 ## How a build step runs
 
 1. The renderer sends `run-agent` over IPC with the step arguments.
-2. `desktop/main.js` spawns `local-agent/dist/index.js`. Arguments longer than
-   8000 chars are spilled to a temp file and the path is passed instead; the agent
-   reads those back (`resolveArg`).
+2. For a build, `desktop/main.js` starts **one** `local-agent` process in
+   `build-session` mode and feeds it steps over stdin, so the browser opens once
+   per build rather than once per step. If the session cannot start, the builder
+   logs why and falls back to spawning `local-agent/dist/index.js` per step,
+   which is what the one-shot modes always do. Arguments longer than 8000 chars
+   are spilled to a temp file and the path passed instead; the agent reads those
+   back (`resolveArg`).
+
+   Session commands share the stdin the approval flow reads, so both go through
+   one `readline` interface in the agent and are dispatched by content. A second
+   reader would queue every step command as a pending approval answer, and the
+   next `askApproval` would parse one, find no `approved` field, and deny the
+   command.
+
+   Pause, skip and stop remain between-step operations owned by `builder.js`;
+   the session does not change them.
 3. Step 0 of a build opens a **fresh** chat thread and records its URL in
    `sessions.json` as `activeBuildThread`; every later step of the same build
    resumes that thread, so a step can see what earlier steps said. The prompt
