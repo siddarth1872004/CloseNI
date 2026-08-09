@@ -16,7 +16,13 @@ const SOURCE_FILE = /\.(py|js|cjs|mjs|ts|tsx|jsx|rs|go|java|c|h|cpp|hpp|cc)$/;
 const rl = readline.createInterface({ input: process.stdin, terminal: false });
 const lineQueue: string[] = [];
 let lineWaiter: ((l: string) => void) | null = null;
+// Build sessions take their commands on the same stdin the approval flow reads.
+// A second reader would mean step commands land in the approval queue and the
+// next askApproval would parse one, find no `approved` field, and deny the
+// command. One reader, dispatching by content, avoids that entirely.
+let sessionLineHandler: ((line: string) => boolean) | null = null;
 rl.on("line", (line) => {
+  if (sessionLineHandler && sessionLineHandler(line)) return;
   if (lineWaiter) { const w = lineWaiter; lineWaiter = null; w(line); }
   else lineQueue.push(line);
 });
@@ -423,6 +429,68 @@ async function runBuildStep(controller: PlaywrightController, config: ProviderCo
   }
 }
 
+function sessionEvent(payload: any) {
+  console.log("SESSION_EVENT: " + JSON.stringify(payload));
+}
+
+/**
+ * One process, one browser, one thread for a whole build. Steps arrive on stdin
+ * as newline-delimited JSON. The caller keeps owning the step loop, so pause,
+ * skip and stop stay exactly as they are — this only removes the per-step
+ * browser launch.
+ */
+async function buildSessionMode(workspace: string, providerId: string, autonomy: string) {
+  const { controller, config } = await openProviderForBuild(providerId, workspace, true);
+  sessionEvent({ type: "ready" });
+
+  let closing = false;
+  // Steps run one at a time; the chain stops a fast writer from interleaving two
+  // steps in the same browser.
+  let chain: Promise<void> = Promise.resolve();
+
+  await new Promise<void>((resolve) => {
+    // Returning false leaves the line for the approval queue, so an
+    // {"approved":...} reply sent mid-step still reaches askApproval.
+    sessionLineHandler = (line: string): boolean => {
+      let msg: any;
+      try { msg = JSON.parse(line); } catch { return false; }
+      if (!msg || typeof msg !== "object") return false;
+
+      if (msg.type === "close") {
+        closing = true;
+        chain = chain.then(() => { resolve(); });
+        return true;
+      }
+
+      if (msg.type === "step" && !closing) {
+        chain = chain.then(async () => {
+          try {
+            const outcome = await runBuildStep(controller, config, {
+              prompt: msg.prompt || msg.detail || "",
+              workspace: workspace,
+              autonomy: autonomy,
+              stepIndex: msg.index,
+              stepDetail: msg.detail || "",
+              goalSummary: msg.goal || "",
+            });
+            sessionEvent(Object.assign({ type: "step-result", index: msg.index }, outcome));
+          } catch (e: any) {
+            sessionEvent({ type: "step-result", index: msg.index, success: false, error: String(e && e.message ? e.message : e) });
+          }
+        });
+        return true;
+      }
+
+      return false;
+    };
+    rl.on("close", () => { chain = chain.then(() => resolve()); });
+  });
+
+  sessionLineHandler = null;
+  await controller.close();
+  sessionEvent({ type: "closed" });
+}
+
 async function buildMode(prompt: string, workspace: string, providerId: string, autonomy: string, stepIndex: number, stepDetail: string, goalSummary: string) {
   // Step 0 opens the build's thread; later steps rejoin it so they can see what
   // earlier steps said.
@@ -593,6 +661,9 @@ async function main() {
     else if (mode === "revise") await revisePlanMode(prompt, workspace, providerId);
     else if (mode === "testall") await testAllMode(workspace);
     else if (mode === "research") await researchMode(prompt);
+    // Positional layout differs from the other modes: workspace and provider
+    // come straight after the mode, because there is no per-step prompt.
+    else if (mode === "build-session") await buildSessionMode(args[1] || path.resolve(process.cwd()), args[2] || "deepseek", args[3] || "auto");
     else await buildMode(prompt, workspace, providerId, autonomy, stepIndex, stepDetail, goalSummary);
   } catch (e: any) {
     emit({ success: false, error: e.message });

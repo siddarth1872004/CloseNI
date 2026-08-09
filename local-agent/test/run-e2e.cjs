@@ -649,6 +649,56 @@ async function main() {
     fs.rmSync(ws, { recursive: true, force: true });
   }
 
+  // ----------------------------- one browser for a whole build, not one per step
+  section("build session opens the browser once");
+  {
+    const ws = mkWorkspace();
+    mock.resetThreads();
+
+    const proc = spawn(process.execPath, [AGENT, "build-session", ws, "mock", "auto"], {
+      cwd: path.join(__dirname, "..", ".."),
+      env: { ...process.env, AGENT_PROVIDER_DIR: PROVIDER_DIR },
+    });
+    let out = "";
+    const events = [];
+    const absorb = (d) => {
+      out += d.toString();
+      for (const line of d.toString().split(/\r?\n/)) {
+        const m = line.match(/^SESSION_EVENT: (.*)$/);
+        if (m) { try { events.push(JSON.parse(m[1])); } catch { /* ignore */ } }
+      }
+    };
+    proc.stdout.on("data", absorb);
+    proc.stderr.on("data", (d) => (out += d.toString()));
+
+    const waitFor = (pred, ms) => new Promise((res) => {
+      const t0 = Date.now();
+      const iv = setInterval(() => {
+        if (pred() || Date.now() - t0 > ms) { clearInterval(iv); res(!!pred()); }
+      }, 200);
+    });
+
+    check("session reports ready", await waitFor(() => events.some((e) => e.type === "ready"), 90000), out.slice(-300));
+
+    for (let i = 0; i < 3; i++) {
+      mock.setReplies([F + 'json\n{"files":[{"path":"src/s' + i + '.js","mode":"create","content":"module.exports = { i: ' + i + ' };\\n"}]}\n' + F]);
+      const detail = "Execute ONLY this step: step " + i + ". Expected files: src/s" + i + ".js";
+      proc.stdin.write(JSON.stringify({ type: "step", index: i, detail: detail, goal: "goal", prompt: detail }) + "\n");
+      check("step " + i + " returns a result", await waitFor(() => events.some((e) => e.type === "step-result" && e.index === i), 120000), out.slice(-400));
+    }
+
+    proc.stdin.write(JSON.stringify({ type: "close" }) + "\n");
+    await waitFor(() => proc.exitCode !== null, 30000);
+
+    const launches = (out.match(/Launching browser/g) || []).length;
+    check("browser launched exactly once for three steps", launches === 1, "launches: " + launches);
+    check("all three steps succeeded", events.filter((e) => e.type === "step-result" && e.success).length === 3, JSON.stringify(events.filter((e) => e.type === "step-result")));
+    check("all three files exist", [0, 1, 2].every((i) => fs.existsSync(path.join(ws, "src/s" + i + ".js"))));
+
+    try { proc.kill(); } catch { /* already gone */ }
+    fs.rmSync(ws, { recursive: true, force: true });
+  }
+
   await mock.close();
   fs.rmSync(profileRoot, { recursive: true, force: true });
   fs.rmSync(PROVIDER_DIR, { recursive: true, force: true });
