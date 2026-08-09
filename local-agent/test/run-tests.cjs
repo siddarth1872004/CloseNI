@@ -238,6 +238,22 @@ function testDiff() {
   check("trailing newline is not a spurious line", diffLines("a\n", "a\n").every((r) => r.type === "same"), JSON.stringify(diffLines("a\n", "a\n")));
 }
 
+function testApprovalPolicy() {
+  section("approval policy");
+  // Its own module rather than index.js, which calls main() on import and would
+  // launch the agent just by being required.
+  const { decideApproval } = require(path.join(DIST, "verification/approval-policy.js"));
+
+  check("auto allows without asking", decideApproval("auto") === "allow");
+  check("never denies without asking", decideApproval("never") === "deny");
+  check("ask prompts", decideApproval("ask") === "ask");
+  // An unset or unrecognised policy must be the safe one: prompt rather than
+  // silently running commands the user never approved.
+  check("unknown value prompts", decideApproval("banana") === "ask");
+  check("empty value prompts", decideApproval("") === "ask");
+  check("undefined prompts", decideApproval(undefined) === "ask");
+}
+
 function testRelevance() {
   section("context selection");
 
@@ -449,6 +465,7 @@ async function testBrowserExtraction() {
   testSessionStore();
   testDelta();
   testDiff();
+  testApprovalPolicy();
   testRelevance();
   testPatchApplier();
   await testBrowserExtraction();

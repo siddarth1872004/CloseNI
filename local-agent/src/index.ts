@@ -7,6 +7,7 @@ import { applyPatch } from "./patch/patch-applier.js";
 import { PlaywrightController, ProviderConfig } from "./providers/playwright-controller.js";
 import { ProviderRegistry } from "./providers/provider-registry.js";
 import { runCommand, detectSyntaxChecks, normalizeCommand } from "./verification/command-runner.js";
+import { decideApproval } from "./verification/approval-policy.js";
 import { getProjectContext } from "./context/context-engine.js";
 import { selectRelevantFiles, WorkspaceFile } from "./context/relevance.js";
 import { computeDelta, nextLedger } from "./context/delta.js";
@@ -37,7 +38,11 @@ function readLine(): Promise<string> {
 function sleep(ms: number): Promise<void> { return new Promise((r) => setTimeout(r, ms)); }
 
 async function askApproval(command: string, cwd: string, autonomy: string): Promise<boolean> {
-  if (autonomy === "auto") return true;
+  const decision = decideApproval(autonomy);
+  if (decision === "allow") return true;
+  // A policy denial takes the same path as a user denial, so the caller's
+  // COMMAND_DENIED log and the self-heal path treat both identically.
+  if (decision === "deny") return false;
   console.log("APPROVAL_REQUEST:" + JSON.stringify({ command: command, cwd: cwd }));
   const line = await readLine();
   try { return !!JSON.parse(line).approved; } catch { return false; }
