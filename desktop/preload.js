@@ -1,5 +1,8 @@
 const { contextBridge, ipcRenderer } = require("electron");
 contextBridge.exposeInMainWorld("api", {
+  // The renderer has no `process`. Entry point detection needs it: Windows has
+  // no `./` prefix and calls the interpreter `python`, not `python3`.
+  platform: process.platform,
   selectFolder: function () { return ipcRenderer.invoke("select-folder"); },
   runAgent: function (payload) { return ipcRenderer.invoke("run-agent", payload); },
   suggest: function (payload) { return ipcRenderer.invoke("suggest", payload); },

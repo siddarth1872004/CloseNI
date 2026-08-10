@@ -935,6 +935,77 @@ async function main() {
     await browser.close();
   }
 
+  // ------------------------------------------------------- multi-language
+  section("checks catch real errors in each language");
+  {
+    const { planChecksForWorkspace } = require(path.join(__dirname, "..", "dist", "verification", "check-planner.js"));
+    const { runCommand } = require(path.join(__dirname, "..", "dist", "verification", "command-runner.js"));
+    const { resolveTool } = require(path.join(__dirname, "..", "dist", "verification", "toolchain.js"));
+
+    // Every case runs the same shape: write a good file and a broken one, and
+    // assert the check agrees. Skipped when the compiler is absent, the way the
+    // chromium-dependent sections already skip - this machine has no gcc.
+    const cases = [
+      { tool: "gcc", name: "C", file: "main.c",
+        good: '#include <stdio.h>\nint main(void) { printf("hi\\n"); return 0; }\n',
+        bad: "int main(void) { return 0\n" },
+      { tool: "gxx", name: "C++", file: "main.cpp",
+        good: '#include <string>\nint main() { std::string s = "hi"; return 0; }\n',
+        bad: "int main() { std::string s = ; }\n" },
+      { tool: "rustc", name: "Rust", file: "scratch.rs",
+        good: "pub fn add(a: i32, b: i32) -> i32 { a + b }\n",
+        bad: "pub fn add(a: i32, b: i32) -> i32 { a + }\n" },
+      { tool: "javac", name: "Java", file: "App.java",
+        good: "public class App { public static void main(String[] a) { System.out.println(1); } }\n",
+        bad: "public class App { public static void main(String[] a) { int x = } }\n" },
+    ];
+
+    for (const c of cases) {
+      if (!resolveTool(c.tool)) {
+        console.log("  skip " + c.name + " (no " + c.tool + " on this machine)");
+        continue;
+      }
+      const ws = mkWorkspace();
+
+      fs.writeFileSync(path.join(ws, c.file), c.good);
+      const checks = planChecksForWorkspace(ws, [c.file]);
+      check(c.name + " gets exactly one check", checks.length === 1, JSON.stringify(checks));
+      let r = await runCommand(checks[0].command, ws, checks[0].timeoutMs, { timeoutIsFailure: true });
+      check(c.name + " passes on valid code", r.success === true, r.output);
+
+      fs.writeFileSync(path.join(ws, c.file), c.bad);
+      r = await runCommand(checks[0].command, ws, checks[0].timeoutMs, { timeoutIsFailure: true });
+      check(c.name + " fails on a syntax error", r.success === false, r.output);
+
+      // The point of the temp directory: a check must not leave build output in
+      // the project it was inspecting.
+      check(c.name + " leaves no artifacts in the workspace",
+        fs.readdirSync(ws).length === 1, fs.readdirSync(ws).join(","));
+
+      fs.rmSync(ws, { recursive: true, force: true });
+    }
+
+    // A Cargo project collapses to one check even with several source files.
+    if (resolveTool("cargo")) {
+      const ws = mkWorkspace();
+      fs.mkdirSync(path.join(ws, "src"));
+      fs.writeFileSync(path.join(ws, "Cargo.toml"),
+        '[package]\nname = "probe"\nversion = "0.1.0"\nedition = "2021"\n');
+      fs.writeFileSync(path.join(ws, "src", "main.rs"), 'mod util;\nfn main() { println!("{}", util::two()); }\n');
+      fs.writeFileSync(path.join(ws, "src", "util.rs"), "pub fn two() -> i32 { 2 }\n");
+
+      const checks = planChecksForWorkspace(ws, ["src/main.rs", "src/util.rs"]);
+      check("a cargo project is one check, not two", checks.length === 1, JSON.stringify(checks));
+      // main.rs declares `mod util;` and would fail on its own. That it passes
+      // here is the entire reason the manifest rule exists.
+      const r = await runCommand(checks[0].command, ws, checks[0].timeoutMs, { timeoutIsFailure: true });
+      check("a multi-file crate passes as a project", r.success === true, r.output);
+      fs.rmSync(ws, { recursive: true, force: true });
+    } else {
+      console.log("  skip cargo project (no cargo on this machine)");
+    }
+  }
+
   // ------------------------------------------------ signing in to a provider
   section("signin reports whether the chat input appeared");
   {

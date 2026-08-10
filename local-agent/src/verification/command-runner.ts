@@ -1,4 +1,5 @@
 ﻿import { spawn, spawnSync } from "child_process";
+import { resolveTool } from "./toolchain.js";
 
 export interface CommandResult {
   command: string;
@@ -7,7 +8,22 @@ export interface CommandResult {
   timedOut: boolean;
 }
 
-export function runCommand(command: string, cwd: string, timeoutMs: number = 15000): Promise<CommandResult> {
+export interface RunOptions {
+  /**
+   * Treat a timeout as a failure. A syntax check is supposed to terminate, so
+   * one that does not has told us nothing - and reporting that as a pass hides
+   * exactly the case worth knowing about. Off by default, because a command the
+   * model suggested may legitimately be a server that never exits.
+   */
+  timeoutIsFailure?: boolean;
+}
+
+export function runCommand(
+  command: string,
+  cwd: string,
+  timeoutMs: number = 15000,
+  options: RunOptions = {},
+): Promise<CommandResult> {
   return new Promise((resolve) => {
     let stdout = "";
     let stderr = "";
@@ -50,7 +66,7 @@ export function runCommand(command: string, cwd: string, timeoutMs: number = 150
       clearTimeout(timer);
       const output = (stdout + "\n" + stderr).trim();
       
-      if (timedOut && !hasErrorOutput) {
+      if (timedOut && !hasErrorOutput && !options.timeoutIsFailure) {
         resolve({ 
           command: command, 
           success: true, 
@@ -72,26 +88,10 @@ export function runCommand(command: string, cwd: string, timeoutMs: number = 150
 
 // "python" only exists on Windows and on old Linux installs; elsewhere it is
 // "python3". Guessing wrong makes every Python step fail its syntax check with
-// "python: not found" and burn its retries on perfectly good code.
-let cachedPython: string | null | undefined;
-
+// "python: not found" and burn its retries on perfectly good code. The probing
+// itself now lives in toolchain.ts, where every other compiler needs it too.
 export function resolvePythonCommand(): string | null {
-  if (cachedPython !== undefined) return cachedPython;
-  const candidates = process.platform === "win32" ? ["python", "py -3", "python3"] : ["python3", "python"];
-  for (const candidate of candidates) {
-    try {
-      const probe = spawnSync(candidate + " --version", { shell: true, stdio: "ignore", timeout: 10000 });
-      if (probe.status === 0) {
-        cachedPython = candidate;
-        return cachedPython;
-      }
-    } catch {
-      /* try the next candidate */
-    }
-  }
-  console.log("No Python interpreter found; skipping Python syntax checks.");
-  cachedPython = null;
-  return null;
+  return resolveTool("python");
 }
 
 let pythonAliasMissing: boolean | undefined;
@@ -115,14 +115,7 @@ export function normalizeCommand(command: string): string {
   return command.replace(/(^|[\s;&|(])python(?=\s|$)/g, "$1" + python);
 }
 
-export function detectSyntaxChecks(filePath: string): string[] {
-  if (filePath.endsWith(".py")) {
-    const python = resolvePythonCommand();
-    // Better to skip the check than to emit a command that can never succeed.
-    return python ? [python + " -m py_compile \"" + filePath + "\""] : [];
-  }
-  if (filePath.endsWith(".js")) {
-    return ["node --check \"" + filePath + "\""];
-  }
-  return [];
-}
+// detectSyntaxChecks used to live here, answering one file at a time. It was
+// deleted rather than kept alongside the planner: a per-file-only API sitting
+// next to a manifest-aware one is an invitation to call the wrong one, and the
+// wrong one reports false failures on any Rust or Java project.

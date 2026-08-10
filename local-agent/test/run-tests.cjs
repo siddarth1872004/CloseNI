@@ -361,6 +361,134 @@ function testControlSettings() {
   check("an unknown value falls back to itself", labelFor(withLabels, "glm-9") === "glm-9");
 }
 
+function testToolchain() {
+  section("tool resolution");
+  const { resolveTool, resetToolCache, TOOL_CANDIDATES } = require(path.join(DIST, "verification/toolchain.js"));
+
+  // node is running this test, so it is definitionally installed.
+  resetToolCache();
+  check("a tool that exists resolves", resolveTool("node") === "node");
+  check("the answer is cached", resolveTool("node") === "node");
+  check("a tool that does not exist resolves to null",
+    resolveTool("definitely-not-a-real-tool-xyz") === null);
+
+  // Candidate order matters: "python" only exists on Windows and old Linux.
+  check("python is probed in platform order",
+    TOOL_CANDIDATES.python[0] === (process.platform === "win32" ? "python" : "python3"));
+  // Windows has mingw32-make where Linux has make.
+  check("make has a mingw fallback", TOOL_CANDIDATES.make.indexOf("mingw32-make") > 0);
+  // Probing .exe names would resolve a Windows binary from WSL that cannot read
+  // a /tmp path, producing checks that fail for a reason nobody can see.
+  const allCandidates = Object.keys(TOOL_CANDIDATES)
+    .reduce(function (acc, k) { return acc.concat(TOOL_CANDIDATES[k]); }, []);
+  check("no .exe names are probed", allCandidates.every(function (c) { return c.indexOf(".exe") === -1; }));
+}
+
+function testCheckPlanner() {
+  section("check planning");
+  const {
+    planChecks, FILE_CHECK_TIMEOUT_MS, PROJECT_CHECK_TIMEOUT_MS,
+  } = require(path.join(DIST, "verification/check-planner.js"));
+
+  // A fake resolver is the whole point of the design: none of these compilers
+  // are installed here, and the decisions still get tested.
+  const all = function (name) { return name === "gxx" ? "g++" : name; };
+  const none = function () { return null; };
+  const only = function (names) {
+    return function (n) { return names.indexOf(n) === -1 ? null : (n === "gxx" ? "g++" : n); };
+  };
+  const TMP = "/tmp/checks";
+  const commands = function (checks) { return checks.map(function (c) { return c.command; }); };
+
+  // --- per-file, no manifest
+  check("a C file is checked with gcc",
+    commands(planChecks(["main.c"], [], all, TMP))[0] === 'gcc -fsyntax-only "main.c"');
+  check("a C++ file is checked with g++",
+    commands(planChecks(["app.cpp"], [], all, TMP))[0] === 'g++ -fsyntax-only "app.cpp"');
+  check("a header is checked too",
+    planChecks(["util.h"], [], all, TMP).length === 1);
+  check("a lone Rust file is checked as a library, not a binary",
+    commands(planChecks(["scratch.rs"], [], all, TMP))[0] ===
+      'rustc --edition 2021 --crate-type lib --emit=metadata --out-dir "/tmp/checks" "scratch.rs"');
+  check("a lone Java file compiles to a temp directory",
+    commands(planChecks(["App.java"], [], all, TMP))[0] === 'javac -d "/tmp/checks" "App.java"');
+  check("Python and JS still work",
+    commands(planChecks(["a.py", "b.js"], [], all, TMP)).join(" ") ===
+      'python -m py_compile "a.py" node --check "b.js"');
+  check("an unrecognised extension yields nothing",
+    planChecks(["README.md"], [], all, TMP).length === 0);
+
+  // --- a manifest claims its language
+  const cargo = planChecks(["src/main.rs", "src/util.rs", "src/lib.rs"], ["Cargo.toml"], all, TMP);
+  check("Cargo.toml collapses three files into one check", cargo.length === 1);
+  check("and that check is cargo check", cargo[0].command === "cargo check");
+  check("the project check is marked as one", cargo[0].scope === "project");
+  check("without Cargo.toml the same files are checked individually",
+    planChecks(["src/main.rs", "src/util.rs", "src/lib.rs"], [], all, TMP).length === 3);
+
+  check("pom.xml claims Java",
+    commands(planChecks(["src/main/java/App.java"], ["pom.xml"], all, TMP)).join() === "mvn -q compile");
+  check("build.gradle claims Java",
+    commands(planChecks(["App.java"], ["build.gradle"], all, TMP)).join() === "gradle compileJava -q");
+  check("a Makefile claims C, as a dry run rather than a build",
+    commands(planChecks(["main.c"], ["Makefile"], all, TMP)).join() === "make -n");
+
+  // A manifest for one language must not silence another.
+  const mixed = planChecks(["src/main.rs", "helper.c"], ["Cargo.toml"], all, TMP);
+  check("a Rust manifest does not suppress the C check", mixed.length === 2);
+  check("the C file is still checked per file",
+    commands(mixed).indexOf('gcc -fsyntax-only "helper.c"') !== -1);
+
+  // A manifest with nothing of its language changed is not worth running.
+  check("a manifest whose language did not change yields no project check",
+    planChecks(["notes.md"], ["Cargo.toml"], all, TMP).length === 0);
+
+  // --- missing tools
+  check("no toolchain means no commands, not failing ones",
+    planChecks(["main.c", "src/main.rs", "App.java"], [], none, TMP).length === 0);
+  check("a missing tool skips only its own language",
+    commands(planChecks(["main.c", "a.py"], [], only(["python"]), TMP)).join() ===
+      'python -m py_compile "a.py"');
+  // The crate is still a crate. Falling back to per-file rustc would report the
+  // false failures this whole design exists to avoid.
+  check("a manifest whose tool is missing yields nothing, not a per-file fallback",
+    planChecks(["src/main.rs"], ["Cargo.toml"], only(["rustc"]), TMP).length === 0);
+
+  // --- timeouts
+  check("a project check gets the long timeout",
+    planChecks(["src/main.rs"], ["Cargo.toml"], all, TMP)[0].timeoutMs === PROJECT_CHECK_TIMEOUT_MS);
+  check("a per-file check gets the short one",
+    planChecks(["main.c"], [], all, TMP)[0].timeoutMs === FILE_CHECK_TIMEOUT_MS);
+  check("the long timeout is long enough for a cold cargo check",
+    PROJECT_CHECK_TIMEOUT_MS >= 180000);
+
+  // --- duplicates
+  check("the same file twice is checked once",
+    planChecks(["main.c", "main.c"], [], all, TMP).length === 1);
+}
+
+async function testCommandTimeout() {
+  section("command timeouts");
+  const { runCommand } = require(path.join(DIST, "verification/command-runner.js"));
+  const sleeper = process.platform === "win32" ? "ping -n 6 127.0.0.1 > NUL" : "sleep 5";
+
+  // A model-suggested command that runs quietly is probably a server, and
+  // calling that a failure would break `python -m http.server`. Unchanged.
+  const asServer = await runCommand(sleeper, os.tmpdir(), 1500);
+  check("a quiet long-running command still counts as a server", asServer.success === true);
+  check("and says so", asServer.output.indexOf("Assuming") !== -1);
+
+  // A syntax check is supposed to terminate. One that does not has told us
+  // nothing, and reporting that as a pass is worse than reporting the timeout.
+  const asCheck = await runCommand(sleeper, os.tmpdir(), 1500, { timeoutIsFailure: true });
+  check("a check that times out fails", asCheck.success === false);
+  check("the timeout is reported", asCheck.timedOut === true);
+
+  // The option must not change anything about a command that finishes.
+  const quick = await runCommand("node --version", os.tmpdir(), 15000, { timeoutIsFailure: true });
+  check("a command that finishes is unaffected", quick.success === true);
+}
+
 function testEntrypoint() {
   section("entry point detection");
   const { detectEntrypoint } = require(path.join(__dirname, "..", "..", "desktop", "entrypoint.js"));
@@ -380,6 +508,38 @@ function testEntrypoint() {
 
   check("root main.py beats src/main.py", detectEntrypoint(["src/main.py", "main.py"], null) === "python3 main.py");
   check("python beats javascript when both exist", detectEntrypoint(["index.js", "main.py"], null) === "python3 main.py");
+
+  // Manifests beat loose files: a Cargo project is `cargo run`, whatever else
+  // happens to be lying around.
+  check("Cargo.toml means cargo run",
+    detectEntrypoint(["Cargo.toml", "src/main.rs"], null) === "cargo run");
+  check("a Makefile with a run target uses it",
+    detectEntrypoint(["Makefile", "main.c"], null, { makefile: "all:\n\tgcc main.c\nrun: all\n\t./a.out\n" }) === "make run");
+  check("a Makefile without one just builds",
+    detectEntrypoint(["Makefile", "main.c"], null, { makefile: "all:\n\tgcc main.c\n" }) === "make");
+  check("package.json still wins over a Makefile",
+    detectEntrypoint(["package.json", "Makefile"], { scripts: { start: "node ." } }) === "npm start");
+
+  // Loose files, no manifest.
+  check("main.c compiles and runs",
+    detectEntrypoint(["main.c"], null) === "gcc main.c -o main && ./main");
+  check("main.cpp uses g++",
+    detectEntrypoint(["main.cpp"], null) === "g++ main.cpp -o main && ./main");
+  check("Main.java compiles and runs",
+    detectEntrypoint(["Main.java"], null) === "javac Main.java && java Main");
+
+  // Windows has no ./ and no python3.
+  check("Windows drops the ./ prefix",
+    detectEntrypoint(["main.c"], null, null, "win32") === "gcc main.c -o main && main");
+  check("Windows uses python, not python3",
+    detectEntrypoint(["main.py"], null, null, "win32") === "python main.py");
+  check("everywhere else keeps python3",
+    detectEntrypoint(["main.py"], null, null, "linux") === "python3 main.py");
+
+  // Maven and Gradle are checked but not run: the main class cannot be inferred
+  // from a file listing, and a Run button that fails confusingly is worse than
+  // no Run button.
+  check("a Maven project has no entry point", detectEntrypoint(["pom.xml"], null) === null);
 
   // Returning null is a real answer: better than running something arbitrary.
   check("nothing recognisable yields null", detectEntrypoint(["README.md", "notes.txt"], null) === null);
@@ -601,6 +761,9 @@ async function testBrowserExtraction() {
   testCompletion();
   testControlDecisions();
   testControlSettings();
+  testToolchain();
+  testCheckPlanner();
+  await testCommandTimeout();
   testEntrypoint();
   testRelevance();
   testPatchApplier();
