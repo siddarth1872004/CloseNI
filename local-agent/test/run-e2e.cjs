@@ -778,6 +778,23 @@ async function main() {
     fs.rmSync(ws, { recursive: true, force: true });
   }
 
+  // ------------------------- an unparseable plan must say what it actually got
+  section("plan mode reports the reply it could not parse");
+  {
+    const ws = mkWorkspace();
+    // A build reply where a plan was expected: what a cross-suite provider-config
+    // collision produced, and the failure that was mistaken for a race.
+    mock.setReplies([F + 'json\n{"files":[{"path":"a.js","mode":"create","content":"1;\\n"}]}\n' + F]);
+    const r = await runAgent(["plan", "build a todo library", ws, "mock"]);
+
+    check("plan mode fails rather than inventing a plan", !!r.result && r.result.success === false, JSON.stringify(r.result));
+    check("no plan field is fabricated", !!r.result && !r.result.plan, JSON.stringify(r.result));
+    check("the reply it could not parse is reported", !!r.result && typeof r.result.raw === "string" && r.result.raw.indexOf("files") !== -1, JSON.stringify(r.result && r.result.raw));
+    check("it re-asked before giving up", r.out.includes("Plan parse failed"), (r.out.match(/Plan parse.*/) || [""])[0]);
+
+    fs.rmSync(ws, { recursive: true, force: true });
+  }
+
   await mock.close();
   fs.rmSync(profileRoot, { recursive: true, force: true });
   fs.rmSync(PROVIDER_DIR, { recursive: true, force: true });
