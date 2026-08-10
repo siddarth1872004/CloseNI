@@ -90,6 +90,7 @@ function switchTab(mode) {
   // The run bar reads the manifest from disk, so it must refresh on open
   // rather than only after a build.
   if (mode === "test" && typeof refreshRunBar === "function") refreshRunBar();
+  if (mode === "push" && typeof refreshGitHub === "function") refreshGitHub();
 }
 document.querySelectorAll(".nav-btn").forEach(function (btn) {
   btn.onclick = function () { switchTab(btn.dataset.mode); };
@@ -392,9 +393,15 @@ $("generate-plan").onclick = async function () {
   if (chatHistory.length === 0) { toast("Chat about your idea first", "err"); return; }
   let transcript = "";
   chatHistory.forEach(function (m) { transcript += (m.role === "user" ? "USER: " : "AI: ") + m.text + "\n\n"; });
+  // A repository picked in Research rides along, so the plan is designed against
+  // how a real project of that kind is laid out.
+  const refBlock = repoReference
+    ? "Reference project " + repoReference.name + ":\n" + repoReference.readme +
+      "\n\nIts file layout:\n" + repoReference.files.join("\n") + "\n\n---\n\n"
+    : "";
   setStatus("generating plan");
   addBubble("ai", "Generating implementation plan...");
-  const res = await runAgent(["plan", transcript, workspace, provider]);
+  const res = await runAgent(["plan", refBlock + transcript, workspace, provider]);
   setStatus("idle");
   if (res && res.plan && res.plan.steps) {
     currentPlan = res.plan;
@@ -447,6 +454,19 @@ $("research-go").onclick = async function () {
     el.innerHTML = '<a href="' + escapeHtml(r.url) + '" target="_blank">' + escapeHtml(r.title) + '</a>' +
       '<div class="res-snippet">' + escapeHtml(r.snippet || "") + '</div>' +
       '<div class="res-meta">' + (r.stars || 0) + ' stars</div>';
+
+    const actions = document.createElement("div");
+    actions.className = "res-actions";
+    const ref = document.createElement("button");
+    ref.className = "btn btn-sm";
+    ref.textContent = "Use as reference";
+    ref.onclick = function () { useAsReference(r); };
+    const clone = document.createElement("button");
+    clone.className = "btn btn-sm";
+    clone.textContent = "Clone";
+    clone.onclick = function () { cloneRepo(r); };
+    actions.appendChild(ref); actions.appendChild(clone);
+    el.appendChild(actions);
     ghBox.appendChild(el);
   });
   toast("Research done");
@@ -684,6 +704,155 @@ $("test-run-project").onclick = async function () {
   try { const saved = localStorage.getItem("closeni.autonomy"); if (saved) sel.value = saved; } catch (e) {}
   sel.onchange = function () { try { localStorage.setItem("closeni.autonomy", sel.value); } catch (e) {} };
 })();
+
+// A repository chosen as reference. Folded into the plan prompt so the model
+// designs against how a real project of that kind is laid out. Nothing is
+// written to the workspace, so there is no licence question on this path.
+let repoReference = null;
+
+async function useAsReference(r) {
+  const parsed = window.CNGit ? window.CNGit.parseRepoUrl(r.url) : null;
+  if (!parsed) { toast("Not a GitHub repository", "err"); return; }
+  const readme = await window.api.ghCall("getReadme", [parsed.owner, parsed.repo]);
+  const tree = await window.api.ghCall("getTree", [parsed.owner, parsed.repo]);
+  if (!readme.ok && !tree.ok) {
+    toast(readme.error || tree.error || "Could not read that repository", "err");
+    return;
+  }
+  repoReference = {
+    name: parsed.owner + "/" + parsed.repo,
+    readme: (readme.ok ? readme.result : "").slice(0, 3000),
+    files: (tree.ok ? tree.result : []).slice(0, 120),
+  };
+  toast("Referencing " + repoReference.name + " in the next plan");
+  log("reference set: " + repoReference.name, "ok");
+}
+
+async function cloneRepo(r) {
+  if (!workspace) { toast("Pick a workspace", "err"); return; }
+  const parsed = window.CNGit ? window.CNGit.parseRepoUrl(r.url) : null;
+  if (!parsed) { toast("Not a GitHub repository", "err"); return; }
+  // The licence is the user's to accept, so it goes in front of them rather
+  // than into a doc they will not read.
+  const licence = r.license || "an unknown licence";
+  const ok = confirm("Clone " + parsed.owner + "/" + parsed.repo + " into your workspace?\n\n" +
+    "It carries " + licence + ", and the AI will go on to edit code it did not write.");
+  if (!ok) return;
+  setStatus("cloning");
+  const res = await window.api.ghClone({ url: r.url, workspace: workspace });
+  setStatus("idle");
+  if (res && res.ok) toast("Cloned into " + res.into);
+  else toast((res && res.error) || "Clone failed", "err");
+}
+
+// GitHub. The renderer never holds the token - it asks the main process to make
+// calls on its behalf, and no getter for it exists on window.api.
+async function refreshGitHub() {
+  const st = await window.api.ghStatus().catch(function () { return { signedIn: false }; });
+  const out = $("gh-signed-out");
+  const inn = $("gh-signed-in");
+  if (!out || !inn) return;
+  out.classList.toggle("is-hidden", !!st.signedIn);
+  inn.classList.toggle("is-hidden", !st.signedIn);
+
+  const note = $("gh-storage-note");
+  if (note) {
+    // Said plainly rather than discovered next launch when the token is gone.
+    note.textContent = st.encryptionAvailable
+      ? "Stored encrypted on this machine."
+      : "This system offers no secure storage, so the token is kept in memory only and must be re-entered next launch.";
+  }
+  if (!st.signedIn) return;
+
+  $("gh-login").textContent = st.login ? "@" + st.login : "signed in";
+  const r = await window.api.ghCall("listRepos", []);
+  const sel = $("gh-repo");
+  sel.innerHTML = "";
+  if (!r || !r.ok) { log("github: " + ((r && r.error) || "could not list repositories"), "err"); return; }
+  (r.result || []).forEach(function (repo) {
+    const o = document.createElement("option");
+    o.value = repo.clone_url || ("https://github.com/" + repo.full_name + ".git");
+    o.textContent = repo.full_name + (repo.private ? " (private)" : "");
+    sel.appendChild(o);
+  });
+  sel.onchange = function () { $("remote-url").value = sel.value; };
+  if (sel.value) $("remote-url").value = sel.value;
+  await refreshRuns();
+}
+
+$("gh-open-tokens").onclick = function () {
+  // Scopes pre-selected, so the user grants exactly what is needed and can see
+  // what that is before agreeing to it.
+  window.open("https://github.com/settings/tokens/new?scopes=repo,workflow&description=CloseNI", "_blank");
+};
+
+$("gh-sign-in").onclick = async function () {
+  const box = $("gh-token");
+  const token = box.value.trim();
+  if (!token) { toast("Paste a token first", "err"); return; }
+  const r = await window.api.ghSignIn(token);
+  box.value = "";                      // never leave a credential in the DOM
+  if (r && r.ok) {
+    toast("Signed in as @" + (r.login || "?"));
+    if (!r.persisted) toast("Token kept in memory only - see the note", "err");
+    await refreshGitHub();
+  } else {
+    toast((r && r.error) || "Sign-in failed", "err");
+  }
+};
+
+$("gh-sign-out").onclick = async function () {
+  await window.api.ghSignOut();
+  toast("Signed out");
+  await refreshGitHub();
+};
+
+$("gh-create-repo").onclick = async function () {
+  const name = $("gh-new-repo").value.trim();
+  if (!name) { toast("Name it first", "err"); return; }
+  const r = await window.api.ghCall("createRepo", [name, true]);
+  if (r && r.ok) { toast("Created " + name); $("gh-new-repo").value = ""; await refreshGitHub(); }
+  else toast((r && r.error) || "Could not create it", "err");
+};
+
+function currentRepo() {
+  const sel = $("gh-repo");
+  const url = (sel && sel.value) || $("remote-url").value;
+  return window.CNGit ? window.CNGit.parseRepoUrl(url) : null;
+}
+
+async function refreshRuns() {
+  const box = $("gh-runs");
+  const repo = currentRepo();
+  if (!box || !repo) return;
+  const r = await window.api.ghCall("listRuns", [repo.owner, repo.repo]);
+  box.innerHTML = "";
+  if (!r || !r.ok) { box.textContent = (r && r.error) || "Could not list runs."; return; }
+  (r.result || []).forEach(function (run) {
+    const el = document.createElement("div");
+    // in_progress carries no conclusion yet, so status is what to colour by.
+    const state = run.status === "completed" ? (run.conclusion || "unknown") : "running";
+    el.className = "gh-run " + state;
+    el.innerHTML = '<span class="name">' + escapeHtml(run.name || "workflow") + "</span>" +
+      '<span class="verdict">' + escapeHtml(state) + "</span>";
+    box.appendChild(el);
+  });
+  if (!(r.result || []).length) box.textContent = "No runs yet.";
+}
+
+$("gh-refresh-runs").onclick = refreshRuns;
+
+$("gh-dispatch").onclick = async function () {
+  const repo = currentRepo();
+  const wf = $("gh-workflow").value.trim();
+  if (!repo) { toast("Pick a repository first", "err"); return; }
+  if (!wf) { toast("Name the workflow file", "err"); return; }
+  const r = await window.api.ghCall("dispatchWorkflow", [repo.owner, repo.repo, wf, "main"]);
+  // A missing `workflow` scope arrives as a 403, and the client already says
+  // that is usually a scope problem rather than a generic refusal.
+  if (r && r.ok) { toast("Triggered " + wf); setTimeout(refreshRuns, 3000); }
+  else toast((r && r.error) || "Could not trigger it", "err");
+};
 
 async function g(args) { return await window.api.git({ args: args, cwd: workspace }); }
 $("git-init").onclick = async function () { if (workspace) await g(["init", "-b", "main"]); else toast("Pick a workspace", "err"); };

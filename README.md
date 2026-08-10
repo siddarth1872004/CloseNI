@@ -47,6 +47,24 @@ Open the project again — tomorrow, or on another machine — and the Test pane
 already knows what to run. Edit the command in the panel and it is saved back;
 later builds will not overwrite an edited command.
 
+## GitHub
+
+Ship → GitHub. Create a token with `repo` and `workflow` scopes — the button
+opens GitHub's page with those pre-selected — and paste it once.
+
+The token is encrypted with your operating system's key (Keychain, DPAPI or
+libsecret) and stored in your user data directory. **If your system offers no
+secure storage, it is kept in memory only** and must be re-entered each launch;
+it is never written in plaintext.
+
+It never enters `.git/config`, a command line, or a log. Pushing authenticates
+through a `GIT_ASKPASS` helper that reads it from the environment. Signing out
+deletes it.
+
+Search results in Research gain two actions. **Use as reference** feeds the
+repository's README and file layout into your next plan without touching your
+workspace. **Clone** copies it in, after showing you its licence.
+
 ## Parallel steps
 
 A plan declares which steps depend on which, so steps that need nothing from
