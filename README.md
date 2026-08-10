@@ -165,3 +165,4 @@ build/            Icons and branding assets
 docs/             Architecture design specs and implementation plans
 scripts/          Environment initialization and automation helpers
 ```
+
