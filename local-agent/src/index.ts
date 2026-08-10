@@ -146,6 +146,65 @@ async function planMode(transcript: string, workspace: string, providerId: strin
   } finally { await controller.close(); }
 }
 
+/**
+ * Answer a question about a run, and apply a fix if one is offered.
+ *
+ * The command and its output travel with the question, so nobody has to paste a
+ * traceback into a box sitting beneath that same traceback. It reuses the build
+ * thread for the reason suggestMode does: a fresh chat would answer confidently
+ * with none of the project in view.
+ */
+async function askMode(workspace: string, providerId: string, question: string, command: string, output: string) {
+  const registry = new ProviderRegistry();
+  registry.loadProviders();
+  const config = registry.getProvider(providerId);
+  if (!config) { emit({ success: false, error: "Provider not found: " + providerId }); return; }
+
+  const controller = new PlaywrightController(config);
+  controller.setWorkspace(workspace);
+  controller.setThreadKind("build");
+
+  if (!controller.getBuildThreadUrl()) {
+    emit({ success: false, error: "No build thread for this workspace. Build a project before asking about a run." });
+    return;
+  }
+
+  await controller.launch(config);
+  try {
+    const resumed = await controller.navigateToBuildThread(config);
+    if (!resumed) {
+      emit({ success: false, error: "The build thread could not be reopened, so there is no context to answer against." });
+      return;
+    }
+    await controller.waitForLogin();
+
+    const detail =
+      "The user ran this command against the project you built:\n\n" +
+      "$ " + command + "\n\n" + capText(output, 4000) +
+      "\n\nTheir question: " + question +
+      "\n\nAnswer plainly. If a file change would fix it, reply with the JSON file-change format " +
+      "using mode \"overwrite\" and full file contents. If no change is needed, just explain - do not invent one.";
+
+    const outcome = await runBuildStep(controller, config, {
+      prompt: question,
+      workspace: workspace,
+      autonomy: "auto",
+      stepIndex: 0,
+      stepDetail: detail,
+      goalSummary: "",
+      allowNoChanges: true,
+    });
+    emit({
+      success: outcome.success,
+      answer: outcome.raw || "",
+      appliedFiles: outcome.appliedFiles || [],
+      error: outcome.error,
+    });
+  } finally {
+    await controller.close();
+  }
+}
+
 async function revisePlanMode(changes: string, workspace: string, providerId: string) {
   const prompt = "Update plan with: " + changes +
     "\n\nJSON format: {\"summary\":\"\",\"runCommand\":\"how to run the finished project\",\"steps\":[{\"title\":\"\",\"detail\":\"\",\"files\":[\"\"]}]}\n" +
@@ -285,6 +344,10 @@ interface StepRequest {
   stepIndex: number;
   stepDetail: string;
   goalSummary: string;
+  /** A question may legitimately be answered in prose. Without this, a reply
+   *  with no file changes is reported as a failure - which is why asking
+   *  "why did this fail?" used to display nothing at all. */
+  allowNoChanges?: boolean;
 }
 
 interface StepOutcome {
@@ -380,6 +443,7 @@ async function runBuildStep(controller: PlaywrightController, config: ProviderCo
         plan = parseMarkdownToEditPlan(response);
         continue;
       }
+      if (req.allowNoChanges) return { success: true, appliedFiles: [], raw: response };
       return { success: false, error: "No file changes found in AI response.", raw: response };
     }
 
@@ -762,6 +826,7 @@ async function main() {
     // Positional layout: workspace, provider, step index, suggestion text.
     else if (mode === "signin") await signinMode(args[1] || "deepseek");
     else if (mode === "suggest") await suggestMode(args[1] || path.resolve(process.cwd()), args[2] || "deepseek", args[3] ? parseInt(args[3]) : 0, resolveArg(args[4]));
+    else if (mode === "ask") await askMode(args[1] || path.resolve(process.cwd()), args[2] || "deepseek", resolveArg(args[3]), resolveArg(args[4]), resolveArg(args[5]));
     else await buildMode(prompt, workspace, providerId, autonomy, stepIndex, stepDetail, goalSummary);
   } catch (e: any) {
     emit({ success: false, error: e.message });

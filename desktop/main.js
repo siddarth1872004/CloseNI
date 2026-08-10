@@ -196,6 +196,48 @@ ipcMain.handle("suggest", function (event, payload) {
   });
 });
 
+/**
+ * Ask about a run. Same shape as "suggest" - the difference is entirely in what
+ * the agent does with it, not in how the process is driven.
+ */
+ipcMain.handle("ask-run", function (event, payload) {
+  return new Promise(function (resolve) {
+    let proc;
+    try {
+      proc = spawnAgent(["ask", payload.workspace, payload.provider, payload.question,
+        payload.command || "", payload.output || ""],
+        agentEnv(payload.headed ? "1" : "0", payload.controls));
+    } catch (e) { resolve({ success: false, error: String(e) }); return; }
+    agentProc = proc;
+    let output = "";
+    let lineBuf = "";
+    proc.stdout.on("data", function (d) {
+      const text = d.toString();
+      output += text;
+      lineBuf += text;
+      let idx;
+      while ((idx = lineBuf.indexOf("\n")) !== -1) {
+        const line = lineBuf.substring(0, idx).replace(/\r$/, "");
+        lineBuf = lineBuf.substring(idx + 1);
+        routeLine(line);
+      }
+    });
+    proc.stderr.on("data", function (d) { routeLine(d.toString()); });
+    proc.on("close", function () {
+      agentProc = null;
+      const start = output.indexOf("AGENT_OUTPUT_START");
+      const end = output.indexOf("AGENT_OUTPUT_END");
+      let result = null;
+      if (start !== -1 && end !== -1) {
+        const lines = output.substring(start + 18, end).split(/\r?\n/).map(function (l) { return l.trim(); }).filter(function (l) { return l.indexOf("{") === 0; });
+        if (lines.length) { try { result = JSON.parse(lines[lines.length - 1]); } catch (e) {} }
+      }
+      resolve(result || { success: false, error: "No structured output from agent." });
+    });
+    proc.on("error", function (e) { agentProc = null; resolve({ success: false, error: String(e) }); });
+  });
+});
+
 let sessionProc = null;
 const pendingSteps = new Map();
 

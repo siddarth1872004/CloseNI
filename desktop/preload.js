@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld("api", {
   selectFolder: function () { return ipcRenderer.invoke("select-folder"); },
   runAgent: function (payload) { return ipcRenderer.invoke("run-agent", payload); },
   suggest: function (payload) { return ipcRenderer.invoke("suggest", payload); },
+  askRun: function (p) { return ipcRenderer.invoke("ask-run", p); },
   listFiles: function (workspace) { return ipcRenderer.invoke("list-files", workspace); },
   listProviders: function () { return ipcRenderer.invoke("list-providers"); },
   readManifest: function (workspace) { return ipcRenderer.invoke("read-manifest", workspace); },
