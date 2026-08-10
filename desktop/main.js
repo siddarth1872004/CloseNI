@@ -3,6 +3,7 @@ const fs = require("fs");
 const { app, BrowserWindow, ipcMain, dialog } = require("electron");
 const path = require("path");
 const { spawn } = require("child_process");
+const { hasChromium } = require("./browser-check.js");
 
 let win = null;
 let agentProc = null;
@@ -21,6 +22,43 @@ app.whenReady().then(createWindow);
 app.on("window-all-closed", function () { if (process.platform !== "darwin") app.quit(); });
 
 function agentPath() { return path.join(__dirname, "..", "local-agent", "dist", "index.js"); }
+
+/**
+ * Where the app may write. Packaged, it cannot write beside its own executable:
+ * on Windows that is Program Files, and saving a session would simply fail. The
+ * agent is a separate process with no Electron API, so the location is handed
+ * to it in the environment.
+ */
+function storageRoot() { return app.getPath("userData"); }
+
+function browsersDir() { return path.join(storageRoot(), "browsers"); }
+
+/**
+ * Spawn the agent.
+ *
+ * process.execPath with ELECTRON_RUN_AS_NODE rather than "node": a packaged app
+ * cannot assume Node is installed on the user's machine. Note that this same
+ * variable, set in a developer's shell, makes Electron itself refuse to open a
+ * window - which is why scripts/wsl-env.sh unsets it. Setting it on a child
+ * process is the opposite case and is what we want.
+ *
+ * One helper for all four call sites, so a fix cannot reach three of them and
+ * miss the fourth.
+ */
+function spawnAgent(args, extraEnv) {
+  const env = Object.assign({}, process.env, {
+    ELECTRON_RUN_AS_NODE: "1",
+    CLOSENI_STORAGE: storageRoot(),
+  }, extraEnv || {});
+  // Packaged, Playwright must look inside userData. In development it must not,
+  // or it stops seeing the browsers already in ~/.cache/ms-playwright and the
+  // developer is told to download 389MB they already have.
+  if (app.isPackaged) env.PLAYWRIGHT_BROWSERS_PATH = browsersDir();
+  return spawn(process.execPath, [agentPath()].concat(args), {
+    cwd: path.join(__dirname, ".."),
+    env: env,
+  });
+}
 
 function routeLine(line) {
   if (!line.trim()) return;
@@ -48,9 +86,11 @@ ipcMain.handle("select-folder", async function () {
  * Provider settings ride on the environment rather than the argument list.
  * Every mode opens a conversation and every mode would otherwise need a new
  * positional argument threaded through it; the controller reads this once.
+ *
+ * Returns only its own keys - spawnAgent does the merging with process.env.
  */
 function agentEnv(headed, controls) {
-  const env = Object.assign({}, process.env, { AGENT_HEADED: headed });
+  const env = { AGENT_HEADED: headed };
   if (controls && Object.keys(controls).length) env.AGENT_CONTROLS = JSON.stringify(controls);
   return env;
 }
@@ -69,7 +109,7 @@ ipcMain.handle("run-agent", function (event, payload) {
       }
       return arg;
     });
-    const proc = spawn("node", [agentPath()].concat(finalArgs), { cwd: path.join(__dirname, ".."), env: agentEnv(headed, payload.controls) });
+    const proc = spawnAgent(finalArgs, agentEnv(headed, payload.controls));
     agentProc = proc;
     let output = "";
     let lineBuf = "";
@@ -123,8 +163,8 @@ ipcMain.handle("suggest", function (event, payload) {
   return new Promise(function (resolve) {
     let proc;
     try {
-      proc = spawn("node", [agentPath(), "suggest", payload.workspace, payload.provider, String(payload.stepIndex), payload.text],
-        { cwd: path.join(__dirname, ".."), env: agentEnv(payload.headed ? "1" : "0", payload.controls) });
+      proc = spawnAgent(["suggest", payload.workspace, payload.provider, String(payload.stepIndex), payload.text],
+        agentEnv(payload.headed ? "1" : "0", payload.controls));
     } catch (e) { resolve({ success: false, error: String(e) }); return; }
     agentProc = proc;
     let output = "";
@@ -165,8 +205,8 @@ ipcMain.handle("start-session", function (event, payload) {
     const headed = payload.headed ? "1" : "0";
     let proc;
     try {
-      proc = spawn("node", [agentPath(), "build-session", payload.workspace, payload.provider, payload.autonomy || "ask"],
-        { cwd: path.join(__dirname, ".."), env: agentEnv(headed, payload.controls) });
+      proc = spawnAgent(["build-session", payload.workspace, payload.provider, payload.autonomy || "ask"],
+        agentEnv(headed, payload.controls));
     } catch (e) {
       resolve({ ok: false, error: String(e) });
       return;
@@ -250,8 +290,7 @@ ipcMain.handle("sign-in", function (event, providerId) {
   return new Promise(function (resolve) {
     let proc;
     try {
-      proc = spawn("node", [agentPath(), "signin", providerId],
-        { cwd: path.join(__dirname, ".."), env: Object.assign({}, process.env, { AGENT_HEADED: "1" }) });
+      proc = spawnAgent(["signin", providerId], { AGENT_HEADED: "1" });
     } catch (e) { resolve({ success: false, error: String(e) }); return; }
     agentProc = proc;
     let output = "";
@@ -273,6 +312,51 @@ ipcMain.handle("sign-in", function (event, providerId) {
       resolve({ success: output.indexOf('"success":true') !== -1 });
     });
     proc.on("error", function (e) { agentProc = null; resolve({ success: false, error: String(e) }); });
+  });
+});
+
+ipcMain.handle("browser-status", function () {
+  // Development uses the developer's own ~/.cache/ms-playwright, which
+  // PLAYWRIGHT_BROWSERS_PATH deliberately does not override there.
+  if (!app.isPackaged) return { ready: true, path: "(development: system Playwright cache)" };
+  let entries = [];
+  try { entries = fs.readdirSync(browsersDir()); } catch (e) { /* not created yet */ }
+  return { ready: hasChromium(entries), path: browsersDir() };
+});
+
+/**
+ * Download Chromium through Playwright's own CLI.
+ *
+ * Reaching into playwright-core's internal registry would be shorter and would
+ * break on the next Playwright upgrade. The CLI is the supported entry point,
+ * and it already prints progress worth forwarding to the window.
+ */
+ipcMain.handle("install-browser", function () {
+  return new Promise(function (resolve) {
+    let cli;
+    try {
+      cli = require.resolve("playwright/cli.js");
+    } catch (e) {
+      resolve({ ok: false, error: "Playwright is missing from this build." });
+      return;
+    }
+    const proc = spawn(process.execPath, [cli, "install", "chromium"], {
+      cwd: path.join(__dirname, ".."),
+      env: Object.assign({}, process.env, {
+        ELECTRON_RUN_AS_NODE: "1",
+        PLAYWRIGHT_BROWSERS_PATH: browsersDir(),
+      }),
+    });
+    function forward(d) {
+      const line = String(d).trim();
+      if (line && win) win.webContents.send("browser-progress", line);
+    }
+    proc.stdout.on("data", forward);
+    proc.stderr.on("data", forward);
+    proc.on("error", function (e) { resolve({ ok: false, error: String(e) }); });
+    proc.on("close", function (code) {
+      resolve(code === 0 ? { ok: true } : { ok: false, error: "Download failed (exit " + code + ")." });
+    });
   });
 });
 
@@ -327,7 +411,9 @@ ipcMain.handle("read-file", function (event, arg) {
 // Chat sessions live in the same file the agent's PlaywrightController reads, so
 // the renderer and the agent stay in agreement about the active thread.
 function sessionsFile() {
-  return path.join(__dirname, "..", "local-agent", "storage", "sessions.json");
+  // Must agree with storagePaths() in the agent: both sides read the same file,
+  // and the agent is told this location via CLOSENI_STORAGE.
+  return path.join(storageRoot(), "sessions.json");
 }
 
 function loadSessions() {

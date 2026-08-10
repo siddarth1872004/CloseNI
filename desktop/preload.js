@@ -8,6 +8,9 @@ contextBridge.exposeInMainWorld("api", {
   suggest: function (payload) { return ipcRenderer.invoke("suggest", payload); },
   listFiles: function (workspace) { return ipcRenderer.invoke("list-files", workspace); },
   listProviders: function () { return ipcRenderer.invoke("list-providers"); },
+  browserStatus: function () { return ipcRenderer.invoke("browser-status"); },
+  installBrowser: function () { return ipcRenderer.invoke("install-browser"); },
+  onBrowserProgress: function (cb) { ipcRenderer.on("browser-progress", function (e, line) { cb(line); }); },
   signIn: function (providerId) { return ipcRenderer.invoke("sign-in", providerId); },
   startSession: function (workspace, provider, autonomy, headed, controls) {
     return ipcRenderer.invoke("start-session", { workspace: workspace, provider: provider, autonomy: autonomy, headed: headed, controls: controls });
