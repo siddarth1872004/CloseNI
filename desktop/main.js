@@ -235,6 +235,52 @@ ipcMain.handle("git", function (event, payload) {
   });
 });
 
+ipcMain.handle("sign-in", function (event, providerId) {
+  return new Promise(function (resolve) {
+    let proc;
+    try {
+      proc = spawn("node", [agentPath(), "signin", providerId],
+        { cwd: path.join(__dirname, ".."), env: Object.assign({}, process.env, { AGENT_HEADED: "1" }) });
+    } catch (e) { resolve({ success: false, error: String(e) }); return; }
+    agentProc = proc;
+    let output = "";
+    let lineBuf = "";
+    proc.stdout.on("data", function (d) {
+      const t = d.toString();
+      output += t;
+      lineBuf += t;
+      let idx;
+      while ((idx = lineBuf.indexOf("\n")) !== -1) {
+        const line = lineBuf.substring(0, idx).replace(/\r$/, "");
+        lineBuf = lineBuf.substring(idx + 1);
+        routeLine(line);
+      }
+    });
+    proc.stderr.on("data", function (d) { routeLine(d.toString()); });
+    proc.on("close", function () {
+      agentProc = null;
+      resolve({ success: output.indexOf('"success":true') !== -1 });
+    });
+    proc.on("error", function (e) { agentProc = null; resolve({ success: false, error: String(e) }); });
+  });
+});
+
+ipcMain.handle("list-providers", function () {
+  // Four small JSON files; spawning the agent to read a directory would be absurd.
+  const dir = path.join(__dirname, "..", "local-agent", "config", "providers");
+  const out = [];
+  try {
+    for (const f of fs.readdirSync(dir)) {
+      if (!f.endsWith(".json")) continue;
+      try {
+        const cfg = JSON.parse(fs.readFileSync(path.join(dir, f), "utf-8"));
+        if (cfg && cfg.enabled && cfg.id) out.push({ id: cfg.id, name: cfg.name || cfg.id });
+      } catch (e) { /* a malformed config is skipped, not fatal */ }
+    }
+  } catch (e) { /* no directory means no providers */ }
+  return out;
+});
+
 ipcMain.handle("list-files", function (event, workspace) {
   // The renderer has no directory access; entry point detection needs a listing.
   const out = [];

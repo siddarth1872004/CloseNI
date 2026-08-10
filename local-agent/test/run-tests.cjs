@@ -254,6 +254,28 @@ function testApprovalPolicy() {
   check("undefined prompts", decideApproval(undefined) === "ask");
 }
 
+function testCompletion() {
+  section("completion decision");
+  const { isComplete } = require(path.join(DIST, "providers/completion.js"));
+  const s = (o) => Object.assign({ started: false, stopSeen: false, stopGone: false, stableTicks: 0 }, o);
+
+  // Nothing completes before the response has started.
+  check("not started never completes", isComplete(s({ stopSeen: true, stopGone: true, stableTicks: 99 }), true, 4) === false);
+
+  // Stop button path.
+  check("started plus stop gone completes", isComplete(s({ started: true, stopSeen: true, stopGone: true }), true, 4) === true);
+  check("stop seen but still present does not complete", isComplete(s({ started: true, stopSeen: true, stopGone: false }), true, 4) === false);
+  // A stop button that never appeared tells us nothing; fall through to stability.
+  check("stop never seen falls through to stability", isComplete(s({ started: true, stableTicks: 4 }), true, 4) === true);
+  check("stop never seen and not stable does not complete", isComplete(s({ started: true, stableTicks: 2 }), true, 4) === false);
+
+  // Stability path when the provider has no stop button.
+  check("without stop button, stability completes", isComplete(s({ started: true, stableTicks: 4 }), false, 4) === true);
+  check("without stop button, short stability does not", isComplete(s({ started: true, stableTicks: 3 }), false, 4) === false);
+  // The stop-button signal must be ignored entirely when not configured.
+  check("stop signal ignored when not configured", isComplete(s({ started: true, stopSeen: true, stopGone: true, stableTicks: 0 }), false, 4) === false);
+}
+
 function testEntrypoint() {
   section("entry point detection");
   const { detectEntrypoint } = require(path.join(__dirname, "..", "..", "desktop", "entrypoint.js"));
@@ -491,6 +513,7 @@ async function testBrowserExtraction() {
   testDelta();
   testDiff();
   testApprovalPolicy();
+  testCompletion();
   testEntrypoint();
   testRelevance();
   testPatchApplier();

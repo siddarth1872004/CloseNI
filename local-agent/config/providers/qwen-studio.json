@@ -1,22 +1,16 @@
 {
   "id": "qwen-studio",
   "name": "Qwen Studio",
-  "kind": "web",
   "baseUrl": "https://chat.qwen.ai/",
-  "requiresLogin": true,
   "enabled": true,
   "selectors": {
     "chatInput": "textarea, div[contenteditable=\"true\"]",
     "sendButton": "button[type=\"submit\"]",
     "stopButton": "button[class*=\"stop\"]",
-    "assistantMessage": "[class*=\"assistant\"], .markdown-body",
-    "codeBlock": "pre code",
-    "copyButton": "button[class*=\"copy\"]"
+    "assistantMessage": "[class*=\"assistant\"], .markdown-body"
   },
   "completionRules": {
     "waitForStopButtonDisappear": true,
-    "waitForCopyButton": true,
-    "stableMs": 3000,
     "maxWaitMs": 120000
   },
   "profileDir": "local-agent/storage/browser-profiles/qwen-studio"

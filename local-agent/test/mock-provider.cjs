@@ -28,6 +28,7 @@ function createMockProvider() {
   <div id="thread"></div>
   <textarea id="input" placeholder="Message"></textarea>
   <button id="send" type="submit">Send</button>
+  <button id="stop" style="display:none;">Stop</button>
 <script>
 async function send() {
   var input = document.getElementById('input');
@@ -35,12 +36,16 @@ async function send() {
   if (!text) return;
   input.value = '';
   var thread = document.getElementById('thread');
+  // Visible only while a reply is pending, the way a real chat UI behaves.
+  var stop = document.getElementById('stop');
+  stop.style.display = '';
   var res = await fetch('/__reply', {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain' },
     body: text
   });
   var body = await res.json();
+  stop.style.display = 'none';
   // Real chat sites move you onto a per-thread URL after the first message.
   if (body.threadId && location.pathname.indexOf('/c/') !== 0) {
     history.replaceState({}, '', '/c/' + body.threadId);

@@ -1,6 +1,6 @@
 # CloseNI Roadmap
 
-28 items, grouped into 9 sub-projects. **3 of 9 complete** (1 · Conversation & context core, 6 · Builder IDE experience, 9 · Housekeeping). Each sub-project gets its own design spec
+28 items, grouped into 9 sub-projects. **3 of 9 complete** (1 · Conversation & context core, 6 · Builder IDE experience, 9 · Housekeeping), plus 2 · Provider platform at 3 of 4. Each sub-project gets its own design spec
 and implementation plan under `docs/superpowers/`, and is expected to leave the
 application working on its own.
 
@@ -37,19 +37,22 @@ traced to concurrent end-to-end suites sharing one provider config file, not to
 a race in the product; that collision was fixed in Phase 2. Plan mode ran 25/25
 clean in isolation.
 
-## 2 · Provider platform
+## 2 · Provider platform — 3 of 4
 
 Roadmap items 7, 8, 9, 10. Depends on nothing. Blocks sub-project 4.
 
-- **7. GLM + Qwen Studio** — `partial`. Qwen has a config and is enabled; there is
-  no GLM config. Provider behaviour lives entirely in the JSON configs — the four
-  empty `*.adapter.ts` placeholders were deleted in sub-project 9, so any adapter
-  layer starts from nothing rather than from a stub.
-- **8. Model / tool / effort switching** — `todo`. Requires simulating clicks in
-  the provider's UI, which is behaviour rather than config — this is the item that
-  forces the adapter question.
-- **9. First-run browser login onboarding** — `todo`.
-- **10. Provider logos** — `todo`.
+- **7. GLM + Qwen Studio** — `done`. Both configured and listed. GLM's selectors
+  are unverified against the live site, recorded in the file itself.
+- **8. Model / tool / effort switching** — `todo`, **deferred on information, not
+  effort**. It needs click sequences against provider UIs nobody here can see or
+  log into. Building the machinery with blank selectors would look finished and
+  work nowhere. Open until someone with an account supplies the real markup.
+- **9. First-run browser login onboarding** — `done`. A Sign in button opens a
+  visible browser; a headless run with no chat input gives up in 15s instead of
+  120s and names the fix.
+- **10. Provider logos** — `done` as far as the control allows. The picker is a
+  native `<select>`, whose options render text only, so providers are listed by
+  name. A coloured mark would require replacing the control.
 
 ## 3 · Multi-language builds
 
@@ -162,7 +165,7 @@ depend on:
   commands (was failing every Python step); response-detection hanging for the
   full timeout on short replies; context ranking that omitted the module a step
   had to import from; dead IPC handlers behind the New Chat button.
-- Test suite from nothing to 226 tests (110 unit + 116 end-to-end) — unit coverage
+- Test suite from nothing to 246 tests (118 unit + 128 end-to-end) — unit coverage
   plus a suite that drives the real CLI and a real browser against a mock chat
   provider.
 - Two bugs found by reading code rather than by a failing test, both invisible to

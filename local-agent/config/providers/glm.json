@@ -1,0 +1,18 @@
+{
+  "id": "glm",
+  "name": "GLM (Z.ai)",
+  "baseUrl": "https://chat.z.ai/",
+  "enabled": true,
+  "_selectorsUnverified": "These selectors have never been checked against the live site. If GLM hangs or sends nothing, correct chatInput and sendButton here first - it is a text edit, not a code change.",
+  "selectors": {
+    "chatInput": "textarea, div[contenteditable=\"true\"]",
+    "sendButton": "button[type=\"submit\"], button[class*=\"send\"]",
+    "stopButton": "button[class*=\"stop\"]",
+    "assistantMessage": "[class*=\"assistant\"], .markdown-body, [class*=\"message\"][class*=\"bot\"]"
+  },
+  "completionRules": {
+    "waitForStopButtonDisappear": true,
+    "maxWaitMs": 120000
+  },
+  "profileDir": "local-agent/storage/browser-profiles/glm"
+}

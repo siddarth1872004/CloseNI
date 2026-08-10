@@ -2,26 +2,23 @@ import { chromium, BrowserContext, Page } from "playwright";
 import * as path from "path";
 import * as fs from "fs";
 import { readSessions, writeSessions, getBuildThread, setBuildThread, resetBuildRun, getBuildLedger, setBuildLedger, BuildLedger } from "../session-store.js";
+import { isComplete } from "./completion.js";
 
 export interface ProviderConfig {
   id: string;
   name: string;
-  kind: string;
   baseUrl: string;
-  requiresLogin: boolean;
   enabled: boolean;
   selectors: {
     chatInput: string;
     sendButton: string;
-    stopButton: string;
+    /** Optional. With waitForStopButtonDisappear, ends a wait the moment the
+     *  provider's own stop button vanishes instead of waiting out stability. */
+    stopButton?: string;
     assistantMessage: string;
-    codeBlock: string;
-    copyButton: string;
   };
   completionRules: {
     waitForStopButtonDisappear: boolean;
-    waitForCopyButton: boolean;
-    stableMs: number;
     maxWaitMs: number;
   };
   profileDir: string;
@@ -196,13 +193,18 @@ export class PlaywrightController {
 
   async waitForLogin(timeoutMs: number = 120000): Promise<boolean> {
     if (!this.page) throw new Error("Browser not launched");
-    console.log("Waiting for manual login...");
+    // A login cannot happen in a window nobody can see, so a headless run gives
+    // up quickly and names the fix instead of waiting out the full timeout.
+    const effective = this.isHeaded ? timeoutMs : Math.min(timeoutMs, 15000);
+    console.log("Waiting for chat input (" + Math.round(effective / 1000) + "s)...");
     try {
-      await this.page.waitForSelector('textarea, div[contenteditable="true"]', { timeout: timeoutMs, state: "visible" });
-      console.log("Login detected!");
+      await this.page.waitForSelector('textarea, div[contenteditable="true"]', { timeout: effective, state: "visible" });
+      console.log("Chat input ready.");
       return true;
     } catch {
-      console.log("Login timeout. Continuing anyway...");
+      console.log(this.isHeaded
+        ? "No chat input appeared."
+        : "No chat input appeared. If this provider needs a login, use Sign in first.");
       return false;
     }
   }
@@ -265,6 +267,19 @@ export class PlaywrightController {
     }
   }
 
+  private async stopButtonVisible(config: ProviderConfig): Promise<boolean> {
+    if (!this.page || !config.selectors.stopButton) return false;
+    try {
+      // isVisible, not count: a provider that hides its stop button with CSS
+      // rather than removing it from the DOM would otherwise read as permanently
+      // generating, and the signal would never fire.
+      const loc = this.page.locator(config.selectors.stopButton).first();
+      return (await loc.count()) > 0 && (await loc.isVisible());
+    } catch {
+      return false;
+    }
+  }
+
   private async assistantSelector(config: ProviderConfig): Promise<string> {
     if (this.pickedSelector) return this.pickedSelector;
     if (!this.page) return config.selectors.assistantMessage;
@@ -323,11 +338,20 @@ export class PlaywrightController {
     let lastText: string | null = null;
     let stableCount = 0;
     let waitingTicks = 0;
+    let stopSeen = false;
+    let stopGone = false;
+    const useStopButton = !!(config.completionRules?.waitForStopButtonDisappear && config.selectors.stopButton);
 
     while (Date.now() - start < maxWait) {
       await this.page.waitForTimeout(POLL_INTERVAL_MS);
       const count = await this.countMessages(config);
       const text = await this.getLastMessageText(config);
+
+      if (useStopButton) {
+        const visible = await this.stopButtonVisible(config);
+        if (visible) { stopSeen = true; stopGone = false; }
+        else if (stopSeen) stopGone = true;
+      }
 
       // A reply to a follow-up is usually SHORTER than the answer before it, so
       // "grew by 50 characters" never fires and the whole wait is spent thinking
@@ -351,15 +375,14 @@ export class PlaywrightController {
         continue;
       }
 
-      if (text === lastText && isNew) {
-        stableCount++;
-        if (stableCount >= STABLE_TICKS) {
-          console.log("Response complete (stable for " + (STABLE_TICKS * POLL_INTERVAL_MS) / 1000 + "s)!");
-          return await this.extractWithRetry(config);
-        }
-      } else {
-        stableCount = 0;
-        lastText = text;
+      if (text === lastText && isNew) stableCount++;
+      else { stableCount = 0; lastText = text; }
+
+      if (isComplete({ started: started, stopSeen: stopSeen, stopGone: stopGone, stableTicks: stableCount }, useStopButton, STABLE_TICKS)) {
+        console.log(useStopButton && stopSeen && stopGone
+          ? "Response complete (stop button disappeared)!"
+          : "Response complete (stable for " + (STABLE_TICKS * POLL_INTERVAL_MS) / 1000 + "s)!");
+        return await this.extractWithRetry(config);
       }
     }
 
