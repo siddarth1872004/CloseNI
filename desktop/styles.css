@@ -330,7 +330,6 @@ select{width:100%;}
   color:var(--txt);font-family:ui-monospace,Consolas,monospace;font-size:11px;letter-spacing:.06em;
   padding:10px 14px;border-radius:3px;box-shadow:var(--shadow-1);}
 .toast.err{border-left-color:var(--err-line);background:var(--err-bg);}
-@keyframes toast-in{from{transform:translateX(12px);opacity:0;}to{transform:none;opacity:1;}}
 
 /* Depth by layering, in place of the literal 3D item 19 asked for: two CSS
    properties, no GPU budget, and it does not fight a flat aesthetic. */
