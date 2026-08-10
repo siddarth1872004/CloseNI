@@ -361,6 +361,31 @@ function testControlSettings() {
   check("an unknown value falls back to itself", labelFor(withLabels, "glm-9") === "glm-9");
 }
 
+function testCssTokens() {
+  section("css tokens");
+  const { colorLiteralsOutsideThemes, themeBlocks } = require(path.join(__dirname, "css-lint.cjs"));
+  const css = fs.readFileSync(path.join(__dirname, "..", "..", "desktop", "styles.css"), "utf8");
+
+  // The load-bearing check. A colour outside a theme block is a rule no theme
+  // can reach, and it fails silently - the app just looks wrong on that theme.
+  const stray = colorLiteralsOutsideThemes(css);
+  check("no colour literals outside theme blocks", stray.length === 0,
+    stray.slice(0, 6).map(function (o) { return "line " + o.line + ": " + o.text; }).join(" | "));
+
+  // Sanity-check the lint itself, so a broken detector cannot report success.
+  check("the lint detects a hex", colorLiteralsOutsideThemes(".a{color:#fff;}").length === 1);
+  check("the lint detects rgba", colorLiteralsOutsideThemes(".a{background:rgba(0,0,0,.5);}").length === 1);
+  check("the lint ignores colours inside :root", colorLiteralsOutsideThemes(":root{--x:#fff;}").length === 0);
+  check("the lint ignores colours inside a theme block",
+    colorLiteralsOutsideThemes('[data-theme="paper"]{--x:#fff;}').length === 0);
+  check("the lint sees a rule after a theme block closes",
+    colorLiteralsOutsideThemes(":root{--x:#fff;}\n.a{color:#000;}").length === 1);
+  check("the lint ignores var() references", colorLiteralsOutsideThemes(".a{color:var(--txt);}").length === 0);
+
+  const blocks = themeBlocks(css);
+  check("a :root block exists", blocks.some(function (b) { return b.name === ":root"; }));
+}
+
 function testToolchain() {
   section("tool resolution");
   const { resolveTool, resetToolCache, TOOL_CANDIDATES } = require(path.join(DIST, "verification/toolchain.js"));
@@ -761,6 +786,7 @@ async function testBrowserExtraction() {
   testCompletion();
   testControlDecisions();
   testControlSettings();
+  testCssTokens();
   testToolchain();
   testCheckPlanner();
   await testCommandTimeout();
