@@ -759,6 +759,154 @@ function testPreviewTarget() {
   check("an external doc link is ignored", previewTarget("see https://docs.python.org/3/", []) === null);
 }
 
+function testPlanGraph() {
+  section("plan graph");
+  const g = require(path.join(DIST, "plan-graph.js"));
+  const steps = (deps) => deps.map(function (d) { return d === null ? {} : { dependsOn: d }; });
+
+  check("an empty graph is fine", g.validateGraph([]).ok === true);
+  check("a valid graph passes", g.validateGraph(steps([[], [0], [0], [1, 2]])).ok === true);
+
+  // Rejected at parse time rather than discovered at deadlock.
+  check("a self-reference is rejected", g.validateGraph(steps([[0]])).ok === false);
+  check("and says why", /self/i.test(g.validateGraph(steps([[0]])).reason || ""));
+  check("a two-step cycle is rejected", g.validateGraph(steps([[1], [0]])).ok === false);
+  check("a long cycle is rejected", g.validateGraph(steps([[2], [0], [1]])).ok === false);
+  check("a forward reference is rejected", g.validateGraph(steps([[1], []])).ok === false);
+  check("an index past the end is rejected", g.validateGraph(steps([[], [9]])).ok === false);
+  check("a negative index is rejected", g.validateGraph(steps([[], [-1]])).ok === false);
+  check("a non-integer index is rejected", g.validateGraph([{ dependsOn: ["a"] }]).ok === false);
+  check("dependsOn that is not an array is rejected", g.validateGraph([{ dependsOn: 3 }]).ok === false);
+
+  // Absent means serial. Every plan that exists today is such a plan, and this
+  // is the rule that keeps them behaving exactly as they do now.
+  check("no graph at all becomes a chain",
+    JSON.stringify(g.normaliseGraph(steps([null, null, null]))) === JSON.stringify([[], [0], [1]]));
+  check("serialGraph builds the same chain",
+    JSON.stringify(g.serialGraph(3)) === JSON.stringify([[], [0], [1]]));
+  check("serialGraph of one has no dependencies",
+    JSON.stringify(g.serialGraph(1)) === JSON.stringify([[]]));
+  check("serialGraph of zero is empty", JSON.stringify(g.serialGraph(0)) === "[]");
+
+  // A partially-declared plan is treated as declared: a model that answered the
+  // question at all is trusted, and an empty list is a real answer.
+  check("a declared empty list stays empty",
+    JSON.stringify(g.normaliseGraph(steps([[], []]))) === JSON.stringify([[], []]));
+  check("mixed declaration keeps what was declared",
+    JSON.stringify(g.normaliseGraph([{ dependsOn: [] }, {}, { dependsOn: [0] }])) ===
+    JSON.stringify([[], [], [0]]));
+}
+
+function testScheduler() {
+  section("scheduler");
+  const { runnableSteps, blockedBy } = require(path.join(__dirname, "..", "..", "desktop", "scheduler.js"));
+  const S = (o) => Object.assign({ completed: [], failed: [], blocked: [], skipped: [], running: [] }, o);
+  const serial = [[], [0], [1], [2]];
+  const diamond = [[], [0], [0], [1, 2]];
+
+  // The guarantee that nothing regresses: a chain yields one step at a time
+  // however high the limit.
+  check("a chain starts only the first", JSON.stringify(runnableSteps(serial, S({}), 4)) === "[0]");
+  check("a chain stays one at a time",
+    JSON.stringify(runnableSteps(serial, S({ completed: [0] }), 4)) === "[1]");
+
+  // Independent steps run together, up to the limit.
+  check("a diamond starts one, then two",
+    JSON.stringify(runnableSteps(diamond, S({ completed: [0] }), 4)) === "[1,2]");
+  check("the limit caps them",
+    JSON.stringify(runnableSteps(diamond, S({ completed: [0] }), 1)) === "[1]");
+  check("steps already running count against the limit",
+    JSON.stringify(runnableSteps(diamond, S({ completed: [0], running: [1] }), 2)) === "[2]");
+  check("a full pipeline starts nothing",
+    JSON.stringify(runnableSteps(diamond, S({ completed: [0], running: [1, 2] }), 2)) === "[]");
+
+  // A join waits for every dependency. Step 2 is still offered here - it only
+  // needs step 0 - so the assertion is about step 3 specifically.
+  check("a join waits for both",
+    runnableSteps(diamond, S({ completed: [0, 1] }), 4).indexOf(3) === -1,
+    JSON.stringify(runnableSteps(diamond, S({ completed: [0, 1] }), 4)));
+  check("a join with one branch running still waits",
+    JSON.stringify(runnableSteps(diamond, S({ completed: [0, 1], running: [2] }), 4)) === "[]");
+  check("and starts once both are done",
+    JSON.stringify(runnableSteps(diamond, S({ completed: [0, 1, 2] }), 4)) === "[3]");
+
+  // Nothing left to do returns nothing, rather than looping forever.
+  check("everything complete yields nothing",
+    JSON.stringify(runnableSteps(diamond, S({ completed: [0, 1, 2, 3] }), 4)) === "[]");
+  check("a running step is not offered twice",
+    runnableSteps(diamond, S({ completed: [0], running: [1, 2] }), 9).indexOf(1) === -1);
+  check("a completed step is not offered again",
+    runnableSteps(serial, S({ completed: [0, 1] }), 9).indexOf(0) === -1);
+
+  // A skipped step counts as satisfied - the user chose to move past it, and
+  // blocking everything downstream would make Skip useless.
+  check("a skipped dependency unblocks its dependent",
+    JSON.stringify(runnableSteps(serial, S({ skipped: [0] }), 4)) === "[1]");
+
+  // --- failure fans out, and blocked is not failed
+  check("a failed step blocks its direct dependent",
+    JSON.stringify(blockedBy(serial, [1])) === "[2,3]");
+  check("failure blocks transitively", JSON.stringify(blockedBy(diamond, [0])) === "[1,2,3]");
+  check("a failed branch blocks only its own side",
+    JSON.stringify(blockedBy(diamond, [1])) === "[3]");
+  check("a failure at the end blocks nothing", JSON.stringify(blockedBy(diamond, [3])) === "[]");
+  check("nothing failed blocks nothing", JSON.stringify(blockedBy(diamond, [])) === "[]");
+  check("a blocked step is never runnable",
+    JSON.stringify(runnableSteps(serial, S({ failed: [0], blocked: [1, 2, 3] }), 4)) === "[]");
+  check("a failed step does not unblock its dependent",
+    JSON.stringify(runnableSteps(serial, S({ failed: [0] }), 4)) === "[]");
+}
+
+async function testAsyncPool() {
+  section("async primitives");
+  const { createMutex, createPool } = require(path.join(DIST, "async-pool.js"));
+  const wait = (ms) => new Promise(function (r) { setTimeout(r, ms); });
+
+  // The mutex is what makes "parallel conversations, serialised applies" true.
+  // If two bodies ever overlap, two workers could interleave writes to the
+  // ledger, or - worse - both prompt for command approval, and the replies
+  // arrive on one stdin queue with nothing saying which command they answer.
+  const m = createMutex();
+  let inside = 0;
+  let maxInside = 0;
+  const order = [];
+  await Promise.all([1, 2, 3, 4].map(function (n) {
+    return m.run(async function () {
+      inside++;
+      maxInside = Math.max(maxInside, inside);
+      await wait(20);
+      order.push(n);
+      inside--;
+      return n;
+    });
+  }));
+  check("only one body runs at a time", maxInside === 1, "max=" + maxInside);
+  check("all four ran", order.length === 4);
+  check("they ran in the order they queued", JSON.stringify(order) === "[1,2,3,4]");
+  check("the result is returned", (await m.run(async function () { return 7; })) === 7);
+
+  // A throwing body must release the lock, or the whole build stops dead.
+  let threw = false;
+  try { await m.run(async function () { throw new Error("boom"); }); } catch (e) { threw = true; }
+  check("a throwing body propagates", threw === true);
+  check("and does not wedge the mutex", (await m.run(async function () { return "after"; })) === "after");
+
+  // The pool hands out the workers.
+  const pool = createPool(["a", "b"]);
+  check("the pool reports its size", pool.size() === 2);
+  const first = await pool.acquire();
+  const second = await pool.acquire();
+  check("two acquires give different items", first !== second);
+
+  let third = null;
+  const pending = pool.acquire().then(function (v) { third = v; });
+  await wait(10);
+  check("a third acquire waits", third === null);
+  pool.release(first);
+  await pending;
+  check("and is served on release", third === first);
+}
+
 function testToolchain() {
   section("tool resolution");
   const { resolveTool, resetToolCache, TOOL_CANDIDATES } = require(path.join(DIST, "verification/toolchain.js"));
@@ -1162,6 +1310,9 @@ async function testBrowserExtraction() {
   testCssTokens();
   testStoragePaths();
   testPlanScale();
+  testPlanGraph();
+  testScheduler();
+  await testAsyncPool();
   testRunManifest();
   testPreviewTarget();
   testBrowserCheck();
