@@ -144,6 +144,12 @@ body{background:var(--bg);color:var(--txt);font:14px/1.5 "Segoe UI",system-ui,sa
   font-family:ui-monospace,"Cascadia Mono",Consolas,monospace;}
 .micro{font-size:10px;letter-spacing:.14em;color:var(--mut);text-transform:uppercase;margin-bottom:6px;}
 #app{display:flex;height:100vh;}
+/* Static decoration - scanlines, or Blueprint's grid. It never moves: live
+   animation was built, reviewed and rejected. A theme with no texture sets
+   --overlay-texture:none and nothing happens here. */
+#app::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:1;
+  background-image:var(--overlay-texture);background-size:14px 14px;}
+[data-decor="off"] #app::before{background-image:none;}
 #rail{width:210px;border-right:1px solid var(--line);display:flex;flex-direction:column;padding:20px 14px;background:var(--panel);}
 #wordmark{display:flex;align-items:center;gap:var(--sp-3);font-size:15px;letter-spacing:.08em;margin-bottom:28px;}
 #wordmark svg{width:17px;height:17px;flex:none;color:var(--txt);}
@@ -173,6 +179,14 @@ nav{display:flex;flex-direction:column;gap:2px;}
    the light one where "brighter" is not "closer to #fff". */
 .btn.invert:hover:not(:disabled){filter:brightness(1.15);}
 .btn:disabled{opacity:.35;cursor:not-allowed;}
+/* There was no focus rule at all, so tabbing through the app showed nothing.
+   Two layers so the ring reads against any theme: a gap in the page colour,
+   then the ring. :focus-visible rather than :focus, so a mouse click does not
+   leave a ring behind. */
+.btn:focus-visible,.nav-btn:focus-visible,.settings-tab:focus-visible,.theme-swatch:focus-visible,
+input:focus-visible,textarea:focus-visible,select:focus-visible,.file-card-head:focus-visible,
+.step-card:focus-visible{
+  outline:none;box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--line-focus);}
 input,textarea,select{background:var(--surface);border:1px solid var(--line-strong);color:var(--txt);padding:9px 10px;
   font-size:12px;border-radius:3px;outline:none;}
 input:focus,textarea:focus{border-color:var(--dim);}
@@ -249,10 +263,13 @@ select{width:100%;}
 .step-card.active .step-card-title{color:var(--txt);}
 .step-card-status{font-size:9px;letter-spacing:.1em;text-transform:uppercase;padding:2px 6px;
   border:1px solid var(--line-strong);border-radius:2px;color:var(--mut);}
-.step-card-status.running{color:var(--txt);border-color:var(--txt);animation:pulse 1.4s infinite;}
-.step-card-status.done{color:var(--txt);border-color:var(--txt);}
+/* State carries colour. These were all the same grey, which made a running
+   step and a finished one indistinguishable in the list. The amber says
+   "running" without moving, so the pulse animation is gone. */
+.step-card-status.running{color:var(--warn);background:var(--warn-bg);border-color:var(--warn-line);}
+.step-card-status.done{color:var(--ok);background:var(--ok-bg);border-color:var(--ok-line);}
 .step-card-status.failed{color:var(--err);background:var(--err-bg);border-color:var(--err-line);}
-@keyframes pulse{0%,100%{opacity:1;}50%{opacity:.4;}}
+.step-card-status.skipped{color:var(--mut);border-style:dashed;}
 
 #builder-main{flex:1;border:1px solid var(--line);border-radius:4px;background:var(--panel);
   display:flex;flex-direction:column;overflow:hidden;}
@@ -311,14 +328,30 @@ select{width:100%;}
 .toast.err{border-left-color:var(--err-line);background:var(--err-bg);}
 @keyframes toast-in{from{transform:translateX(12px);opacity:0;}to{transform:none;opacity:1;}}
 
+/* Depth by layering, in place of the literal 3D item 19 asked for: two CSS
+   properties, no GPU budget, and it does not fight a flat aesthetic. */
+#approval-modal{backdrop-filter:blur(3px);}
+#approval-card{box-shadow:var(--shadow-2);}
+
+/* Glow, where a theme defines one. Static, like the texture. */
+.step-card.active .step-card-title,#status-line,#builder-status{text-shadow:var(--glow);}
+[data-decor="off"] .step-card.active .step-card-title,
+[data-decor="off"] #status-line,
+[data-decor="off"] #builder-status{text-shadow:none;}
+
+/* The two animations left both carry meaning - progress advancing, and a toast
+   arriving. Neither should move for anyone who asked the OS for less motion. */
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation-duration:.001ms !important;animation-iteration-count:1 !important;
+    transition-duration:.001ms !important;}
+}
+
 #builder-toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
 #builder-progress-wrap{flex:1;min-width:120px;height:6px;background:var(--surface-raised);border:1px solid var(--line);border-radius:3px;overflow:hidden;}
 #builder-progress{height:100%;width:0%;background:var(--txt);transition:width .4s ease;}
 #builder-status{font-family:ui-monospace,Consolas,monospace;font-size:11px;color:var(--dim);}
-.step-card-status.done{color:var(--txt);border-color:var(--txt);}
-.step-card-status.failed{color:var(--err);background:var(--err-bg);border-color:var(--err-line);}
-.step-card-status.skipped{color:var(--mut);border-style:dashed;}
-.step-card-status.running{color:var(--txt);border-color:var(--txt);animation:pulse 1.4s infinite;}
+/* The duplicate copies of these four rules lived here. They are declared once,
+   above, beside the base .step-card-status rule. */
 
 #suggest-bar{display:flex;gap:8px;padding:10px 12px;border-top:1px solid var(--line);background:var(--bg);}
 #suggest-input{flex:1;background:var(--surface-sunken);border:1px solid var(--line);color:var(--txt);padding:8px 10px;border-radius:3px;font-family:inherit;font-size:12px;}
