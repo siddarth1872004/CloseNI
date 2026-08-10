@@ -85,6 +85,7 @@
         <button id="builder-stop" class="btn is-hidden">Stop</button>
         <div id="builder-progress-wrap"><div id="builder-progress"></div></div>
         <span id="builder-status">idle</span>
+        <button id="builder-preview" class="btn is-hidden">Preview</button>
       </div>
       <div id="builder-view">
         <div id="builder-sidebar">
@@ -106,6 +107,19 @@
               <button id="suggest-send" class="btn invert">Send</button>
             </div>
           </div>
+        </div>
+        <div id="preview-pane" class="is-hidden">
+          <div id="preview-head">
+            <span class="micro">Preview</span>
+            <span id="preview-url" class="hint"></span>
+            <button id="preview-close" class="btn btn-sm">Close</button>
+          </div>
+          <!-- This renders code an AI wrote. nodeintegration off,
+               contextIsolation on, and its own partition, so a generated page
+               cannot reach Electron APIs, the preload bridge, or the session
+               cookies belonging to the user's provider logins. -->
+          <webview id="preview-frame" partition="persist:closeni-preview"
+                   nodeintegration="false" webpreferences="contextIsolation=yes"></webview>
         </div>
       </div>
     </section>
@@ -262,6 +276,7 @@
 <script src="language-mark.js"></script>
 <script src="browser-check.js"></script>
 <script src="plan-scale.js"></script>
+<script src="preview-target.js"></script>
 <script src="renderer.js"></script>
 <script src="builder.js"></script>
 </body>

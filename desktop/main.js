@@ -13,7 +13,10 @@ function createWindow() {
     width: 1400, height: 900,
     backgroundColor: "#0b0b0c",
     title: "CloseNI",
-    webPreferences: { preload: path.join(__dirname, "preload.js"), contextIsolation: true, nodeIntegration: false }
+    // webviewTag is needed for the frontend preview. The <webview> itself
+    // disables node integration and uses its own partition, so a generated page
+    // cannot reach Electron APIs or the provider session cookies.
+    webPreferences: { preload: path.join(__dirname, "preload.js"), contextIsolation: true, nodeIntegration: false, webviewTag: true }
   });
   win.loadFile(path.join(__dirname, "index.html"));
 }

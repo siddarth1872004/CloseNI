@@ -596,7 +596,11 @@ $("test-run").onclick = async function () {
   renderTestOutput(r && r.output);
   pushHistory(cmd, !!(r && r.success));
   lastRun = { command: cmd, output: (r && r.output) || "" };
-  if (window.CNBuilderPreview) window.CNBuilderPreview.update((r && r.output) || "", workspace);
+  if (window.CNBuilderPreview) {
+    let files = [];
+    try { const l = await window.api.listFiles(workspace); files = (l && l.files) || []; } catch (e) {}
+    window.CNBuilderPreview.update((r && r.output) || "", workspace, files);
+  }
 };
 
 function addTestMsg(who, text) {

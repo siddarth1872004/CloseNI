@@ -726,6 +726,39 @@ function testRunManifest() {
   check("quotes survive", quoted.indexOf('python3 -c "print(1)"') !== -1, quoted);
 }
 
+function testPreviewTarget() {
+  section("preview target");
+  const { previewTarget } = require(path.join(__dirname, "..", "..", "desktop", "preview-target.js"));
+
+  // Real output from the servers these projects actually produce.
+  const flask = " * Running on http://127.0.0.1:5000\n * Press CTRL+C to quit";
+  check("a flask url is found", previewTarget(flask, []).url === "http://127.0.0.1:5000");
+  check("and is a server", previewTarget(flask, []).kind === "server");
+  const vite = "  VITE v5.0.0  ready in 300 ms\n  Local:   http://localhost:5173/";
+  check("a vite url is found", previewTarget(vite, []).url === "http://localhost:5173/");
+  const py = "Serving HTTP on 0.0.0.0 port 8000 (http://0.0.0.0:8000/) ...";
+  check("a python http.server url is found", previewTarget(py, []).url.indexOf("8000") !== -1);
+  // The last url wins: a server that reprints its address as it restarts should
+  // not pin the preview to the first line it ever wrote.
+  check("the last url wins",
+    previewTarget("http://localhost:1111\nhttp://localhost:2222", []).url === "http://localhost:2222");
+
+  // No server: a static page is the next best thing.
+  check("index.html is used when there is no url", previewTarget("", ["index.html"]).kind === "file");
+  check("and points at the file", previewTarget("", ["index.html"]).url.indexOf("index.html") !== -1);
+  check("a nested index.html is found", previewTarget("", ["public/index.html"]).url.indexOf("public/index.html") !== -1);
+  check("a root index.html beats a nested one",
+    previewTarget("", ["public/index.html", "index.html"]).url.indexOf("public") === -1);
+
+  // Nothing to show means the toggle hides, rather than an empty frame.
+  check("no url and no html yields nothing", previewTarget("", ["main.py"]) === null);
+  check("empty input is survivable", previewTarget("", []) === null);
+  check("missing input is survivable", previewTarget(null, null) === null);
+  // A documentation link in a traceback is not a server, and pointing the
+  // preview at the open internet is not what anyone asked for.
+  check("an external doc link is ignored", previewTarget("see https://docs.python.org/3/", []) === null);
+}
+
 function testToolchain() {
   section("tool resolution");
   const { resolveTool, resetToolCache, TOOL_CANDIDATES } = require(path.join(DIST, "verification/toolchain.js"));
@@ -1130,6 +1163,7 @@ async function testBrowserExtraction() {
   testStoragePaths();
   testPlanScale();
   testRunManifest();
+  testPreviewTarget();
   testBrowserCheck();
   testBuildConfig();
   testReleaseWorkflow();
