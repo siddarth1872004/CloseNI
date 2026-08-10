@@ -3,6 +3,9 @@ import * as path from "path";
 import * as fs from "fs";
 import { readSessions, writeSessions, getBuildThread, setBuildThread, resetBuildRun, getBuildLedger, setBuildLedger, BuildLedger } from "../session-store.js";
 import { isComplete } from "./completion.js";
+import { applyProviderControls } from "./controls/index.js";
+import { parseDesiredControls } from "./controls/decisions.js";
+import { formatResults } from "./controls/helpers.js";
 
 export interface ProviderConfig {
   id: string;
@@ -21,6 +24,18 @@ export interface ProviderConfig {
     waitForStopButtonDisappear: boolean;
     maxWaitMs: number;
   };
+  /** What this provider's UI offers. Read by the desktop settings panel; the
+   *  agent only needs the selectors below. Absent means no controls. */
+  controls?: Array<{
+    id: string;
+    label: string;
+    kind: "select" | "toggle";
+    default?: string | boolean;
+    options?: Array<{ value: string; label: string }>;
+  }>;
+  /** Selectors live in config because they rot fastest — a provider renaming a
+   *  class should be a text edit, not a recompile. */
+  controlSelectors?: Record<string, string>;
   profileDir: string;
 }
 
@@ -57,6 +72,9 @@ export class PlaywrightController {
   // Build steps share a thread that is tracked separately from the Chat/Plan
   // thread, so the two never overwrite each other in sessions.json.
   private threadKind: "chat" | "build" = "chat";
+  // Held from launch() so controls can be applied wherever a conversation
+  // opens, without threading the config through every navigation path.
+  private launchedConfig: ProviderConfig | null = null;
 
   constructor(config: ProviderConfig) {
     const storageDir = path.join(config.profileDir, "..", "..");
@@ -142,6 +160,27 @@ export class PlaywrightController {
       args: ["--disable-blink-features=AutomationControlled"],
     });
     this.page = this.context.pages()[0] || (await this.context.newPage());
+    this.launchedConfig = config;
+  }
+
+  /**
+   * Put the provider's UI into the state the user asked for.
+   *
+   * These settings do not survive a new chat — the owner confirmed they reset —
+   * and builds open a fresh thread per run, so this runs every time a
+   * conversation opens rather than once at sign-in. It is called from
+   * waitForLogin, which is the one thing every path that opens a conversation
+   * already does after the chat input appears.
+   */
+  private async applyControls(): Promise<void> {
+    const config = this.launchedConfig;
+    if (!this.page || !config) return;
+    const desired = parseDesiredControls(process.env.AGENT_CONTROLS);
+    if (Object.keys(desired).length === 0) return;
+    const results = await applyProviderControls(this.page, config.id, config.controlSelectors, desired);
+    if (!results.length) return;
+    console.log("Provider controls:");
+    for (const line of formatResults(config.id, results)) console.log(line);
   }
 
   async navigateToChat(config: ProviderConfig): Promise<void> {
@@ -200,6 +239,7 @@ export class PlaywrightController {
     try {
       await this.page.waitForSelector('textarea, div[contenteditable="true"]', { timeout: effective, state: "visible" });
       console.log("Chat input ready.");
+      await this.applyControls();
       return true;
     } catch {
       console.log(this.isHeaded

@@ -13,5 +13,26 @@
     "waitForStopButtonDisappear": true,
     "maxWaitMs": 120000
   },
+  "_controlsNote": "DeepSeek has no model dropdown. Two modes and two inline toggles, all reporting their own state. Smart Search exists only under Instant.",
+  "controls": [
+    {
+      "id": "mode",
+      "label": "Mode",
+      "kind": "select",
+      "default": "default",
+      "options": [
+        { "value": "default", "label": "Instant" },
+        { "value": "expert", "label": "Advanced" }
+      ]
+    },
+    { "id": "deep-thinking", "label": "Deep thinking", "kind": "toggle", "default": true },
+    { "id": "smart-search", "label": "Smart Search", "kind": "toggle", "default": false }
+  ],
+  "controlSelectors": {
+    "modeOption": "[role=\"radiogroup\"] [data-model-type=\"{value}\"]",
+    "toggle": ".ds-toggle-button",
+    "deepThinkingText": "Deep thinking",
+    "smartSearchText": "Smart Search"
+  },
   "profileDir": "local-agent/storage/browser-profiles/deepseek"
 }

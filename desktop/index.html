@@ -28,6 +28,9 @@
       <div class="micro" style="margin-top:10px;">Provider</div>
       <select id="provider-select"></select>
       <button id="provider-signin" class="btn" style="width:100%;margin-top:8px;">Sign in</button>
+      <!-- Filled from the selected provider's config. A provider that declares
+           no controls shows nothing here rather than an empty heading. -->
+      <div id="provider-controls"></div>
       <div class="micro" style="margin-top:14px;">Permissions</div>
       <select id="autonomy-select">
         <option value="ask">Ask each command</option>
@@ -161,6 +164,7 @@
 <div id="toast-stack"></div>
 <script src="diff.js"></script>
 <script src="entrypoint.js"></script>
+<script src="controls-settings.js"></script>
 <script src="renderer.js"></script>
 <script src="builder.js"></script>
 </body>
