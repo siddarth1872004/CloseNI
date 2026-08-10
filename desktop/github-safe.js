@@ -39,7 +39,53 @@
     return args.slice();
   }
 
-  var api = { redactToken: redactToken, safeGitArgs: safeGitArgs };
+  // Exact hosts only. A prefix or "contains" check would accept
+  // github.com.evil.test, which is a different site entirely.
+  var GITHUB_HOSTS = ["github.com", "www.github.com"];
+
+  /**
+   * Owner and repository from a GitHub URL, or null.
+   *
+   * Everything that clones or fetches goes through this, so a search result -
+   * network-derived text - cannot point an operation at another host.
+   */
+  function parseRepoUrl(url) {
+    var raw = String(url || "").trim();
+    if (!raw) return null;
+
+    // scp-like SSH form, which is not a URL and would not parse as one.
+    var ssh = raw.match(/^git@([^:]+):([^/]+)\/(.+?)(?:\.git)?\/?$/);
+    if (ssh) {
+      if (GITHUB_HOSTS.indexOf(ssh[1].toLowerCase()) === -1) return null;
+      return { owner: ssh[2], repo: ssh[3] };
+    }
+
+    var parsed;
+    try { parsed = new URL(raw); } catch (e) { return null; }
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return null;
+    if (GITHUB_HOSTS.indexOf(parsed.hostname.toLowerCase()) === -1) return null;
+
+    var parts = parsed.pathname.split("/").filter(function (x) { return x.length > 0; });
+    if (parts.length < 2) return null;
+    return { owner: parts[0], repo: parts[1].replace(/\.git$/, "") };
+  }
+
+  /**
+   * Whether a token may be written to disk.
+   *
+   * Only when the OS can encrypt it. Anything else - including an unknown
+   * state - means memory for this session and re-entry next launch.
+   */
+  function shouldPersistToken(encryptionAvailable) {
+    return encryptionAvailable === true;
+  }
+
+  var api = {
+    redactToken: redactToken,
+    safeGitArgs: safeGitArgs,
+    parseRepoUrl: parseRepoUrl,
+    shouldPersistToken: shouldPersistToken,
+  };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.CNGit = api;
 })(typeof window !== "undefined" ? window : globalThis);

@@ -949,6 +949,34 @@ function testGitHubSafe() {
     try { s.safeGitArgs(bad); } catch (e) { threw++; }
   });
   check("bad argument types all throw", threw === 6, String(threw));
+
+  // --- repo urls. Both clone and fetch go through this, so a search result
+  // cannot aim either at a host of its choosing.
+  const p = s.parseRepoUrl;
+  check("an https url parses", JSON.stringify(p("https://github.com/pallets/flask")) === '{"owner":"pallets","repo":"flask"}');
+  check("a .git suffix is stripped", p("https://github.com/pallets/flask.git").repo === "flask");
+  check("a trailing slash is fine", p("https://github.com/pallets/flask/").repo === "flask");
+  check("extra path segments are ignored", p("https://github.com/pallets/flask/tree/main").repo === "flask");
+  check("the ssh form parses", JSON.stringify(p("git@github.com:pallets/flask.git")) === '{"owner":"pallets","repo":"flask"}');
+  check("www is accepted", p("https://www.github.com/pallets/flask").owner === "pallets");
+
+  check("another host is rejected", p("https://gitlab.com/a/b") === null);
+  // The one that matters: a lookalike host must not pass a prefix check.
+  check("a lookalike host is rejected", p("https://github.com.evil.test/a/b") === null);
+  check("a subdomain lookalike is rejected", p("https://notgithub.com/a/b") === null);
+  check("a raw host is rejected", p("https://raw.githubusercontent.com/a/b") === null);
+  check("too few segments is rejected", p("https://github.com/pallets") === null);
+  check("no url is rejected", p("") === null);
+  check("a null url is rejected", p(null) === null);
+  check("a non-url is rejected", p("just some words") === null);
+  check("a javascript scheme is rejected", p("javascript:alert(1)") === null);
+
+  // --- persistence policy
+  check("encryption available means persist", s.shouldPersistToken(true) === true);
+  // Writing plaintext because encryption failed would take a decision the user
+  // never made and leave a credential in a predictable path.
+  check("encryption unavailable means memory only", s.shouldPersistToken(false) === false);
+  check("an unknown state is treated as unavailable", s.shouldPersistToken(undefined) === false);
 }
 
 /**
@@ -965,6 +993,82 @@ function testGitSpawnHardening() {
   check("git does not run through a shell", /shell:\s*false/.test(gitBlock), gitBlock.slice(0, 200));
   check("git arguments are validated", /safeGitArgs/.test(gitBlock));
   check("git output is redacted", /redactToken/.test(gitBlock));
+}
+
+async function testGitHubApi() {
+  section("github api shapes");
+  const { createGitHubApi } = require(path.join(__dirname, "..", "..", "desktop", "github-api.js"));
+
+  // The transport is injected, so every call shape is tested without a token
+  // and without touching GitHub - which matters, because there is no credential
+  // in this environment and there will not be one.
+  const calls = [];
+  const fake = function (method, apiPath, body) {
+    calls.push({ method: method, path: apiPath, body: body });
+    if (apiPath.indexOf("/readme") !== -1) {
+      return Promise.resolve({ status: 200, body: { content: Buffer.from("# Hi").toString("base64") } });
+    }
+    if (apiPath.indexOf("/git/trees/") !== -1) {
+      return Promise.resolve({ status: 200, body: { tree: [{ path: "a.py", type: "blob" }, { path: "src", type: "tree" }] } });
+    }
+    if (apiPath.indexOf("/actions/runs") !== -1) {
+      return Promise.resolve({ status: 200, body: { workflow_runs: [{ name: "ci", status: "completed", conclusion: "success", html_url: "u" }] } });
+    }
+    return Promise.resolve({ status: 200, body: [{ full_name: "me/x", private: false }] });
+  };
+  const api = createGitHubApi(fake);
+
+  await api.listRepos();
+  check("repos are listed for the signed-in user", calls[0].path.indexOf("/user/repos") === 0, calls[0].path);
+  check("and sorted by recent activity", /sort=updated/.test(calls[0].path));
+
+  const readme = await api.getReadme("pallets", "flask");
+  check("the readme path is right", calls[1].path === "/repos/pallets/flask/readme", calls[1].path);
+  // The API returns base64; a caller putting this in a prompt needs text.
+  check("the readme is decoded", readme === "# Hi", JSON.stringify(readme));
+
+  const tree = await api.getTree("pallets", "flask");
+  check("the tree is fetched recursively", /recursive=1/.test(calls[2].path), calls[2].path);
+  check("only files are returned", JSON.stringify(tree) === '["a.py"]', JSON.stringify(tree));
+
+  const runs = await api.listRuns("pallets", "flask");
+  check("runs are listed", calls[3].path.indexOf("/repos/pallets/flask/actions/runs") === 0);
+  check("and are simplified", runs[0].name === "ci" && runs[0].conclusion === "success");
+
+  await api.dispatchWorkflow("pallets", "flask", "ci.yml", "main");
+  check("a dispatch is a POST", calls[4].method === "POST");
+  check("to the workflow's dispatch path",
+    calls[4].path === "/repos/pallets/flask/actions/workflows/ci.yml/dispatches", calls[4].path);
+  check("carrying the ref", calls[4].body.ref === "main");
+
+  await api.createRepo("newthing", true);
+  check("creating a repo is a POST to /user/repos", calls[5].method === "POST" && calls[5].path === "/user/repos");
+  check("the name is sent", calls[5].body.name === "newthing");
+  check("privacy is honoured", calls[5].body.private === true);
+
+  // Failures must be legible rather than throwing something shapeless.
+  const failing = createGitHubApi(function () { return Promise.resolve({ status: 401, body: { message: "Bad credentials" } }); });
+  let msg = "";
+  try { await failing.listRepos(); } catch (e) { msg = e.message; }
+  check("a 401 is reported clearly", /token|401/i.test(msg), msg);
+
+  // A rate limit is a wait, not a breakage, and saying which is the difference
+  // between "try later" and "something is broken".
+  const limited = createGitHubApi(function () {
+    return Promise.resolve({ status: 403, body: { message: "API rate limit exceeded" } });
+  });
+  let rateMsg = "";
+  try { await limited.listRepos(); } catch (e) { rateMsg = e.message; }
+  check("a rate limit says so", /rate limit/i.test(rateMsg), rateMsg);
+
+  // A 403 that is not a rate limit is usually a missing scope, and saying so
+  // saves the user hunting for a problem that is one checkbox away.
+  const scoped = createGitHubApi(function () {
+    return Promise.resolve({ status: 403, body: { message: "Resource not accessible" } });
+  });
+  let scopeMsg = "";
+  try { await scoped.listRepos(); } catch (e) { scopeMsg = e.message; }
+  check("a plain 403 mentions scopes", /scope/i.test(scopeMsg), scopeMsg);
 }
 
 function testToolchain() {
@@ -1373,6 +1477,7 @@ async function testBrowserExtraction() {
   testPlanGraph();
   testGitHubSafe();
   testGitSpawnHardening();
+  await testGitHubApi();
   testScheduler();
   await testAsyncPool();
   testRunManifest();
