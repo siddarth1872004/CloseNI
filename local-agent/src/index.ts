@@ -439,6 +439,30 @@ async function runBuildStep(controller: PlaywrightController, config: ProviderCo
 }
 
 /**
+ * Open a visible browser so the user can sign in. Headed regardless of
+ * AGENT_HEADED: a login in a window nobody can see is the bug this fixes.
+ */
+async function signinMode(providerId: string) {
+  const registry = new ProviderRegistry();
+  registry.loadProviders();
+  const config = registry.getProvider(providerId);
+  if (!config) { emit({ success: false, error: "Provider not found: " + providerId }); return; }
+
+  process.env.AGENT_HEADED = "1";
+  const controller = new PlaywrightController(config);
+  await controller.launch(config);
+  try {
+    await controller.navigateFresh(config);
+    const ok = await controller.waitForLogin(300000);
+    emit(ok
+      ? { success: true }
+      : { success: false, error: "No chat input appeared. The sign-in may not have completed." });
+  } finally {
+    await controller.close();
+  }
+}
+
+/**
  * Revise one step of a finished or in-flight build. Resumes the build's thread
  * so the model still has the whole build in view, then applies the reply through
  * the same path a step uses.
@@ -722,6 +746,7 @@ async function main() {
     // come straight after the mode, because there is no per-step prompt.
     else if (mode === "build-session") await buildSessionMode(args[1] || path.resolve(process.cwd()), args[2] || "deepseek", args[3] || "auto");
     // Positional layout: workspace, provider, step index, suggestion text.
+    else if (mode === "signin") await signinMode(args[1] || "deepseek");
     else if (mode === "suggest") await suggestMode(args[1] || path.resolve(process.cwd()), args[2] || "deepseek", args[3] ? parseInt(args[3]) : 0, resolveArg(args[4]));
     else await buildMode(prompt, workspace, providerId, autonomy, stepIndex, stepDetail, goalSummary);
   } catch (e: any) {

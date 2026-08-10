@@ -121,6 +121,18 @@ $("browse-btn").onclick = async function () {
   };
 })();
 
+$("provider-signin").onclick = async function () {
+  const btn = $("provider-signin");
+  btn.disabled = true;
+  btn.textContent = "Opening browser...";
+  toast("A browser window will open - sign in, then it closes itself");
+  const r = await window.api.signIn(provider);
+  btn.disabled = false;
+  btn.textContent = "Sign in";
+  if (r && r.success) { toast("Signed in to " + provider); log("signed in to " + provider, "ok"); }
+  else { toast("Sign-in did not complete", "err"); log("sign-in failed: " + ((r && r.error) || "no chat input appeared"), "err"); }
+};
+
 function runAgent(args) {
   try {
     const cb = $("show-browser");

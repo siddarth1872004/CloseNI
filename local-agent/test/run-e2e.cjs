@@ -839,6 +839,15 @@ async function main() {
     fs.rmSync(ws, { recursive: true, force: true });
   }
 
+  // ------------------------------------------------ signing in to a provider
+  section("signin reports whether the chat input appeared");
+  {
+    const r = await runAgent(["signin", "mock"], { timeoutMs: 90000 });
+    check("signin succeeds when the input is present", !!r.result && r.result.success === true, JSON.stringify(r.result));
+    check("signin launches a visible browser", r.out.includes("HEADED"), (r.out.match(/Launching browser.*/) || [""])[0]);
+    check("signin reports an unknown provider", (await runAgent(["signin", "nope"], { timeoutMs: 60000 })).result.success === false);
+  }
+
   await mock.close();
   fs.rmSync(profileRoot, { recursive: true, force: true });
   fs.rmSync(PROVIDER_DIR, { recursive: true, force: true });

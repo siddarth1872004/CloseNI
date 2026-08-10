@@ -235,6 +235,36 @@ ipcMain.handle("git", function (event, payload) {
   });
 });
 
+ipcMain.handle("sign-in", function (event, providerId) {
+  return new Promise(function (resolve) {
+    let proc;
+    try {
+      proc = spawn("node", [agentPath(), "signin", providerId],
+        { cwd: path.join(__dirname, ".."), env: Object.assign({}, process.env, { AGENT_HEADED: "1" }) });
+    } catch (e) { resolve({ success: false, error: String(e) }); return; }
+    agentProc = proc;
+    let output = "";
+    let lineBuf = "";
+    proc.stdout.on("data", function (d) {
+      const t = d.toString();
+      output += t;
+      lineBuf += t;
+      let idx;
+      while ((idx = lineBuf.indexOf("\n")) !== -1) {
+        const line = lineBuf.substring(0, idx).replace(/\r$/, "");
+        lineBuf = lineBuf.substring(idx + 1);
+        routeLine(line);
+      }
+    });
+    proc.stderr.on("data", function (d) { routeLine(d.toString()); });
+    proc.on("close", function () {
+      agentProc = null;
+      resolve({ success: output.indexOf('"success":true') !== -1 });
+    });
+    proc.on("error", function (e) { agentProc = null; resolve({ success: false, error: String(e) }); });
+  });
+});
+
 ipcMain.handle("list-providers", function () {
   // Four small JSON files; spawning the agent to read a directory would be absurd.
   const dir = path.join(__dirname, "..", "local-agent", "config", "providers");

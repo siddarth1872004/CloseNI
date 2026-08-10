@@ -193,13 +193,18 @@ export class PlaywrightController {
 
   async waitForLogin(timeoutMs: number = 120000): Promise<boolean> {
     if (!this.page) throw new Error("Browser not launched");
-    console.log("Waiting for manual login...");
+    // A login cannot happen in a window nobody can see, so a headless run gives
+    // up quickly and names the fix instead of waiting out the full timeout.
+    const effective = this.isHeaded ? timeoutMs : Math.min(timeoutMs, 15000);
+    console.log("Waiting for chat input (" + Math.round(effective / 1000) + "s)...");
     try {
-      await this.page.waitForSelector('textarea, div[contenteditable="true"]', { timeout: timeoutMs, state: "visible" });
-      console.log("Login detected!");
+      await this.page.waitForSelector('textarea, div[contenteditable="true"]', { timeout: effective, state: "visible" });
+      console.log("Chat input ready.");
       return true;
     } catch {
-      console.log("Login timeout. Continuing anyway...");
+      console.log(this.isHeaded
+        ? "No chat input appeared."
+        : "No chat input appeared. If this provider needs a login, use Sign in first.");
       return false;
     }
   }
