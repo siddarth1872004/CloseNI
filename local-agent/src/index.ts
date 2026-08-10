@@ -120,8 +120,11 @@ async function planMode(transcript: string, workspace: string, providerId: strin
   transcript = capText(transcript, 8000);
   const ctx = getProjectContext(workspace, transcript);
   const prompt = "Create an implementation plan as JSON:\n" +
-    "{\"summary\":\"goal\",\"steps\":[{\"title\":\"\",\"detail\":\"\",\"files\":[\"path\"]}]}" +
-    "Rules: 3-8 steps, each step = different files, wrap in \`\`\`json.\n\n" +
+    "{\"summary\":\"goal\",\"runCommand\":\"how to run the finished project\",\"steps\":[{\"title\":\"\",\"detail\":\"\",\"files\":[\"path\"]}]}" +
+    "Rules: as many steps as the work genuinely needs - a one-file script might be 2, " +
+    "a full application with a database, API and UI might be 20 or more. Never pad, never compress. " +
+    "Each step must touch a different set of files. Wrap in \`\`\`json.\n" +
+    "runCommand is the single command that starts the finished project, e.g. \"python3 src/app/server.py\".\n\n" +
     "Project:\n" + ctx.tree + "\n\nChat:\n" + transcript;
   const { controller, config } = await openProvider(providerId, true, workspace);  // FRESH chat
   try {
@@ -144,7 +147,9 @@ async function planMode(transcript: string, workspace: string, providerId: strin
 }
 
 async function revisePlanMode(changes: string, workspace: string, providerId: string) {
-  const prompt = "Update plan with: " + changes + "\n\nJSON format: {\"summary\":\"\",\"steps\":[{\"title\":\"\",\"detail\":\"\",\"files\":[\"\"]}]}\n3-8 steps, different files per step.";
+  const prompt = "Update plan with: " + changes +
+    "\n\nJSON format: {\"summary\":\"\",\"runCommand\":\"how to run the finished project\",\"steps\":[{\"title\":\"\",\"detail\":\"\",\"files\":[\"\"]}]}\n" +
+    "As many steps as the work needs - never pad, never compress. Different files per step.";
   const { controller, config } = await openProvider(providerId, true, workspace);  // FRESH chat
   try {
     let prevCount = await controller.countMessages(config);
@@ -246,6 +251,14 @@ function buildPrompt(userPrompt: string, tree: string, relevantFiles: { path: st
     "- Follow clean separation of concerns. Each file has a single responsibility.\n" +
     "- DO NOT collapse multiple modules into one file.\n" +
     "- DO NOT reuse or overwrite files that are not related to the current step.\n" +
+    // Deliberately last and deliberately four lines. This prompt is terse
+    // because unparseable replies have cost whole builds before; more prose
+    // means more chance the model explains itself outside the code fence.
+    "CODE QUALITY:\n" +
+    "- Handle errors and validate input. Do not write happy-path-only code.\n" +
+    "- Docstrings on public functions. Comments explain why, not what.\n" +
+    "- Avoid needless passes, quadratic loops over large inputs, and repeated I/O.\n" +
+    "- The project must be runnable: keep requirements.txt / package.json in step with what the code imports.\n" +
     contextStr +
     "\n\nUser request:\n" + userPrompt;
 }
