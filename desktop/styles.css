@@ -191,3 +191,5 @@ select{width:100%;}
 .test-row.fail .verdict{color:#eda1a6;}
 .test-output{border:1px solid var(--line);border-radius:3px;background:#050506;padding:10px;margin-top:8px;}
 .test-output pre{white-space:pre-wrap;word-break:break-word;font-size:11px;color:var(--dim);}
+
+#provider-select{width:100%;background:#050506;border:1px solid var(--line);color:var(--txt);padding:7px 8px;border-radius:3px;font-family:inherit;font-size:12px;}

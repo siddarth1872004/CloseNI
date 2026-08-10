@@ -235,6 +235,22 @@ ipcMain.handle("git", function (event, payload) {
   });
 });
 
+ipcMain.handle("list-providers", function () {
+  // Four small JSON files; spawning the agent to read a directory would be absurd.
+  const dir = path.join(__dirname, "..", "local-agent", "config", "providers");
+  const out = [];
+  try {
+    for (const f of fs.readdirSync(dir)) {
+      if (!f.endsWith(".json")) continue;
+      try {
+        const cfg = JSON.parse(fs.readFileSync(path.join(dir, f), "utf-8"));
+        if (cfg && cfg.enabled && cfg.id) out.push({ id: cfg.id, name: cfg.name || cfg.id });
+      } catch (e) { /* a malformed config is skipped, not fatal */ }
+    }
+  } catch (e) { /* no directory means no providers */ }
+  return out;
+});
+
 ipcMain.handle("list-files", function (event, workspace) {
   // The renderer has no directory access; entry point detection needs a listing.
   const out = [];

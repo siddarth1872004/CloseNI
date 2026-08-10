@@ -96,7 +96,30 @@ $("browse-btn").onclick = async function () {
   const f = await window.api.selectFolder();
   if (f) { workspace = f; $("workspace-label").textContent = f; log("workspace: " + f, "ok"); loadChatsForWorkspace(); }
 };
-$("provider-select").onchange = function (e) { provider = e.target.value; };
+// The picker lists whatever is enabled in local-agent/config/providers, so
+// adding a provider is a JSON file rather than a markup edit.
+(async function () {
+  const sel = $("provider-select");
+  if (!sel) return;
+  let list = [];
+  try { list = await window.api.listProviders(); } catch (e) {}
+  if (!list.length) list = [{ id: "deepseek", name: "DeepSeek Chat" }];
+  sel.innerHTML = "";
+  list.forEach(function (p) {
+    const o = document.createElement("option");
+    o.value = p.id;
+    o.textContent = p.name;
+    sel.appendChild(o);
+  });
+  let saved = null;
+  try { saved = localStorage.getItem("closeni.provider"); } catch (e) {}
+  if (saved && list.some(function (p) { return p.id === saved; })) sel.value = saved;
+  provider = sel.value;
+  sel.onchange = function (e) {
+    provider = e.target.value;
+    try { localStorage.setItem("closeni.provider", provider); } catch (e) {}
+  };
+})();
 
 function runAgent(args) {
   try {
