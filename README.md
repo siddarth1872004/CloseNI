@@ -152,6 +152,43 @@ then `package.json` `main`, then `main.py`, `src/main.py`, `app.py`, `index.js`,
 guessing. Output appears in the tab as well as the Project log.
 
 
+## Providers
+
+The picker lists every enabled config in `local-agent/config/providers/`. Adding a
+provider means adding a JSON file there — no code change, no markup change.
+
+**Every field in a provider config is read.** `chatInput`, `sendButton` and
+`assistantMessage` drive the conversation. `stopButton` with
+`waitForStopButtonDisappear` ends a wait the moment the provider's own stop
+button vanishes, instead of waiting for the reply text to sit still for eight
+seconds. A provider without a stop button falls back to that stability check, so
+a wrong selector costs speed rather than correctness.
+
+That optimisation only helps replies slower than about five seconds: `sendPrompt`
+sleeps 2s after sending to capture the thread URL and `waitForResponse` waits 3s
+before its first poll, so a faster reply's stop button appears and vanishes
+unobserved. Those are the replies where waiting does not matter anyway.
+
+`GLM (Z.ai)` ships with **unverified selectors** — they have never been checked
+against the live site. If it hangs or sends nothing, correct `chatInput` and
+`sendButton` in `glm.json` first. `huggingchat.json` and `open-webui.json` are
+empty placeholders with no selectors at all; they are disabled, and enabling one
+without filling it in will fail immediately.
+
+## Signing in
+
+**Sign in** beside the provider picker opens a visible browser at that provider
+and waits for the chat input to appear, then closes. It forces a visible window
+regardless of the Show Browser checkbox — a login in a window nobody can see is
+the bug it exists to fix. The session lives in that provider's persistent profile
+under `local-agent/storage/browser-profiles/`, which is the only record of being
+signed in.
+
+A headless run that finds no chat input gives up after 15 seconds and says to
+sign in, rather than waiting out the full two-minute timeout for a login that
+cannot happen.
+
+
 ## Notes
 
 - Chat threads per workspace are stored in `local-agent/storage/sessions.json`.
