@@ -115,14 +115,7 @@ export function normalizeCommand(command: string): string {
   return command.replace(/(^|[\s;&|(])python(?=\s|$)/g, "$1" + python);
 }
 
-export function detectSyntaxChecks(filePath: string): string[] {
-  if (filePath.endsWith(".py")) {
-    const python = resolvePythonCommand();
-    // Better to skip the check than to emit a command that can never succeed.
-    return python ? [python + " -m py_compile \"" + filePath + "\""] : [];
-  }
-  if (filePath.endsWith(".js")) {
-    return ["node --check \"" + filePath + "\""];
-  }
-  return [];
-}
+// detectSyntaxChecks used to live here, answering one file at a time. It was
+// deleted rather than kept alongside the planner: a per-file-only API sitting
+// next to a manifest-aware one is an invitation to call the wrong one, and the
+// wrong one reports false failures on any Rust or Java project.

@@ -6,7 +6,8 @@ import { parsePlanRobust } from "./parser/json-repair.js";
 import { applyPatch } from "./patch/patch-applier.js";
 import { PlaywrightController, ProviderConfig } from "./providers/playwright-controller.js";
 import { ProviderRegistry } from "./providers/provider-registry.js";
-import { runCommand, detectSyntaxChecks, normalizeCommand } from "./verification/command-runner.js";
+import { runCommand, normalizeCommand } from "./verification/command-runner.js";
+import { planChecksForWorkspace } from "./verification/check-planner.js";
 import { decideApproval } from "./verification/approval-policy.js";
 import { getProjectContext } from "./context/context-engine.js";
 import { selectRelevantFiles, WorkspaceFile } from "./context/relevance.js";
@@ -202,13 +203,14 @@ async function testAllMode(workspace: string) {
   walk(workspace, files);
   let pass = 0; let fail = 0;
   const results: { command: string; success: boolean }[] = [];
-  for (const f of files) {
-    for (const cmd of detectSyntaxChecks(path.relative(workspace, f))) {
-      const r = await runCommand(cmd, workspace);
-      console.log((r.success ? "PASS " : "FAIL ") + cmd);
-      results.push({ command: cmd, success: r.success });
-      if (r.success) pass++; else { fail++; if (r.output) projLog(r.output.slice(0, 800)); }
-    }
+  // Asked once, for every file at once: a per-file question cannot see that a
+  // Cargo.toml means one cargo check instead of a rustc per module.
+  const checks = planChecksForWorkspace(workspace, files.map((f) => path.relative(workspace, f)));
+  for (const c of checks) {
+    const r = await runCommand(c.command, workspace, c.timeoutMs, { timeoutIsFailure: true });
+    console.log((r.success ? "PASS " : "FAIL ") + c.command);
+    results.push({ command: c.command, success: r.success });
+    if (r.success) pass++; else { fail++; if (r.output) projLog(r.output.slice(0, 800)); }
   }
   emit({ success: fail === 0, passed: pass, failed: fail, results: results });
 }
@@ -396,13 +398,12 @@ async function runBuildStep(controller: PlaywrightController, config: ProviderCo
     if (!applyResult.success) {
       failed = { command: "apply patch", output: applyResult.errors.join("\n") };
     } else {
-      const checks: string[] = [];
-      for (const c of plan.changes) for (const s of detectSyntaxChecks(c.filePath)) checks.push(s);
-      for (const cmd of checks) {
-        console.log("RUNNING_CHECK: " + cmd);
-        const r = await runCommand(cmd, workspace);
+      const checks = planChecksForWorkspace(workspace, plan.changes.map((c) => c.filePath));
+      for (const c of checks) {
+        console.log("RUNNING_CHECK: " + c.command);
+        const r = await runCommand(c.command, workspace, c.timeoutMs, { timeoutIsFailure: true });
         console.log("CHECK_RESULT: " + (r.success ? "PASS" : "FAIL"));
-        if (!r.success) { failed = { command: cmd, output: r.output }; break; }
+        if (!r.success) { failed = { command: c.command, output: r.output }; break; }
       }
       if (!failed && plan.commands) {
         for (const suggested of plan.commands) {
