@@ -3,8 +3,15 @@
 Date: 2026-08-10
 Roadmap item: 8 (model / tool / effort switching)
 Sub-project: 2 · Provider platform — the deferred fourth item
-Status: agreed in brainstorming. Control model chosen by the project owner;
-markup supplied by the project owner from a live DeepSeek session.
+Status: implemented — `plans/2026-08-10-provider-controls.md`. Control model
+chosen by the project owner; markup supplied by the project owner from live
+sessions.
+
+**One non-goal below has since been met.** This spec was written when only
+DeepSeek had been observed and lists shipping GLM and Qwen controls as out of
+scope. The owner then captured both, and all three shipped together. The
+prediction that they would differ in kind rather than only in selector held, and
+is what the per-provider design was for; see the plan for the comparison.
 
 ## Problem
 

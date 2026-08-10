@@ -276,6 +276,91 @@ function testCompletion() {
   check("stop signal ignored when not configured", isComplete(s({ started: true, stopSeen: true, stopGone: true, stableTicks: 0 }), false, 4) === false);
 }
 
+function testControlDecisions() {
+  section("provider control decisions");
+  const d = require(path.join(DIST, "providers/controls/decisions.js"));
+  const { hasControls } = require(path.join(DIST, "providers/controls/index.js"));
+
+  // Attribute-flagged state: DeepSeek's aria-pressed, GLM's data-selected.
+  check("wanted on, currently off, clicks", d.flagAction("false", true) === "click");
+  check("wanted on, already on, skips", d.flagAction("true", true) === "already-set");
+  check("wanted off, currently on, clicks", d.flagAction("true", false) === "click");
+  check("wanted off, already off, skips", d.flagAction("false", false) === "already-set");
+  // A missing attribute must never be guessed at. Blind toggling would turn a
+  // wanted setting off, which is worse than not setting it.
+  check("missing attribute is unreadable", d.flagAction(null, true) === "unreadable");
+  check("garbage attribute is unreadable", d.flagAction("yes", true) === "unreadable");
+
+  // Text-flagged state: Qwen's trigger label.
+  check("trigger already showing the value skips", d.labelAction("Qwen3.8-Max", "Qwen3.8-Max") === "already-set");
+  check("trigger showing something else opens", d.labelAction("Qwen3.7-Plus", "Qwen3.8-Max") === "open");
+  check("case and spacing do not matter", d.labelAction("  GLM-5.2 ", "glm-5.2") === "already-set");
+  check("a multi-line trigger matches on any line", d.labelAction("Model\nQwen3.8-Max", "Qwen3.8-Max") === "already-set");
+  check("an empty trigger is unreadable", d.labelAction("", "Qwen3.8-Max") === "unreadable");
+
+  // The reason matching is whole-line: Qwen renders each model as a card with
+  // a description, and Qwen3.7-Max's description mentions Qwen3.7.
+  check("a longer name does not satisfy a shorter one", d.optionMatches("Qwen3.7-Max", "Qwen3.7") === false);
+  check("a description mentioning the name does not match",
+    d.optionMatches("Qwen3.7-Max\nBuilt on Qwen3.7", "Qwen3.7") === false);
+  check("the title line matches exactly", d.optionMatches("Qwen3.7-Max\nBuilt on Qwen3.7", "Qwen3.7-Max") === true);
+
+  check("selector template substitution",
+    d.fillSelector('[data-model-type="{value}"]', "expert") === '[data-model-type="expert"]');
+
+  // Settings arrive as JSON on an environment variable. A bad one means no
+  // controls, never a crash: a mistyped setting must not stop a build.
+  check("valid JSON parses", d.parseDesiredControls('{"mode":"expert"}').mode === "expert");
+  check("booleans survive", d.parseDesiredControls('{"smart-search":false}')["smart-search"] === false);
+  check("malformed JSON yields nothing", Object.keys(d.parseDesiredControls("{oops")).length === 0);
+  check("missing value yields nothing", Object.keys(d.parseDesiredControls(undefined)).length === 0);
+  check("an array yields nothing", Object.keys(d.parseDesiredControls("[1,2]")).length === 0);
+  check("non-scalar values are dropped", Object.keys(d.parseDesiredControls('{"a":{"b":1}}')).length === 0);
+
+  // A provider with no module has no controls rather than an error.
+  check("deepseek has a module", hasControls("deepseek") === true);
+  check("qwen-studio has a module", hasControls("qwen-studio") === true);
+  check("glm has a module", hasControls("glm") === true);
+  check("an unknown provider has none", hasControls("huggingchat") === false);
+}
+
+function testControlSettings() {
+  section("provider control settings");
+  const { resolveControls, labelFor } = require(path.join(__dirname, "..", "..", "desktop", "controls-settings.js"));
+
+  const controls = [
+    { id: "mode", kind: "select", default: "default", options: [{ value: "default" }, { value: "expert" }] },
+    { id: "deep-thinking", kind: "toggle", default: true },
+    { id: "smart-search", kind: "toggle", default: false },
+  ];
+
+  const defaults = resolveControls(controls, {});
+  check("defaults are used when nothing is saved", defaults.mode === "default");
+  check("a toggle defaulting to on is on", defaults["deep-thinking"] === true);
+  check("a toggle defaulting to off is off", defaults["smart-search"] === false);
+
+  const saved = resolveControls(controls, { mode: "expert", "deep-thinking": false });
+  check("saved choices win over defaults", saved.mode === "expert");
+  check("a saved false is respected, not treated as unset", saved["deep-thinking"] === false);
+  check("unsaved controls still get their default", saved["smart-search"] === false);
+
+  // Saved values are validated against what the provider declares now. A model
+  // dropped from a provider's line-up would otherwise be requested forever.
+  check("a value no longer offered falls away",
+    resolveControls(controls, { mode: "vision" }).mode === undefined);
+  check("a control no longer declared falls away",
+    resolveControls(controls, { "old-control": true })["old-control"] === undefined);
+  check("a non-boolean for a toggle is dropped",
+    resolveControls(controls, { "deep-thinking": "yes" })["deep-thinking"] === undefined);
+
+  check("a provider with no controls asks for nothing", Object.keys(resolveControls([], {})).length === 0);
+  check("missing arguments are survivable", Object.keys(resolveControls(null, null)).length === 0);
+
+  const withLabels = { options: [{ value: "glm-5.2", label: "GLM-5.2" }] };
+  check("a value's label is shown", labelFor(withLabels, "glm-5.2") === "GLM-5.2");
+  check("an unknown value falls back to itself", labelFor(withLabels, "glm-9") === "glm-9");
+}
+
 function testEntrypoint() {
   section("entry point detection");
   const { detectEntrypoint } = require(path.join(__dirname, "..", "..", "desktop", "entrypoint.js"));
@@ -514,6 +599,8 @@ async function testBrowserExtraction() {
   testDiff();
   testApprovalPolicy();
   testCompletion();
+  testControlDecisions();
+  testControlSettings();
   testEntrypoint();
   testRelevance();
   testPatchApplier();

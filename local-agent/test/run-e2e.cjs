@@ -839,6 +839,102 @@ async function main() {
     fs.rmSync(ws, { recursive: true, force: true });
   }
 
+  // ---------------------------------------------------- provider UI controls
+  section("provider controls are applied against each provider's own shape");
+  {
+    // Driven directly rather than through the CLI: the mock chat page has no
+    // model picker, and giving it one would make it a fourth provider shape
+    // that resembles nothing real. The modules are the thing under test.
+    const { chromium } = require("playwright");
+    const { applyProviderControls } = require(path.join(__dirname, "..", "dist", "providers", "controls", "index.js"));
+    const readCfg = (id) => JSON.parse(fs.readFileSync(
+      path.join(__dirname, "..", "config", "providers", id + ".json"), "utf8"));
+
+    const browser = await chromium.launch({ headless: true });
+    const page = await browser.newPage();
+    const reload = () => page.goto(baseUrl + "__controls", { waitUntil: "domcontentloaded" });
+    const byId = (results, id) => results.find((r) => r.id === id) || { action: "missing" };
+    await reload();
+
+    // --- DeepSeek: inline, self-reporting, no menus.
+    const ds = readCfg("deepseek").controlSelectors;
+    let r = await applyProviderControls(page, "deepseek", ds, {
+      "mode": "expert", "deep-thinking": true, "smart-search": true,
+    });
+    check("deepseek switches mode", byId(r, "mode").action === "clicked", JSON.stringify(r));
+    check("deepseek leaves an already-on toggle alone", byId(r, "deep-thinking").action === "already-set", JSON.stringify(r));
+    check("deepseek turns on a toggle that was off", byId(r, "smart-search").action === "clicked", JSON.stringify(r));
+    check("the mode actually changed",
+      (await page.getAttribute('[data-model-type="expert"]', "aria-checked")) === "true");
+    check("the previous mode was released",
+      (await page.getAttribute('[data-model-type="default"]', "aria-checked")) === "false");
+
+    // Applying the same settings again must be all reads and no clicks. This is
+    // what makes it safe to run on every conversation open.
+    r = await applyProviderControls(page, "deepseek", ds, {
+      "mode": "expert", "deep-thinking": true, "smart-search": true,
+    });
+    check("re-applying the same settings clicks nothing",
+      r.every((x) => x.action === "already-set"), JSON.stringify(r));
+
+    // Turning something off must work as well as turning it on.
+    r = await applyProviderControls(page, "deepseek", ds, { "smart-search": false });
+    check("deepseek turns a toggle back off", byId(r, "smart-search").action === "clicked", JSON.stringify(r));
+    check("the toggle really went off",
+      (await page.locator(".ds-toggle-button").filter({ hasText: "Smart Search" }).first().getAttribute("aria-pressed")) === "false");
+
+    // A control with no readable state is reported, never guessed at — the
+    // mock's Mystery toggle moves on click, so a blind module would pass.
+    r = await applyProviderControls(page, "deepseek", { toggle: ".ds-toggle-button", deepThinkingText: "Mystery" }, { "deep-thinking": true });
+    check("an unreadable control is reported, not clicked", byId(r, "deep-thinking").action === "unavailable", JSON.stringify(r));
+
+    // A selector that matches nothing is a log line, not a thrown build.
+    r = await applyProviderControls(page, "deepseek", { modeOption: '[data-nope="{value}"]' }, { mode: "expert" });
+    check("a missing control is unavailable rather than an error", byId(r, "mode").action === "unavailable", JSON.stringify(r));
+
+    // --- Qwen: value is the trigger's text, options appear only when opened.
+    await reload();
+    const qw = readCfg("qwen-studio").controlSelectors;
+    r = await applyProviderControls(page, "qwen-studio", qw, { model: "Qwen3.7-Max", thinking: "Thinking" });
+    check("qwen picks a model from its dropdown", byId(r, "model").action === "clicked", JSON.stringify(r));
+    check("qwen picks a thinking level", byId(r, "thinking").action === "clicked", JSON.stringify(r));
+    check("qwen's trigger now shows the chosen model",
+      (await page.locator('[aria-label="Select Model"]').innerText()).includes("Qwen3.7-Max"));
+
+    r = await applyProviderControls(page, "qwen-studio", qw, { model: "Qwen3.7-Max" });
+    check("qwen never opens a menu for a model already selected",
+      byId(r, "model").action === "already-set", JSON.stringify(r));
+
+    // The option cards carry descriptions, and Qwen3.7-Max's mentions Qwen3.7.
+    // Matching on the card's whole text would pick the wrong model here.
+    r = await applyProviderControls(page, "qwen-studio", qw, { model: "Qwen3.7" });
+    check("qwen does not match a model by a description mentioning it",
+      byId(r, "model").action === "unavailable", JSON.stringify(r));
+
+    // --- GLM: options carry data-value and data-selected.
+    await reload();
+    const gl = readCfg("glm").controlSelectors;
+    r = await applyProviderControls(page, "glm", gl, { model: "glm-4.7", thinking: "High" });
+    check("glm picks a model by data-value", byId(r, "model").action === "clicked", JSON.stringify(r));
+    check("glm picks a Deep Think level", byId(r, "thinking").action === "clicked", JSON.stringify(r));
+    check("glm's selection moved",
+      (await page.getAttribute('[data-value="glm-4.7"]', "data-selected")) === "true");
+    check("glm's Deep Think level moved",
+      (await page.locator("#glm-think [data-selected]").filter({ hasText: "High" }).getAttribute("data-selected")) === "true");
+
+    r = await applyProviderControls(page, "glm", gl, { model: "glm-4.7", thinking: "High" });
+    check("re-applying glm settings clicks nothing",
+      r.every((x) => x.action === "already-set"), JSON.stringify(r));
+
+    // --- The registry.
+    r = await applyProviderControls(page, "huggingchat", {}, { model: "anything" });
+    check("a provider with no module yields no results", r.length === 0, JSON.stringify(r));
+    r = await applyProviderControls(page, "deepseek", ds, {});
+    check("asking for nothing does nothing", r.length === 0, JSON.stringify(r));
+
+    await browser.close();
+  }
+
   // ------------------------------------------------ signing in to a provider
   section("signin reports whether the chat input appeared");
   {

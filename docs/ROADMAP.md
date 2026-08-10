@@ -1,6 +1,6 @@
 # CloseNI Roadmap
 
-28 items, grouped into 9 sub-projects. **3 of 9 complete** (1 · Conversation & context core, 6 · Builder IDE experience, 9 · Housekeeping), plus 2 · Provider platform at 3 of 4. Each sub-project gets its own design spec
+28 items, grouped into 9 sub-projects. **4 of 9 complete** (1 · Conversation & context core, 2 · Provider platform, 6 · Builder IDE experience, 9 · Housekeeping). Each sub-project gets its own design spec
 and implementation plan under `docs/superpowers/`, and is expected to leave the
 application working on its own.
 
@@ -37,16 +37,25 @@ traced to concurrent end-to-end suites sharing one provider config file, not to
 a race in the product; that collision was fixed in Phase 2. Plan mode ran 25/25
 clean in isolation.
 
-## 2 · Provider platform — 3 of 4
+## 2 · Provider platform — DONE
 
 Roadmap items 7, 8, 9, 10. Depends on nothing. Blocks sub-project 4.
 
 - **7. GLM + Qwen Studio** — `done`. Both configured and listed. GLM's selectors
   are unverified against the live site, recorded in the file itself.
-- **8. Model / tool / effort switching** — `todo`, **deferred on information, not
-  effort**. It needs click sequences against provider UIs nobody here can see or
-  log into. Building the machinery with blank selectors would look finished and
-  work nowhere. Open until someone with an account supplies the real markup.
+- **8. Model / tool / effort switching** — `done` —
+  `plans/2026-08-10-provider-controls.md`. The owner captured all three live UIs,
+  which is what this was blocked on. They differ in kind, not only in selector:
+  DeepSeek reports its state in `aria-pressed`, Qwen's state is its trigger's
+  visible text, GLM's is `data-selected` on options in a Radix portal. So each
+  provider gets its own module and the selectors live in JSON. The user chooses
+  in the sidebar and the agent applies on every conversation open, because these
+  settings reset on a new chat.
+
+  Two gaps, both recorded in the plan: GLM's Search menu is not wired (its
+  trigger was never captured), and GLM's Deep Think on/off toggle is left alone
+  deliberately, since it reports no readable state and blind-clicking it could
+  switch off what is being configured.
 - **9. First-run browser login onboarding** — `done`. A Sign in button opens a
   visible browser; a headless run with no chat input gives up in 15s instead of
   120s and names the fix.

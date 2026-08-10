@@ -44,6 +44,17 @@ ipcMain.handle("select-folder", async function () {
   return r.canceled ? null : r.filePaths[0];
 });
 
+/**
+ * Provider settings ride on the environment rather than the argument list.
+ * Every mode opens a conversation and every mode would otherwise need a new
+ * positional argument threaded through it; the controller reads this once.
+ */
+function agentEnv(headed, controls) {
+  const env = Object.assign({}, process.env, { AGENT_HEADED: headed });
+  if (controls && Object.keys(controls).length) env.AGENT_CONTROLS = JSON.stringify(controls);
+  return env;
+}
+
 ipcMain.handle("run-agent", function (event, payload) {
   console.log("run-agent called with payload:", JSON.stringify(payload).substring(0, 200));
   const args = payload.args || payload;
@@ -58,7 +69,7 @@ ipcMain.handle("run-agent", function (event, payload) {
       }
       return arg;
     });
-    const proc = spawn("node", [agentPath()].concat(finalArgs), { cwd: path.join(__dirname, ".."), env: Object.assign({}, process.env, { AGENT_HEADED: headed }) });
+    const proc = spawn("node", [agentPath()].concat(finalArgs), { cwd: path.join(__dirname, ".."), env: agentEnv(headed, payload.controls) });
     agentProc = proc;
     let output = "";
     let lineBuf = "";
@@ -113,7 +124,7 @@ ipcMain.handle("suggest", function (event, payload) {
     let proc;
     try {
       proc = spawn("node", [agentPath(), "suggest", payload.workspace, payload.provider, String(payload.stepIndex), payload.text],
-        { cwd: path.join(__dirname, ".."), env: Object.assign({}, process.env, { AGENT_HEADED: payload.headed ? "1" : "0" }) });
+        { cwd: path.join(__dirname, ".."), env: agentEnv(payload.headed ? "1" : "0", payload.controls) });
     } catch (e) { resolve({ success: false, error: String(e) }); return; }
     agentProc = proc;
     let output = "";
@@ -155,7 +166,7 @@ ipcMain.handle("start-session", function (event, payload) {
     let proc;
     try {
       proc = spawn("node", [agentPath(), "build-session", payload.workspace, payload.provider, payload.autonomy || "ask"],
-        { cwd: path.join(__dirname, ".."), env: Object.assign({}, process.env, { AGENT_HEADED: headed }) });
+        { cwd: path.join(__dirname, ".."), env: agentEnv(headed, payload.controls) });
     } catch (e) {
       resolve({ ok: false, error: String(e) });
       return;
@@ -274,7 +285,9 @@ ipcMain.handle("list-providers", function () {
       if (!f.endsWith(".json")) continue;
       try {
         const cfg = JSON.parse(fs.readFileSync(path.join(dir, f), "utf-8"));
-        if (cfg && cfg.enabled && cfg.id) out.push({ id: cfg.id, name: cfg.name || cfg.id });
+        // `controls` goes to the renderer so the sidebar can offer them. The
+        // selectors stay here: the agent reads those, the UI never needs them.
+        if (cfg && cfg.enabled && cfg.id) out.push({ id: cfg.id, name: cfg.name || cfg.id, controls: cfg.controls || [] });
       } catch (e) { /* a malformed config is skipped, not fatal */ }
     }
   } catch (e) { /* no directory means no providers */ }

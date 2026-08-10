@@ -13,5 +13,42 @@
     "waitForStopButtonDisappear": true,
     "maxWaitMs": 120000
   },
+  "_controlsNote": "Ant Design comboboxes. The trigger's visible text is the current value; options only exist once the menu is open. Only aria-label and qwen-* classes are stable - the index-module__* classes are CSS-module hashes that change every deploy.",
+  "controls": [
+    {
+      "id": "model",
+      "label": "Model",
+      "kind": "select",
+      "default": "Qwen3.8-Max",
+      "options": [
+        { "value": "Qwen3.8-Max", "label": "Qwen3.8-Max" },
+        { "value": "Qwen3.7-Plus", "label": "Qwen3.7-Plus" },
+        { "value": "Qwen3.7-Max", "label": "Qwen3.7-Max" },
+        { "value": "Qwen3.8-Max-Preview", "label": "Qwen3.8-Max-Preview" },
+        { "value": "Qwen3.6-Plus", "label": "Qwen3.6-Plus" },
+        { "value": "Qwen3.6-Max-Preview", "label": "Qwen3.6-Max-Preview" }
+      ]
+    },
+    {
+      "id": "thinking",
+      "label": "Thinking",
+      "kind": "select",
+      "default": "Thinking",
+      "options": [
+        { "value": "Auto", "label": "Auto" },
+        { "value": "Thinking", "label": "Thinking" },
+        { "value": "Fast", "label": "Fast" }
+      ]
+    }
+  ],
+  "controlSelectors": {
+    "modelTrigger": "[aria-label=\"Select Model\"]",
+    "modelOption": "[role=\"option\"], .ant-select-item, [role=\"menuitem\"]",
+    "modelOptionTitle": "[class*=\"title\"], [class*=\"name\"]",
+    "modelExpand": "text=Expand more models",
+    "thinkingTrigger": "[aria-label=\"Thinking\"]",
+    "thinkingOption": "[role=\"option\"], .ant-select-item",
+    "thinkingOptionTitle": ""
+  },
   "profileDir": "local-agent/storage/browser-profiles/qwen-studio"
 }
