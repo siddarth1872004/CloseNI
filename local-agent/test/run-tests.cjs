@@ -456,6 +456,50 @@ function testTheme() {
   check("a non-string falls back", resolveTheme({ id: "paper" }) === "midnight");
 }
 
+function testLogo() {
+  section("logo");
+  const svg = fs.readFileSync(path.join(__dirname, "..", "..", "build", "icon.svg"), "utf8");
+
+  // Sub-project 8 rasterises this into .ico and .png. A known viewBox is what
+  // makes those sizes land on whole pixels.
+  check("the viewBox is 32x32", /viewBox=["']0 0 32 32["']/.test(svg), svg.slice(0, 120));
+  check("it is an svg element", /<svg[\s>]/.test(svg));
+  check("it draws something", /<path[\s>]/.test(svg));
+  // currentColor is what lets one file serve nine themes and an installer icon.
+  check("it inherits its colour", svg.indexOf("currentColor") !== -1);
+  check("no raster is embedded", svg.indexOf("data:image") === -1);
+}
+
+function testLanguageMark() {
+  section("language marks");
+  const { languageMark } = require(path.join(__dirname, "..", "..", "desktop", "language-mark.js"));
+
+  check("python", languageMark("handlers.py").label === "py");
+  check("python uses its own token", languageMark("handlers.py").token === "--lang-py");
+  check("rust", languageMark("src/main.rs").token === "--lang-rs");
+  check("javascript", languageMark("index.js").token === "--lang-js");
+  check("java", languageMark("App.java").token === "--lang-java");
+  check("c", languageMark("main.c").token === "--lang-c");
+  check("c++ shares the c accent", languageMark("app.cpp").token === "--lang-c");
+  check("headers share it too", languageMark("util.h").token === "--lang-c");
+
+  // The label is the extension, so a family shares a colour but keeps its name.
+  check("the label is the extension", languageMark("app.cpp").label === "cpp");
+  check("uppercase is normalised", languageMark("MAIN.PY").label === "py");
+
+  // Anything unrecognised still gets a mark, so rows do not change width.
+  check("an unknown extension falls back", languageMark("notes.txt").token === "--lang-default");
+  check("and keeps its extension as the label", languageMark("notes.txt").label === "txt");
+  check("no extension falls back", languageMark("Makefile").token === "--lang-default");
+  check("a file with no extension is labelled", languageMark("Makefile").label === "—");
+  // .gitignore is not a "gitignore" file; labelling it as one would be wrong
+  // on every dotfile row.
+  check("a dotfile is not read as an extension", languageMark(".gitignore").label === "—");
+  check("a windows path works", languageMark("src\\main.rs").token === "--lang-rs");
+  check("a long extension is truncated", languageMark("a.mjsonschema").label.length <= 4);
+  check("missing input is survivable", languageMark(undefined).token === "--lang-default");
+}
+
 function testToolchain() {
   section("tool resolution");
   const { resolveTool, resetToolCache, TOOL_CANDIDATES } = require(path.join(DIST, "verification/toolchain.js"));
@@ -858,6 +902,8 @@ async function testBrowserExtraction() {
   testControlSettings();
   testCssTokens();
   testTheme();
+  testLogo();
+  testLanguageMark();
   testToolchain();
   testCheckPlanner();
   await testCommandTimeout();

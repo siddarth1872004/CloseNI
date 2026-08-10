@@ -20,7 +20,12 @@
 <body>
 <div id="app">
   <aside id="rail">
-    <div id="wordmark">Close<span>NI</span></div>
+    <div id="wordmark">
+      <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="square" aria-hidden="true">
+        <path d="M7 6 H13 V26 H7"/><path d="M25 6 H19 V26 H25"/>
+      </svg>
+      <span>Close<span>NI</span></span>
+    </div>
     <nav>
       <button class="nav-btn active" data-mode="chat"><i>01</i>Chat</button>
       <button class="nav-btn" data-mode="build"><i>02</i>Builder</button>
@@ -183,7 +188,17 @@
 
           <div class="settings-section" data-section="about">
             <div class="micro">About</div>
-            <div id="about-body"></div>
+            <div id="about-body">
+              <div class="about-mark">
+                <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="square" aria-hidden="true">
+                  <path d="M7 6 H13 V26 H7"/><path d="M25 6 H19 V26 H25"/>
+                </svg>
+                <div>
+                  <div class="about-name">CloseNI</div>
+                  <div class="hint">Drives web AI chats to plan and build software.</div>
+                </div>
+              </div>
+            </div>
           </div>
 
         </div>
@@ -214,6 +229,7 @@
 <script src="entrypoint.js"></script>
 <script src="controls-settings.js"></script>
 <script src="theme.js"></script>
+<script src="language-mark.js"></script>
 <script src="renderer.js"></script>
 <script src="builder.js"></script>
 </body>
