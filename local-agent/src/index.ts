@@ -270,14 +270,16 @@ async function testAllMode(workspace: string) {
   const files: string[] = [];
   walk(workspace, files);
   let pass = 0; let fail = 0;
-  const results: { command: string; success: boolean }[] = [];
+  const results: { command: string; success: boolean; language: string }[] = [];
   // Asked once, for every file at once: a per-file question cannot see that a
   // Cargo.toml means one cargo check instead of a rustc per module.
   const checks = planChecksForWorkspace(workspace, files.map((f) => path.relative(workspace, f)));
   for (const c of checks) {
     const r = await runCommand(c.command, workspace, c.timeoutMs, { timeoutIsFailure: true });
     console.log((r.success ? "PASS " : "FAIL ") + c.command);
-    results.push({ command: c.command, success: r.success });
+    // The language travels with the result so the Test panel can mark each row.
+    // A row's text is a command, not a path, so it has nothing to derive it from.
+    results.push({ command: c.command, success: r.success, language: c.language });
     if (r.success) pass++; else { fail++; if (r.output) projLog(r.output.slice(0, 800)); }
   }
   emit({ success: fail === 0, passed: pass, failed: fail, results: results });
@@ -843,7 +845,18 @@ async function researchGithub(query: string): Promise<any[]> {
         // pages into them, which floods the results panel.
         const description = (r.description || "").replace(/\s+/g, " ").trim();
         const short = description.length > 200 ? description.slice(0, 200) + "..." : description;
-        results.push({ source: "github", title: r.full_name, url: r.html_url, snippet: short + "  [" + (r.stargazers_count || 0) + " stars]", stars: r.stargazers_count || 0 });
+        // The licence is shown before a clone, so the user accepts it knowingly.
+        // Without forwarding it the confirmation could only say "an unknown
+        // licence" - true, but useless for the decision it is asking for.
+        const licence = r.license && (r.license.spdx_id || r.license.name);
+        results.push({
+          source: "github",
+          title: r.full_name,
+          url: r.html_url,
+          snippet: short + "  [" + (r.stargazers_count || 0) + " stars]",
+          stars: r.stargazers_count || 0,
+          license: licence && licence !== "NOASSERTION" ? licence : null,
+        });
       }
     }
   } catch (e) {
