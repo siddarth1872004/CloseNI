@@ -509,6 +509,38 @@ function testEntrypoint() {
   check("root main.py beats src/main.py", detectEntrypoint(["src/main.py", "main.py"], null) === "python3 main.py");
   check("python beats javascript when both exist", detectEntrypoint(["index.js", "main.py"], null) === "python3 main.py");
 
+  // Manifests beat loose files: a Cargo project is `cargo run`, whatever else
+  // happens to be lying around.
+  check("Cargo.toml means cargo run",
+    detectEntrypoint(["Cargo.toml", "src/main.rs"], null) === "cargo run");
+  check("a Makefile with a run target uses it",
+    detectEntrypoint(["Makefile", "main.c"], null, { makefile: "all:\n\tgcc main.c\nrun: all\n\t./a.out\n" }) === "make run");
+  check("a Makefile without one just builds",
+    detectEntrypoint(["Makefile", "main.c"], null, { makefile: "all:\n\tgcc main.c\n" }) === "make");
+  check("package.json still wins over a Makefile",
+    detectEntrypoint(["package.json", "Makefile"], { scripts: { start: "node ." } }) === "npm start");
+
+  // Loose files, no manifest.
+  check("main.c compiles and runs",
+    detectEntrypoint(["main.c"], null) === "gcc main.c -o main && ./main");
+  check("main.cpp uses g++",
+    detectEntrypoint(["main.cpp"], null) === "g++ main.cpp -o main && ./main");
+  check("Main.java compiles and runs",
+    detectEntrypoint(["Main.java"], null) === "javac Main.java && java Main");
+
+  // Windows has no ./ and no python3.
+  check("Windows drops the ./ prefix",
+    detectEntrypoint(["main.c"], null, null, "win32") === "gcc main.c -o main && main");
+  check("Windows uses python, not python3",
+    detectEntrypoint(["main.py"], null, null, "win32") === "python main.py");
+  check("everywhere else keeps python3",
+    detectEntrypoint(["main.py"], null, null, "linux") === "python3 main.py");
+
+  // Maven and Gradle are checked but not run: the main class cannot be inferred
+  // from a file listing, and a Run button that fails confusingly is worse than
+  // no Run button.
+  check("a Maven project has no entry point", detectEntrypoint(["pom.xml"], null) === null);
+
   // Returning null is a real answer: better than running something arbitrary.
   check("nothing recognisable yields null", detectEntrypoint(["README.md", "notes.txt"], null) === null);
   check("an empty workspace yields null", detectEntrypoint([], null) === null);

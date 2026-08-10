@@ -496,7 +496,16 @@ $("test-run-project").onclick = async function () {
       if (r && r.ok) pkg = JSON.parse(r.text);
     } catch (e) { /* an unreadable package.json just falls through to the file rules */ }
   }
-  const cmd = window.CNEntry ? window.CNEntry.detectEntrypoint(files, pkg) : null;
+  let makefile = null;
+  if (files.indexOf("Makefile") !== -1) {
+    try {
+      const mk = await window.api.readFile(workspace + "/Makefile", { full: true });
+      if (mk && mk.ok) makefile = mk.text;
+    } catch (e) { /* an unreadable Makefile just means no `run` target */ }
+  }
+  const cmd = window.CNEntry
+    ? window.CNEntry.detectEntrypoint(files, pkg, { makefile: makefile }, window.api.platform)
+    : null;
   if (!cmd) {
     renderTestResults([], "no entry point found - try a custom command");
     toast("No entry point found", "err");
