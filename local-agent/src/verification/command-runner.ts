@@ -1,4 +1,5 @@
 ﻿import { spawn, spawnSync } from "child_process";
+import { resolveTool } from "./toolchain.js";
 
 export interface CommandResult {
   command: string;
@@ -72,26 +73,10 @@ export function runCommand(command: string, cwd: string, timeoutMs: number = 150
 
 // "python" only exists on Windows and on old Linux installs; elsewhere it is
 // "python3". Guessing wrong makes every Python step fail its syntax check with
-// "python: not found" and burn its retries on perfectly good code.
-let cachedPython: string | null | undefined;
-
+// "python: not found" and burn its retries on perfectly good code. The probing
+// itself now lives in toolchain.ts, where every other compiler needs it too.
 export function resolvePythonCommand(): string | null {
-  if (cachedPython !== undefined) return cachedPython;
-  const candidates = process.platform === "win32" ? ["python", "py -3", "python3"] : ["python3", "python"];
-  for (const candidate of candidates) {
-    try {
-      const probe = spawnSync(candidate + " --version", { shell: true, stdio: "ignore", timeout: 10000 });
-      if (probe.status === 0) {
-        cachedPython = candidate;
-        return cachedPython;
-      }
-    } catch {
-      /* try the next candidate */
-    }
-  }
-  console.log("No Python interpreter found; skipping Python syntax checks.");
-  cachedPython = null;
-  return null;
+  return resolveTool("python");
 }
 
 let pythonAliasMissing: boolean | undefined;

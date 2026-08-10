@@ -361,6 +361,29 @@ function testControlSettings() {
   check("an unknown value falls back to itself", labelFor(withLabels, "glm-9") === "glm-9");
 }
 
+function testToolchain() {
+  section("tool resolution");
+  const { resolveTool, resetToolCache, TOOL_CANDIDATES } = require(path.join(DIST, "verification/toolchain.js"));
+
+  // node is running this test, so it is definitionally installed.
+  resetToolCache();
+  check("a tool that exists resolves", resolveTool("node") === "node");
+  check("the answer is cached", resolveTool("node") === "node");
+  check("a tool that does not exist resolves to null",
+    resolveTool("definitely-not-a-real-tool-xyz") === null);
+
+  // Candidate order matters: "python" only exists on Windows and old Linux.
+  check("python is probed in platform order",
+    TOOL_CANDIDATES.python[0] === (process.platform === "win32" ? "python" : "python3"));
+  // Windows has mingw32-make where Linux has make.
+  check("make has a mingw fallback", TOOL_CANDIDATES.make.indexOf("mingw32-make") > 0);
+  // Probing .exe names would resolve a Windows binary from WSL that cannot read
+  // a /tmp path, producing checks that fail for a reason nobody can see.
+  const allCandidates = Object.keys(TOOL_CANDIDATES)
+    .reduce(function (acc, k) { return acc.concat(TOOL_CANDIDATES[k]); }, []);
+  check("no .exe names are probed", allCandidates.every(function (c) { return c.indexOf(".exe") === -1; }));
+}
+
 function testEntrypoint() {
   section("entry point detection");
   const { detectEntrypoint } = require(path.join(__dirname, "..", "..", "desktop", "entrypoint.js"));
@@ -601,6 +624,7 @@ async function testBrowserExtraction() {
   testCompletion();
   testControlDecisions();
   testControlSettings();
+  testToolchain();
   testEntrypoint();
   testRelevance();
   testPatchApplier();
