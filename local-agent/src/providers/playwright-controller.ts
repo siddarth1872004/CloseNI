@@ -2,6 +2,7 @@ import { chromium, BrowserContext, Page } from "playwright";
 import * as path from "path";
 import * as fs from "fs";
 import { readSessions, writeSessions, getBuildThread, setBuildThread, resetBuildRun, getBuildLedger, setBuildLedger, BuildLedger } from "../session-store.js";
+import { isComplete } from "./completion.js";
 
 export interface ProviderConfig {
   id: string;
@@ -265,6 +266,19 @@ export class PlaywrightController {
     }
   }
 
+  private async stopButtonVisible(config: ProviderConfig): Promise<boolean> {
+    if (!this.page || !config.selectors.stopButton) return false;
+    try {
+      // isVisible, not count: a provider that hides its stop button with CSS
+      // rather than removing it from the DOM would otherwise read as permanently
+      // generating, and the signal would never fire.
+      const loc = this.page.locator(config.selectors.stopButton).first();
+      return (await loc.count()) > 0 && (await loc.isVisible());
+    } catch {
+      return false;
+    }
+  }
+
   private async assistantSelector(config: ProviderConfig): Promise<string> {
     if (this.pickedSelector) return this.pickedSelector;
     if (!this.page) return config.selectors.assistantMessage;
@@ -323,11 +337,20 @@ export class PlaywrightController {
     let lastText: string | null = null;
     let stableCount = 0;
     let waitingTicks = 0;
+    let stopSeen = false;
+    let stopGone = false;
+    const useStopButton = !!(config.completionRules?.waitForStopButtonDisappear && config.selectors.stopButton);
 
     while (Date.now() - start < maxWait) {
       await this.page.waitForTimeout(POLL_INTERVAL_MS);
       const count = await this.countMessages(config);
       const text = await this.getLastMessageText(config);
+
+      if (useStopButton) {
+        const visible = await this.stopButtonVisible(config);
+        if (visible) { stopSeen = true; stopGone = false; }
+        else if (stopSeen) stopGone = true;
+      }
 
       // A reply to a follow-up is usually SHORTER than the answer before it, so
       // "grew by 50 characters" never fires and the whole wait is spent thinking
@@ -351,15 +374,14 @@ export class PlaywrightController {
         continue;
       }
 
-      if (text === lastText && isNew) {
-        stableCount++;
-        if (stableCount >= STABLE_TICKS) {
-          console.log("Response complete (stable for " + (STABLE_TICKS * POLL_INTERVAL_MS) / 1000 + "s)!");
-          return await this.extractWithRetry(config);
-        }
-      } else {
-        stableCount = 0;
-        lastText = text;
+      if (text === lastText && isNew) stableCount++;
+      else { stableCount = 0; lastText = text; }
+
+      if (isComplete({ started: started, stopSeen: stopSeen, stopGone: stopGone, stableTicks: stableCount }, useStopButton, STABLE_TICKS)) {
+        console.log(useStopButton && stopSeen && stopGone
+          ? "Response complete (stop button disappeared)!"
+          : "Response complete (stable for " + (STABLE_TICKS * POLL_INTERVAL_MS) / 1000 + "s)!");
+        return await this.extractWithRetry(config);
       }
     }
 

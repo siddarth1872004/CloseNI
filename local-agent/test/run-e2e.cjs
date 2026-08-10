@@ -795,6 +795,52 @@ async function main() {
     fs.rmSync(ws, { recursive: true, force: true });
   }
 
+  // ------------------------- the stop button ends a wait sooner than stability
+  section("stop button completes a reply without the stability wait");
+  {
+    const ws = mkWorkspace();
+    const cfgPath = path.join(PROVIDER_DIR, "mock.json");
+    const original = fs.readFileSync(cfgPath, "utf8");
+
+    // sendPrompt sleeps 2s after clicking to capture the thread URL, then
+    // waitForResponse waits 3s before its first poll. A reply faster than that
+    // combined blind window lets the stop button appear and vanish unobserved,
+    // so the delay has to comfortably outlast it.
+    mock.setReplyDelay(12000);
+
+    const withStop = JSON.parse(original);
+    withStop.selectors.stopButton = "#stop";
+    withStop.completionRules.waitForStopButtonDisappear = true;
+    fs.writeFileSync(cfgPath, JSON.stringify(withStop, null, 2));
+
+    mock.setReplies([F + 'json\n{"summary":"s","steps":[{"title":"t","detail":"d","files":["a.py"]}]}\n' + F]);
+    const t0 = Date.now();
+    const fast = await runAgent(["plan", "x", ws, "mock"], { timeoutMs: 120000 });
+    const fastMs = Date.now() - t0;
+
+    check("plan succeeds with the stop button", !!fast.result && fast.result.success === true, JSON.stringify(fast.result));
+    check("the stop-button path was used", fast.out.includes("stop button"), (fast.out.match(/Response complete.*/) || [""])[0]);
+
+    // Same provider, stop button disabled: must still complete, via stability.
+    const noStop = JSON.parse(original);
+    noStop.selectors.stopButton = "#nonexistent-stop";
+    noStop.completionRules.waitForStopButtonDisappear = false;
+    fs.writeFileSync(cfgPath, JSON.stringify(noStop, null, 2));
+
+    mock.setReplies([F + 'json\n{"summary":"s","steps":[{"title":"t","detail":"d","files":["a.py"]}]}\n' + F]);
+    const t1 = Date.now();
+    const slow = await runAgent(["plan", "x", ws, "mock"], { timeoutMs: 120000 });
+    const slowMs = Date.now() - t1;
+
+    check("plan still succeeds without a stop button", !!slow.result && slow.result.success === true, JSON.stringify(slow.result));
+    check("stability path still reports completion", slow.out.includes("stable for"), (slow.out.match(/Response complete.*/) || [""])[0]);
+    check("the stop button finished sooner", fastMs < slowMs, "withStop=" + fastMs + "ms withoutStop=" + slowMs + "ms");
+
+    mock.setReplyDelay(0);
+    fs.writeFileSync(cfgPath, original);
+    fs.rmSync(ws, { recursive: true, force: true });
+  }
+
   await mock.close();
   fs.rmSync(profileRoot, { recursive: true, force: true });
   fs.rmSync(PROVIDER_DIR, { recursive: true, force: true });
