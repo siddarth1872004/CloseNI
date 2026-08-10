@@ -111,6 +111,27 @@ for (const c of candidates) {
   if (c.stableClasses.length) console.log("      stable classes: " + c.stableClasses.join(" "));
 }
 
+// Fallback listing: when a provider exposes no ARIA at all, the candidate scan
+// above finds nothing and this is the only way to see what is on the page.
+const clickable = await page.evaluate(() => {
+  const rows = [];
+  const els = document.querySelectorAll('button, [role="button"], li, a, [class*="model"], [class*="select"], [class*="toggle"], [class*="switch"]');
+  for (const el of els) {
+    const text = (el.textContent || "").trim().replace(/\s+/g, " ").slice(0, 60);
+    if (!text) continue;
+    const r = el.getBoundingClientRect();
+    if (r.width === 0 || r.height === 0) continue;
+    const attrs = [];
+    for (const a of el.attributes) {
+      if (["class", "id", "role", "aria-label", "title"].includes(a.name) || a.name.startsWith("data-") || a.name.startsWith("aria-")) {
+        attrs.push(a.name + '="' + String(a.value).slice(0, 70) + '"');
+      }
+    }
+    rows.push({ tag: el.tagName.toLowerCase(), text: text, attrs: attrs.join(" ") });
+  }
+  return rows.slice(0, 120);
+});
+
 console.log("");
 console.log("=== clickable elements currently visible ===");
 for (const r of clickable) console.log("  <" + r.tag + " " + r.attrs + ">  " + JSON.stringify(r.text));
