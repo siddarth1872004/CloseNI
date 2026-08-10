@@ -4,6 +4,7 @@ const { app, BrowserWindow, ipcMain, dialog } = require("electron");
 const path = require("path");
 const { spawn } = require("child_process");
 const { hasChromium } = require("./browser-check.js");
+const GH = require("./github-safe.js");
 
 let win = null;
 let agentProc = null;
@@ -322,12 +323,33 @@ ipcMain.handle("run-command", function (event, payload) {
   });
 });
 
+// Filled in by the token store. Stubs for now, so the hardening below can land
+// on its own ahead of any feature work.
+function currentToken() { return null; }
+function gitEnv() { return process.env; }
+
 ipcMain.handle("git", function (event, payload) {
   return new Promise(function (resolve) {
-    const proc = spawn("git", payload.args, { cwd: payload.cwd, shell: true });
+    let args;
+    try {
+      args = GH.safeGitArgs(payload.args);
+    } catch (e) {
+      resolve({ success: false, output: String(e.message) });
+      return;
+    }
+    // shell:false, because with shell:true Node concatenates the arguments into
+    // a shell string rather than passing them separately - so a commit message
+    // containing "; rm -rf ~" would run it. Git needs no shell.
+    const proc = spawn("git", args, { cwd: payload.cwd, shell: false, env: gitEnv() });
     let out = "";
-    proc.stdout.on("data", function (d) { out += d; win.webContents.send("project-log", "git> " + d.toString().replace(/\n$/, "")); });
-    proc.stderr.on("data", function (d) { out += d; win.webContents.send("project-log", "git> " + d.toString().replace(/\n$/, "")); });
+    function log(d) {
+      const clean = GH.redactToken(d.toString(), currentToken());
+      out += clean;
+      win.webContents.send("project-log", "git> " + clean.replace(/\n$/, ""));
+    }
+    proc.stdout.on("data", log);
+    proc.stderr.on("data", log);
+    proc.on("error", function (e) { resolve({ success: false, output: String(e) }); });
     proc.on("close", function (code) { resolve({ success: code === 0, output: out }); });
   });
 });

@@ -907,6 +907,66 @@ async function testAsyncPool() {
   check("and is served on release", third === first);
 }
 
+function testGitHubSafe() {
+  section("github safety");
+  const s = require(path.join(__dirname, "..", "..", "desktop", "github-safe.js"));
+
+  // --- redaction. A token in a log file has been published: to a screenshot,
+  // a pasted error report, a support request.
+  const T = "ghp_abcdef1234567890";
+  check("a token is redacted", s.redactToken("using " + T + " now", T).indexOf(T) === -1);
+  check("and leaves a marker", /REDACTED/.test(s.redactToken("using " + T, T)));
+  check("every occurrence goes", s.redactToken(T + " and " + T, T).indexOf(T) === -1);
+  check("a token inside a url goes",
+    s.redactToken("https://x-access-token:" + T + "@github.com/a/b", T).indexOf(T) === -1);
+  check("surrounding text survives", /^using /.test(s.redactToken("using " + T, T)));
+  // A partial match is not the token and must not be mangled.
+  check("a partial match is left alone", s.redactToken("ghp_abc is short", T) === "ghp_abc is short");
+  // An absent token must not turn the text into mush - an empty needle would
+  // otherwise match between every character.
+  check("no token leaves text intact", s.redactToken("hello", "") === "hello");
+  check("a null token leaves text intact", s.redactToken("hello", null) === "hello");
+  check("empty text is survivable", s.redactToken("", T) === "");
+  check("null text is survivable", s.redactToken(null, T) === "");
+  // A token containing regex metacharacters must still be replaced literally.
+  check("metacharacters in the token are literal",
+    s.redactToken("a b+c d", "b+c").indexOf("b+c") === -1);
+
+  // --- argument safety. With shell:false an argument is data, not syntax, so
+  // content passes through untouched; only the wrong TYPE is rejected.
+  check("a normal list passes",
+    JSON.stringify(s.safeGitArgs(["commit", "-m", "hi"])) === JSON.stringify(["commit", "-m", "hi"]));
+  check("a semicolon is data, not syntax",
+    s.safeGitArgs(["commit", "-m", "fix; drop table"])[2] === "fix; drop table");
+  check("backticks survive unchanged",
+    s.safeGitArgs(["commit", "-m", "use `x`"])[2] === "use `x`");
+  check("a dollar substitution survives unchanged",
+    s.safeGitArgs(["commit", "-m", "cost $(x)"])[2] === "cost $(x)");
+  check("an empty list is fine", JSON.stringify(s.safeGitArgs([])) === "[]");
+
+  let threw = 0;
+  [[1], [null], [undefined], [{}], "notalist", null].forEach(function (bad) {
+    try { s.safeGitArgs(bad); } catch (e) { threw++; }
+  });
+  check("bad argument types all throw", threw === 6, String(threw));
+}
+
+/**
+ * The bug this guards against is invisible in normal use: it only fires when
+ * someone types a semicolon. Asserting against the source is crude, but it is
+ * the only way to catch a regression with no runtime symptom until it has one.
+ */
+function testGitSpawnHardening() {
+  section("git spawn hardening");
+  const main = fs.readFileSync(path.join(__dirname, "..", "..", "desktop", "main.js"), "utf8");
+  const at = main.indexOf('ipcMain.handle("git"');
+  const gitBlock = main.slice(at, at + 900);
+  check("the git handler exists", at !== -1 && gitBlock.length > 100);
+  check("git does not run through a shell", /shell:\s*false/.test(gitBlock), gitBlock.slice(0, 200));
+  check("git arguments are validated", /safeGitArgs/.test(gitBlock));
+  check("git output is redacted", /redactToken/.test(gitBlock));
+}
+
 function testToolchain() {
   section("tool resolution");
   const { resolveTool, resetToolCache, TOOL_CANDIDATES } = require(path.join(DIST, "verification/toolchain.js"));
@@ -1311,6 +1371,8 @@ async function testBrowserExtraction() {
   testStoragePaths();
   testPlanScale();
   testPlanGraph();
+  testGitHubSafe();
+  testGitSpawnHardening();
   testScheduler();
   await testAsyncPool();
   testRunManifest();
