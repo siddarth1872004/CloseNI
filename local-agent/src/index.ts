@@ -120,11 +120,13 @@ async function planMode(transcript: string, workspace: string, providerId: strin
   transcript = capText(transcript, 8000);
   const ctx = getProjectContext(workspace, transcript);
   const prompt = "Create an implementation plan as JSON:\n" +
-    "{\"summary\":\"goal\",\"runCommand\":\"how to run the finished project\",\"steps\":[{\"title\":\"\",\"detail\":\"\",\"files\":[\"path\"]}]}" +
+    "{\"summary\":\"goal\",\"runCommand\":\"how to run the finished project\",\"steps\":[{\"title\":\"\",\"detail\":\"\",\"files\":[\"path\"],\"dependsOn\":[]}]}" +
     "Rules: as many steps as the work genuinely needs - a one-file script might be 2, " +
     "a full application with a database, API and UI might be 20 or more. Never pad, never compress. " +
     "Each step must touch a different set of files. Wrap in \`\`\`json.\n" +
-    "runCommand is the single command that starts the finished project, e.g. \"python3 src/app/server.py\".\n\n" +
+    "runCommand is the single command that starts the finished project, e.g. \"python3 src/app/server.py\".\n" +
+    "dependsOn lists the earlier steps whose files this step imports or builds on; a step that needs nothing lists []. " +
+    "Be accurate: steps with no declared dependency between them may run at the same time.\n\n" +
     "Project:\n" + ctx.tree + "\n\nChat:\n" + transcript;
   const { controller, config } = await openProvider(providerId, true, workspace);  // FRESH chat
   try {
@@ -207,8 +209,9 @@ async function askMode(workspace: string, providerId: string, question: string, 
 
 async function revisePlanMode(changes: string, workspace: string, providerId: string) {
   const prompt = "Update plan with: " + changes +
-    "\n\nJSON format: {\"summary\":\"\",\"runCommand\":\"how to run the finished project\",\"steps\":[{\"title\":\"\",\"detail\":\"\",\"files\":[\"\"]}]}\n" +
-    "As many steps as the work needs - never pad, never compress. Different files per step.";
+    "\n\nJSON format: {\"summary\":\"\",\"runCommand\":\"how to run the finished project\",\"steps\":[{\"title\":\"\",\"detail\":\"\",\"files\":[\"\"],\"dependsOn\":[]}]}\n" +
+    "As many steps as the work needs - never pad, never compress. Different files per step.\n" +
+    "dependsOn lists earlier steps this one builds on; [] if it needs nothing.";
   const { controller, config } = await openProvider(providerId, true, workspace);  // FRESH chat
   try {
     let prevCount = await controller.countMessages(config);

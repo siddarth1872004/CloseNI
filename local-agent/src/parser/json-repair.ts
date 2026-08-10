@@ -1,4 +1,5 @@
 import { MAX_PLAN_STEPS } from "../plan-scale.js";
+import { validateGraph } from "../plan-graph.js";
 
 export function extractBalanced(text: string): string | null {
   const start = text.indexOf("{");
@@ -111,6 +112,9 @@ export function parsePlanRobust(text: string): any {
   // Over the bound, treat the reply as unparseable so the caller re-asks.
   // Truncating to the bound would silently drop the end of the project.
   if (plan && plan.steps && plan.steps.length > MAX_PLAN_STEPS) return null;
+  // Same reasoning for a graph that cannot be scheduled: re-asking costs one
+  // round-trip, a deadlocked build costs the whole run.
+  if (plan && plan.steps && !validateGraph(plan.steps).ok) return null;
   return plan;
 }
 
