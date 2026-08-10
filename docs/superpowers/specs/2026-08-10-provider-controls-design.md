@@ -40,136 +40,113 @@ agent must apply them every time it opens a conversation.
 1. **The user chooses; the agent applies.** Settings live in the sidebar, not in
    per-task heuristics. An agent silently deciding to disable Deep thinking is a
    decision the user cannot see without reading the log.
-2. **Controls are declared in the provider config**, not hardcoded. A provider
-   without a `controls` block simply has none, which is every provider but
-   DeepSeek today.
+2. **Behaviour is code, selectors are config.** Each provider gets a module that
+   can express whatever its UI needs; the selectors it uses stay in JSON because
+   they rot fastest.
 3. **State is read before clicking, where it can be.** DeepSeek reports its own
    state via `aria-pressed` and `aria-checked`, so the agent clicks only to
    change something — blind toggling would turn a wanted setting off. A provider
    that exposes no readable state is handled explicitly rather than assumed away;
    see `state.by: "none"`.
 4. **`vision` is not offered.** Two modes are enough; the owner does not want it.
-5. **The schema is provider-agnostic.** GLM and Qwen are expected to differ in
-   kind, not merely in selector, so nothing about DeepSeek's shape is baked in.
+5. **Nothing about DeepSeek's shape is shared.** GLM and Qwen are expected to
+   differ in kind. A shared schema would have forced them into DeepSeek's mould;
+   a per-provider function does not.
 
 ## Design
 
-### Config
+**Behaviour lives in code, selectors live in config.** A declarative schema was
+tried first and grew `open`, `close`, `matchText` and `state.by` in a single
+revision — a small programming language, badly. Providers differ in kind, not
+only in selector, so each gets a function that can do whatever that provider
+needs: open a menu, wait, scroll, verify, retry.
 
-`ProviderConfig` gains an optional `controls` array. The schema is deliberately
-**not** shaped around DeepSeek: GLM and Qwen have not been observed and are
-likely to differ in kind, not just in selector.
+The codebase already assumed this. `deepseek.adapter.ts`, `qwen-studio.adapter.ts`
+and `open-webui.adapter.ts` existed as empty files until sub-project 9 deleted
+them for being stubs. This is that idea, built.
 
-Three things vary between providers, so all three are declared rather than
-assumed:
+### Three layers
 
-**1. Whether options must be revealed first.** DeepSeek shows its modes inline.
-A provider with a dropdown has no options in the DOM until a trigger is clicked.
-An optional `open` selector covers that; absent, the control is already visible.
-
-**2. How state is read.** DeepSeek exposes `aria-pressed` and `aria-checked`.
-Another provider may mark the selection with a CSS class, or expose nothing.
-
-**3. What kind of interaction it is.** A toggle flips; a select chooses one of
-several.
+**1. Config declares what exists** — enough for the sidebar to render controls
+and validate values. No behaviour:
 
 ```json
 "controls": [
-  {
-    "id": "mode",
-    "label": "Mode",
-    "kind": "select",
-    "selector": "[role=\"radiogroup\"] [data-model-type=\"{value}\"]",
-    "state": { "by": "attr", "attr": "aria-checked", "on": "true" },
+  { "id": "mode", "label": "Mode", "kind": "select", "default": "default",
     "options": [
       { "value": "default", "label": "Instant" },
       { "value": "expert",  "label": "Advanced" }
-    ]
-  },
-  {
-    "id": "deep-thinking",
-    "label": "Deep thinking",
-    "kind": "toggle",
-    "selector": ".ds-toggle-button",
-    "matchText": "Deep thinking",
-    "state": { "by": "attr", "attr": "aria-pressed", "on": "true" }
-  }
+    ] },
+  { "id": "deep-thinking", "label": "Deep thinking", "kind": "toggle", "default": true },
+  { "id": "smart-search",  "label": "Smart Search",  "kind": "toggle", "default": false }
 ]
 ```
 
-A provider whose menu must be opened, and which marks selection with a class:
+**2. Config carries the selectors**, because those rot fastest. A provider
+renaming a class should be a text edit, not a recompile:
 
 ```json
-{
-  "id": "model",
-  "label": "Model",
-  "kind": "select",
-  "open": "button[class*=\"model-picker\"]",
-  "selector": "[role=\"menuitem\"]",
-  "matchText": "{label}",
-  "state": { "by": "class", "class": "is-selected" },
-  "close": "Escape",
-  "options": [{ "value": "pro", "label": "GLM-4 Pro" }]
+"controlSelectors": {
+  "modeOption": "[role=\"radiogroup\"] [data-model-type=\"{value}\"]",
+  "toggle": ".ds-toggle-button"
 }
 ```
 
-And one that exposes nothing readable:
+**3. A module drives it.** `local-agent/src/providers/controls/deepseek.ts`
+exports one function:
 
-```json
-{ "id": "x", "label": "X", "kind": "toggle", "selector": "…",
-  "state": { "by": "none" } }
+```typescript
+applyControls(page: Page, selectors: Record<string, string>, desired: Record<string, unknown>): Promise<ControlResult[]>
+ControlResult = { id: string; action: "clicked" | "already-set" | "unavailable"; detail?: string }
 ```
 
-`state.by` is one of `attr`, `class` or `none`. With `none`, the agent cannot
-tell whether a click is needed, so it does not guess: it clicks only when the
-desired value differs from what it last set in this session, and logs that the
-state is unverifiable. Silently flipping a setting the user wanted is worse than
-leaving it alone.
+A provider with no module has no controls, which is every provider but DeepSeek
+today. `controls/index.ts` maps provider id to function; an unknown id returns an
+empty result rather than throwing.
 
-`{value}` and `{label}` are substituted from the chosen option, so a provider can
-target either a data attribute or visible text. `close` names an optional key to
-press after choosing, for menus that stay open.
+### Shared helpers
 
-**Hashed classes are deliberately absent.** `f79352dc` and `_9f2341b` are build
-artefacts and will change on any DeepSeek deploy. `ds-toggle-button`,
-`aria-pressed`, `aria-checked` and `data-model-type` are semantic and survive.
+The common patterns live in `controls/helpers.ts` so each provider module stays
+short — DeepSeek's is about thirty lines:
+
+- `setToggleByText(page, selector, text, want)` — finds the element whose own
+  text matches, reads `aria-pressed`, clicks only if it differs, re-reads to
+  confirm.
+- `pickOption(page, selectorTemplate, value)` — substitutes `{value}`, reads
+  `aria-checked`, clicks only if not already selected.
+
+Both return a `ControlResult` rather than throwing. **A control that will not
+change is logged and the run continues** — a build should not fail because a
+toggle was stubborn.
+
+### Reading before clicking
+
+DeepSeek reports its own state, so the agent clicks only to change something.
+Blind toggling would turn a wanted setting off. Where a provider exposes no
+readable state, its module decides what to do about that — the decision belongs
+with the provider that has the problem, not in a shared schema flag.
+
+### When it runs
+
+Immediately after the chat input appears, on every path that opens a
+conversation. The settings do not persist across chats, and builds open a fresh
+thread per run.
 
 ### Decoding a new provider
 
-GLM and Qwen get no `controls` block until their markup has been observed.
-`scripts/capture-provider-ui.mjs` is extended to report **candidate controls** —
-every element carrying `aria-pressed`, `aria-checked`, `role="switch"`,
-`role="radio"`, `role="menuitem"`, or a `data-*` attribute whose name suggests a
-mode or model — printed in roughly the shape the config wants, so decoding a
-provider is reading a list rather than trawling markup.
-
-### Applying
-
-A pure function decides what to do, so the decision is testable without a
-browser:
-
-```
-planControlActions(controls, desired, current) -> { id, action: "click" | "skip", reason }[]
-```
-
-`current` is what the page reports. A control already in the wanted state is
-skipped, and the reason is logged — so a run states plainly that it left Deep
-thinking alone because it was already on.
-
-`applyProviderControls(page, config, desired)` reads each control's state,
-consults the planner, clicks what needs changing, then re-reads to confirm. A
-control that will not change state is logged and the run continues: a build
-should not fail because a toggle was stubborn.
-
-Applied immediately after the chat input appears, in every path that opens a
-conversation.
+GLM and Qwen get no module until their markup has been observed.
+`scripts/capture-provider-ui.mjs` reports **candidate controls** — every element
+carrying `aria-pressed`, `aria-checked`, `role="switch"`, `role="radio"`,
+`role="menuitem"`, `role="option"` or a `<select>`, with its text, data
+attributes and readable state, filtering out hashed classes that change on every
+deploy. Decoding a provider is reading that list, not trawling 180KB of markup.
 
 ### Settings UI
 
-The sidebar renders controls for the selected provider, read from its config.
-Values persist per provider in `localStorage` under
-`closeni.controls.<providerId>`, and are passed to the agent as a JSON argument.
-Switching providers re-renders; a provider with no `controls` shows nothing.
+The sidebar renders each control declared by the selected provider. Values
+persist per provider in `localStorage` under `closeni.controls.<providerId>` and
+are passed to the agent as a JSON argument. A provider with no `controls` shows
+nothing.
 
 ## Non-goals
 
@@ -184,11 +161,14 @@ Switching providers re-renders; a provider with no `controls` shows nothing.
 
 ## Testing
 
-- Unit: `planControlActions` — already-correct state skipped, wrong state
-  clicked, unknown control ignored, missing desired value left alone.
-- End-to-end: a mock provider with a toggle and a radio group; assert the agent
-  clicks only what needs changing, reports state it could not change, and that a
-  provider without a `controls` block is unaffected.
+- Unit: the shared helpers' decision logic — already-correct state skipped,
+  wrong state clicked, missing element reported as unavailable rather than
+  throwing, unknown provider id yielding no results.
+- End-to-end: the mock provider renders DeepSeek-shaped controls (a
+  `ds-toggle-button` with `aria-pressed` and a `radiogroup` with
+  `data-model-type`), and the DeepSeek module is driven against them: assert it
+  clicks only what needs changing, leaves an already-correct control alone, and
+  that a provider with no module is unaffected.
 - The sidebar rendering is checked by driving the app.
 
 ## Consequences
