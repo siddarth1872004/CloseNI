@@ -467,6 +467,28 @@ function testCheckPlanner() {
     planChecks(["main.c", "main.c"], [], all, TMP).length === 1);
 }
 
+async function testCommandTimeout() {
+  section("command timeouts");
+  const { runCommand } = require(path.join(DIST, "verification/command-runner.js"));
+  const sleeper = process.platform === "win32" ? "ping -n 6 127.0.0.1 > NUL" : "sleep 5";
+
+  // A model-suggested command that runs quietly is probably a server, and
+  // calling that a failure would break `python -m http.server`. Unchanged.
+  const asServer = await runCommand(sleeper, os.tmpdir(), 1500);
+  check("a quiet long-running command still counts as a server", asServer.success === true);
+  check("and says so", asServer.output.indexOf("Assuming") !== -1);
+
+  // A syntax check is supposed to terminate. One that does not has told us
+  // nothing, and reporting that as a pass is worse than reporting the timeout.
+  const asCheck = await runCommand(sleeper, os.tmpdir(), 1500, { timeoutIsFailure: true });
+  check("a check that times out fails", asCheck.success === false);
+  check("the timeout is reported", asCheck.timedOut === true);
+
+  // The option must not change anything about a command that finishes.
+  const quick = await runCommand("node --version", os.tmpdir(), 15000, { timeoutIsFailure: true });
+  check("a command that finishes is unaffected", quick.success === true);
+}
+
 function testEntrypoint() {
   section("entry point detection");
   const { detectEntrypoint } = require(path.join(__dirname, "..", "..", "desktop", "entrypoint.js"));
@@ -709,6 +731,7 @@ async function testBrowserExtraction() {
   testControlSettings();
   testToolchain();
   testCheckPlanner();
+  await testCommandTimeout();
   testEntrypoint();
   testRelevance();
   testPatchApplier();

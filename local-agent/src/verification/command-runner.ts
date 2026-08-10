@@ -8,7 +8,22 @@ export interface CommandResult {
   timedOut: boolean;
 }
 
-export function runCommand(command: string, cwd: string, timeoutMs: number = 15000): Promise<CommandResult> {
+export interface RunOptions {
+  /**
+   * Treat a timeout as a failure. A syntax check is supposed to terminate, so
+   * one that does not has told us nothing - and reporting that as a pass hides
+   * exactly the case worth knowing about. Off by default, because a command the
+   * model suggested may legitimately be a server that never exits.
+   */
+  timeoutIsFailure?: boolean;
+}
+
+export function runCommand(
+  command: string,
+  cwd: string,
+  timeoutMs: number = 15000,
+  options: RunOptions = {},
+): Promise<CommandResult> {
   return new Promise((resolve) => {
     let stdout = "";
     let stderr = "";
@@ -51,7 +66,7 @@ export function runCommand(command: string, cwd: string, timeoutMs: number = 150
       clearTimeout(timer);
       const output = (stdout + "\n" + stderr).trim();
       
-      if (timedOut && !hasErrorOutput) {
+      if (timedOut && !hasErrorOutput && !options.timeoutIsFailure) {
         resolve({ 
           command: command, 
           success: true, 
