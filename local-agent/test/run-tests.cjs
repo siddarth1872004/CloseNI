@@ -855,6 +855,35 @@ function testScheduler() {
     JSON.stringify(runnableSteps(serial, S({ failed: [0], blocked: [1, 2, 3] }), 4)) === "[]");
   check("a failed step does not unblock its dependent",
     JSON.stringify(runnableSteps(serial, S({ failed: [0] }), 4)) === "[]");
+
+  // --- resuming. Without this, pressing Build after a partial run re-runs
+  // every completed step from the beginning, which is what made recovering
+  // from a failure feel like starting over.
+  const { seedState } = require(path.join(__dirname, "..", "..", "desktop", "scheduler.js"));
+  const St = (statuses) => statuses.map(function (x) { return { status: x }; });
+
+  const fresh = seedState(St(["pending", "pending", "pending"]));
+  check("a fresh plan seeds nothing done", JSON.stringify(fresh.completed) === "[]");
+  const part = seedState(St(["done", "done", "failed", "pending"]));
+  check("finished steps are remembered", JSON.stringify(part.completed) === "[0,1]");
+  check("a failure is remembered", JSON.stringify(part.failed) === "[2]");
+  check("pending steps stay runnable", part.completed.indexOf(3) === -1 && part.failed.indexOf(3) === -1);
+  check("skipped is remembered",
+    JSON.stringify(seedState(St(["skipped", "pending"])).skipped) === "[0]");
+  check("blocked is remembered",
+    JSON.stringify(seedState(St(["failed", "blocked"])).blocked) === "[1]");
+
+  // A step left "running" when the app closed is not running now. Treating it
+  // as in-flight would wedge the scheduler waiting for something that will
+  // never report back.
+  const interrupted = seedState(St(["done", "running", "pending"]));
+  check("an interrupted step is not still running", JSON.stringify(interrupted.running) === "[]");
+  check("and becomes runnable again",
+    JSON.stringify(runnableSteps([[], [0], [1]], interrupted, 2)) === "[1]");
+
+  // Seeded state must drive the scheduler straight to the next unfinished step.
+  check("a resumed build continues rather than restarting",
+    JSON.stringify(runnableSteps([[], [0], [1], [2]], seedState(St(["done", "done", "pending", "pending"])), 1)) === "[2]");
 }
 
 async function testAsyncPool() {

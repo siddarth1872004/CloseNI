@@ -926,14 +926,32 @@ $("chat-select").onchange = function (e) {
   }
 };
 
-$("new-chat-btn").onclick = function () {
-  window.api.newChat(workspace).then(() => {
-    currentChatIndex = -1;
-    toast("Started new chat");
-    log("New chat started", "ok");
-  }).catch((err) => {
-    log("Could not start new chat: " + err.message, "err");
-  });
+/**
+ * Start a new chat.
+ *
+ * Clearing activeChat in sessions.json is only half of it: the transcript the
+ * next plan is built from lives in chatHistory, and the messages the user can
+ * see live in the DOM. Without clearing both, pressing this did nothing visible
+ * and the old conversation still went into the next plan.
+ */
+$("new-chat-btn").onclick = async function () {
+  if (!workspace) { toast("Pick a workspace", "err"); return; }
+  const r = await window.api.newChat(workspace).catch(function (e) { return { ok: false, error: String(e) }; });
+  if (!r || !r.ok) { toast((r && r.error) || "Could not start a new chat", "err"); return; }
+
+  chatHistory = [];
+  currentChatIndex = -1;
+  currentPlan = null;
+  const flow = $("chat-flow");
+  if (flow) flow.innerHTML = "";
+  const planContent = $("plan-content");
+  if (planContent) planContent.innerHTML = "";
+  const sidebar = $("plan-sidebar");
+  if (sidebar) sidebar.classList.add("hidden");
+  await loadChatsForWorkspace();
+
+  toast("Started new chat");
+  log("new chat started - transcript cleared", "ok");
 };
 
 window.CN = {

@@ -61,7 +61,30 @@
     return out;
   }
 
-  var api = { runnableSteps: runnableSteps, blockedBy: blockedBy };
+  /**
+   * Rebuild scheduler state from what the step list already records.
+   *
+   * Without this, starting a build after a partial run begins again at step 0
+   * and redoes work that succeeded - which is what made recovering from a
+   * failure feel like starting over.
+   *
+   * "running" is deliberately not carried over: a step left running when the
+   * app closed is not running now, and treating it as in-flight would wedge the
+   * scheduler waiting for something that will never report back.
+   */
+  function seedState(steps) {
+    var state = { completed: [], failed: [], blocked: [], skipped: [], running: [] };
+    (steps || []).forEach(function (s, i) {
+      var st = s && s.status;
+      if (st === "done") state.completed.push(i);
+      else if (st === "failed") state.failed.push(i);
+      else if (st === "blocked") state.blocked.push(i);
+      else if (st === "skipped") state.skipped.push(i);
+    });
+    return state;
+  }
+
+  var api = { runnableSteps: runnableSteps, blockedBy: blockedBy, seedState: seedState };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.CNSched = api;
 })(typeof window !== "undefined" ? window : globalThis);

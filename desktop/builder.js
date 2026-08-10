@@ -201,7 +201,18 @@
       return i === 0 ? [] : [i - 1];
     });
     const limit = CN.getConcurrency();
-    const state = { completed: [], failed: [], blocked: [], skipped: [], running: [] };
+    // Seeded from what the step list already records, so pressing Build after a
+    // partial run continues instead of redoing everything from step 0.
+    const state = window.CNSched.seedState(steps);
+    // A step that failed last time is being retried by starting again, so clear
+    // it and anything it blocked - otherwise the scheduler treats the whole
+    // subtree as settled and stops immediately.
+    state.failed.concat(state.blocked).forEach(function (i) { setStatusOf(i, "pending"); });
+    state.failed = [];
+    state.blocked = [];
+    if (state.completed.length) {
+      CN.log("resuming: " + state.completed.length + "/" + steps.length + " already done", "step");
+    }
 
     function done() {
       return state.completed.length + state.failed.length +
@@ -331,15 +342,21 @@
     document.getElementById("preview-frame").src = "about:blank";
   };
 
+  /**
+   * Retry the failed step and carry on through the rest.
+   *
+   * This used to run exactly one step and stop, so the only way forward was
+   * Start Build - which restarted from step 0 and redid everything. Delegating
+   * to startBuild now resumes: seedState keeps what succeeded, and the failed
+   * step and anything it blocked are reset to pending.
+   */
   CN.retryFailed = async function () {
     if (running) { CN.toast("Already running", "err"); return; }
-    const i = steps.findIndex(function (s) { return s.status === "failed"; });
-    if (i === -1) return;
-    running = true;
-    buttons("running");
-    await runOne(i);
-    running = false;
-    buttons("idle");
+    if (!steps.some(function (s) { return s.status === "failed" || s.status === "blocked"; })) {
+      CN.toast("Nothing failed to retry");
+      return;
+    }
+    await CN.startBuild();
   };
 
   $("builder-start").onclick = function () { CN.startBuild(); };

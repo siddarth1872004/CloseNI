@@ -328,7 +328,7 @@ select{width:100%;}
 #toast-stack{position:fixed;top:14px;right:14px;z-index:80;display:flex;flex-direction:column;gap:8px;}
 .toast{background:var(--panel);border:1px solid var(--line-strong);border-left:2px solid var(--txt);
   color:var(--txt);font-family:ui-monospace,Consolas,monospace;font-size:11px;letter-spacing:.06em;
-  padding:10px 14px;border-radius:3px;box-shadow:var(--shadow-1);animation:toast-in .18s ease;}
+  padding:10px 14px;border-radius:3px;box-shadow:var(--shadow-1);}
 .toast.err{border-left-color:var(--err-line);background:var(--err-bg);}
 @keyframes toast-in{from{transform:translateX(12px);opacity:0;}to{transform:none;opacity:1;}}
 
@@ -411,12 +411,48 @@ select{width:100%;}
 /* The progress bar advances in chunks rather than sliding. */
 #builder-progress{transition:width var(--dur-slow) steps(12);}
 
-/* Both switches still turn everything off. */
+/* Things arriving: a stepped fade rather than a smooth one, so it reads as a
+   sprite appearing rather than a modern UI easing in. */
+@keyframes pix-in{from{opacity:0;transform:translateY(3px);}to{opacity:1;transform:none;}}
+@keyframes pix-slide{from{opacity:0;transform:translateX(10px);}to{opacity:1;transform:none;}}
+
+.toast{animation:pix-slide .2s steps(4) 1;}
+.panel.active{animation:pix-in .16s steps(3) 1;}
+.msg{animation:pix-in .16s steps(3) 1;}
+.test-row{animation:pix-in .14s steps(3) 1;}
+.res-item{animation:pix-in .14s steps(3) 1;}
+.file-card{animation:pix-in .16s steps(3) 1;}
+.gh-run{animation:pix-in .14s steps(3) 1;}
+.plan-step{animation:pix-in .16s steps(3) 1;}
+.step-card{animation:pix-in .12s steps(2) 1;}
+
+/* A stepped press, so a click lands rather than glides. */
+.btn:active:not(:disabled),.nav-btn:active,.settings-tab:active,.theme-swatch:active{
+  transform:translateY(1px);transition:transform .06s steps(2);}
+
+/* The status line and builder status change in a blink rather than a crossfade. */
+#status-line,#builder-status{transition:color .12s steps(2);}
+
+/* The browser download bar advances in chunks, like the build progress bar. */
+#browser-progress{transition:opacity .12s steps(2);}
+
+/* Both switches still turn everything off - the decoration toggle and the
+   accessibility setting, each on its own. */
 [data-decor="off"] .pix-stamp,
 [data-decor="off"] .pix-flicker,
-[data-decor="off"] .pix-spin::after{animation:none;}
+[data-decor="off"] .pix-spin::after,
+[data-decor="off"] .toast,
+[data-decor="off"] .panel.active,
+[data-decor="off"] .msg,
+[data-decor="off"] .test-row,
+[data-decor="off"] .res-item,
+[data-decor="off"] .file-card,
+[data-decor="off"] .gh-run,
+[data-decor="off"] .plan-step,
+[data-decor="off"] .step-card{animation:none;}
 @media (prefers-reduced-motion: reduce){
-  .pix-stamp,.pix-flicker,.pix-spin::after{animation:none;}
+  .pix-stamp,.pix-flicker,.pix-spin::after,
+  .toast,.panel.active,.msg,.test-row,.res-item,.file-card,.gh-run,.plan-step,.step-card{animation:none;}
 }
 
 /* Frontend preview */
