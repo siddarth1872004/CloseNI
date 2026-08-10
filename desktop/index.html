@@ -27,6 +27,7 @@
       <button class="nav-btn" data-mode="test"><i>03</i>Test</button>
       <button class="nav-btn" data-mode="research"><i>04</i>Research</button>
       <button class="nav-btn" data-mode="push"><i>05</i>Ship</button>
+      <button class="nav-btn" data-mode="settings"><i>06</i>Settings</button>
     </nav>
     <div id="rail-bottom">
       <div class="micro">Workspace</div>
@@ -36,23 +37,7 @@
       <select id="chat-select" style="margin-bottom:6px;">
         <option value="new">+ New Chat</option>
       </select>
-      <button id="new-chat-btn" class="btn" style="font-size:10px;padding:4px 8px;">New Chat</button>
-      <div class="micro" style="margin-top:10px;">Provider</div>
-      <select id="provider-select"></select>
-      <button id="provider-signin" class="btn" style="width:100%;margin-top:8px;">Sign in</button>
-      <!-- Filled from the selected provider's config. A provider that declares
-           no controls shows nothing here rather than an empty heading. -->
-      <div id="provider-controls"></div>
-      <div class="micro" style="margin-top:14px;">Permissions</div>
-      <select id="autonomy-select">
-        <option value="ask">Ask each command</option>
-        <option value="auto">Auto-allow</option>
-        <option value="never">Never run commands</option>
-      </select>
-      <div style="display:flex;align-items:center;gap:6px;margin-top:12px;">
-        <input type="checkbox" id="show-browser" style="width:auto;flex:none;accent-color:var(--txt);">
-        <label for="show-browser" style="font-size:11px;color:var(--dim);cursor:pointer;">Show Browser</label>
-      </div>
+      <button id="new-chat-btn" class="btn btn-sm">New Chat</button>
     </div>
   </aside>
   <main id="main">
@@ -152,6 +137,57 @@
       <div class="row"><input id="commit-msg" placeholder="commit message"><button id="git-commit" class="btn">commit all</button></div>
       <div class="row"><input id="remote-url" placeholder="https://github.com/you/repo.git"><button id="git-push" class="btn">push origin</button></div>
       <div class="hint">First push triggers a one-time GitHub sign-in via Windows.</div>
+    </section>
+
+    <section id="panel-settings" class="panel">
+      <div id="settings-view">
+        <div id="settings-nav">
+          <button class="settings-tab active" data-section="provider">Provider</button>
+          <button class="settings-tab" data-section="permissions">Permissions</button>
+          <button class="settings-tab" data-section="appearance">Appearance</button>
+          <button class="settings-tab" data-section="about">About</button>
+        </div>
+        <div id="settings-body">
+
+          <div class="settings-section active" data-section="provider">
+            <div class="micro">Provider</div>
+            <select id="provider-select"></select>
+            <button id="provider-signin" class="btn btn-block">Sign in</button>
+            <!-- Filled from the selected provider's config. A provider that
+                 declares no controls shows nothing rather than an empty heading. -->
+            <div id="provider-controls"></div>
+          </div>
+
+          <div class="settings-section" data-section="permissions">
+            <div class="micro">Permissions</div>
+            <select id="autonomy-select">
+              <option value="ask">Ask each command</option>
+              <option value="auto">Auto-allow</option>
+              <option value="never">Never run commands</option>
+            </select>
+            <div class="settings-row">
+              <input type="checkbox" id="show-browser">
+              <label for="show-browser">Show Browser</label>
+            </div>
+          </div>
+
+          <div class="settings-section" data-section="appearance">
+            <div class="micro">Theme</div>
+            <div id="theme-grid"></div>
+            <div class="settings-row" id="decor-row">
+              <input type="checkbox" id="theme-decor" checked>
+              <label for="theme-decor">Texture &amp; glow</label>
+            </div>
+            <div class="hint">Themes style CloseNI only. Projects you build here are never touched.</div>
+          </div>
+
+          <div class="settings-section" data-section="about">
+            <div class="micro">About</div>
+            <div id="about-body"></div>
+          </div>
+
+        </div>
+      </div>
     </section>
 
     <div id="log-row">

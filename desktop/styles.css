@@ -331,3 +331,35 @@ select{width:100%;}
 .test-output pre{white-space:pre-wrap;word-break:break-word;font-size:11px;color:var(--dim);}
 
 #provider-select{width:100%;background:var(--surface-sunken);border:1px solid var(--line);color:var(--txt);padding:7px 8px;border-radius:3px;font-family:inherit;font-size:12px;}
+
+/* Settings */
+#settings-view{display:flex;gap:var(--sp-5);flex:1;min-height:0;}
+#settings-nav{width:150px;flex:none;display:flex;flex-direction:column;gap:2px;}
+.settings-tab{background:none;border:none;border-left:2px solid transparent;color:var(--dim);
+  text-align:left;padding:var(--sp-3) var(--sp-4);font-size:12px;cursor:pointer;transition:var(--dur-fast);}
+.settings-tab:hover{color:var(--txt);background:var(--surface-raised);}
+.settings-tab.active{color:var(--txt);border-left-color:var(--txt);background:var(--surface-raised);}
+#settings-body{flex:1;border:1px solid var(--line);border-radius:var(--r-lg);background:var(--panel);
+  padding:var(--sp-6);overflow-y:auto;}
+.settings-section{display:none;flex-direction:column;gap:var(--sp-3);max-width:460px;}
+.settings-section.active{display:flex;}
+.settings-row{display:flex;align-items:center;gap:var(--sp-2);}
+.settings-row input[type="checkbox"]{width:auto;flex:none;accent-color:var(--txt);}
+.settings-row label{font-size:11px;color:var(--dim);cursor:pointer;}
+
+#theme-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:var(--sp-3);}
+.theme-swatch{display:flex;align-items:center;gap:var(--sp-3);padding:var(--sp-3);cursor:pointer;
+  background:var(--panel);border:1px solid var(--line);border-radius:var(--r-md);transition:var(--dur-fast);}
+.theme-swatch:hover{border-color:var(--line-strong);}
+.theme-swatch.active{border-color:var(--txt);}
+/* The chip previews the theme it selects: the swatch element carries its own
+   data-theme, so these tokens resolve to that theme's palette rather than the
+   one currently applied. */
+.theme-swatch-chip{width:26px;height:18px;flex:none;border-radius:var(--r-sm);
+  background:var(--bg);border:1px solid var(--line-strong);}
+.theme-swatch-name{font-size:11px;color:var(--dim);text-align:left;}
+.theme-swatch.active .theme-swatch-name{color:var(--txt);}
+
+/* Utility classes replacing the inline styles the markup used to carry. */
+.btn-block{width:100%;}
+.btn-sm{font-size:10px;padding:var(--sp-1) var(--sp-3);}
