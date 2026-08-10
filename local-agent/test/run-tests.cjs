@@ -384,6 +384,89 @@ function testToolchain() {
   check("no .exe names are probed", allCandidates.every(function (c) { return c.indexOf(".exe") === -1; }));
 }
 
+function testCheckPlanner() {
+  section("check planning");
+  const {
+    planChecks, FILE_CHECK_TIMEOUT_MS, PROJECT_CHECK_TIMEOUT_MS,
+  } = require(path.join(DIST, "verification/check-planner.js"));
+
+  // A fake resolver is the whole point of the design: none of these compilers
+  // are installed here, and the decisions still get tested.
+  const all = function (name) { return name === "gxx" ? "g++" : name; };
+  const none = function () { return null; };
+  const only = function (names) {
+    return function (n) { return names.indexOf(n) === -1 ? null : (n === "gxx" ? "g++" : n); };
+  };
+  const TMP = "/tmp/checks";
+  const commands = function (checks) { return checks.map(function (c) { return c.command; }); };
+
+  // --- per-file, no manifest
+  check("a C file is checked with gcc",
+    commands(planChecks(["main.c"], [], all, TMP))[0] === 'gcc -fsyntax-only "main.c"');
+  check("a C++ file is checked with g++",
+    commands(planChecks(["app.cpp"], [], all, TMP))[0] === 'g++ -fsyntax-only "app.cpp"');
+  check("a header is checked too",
+    planChecks(["util.h"], [], all, TMP).length === 1);
+  check("a lone Rust file is checked as a library, not a binary",
+    commands(planChecks(["scratch.rs"], [], all, TMP))[0] ===
+      'rustc --edition 2021 --crate-type lib --emit=metadata --out-dir "/tmp/checks" "scratch.rs"');
+  check("a lone Java file compiles to a temp directory",
+    commands(planChecks(["App.java"], [], all, TMP))[0] === 'javac -d "/tmp/checks" "App.java"');
+  check("Python and JS still work",
+    commands(planChecks(["a.py", "b.js"], [], all, TMP)).join(" ") ===
+      'python -m py_compile "a.py" node --check "b.js"');
+  check("an unrecognised extension yields nothing",
+    planChecks(["README.md"], [], all, TMP).length === 0);
+
+  // --- a manifest claims its language
+  const cargo = planChecks(["src/main.rs", "src/util.rs", "src/lib.rs"], ["Cargo.toml"], all, TMP);
+  check("Cargo.toml collapses three files into one check", cargo.length === 1);
+  check("and that check is cargo check", cargo[0].command === "cargo check");
+  check("the project check is marked as one", cargo[0].scope === "project");
+  check("without Cargo.toml the same files are checked individually",
+    planChecks(["src/main.rs", "src/util.rs", "src/lib.rs"], [], all, TMP).length === 3);
+
+  check("pom.xml claims Java",
+    commands(planChecks(["src/main/java/App.java"], ["pom.xml"], all, TMP)).join() === "mvn -q compile");
+  check("build.gradle claims Java",
+    commands(planChecks(["App.java"], ["build.gradle"], all, TMP)).join() === "gradle compileJava -q");
+  check("a Makefile claims C, as a dry run rather than a build",
+    commands(planChecks(["main.c"], ["Makefile"], all, TMP)).join() === "make -n");
+
+  // A manifest for one language must not silence another.
+  const mixed = planChecks(["src/main.rs", "helper.c"], ["Cargo.toml"], all, TMP);
+  check("a Rust manifest does not suppress the C check", mixed.length === 2);
+  check("the C file is still checked per file",
+    commands(mixed).indexOf('gcc -fsyntax-only "helper.c"') !== -1);
+
+  // A manifest with nothing of its language changed is not worth running.
+  check("a manifest whose language did not change yields no project check",
+    planChecks(["notes.md"], ["Cargo.toml"], all, TMP).length === 0);
+
+  // --- missing tools
+  check("no toolchain means no commands, not failing ones",
+    planChecks(["main.c", "src/main.rs", "App.java"], [], none, TMP).length === 0);
+  check("a missing tool skips only its own language",
+    commands(planChecks(["main.c", "a.py"], [], only(["python"]), TMP)).join() ===
+      'python -m py_compile "a.py"');
+  // The crate is still a crate. Falling back to per-file rustc would report the
+  // false failures this whole design exists to avoid.
+  check("a manifest whose tool is missing yields nothing, not a per-file fallback",
+    planChecks(["src/main.rs"], ["Cargo.toml"], only(["rustc"]), TMP).length === 0);
+
+  // --- timeouts
+  check("a project check gets the long timeout",
+    planChecks(["src/main.rs"], ["Cargo.toml"], all, TMP)[0].timeoutMs === PROJECT_CHECK_TIMEOUT_MS);
+  check("a per-file check gets the short one",
+    planChecks(["main.c"], [], all, TMP)[0].timeoutMs === FILE_CHECK_TIMEOUT_MS);
+  check("the long timeout is long enough for a cold cargo check",
+    PROJECT_CHECK_TIMEOUT_MS >= 180000);
+
+  // --- duplicates
+  check("the same file twice is checked once",
+    planChecks(["main.c", "main.c"], [], all, TMP).length === 1);
+}
+
 function testEntrypoint() {
   section("entry point detection");
   const { detectEntrypoint } = require(path.join(__dirname, "..", "..", "desktop", "entrypoint.js"));
@@ -625,6 +708,7 @@ async function testBrowserExtraction() {
   testControlDecisions();
   testControlSettings();
   testToolchain();
+  testCheckPlanner();
   testEntrypoint();
   testRelevance();
   testPatchApplier();
