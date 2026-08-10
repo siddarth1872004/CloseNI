@@ -361,6 +361,145 @@ function testControlSettings() {
   check("an unknown value falls back to itself", labelFor(withLabels, "glm-9") === "glm-9");
 }
 
+function testCssTokens() {
+  section("css tokens");
+  const { colorLiteralsOutsideThemes, themeBlocks } = require(path.join(__dirname, "css-lint.cjs"));
+  const css = fs.readFileSync(path.join(__dirname, "..", "..", "desktop", "styles.css"), "utf8");
+
+  // The load-bearing check. A colour outside a theme block is a rule no theme
+  // can reach, and it fails silently - the app just looks wrong on that theme.
+  const stray = colorLiteralsOutsideThemes(css);
+  check("no colour literals outside theme blocks", stray.length === 0,
+    stray.slice(0, 6).map(function (o) { return "line " + o.line + ": " + o.text; }).join(" | "));
+
+  // Sanity-check the lint itself, so a broken detector cannot report success.
+  check("the lint detects a hex", colorLiteralsOutsideThemes(".a{color:#fff;}").length === 1);
+  check("the lint detects rgba", colorLiteralsOutsideThemes(".a{background:rgba(0,0,0,.5);}").length === 1);
+  check("the lint ignores colours inside :root", colorLiteralsOutsideThemes(":root{--x:#fff;}").length === 0);
+  check("the lint ignores colours inside a theme block",
+    colorLiteralsOutsideThemes('[data-theme="paper"]{--x:#fff;}').length === 0);
+  check("the lint sees a rule after a theme block closes",
+    colorLiteralsOutsideThemes(":root{--x:#fff;}\n.a{color:#000;}").length === 1);
+  check("the lint ignores var() references", colorLiteralsOutsideThemes(".a{color:var(--txt);}").length === 0);
+
+  const blocks = themeBlocks(css);
+  check("a :root block exists", blocks.some(function (b) { return b.name === ":root"; }));
+
+  // Every theme must redefine the whole palette. A theme that omits --err-bg
+  // inherits Midnight's near-black, which looks correct until the day a build
+  // fails - on Paper, that is dark red text on a near-black background.
+  const { STRUCTURAL_PREFIXES } = require(path.join(__dirname, "css-lint.cjs"));
+  const { THEMES } = require(path.join(__dirname, "..", "..", "desktop", "theme.js"));
+  const rootBlock = blocks.find(function (b) { return b.name === ":root"; });
+  const palette = rootBlock.tokens.filter(function (t) {
+    return !STRUCTURAL_PREFIXES.some(function (p) { return t.indexOf(p) === 0; });
+  });
+
+  check("the palette is substantial", palette.length >= 25, String(palette.length));
+  check("structural tokens are excluded from the palette",
+    palette.indexOf("--sp-1") === -1 && palette.indexOf("--r-md") === -1);
+
+  THEMES.forEach(function (t) {
+    if (t.id === "midnight") return;   // midnight IS :root
+    const block = blocks.find(function (b) { return b.name === t.id; });
+    if (!block) { check("theme " + t.id + " has a block", false); return; }
+    const missing = palette.filter(function (tok) { return block.tokens.indexOf(tok) === -1; });
+    check("theme " + t.id + " defines the whole palette", missing.length === 0, missing.join(" "));
+  });
+
+  // Structural tokens belong to :root alone; a theme redefining spacing would
+  // change layout, which is not what a theme is for.
+  blocks.forEach(function (b) {
+    if (b.name === ":root") return;
+    const structural = b.tokens.filter(function (t) {
+      return STRUCTURAL_PREFIXES.some(function (p) { return t.indexOf(p) === 0; });
+    });
+    check("theme " + b.name + " does not redefine structure", structural.length === 0, structural.join(" "));
+  });
+
+  // The decor flag drives whether Appearance offers a decoration toggle, so it
+  // has to agree with which themes actually declare a texture. Drift between
+  // the two shows up as a toggle that does nothing.
+  const textured = blocks.filter(function (b) {
+    return b.name !== ":root" && /--overlay-texture:\s*(?!none)/.test(
+      css.slice(css.indexOf('[data-theme="' + b.name + '"]'))
+         .slice(0, css.slice(css.indexOf('[data-theme="' + b.name + '"]')).indexOf("}")));
+  }).map(function (b) { return b.name; });
+  const flagged = THEMES.filter(function (t) { return t.decor; }).map(function (t) { return t.id; });
+  check("the crt flag matches the themes with a texture",
+    textured.sort().join() === flagged.sort().join(), "textured=" + textured.join() + " flagged=" + flagged.join());
+}
+
+function testTheme() {
+  section("theme resolution");
+  const { THEMES, resolveTheme, DEFAULT_THEME } = require(path.join(__dirname, "..", "..", "desktop", "theme.js"));
+
+  check("nine themes are offered", THEMES.length === 9, String(THEMES.length));
+  check("midnight is the default", DEFAULT_THEME === "midnight");
+  check("midnight is in the list", THEMES.some(function (t) { return t.id === "midnight"; }));
+  check("every theme has an id and a name", THEMES.every(function (t) { return t.id && t.name; }));
+  check("ids are unique",
+    new Set(THEMES.map(function (t) { return t.id; })).size === THEMES.length);
+  // Only the themes carrying a texture are marked, so the Appearance toggle
+  // knows when it is worth showing. Task 3's test proves this agrees with the
+  // CSS; this one just pins the count.
+  check("five themes carry decoration",
+    THEMES.filter(function (t) { return t.decor; }).length === 5,
+    THEMES.filter(function (t) { return t.decor; }).map(function (t) { return t.id; }).join());
+
+  check("a saved theme is honoured", resolveTheme("paper") === "paper");
+  check("nothing saved yields the default", resolveTheme(null) === "midnight");
+  check("an empty string yields the default", resolveTheme("") === "midnight");
+  // A theme removed in a later version must not leave the app unstyled - every
+  // token would go unresolved, which renders as black text on white.
+  check("an unknown theme falls back", resolveTheme("vaporwave-deluxe") === "midnight");
+  check("a non-string falls back", resolveTheme({ id: "paper" }) === "midnight");
+}
+
+function testLogo() {
+  section("logo");
+  const svg = fs.readFileSync(path.join(__dirname, "..", "..", "build", "icon.svg"), "utf8");
+
+  // Sub-project 8 rasterises this into .ico and .png. A known viewBox is what
+  // makes those sizes land on whole pixels.
+  check("the viewBox is 32x32", /viewBox=["']0 0 32 32["']/.test(svg), svg.slice(0, 120));
+  check("it is an svg element", /<svg[\s>]/.test(svg));
+  check("it draws something", /<path[\s>]/.test(svg));
+  // currentColor is what lets one file serve nine themes and an installer icon.
+  check("it inherits its colour", svg.indexOf("currentColor") !== -1);
+  check("no raster is embedded", svg.indexOf("data:image") === -1);
+}
+
+function testLanguageMark() {
+  section("language marks");
+  const { languageMark } = require(path.join(__dirname, "..", "..", "desktop", "language-mark.js"));
+
+  check("python", languageMark("handlers.py").label === "py");
+  check("python uses its own token", languageMark("handlers.py").token === "--lang-py");
+  check("rust", languageMark("src/main.rs").token === "--lang-rs");
+  check("javascript", languageMark("index.js").token === "--lang-js");
+  check("java", languageMark("App.java").token === "--lang-java");
+  check("c", languageMark("main.c").token === "--lang-c");
+  check("c++ shares the c accent", languageMark("app.cpp").token === "--lang-c");
+  check("headers share it too", languageMark("util.h").token === "--lang-c");
+
+  // The label is the extension, so a family shares a colour but keeps its name.
+  check("the label is the extension", languageMark("app.cpp").label === "cpp");
+  check("uppercase is normalised", languageMark("MAIN.PY").label === "py");
+
+  // Anything unrecognised still gets a mark, so rows do not change width.
+  check("an unknown extension falls back", languageMark("notes.txt").token === "--lang-default");
+  check("and keeps its extension as the label", languageMark("notes.txt").label === "txt");
+  check("no extension falls back", languageMark("Makefile").token === "--lang-default");
+  check("a file with no extension is labelled", languageMark("Makefile").label === "—");
+  // .gitignore is not a "gitignore" file; labelling it as one would be wrong
+  // on every dotfile row.
+  check("a dotfile is not read as an extension", languageMark(".gitignore").label === "—");
+  check("a windows path works", languageMark("src\\main.rs").token === "--lang-rs");
+  check("a long extension is truncated", languageMark("a.mjsonschema").label.length <= 4);
+  check("missing input is survivable", languageMark(undefined).token === "--lang-default");
+}
+
 function testToolchain() {
   section("tool resolution");
   const { resolveTool, resetToolCache, TOOL_CANDIDATES } = require(path.join(DIST, "verification/toolchain.js"));
@@ -761,6 +900,10 @@ async function testBrowserExtraction() {
   testCompletion();
   testControlDecisions();
   testControlSettings();
+  testCssTokens();
+  testTheme();
+  testLogo();
+  testLanguageMark();
   testToolchain();
   testCheckPlanner();
   await testCommandTimeout();

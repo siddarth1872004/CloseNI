@@ -1,32 +1,193 @@
 :root{
-  --bg:#0b0b0c; --panel:#101012; --line:#232326; --line2:#2e2e33;
-  --txt:#e8e8ea; --dim:#9b9ba3; --mut:#5b5b63;
+  /* Structural. Themes never redefine these. */
+  --sp-1:4px; --sp-2:6px; --sp-3:8px; --sp-4:12px; --sp-5:14px; --sp-6:20px;
+  --r-sm:2px; --r-md:3px; --r-lg:6px;
+  --dur-fast:.12s; --dur-slow:.4s; --ease:ease;
+
+  /* Palette. Every theme block redefines all of these. */
+  --bg:#0b0b0c; --panel:#101012; --surface:#0e0e10; --surface-raised:#17171a; --surface-sunken:#050506;
+  --overlay:rgba(0,0,0,.7);
+  --line:#232326; --line-strong:#2e2e33; --line-focus:#6f7ce0;
+  --txt:#e8e8ea; --dim:#9b9ba3; --mut:#5b5b63; --inverse:#0b0b0c;
+  --ok:#8fe0a8; --ok-bg:#0d2416; --ok-line:#2c4f39;
+  --warn:#e0cf8f; --warn-bg:#211f13; --warn-line:#5c5327;
+  --err:#eda1a6; --err-bg:#2a1214; --err-line:#5c2c2f;
+  --lang-py:#78c0e0; --lang-rs:#e0a878; --lang-js:#e0cf8f; --lang-java:#e08f96; --lang-c:#a49ce0; --lang-default:#9b9ba3;
+  --shadow-1:0 4px 20px rgba(0,0,0,.5); --shadow-2:0 12px 40px rgba(0,0,0,.75);
+  --overlay-texture:none; --glow:none;
 }
+
+/* Light. The demanding one: every surface, line and state needs a counterpart,
+   which is what forces the token set to be complete. */
+[data-theme="paper"]{
+  --bg:#f7f7f5; --panel:#fff; --surface:#fff; --surface-raised:#eeeee9; --surface-sunken:#f0f0ec;
+  --overlay:rgba(40,40,38,.45);
+  --line:#ddddd7; --line-strong:#c6c6bf; --line-focus:#3b4fd8;
+  --txt:#1b1b1d; --dim:#55555a; --mut:#8a8a84; --inverse:#f7f7f5;
+  --ok:#2f6b45; --ok-bg:#eaf6ee; --ok-line:#a8d4b6;
+  --warn:#7a6520; --warn-bg:#faf5e2; --warn-line:#d8c98a;
+  --err:#9c2f38; --err-bg:#fbeced; --err-line:#e0b0b4;
+  --lang-py:#1f5f85; --lang-rs:#a85c22; --lang-js:#7a6520; --lang-java:#9c2f38; --lang-c:#4a448a; --lang-default:#55555a;
+  --shadow-1:0 4px 20px rgba(40,40,38,.14); --shadow-2:0 12px 40px rgba(40,40,38,.2);
+  --overlay-texture:none; --glow:none;
+}
+
+/* Green CRT. The character is the scanline overlay and the phosphor glow. */
+[data-theme="phosphor"]{
+  --bg:#020a04; --panel:#04140a; --surface:#04140a; --surface-raised:#0a2412; --surface-sunken:#010603;
+  --overlay:rgba(0,10,4,.78);
+  --line:#12401f; --line-strong:#2f8a52; --line-focus:#7bffa0;
+  --txt:#9dffb8; --dim:#4ec46f; --mut:#2f8a52; --inverse:#020a04;
+  --ok:#7bffa0; --ok-bg:#04240f; --ok-line:#2f8a52;
+  --warn:#d8ff7b; --warn-bg:#141f04; --warn-line:#6b8a2f;
+  --err:#ff9d8f; --err-bg:#240a06; --err-line:#8a3f2f;
+  --lang-py:#7bffd8; --lang-rs:#d8ff7b; --lang-js:#b8ff7b; --lang-java:#ff9d8f; --lang-c:#7bd8ff; --lang-default:#4ec46f;
+  --shadow-1:0 4px 20px rgba(0,0,0,.6); --shadow-2:0 12px 40px rgba(0,0,0,.8);
+  --overlay-texture:repeating-linear-gradient(0deg,rgba(0,255,120,.045) 0 1px,transparent 1px 3px);
+  --glow:0 0 8px rgba(80,255,140,.55);
+}
+
+/* The same CRT in amber - easier on the eyes over a long session. */
+[data-theme="amber"]{
+  --bg:#0c0703; --panel:#150c04; --surface:#150c04; --surface-raised:#241407; --surface-sunken:#080402;
+  --overlay:rgba(12,7,3,.78);
+  --line:#40260c; --line-strong:#8a5a20; --line-focus:#ffc06b;
+  --txt:#ffd9a0; --dim:#c4913f; --mut:#8a5a20; --inverse:#0c0703;
+  --ok:#c8e06b; --ok-bg:#1a2407; --ok-line:#6b8a2f;
+  --warn:#ffc06b; --warn-bg:#241a07; --warn-line:#8a6520;
+  --err:#ff9b7b; --err-bg:#240e06; --err-line:#8a3f2f;
+  --lang-py:#6bc8e0; --lang-rs:#ffc06b; --lang-js:#e0cf8f; --lang-java:#ff9b7b; --lang-c:#c8a0e0; --lang-default:#c4913f;
+  --shadow-1:0 4px 20px rgba(0,0,0,.6); --shadow-2:0 12px 40px rgba(0,0,0,.8);
+  --overlay-texture:repeating-linear-gradient(0deg,rgba(255,180,80,.04) 0 1px,transparent 1px 3px);
+  --glow:0 0 8px rgba(255,170,70,.5);
+}
+
+/* Retro-futurist, violet. Cyan for success, magenta for what is live. */
+[data-theme="cassette-indigo"]{
+  --bg:#07060f; --panel:#0d0a1c; --surface:#0d0a1c; --surface-raised:#171233; --surface-sunken:#040309;
+  --overlay:rgba(7,6,15,.78);
+  --line:#241c47; --line-strong:#5a2a6e; --line-focus:#f08cff;
+  --txt:#e6e2ff; --dim:#a49ce0; --mut:#6a5fa8; --inverse:#07060f;
+  --ok:#4fe0d0; --ok-bg:#07211f; --ok-line:#1f6b6b;
+  --warn:#f08cff; --warn-bg:#220e2a; --warn-line:#a83fc4;
+  --err:#ff7b9d; --err-bg:#24060f; --err-line:#8a2f4a;
+  --lang-py:#4fe0d0; --lang-rs:#ffb03f; --lang-js:#f0e08c; --lang-java:#ff7b9d; --lang-c:#a49ce0; --lang-default:#a49ce0;
+  --shadow-1:0 4px 20px rgba(0,0,0,.6); --shadow-2:0 12px 40px rgba(0,0,0,.8);
+  --overlay-texture:repeating-linear-gradient(0deg,rgba(120,200,255,.035) 0 1px,transparent 1px 3px);
+  --glow:0 0 8px rgba(200,120,255,.5);
+}
+
+/* Retro-futurist, warm. Hot pink and gold on plum. */
+[data-theme="cassette-miami"]{
+  --bg:#0a0512; --panel:#150a1e; --surface:#150a1e; --surface-raised:#241033; --surface-sunken:#05020a;
+  --overlay:rgba(10,5,18,.78);
+  --line:#3a1430; --line-strong:#8a3050; --line-focus:#ffb03f;
+  --txt:#ffe0ee; --dim:#e0a0c8; --mut:#a05a86; --inverse:#0a0512;
+  --ok:#4fe0d0; --ok-bg:#07211f; --ok-line:#1f6b6b;
+  --warn:#ffc86b; --warn-bg:#2a1a06; --warn-line:#ffb03f;
+  --err:#ff5aa0; --err-bg:#2a0616; --err-line:#8a3050;
+  --lang-py:#4fe0d0; --lang-rs:#ffb03f; --lang-js:#ffc86b; --lang-java:#ff5aa0; --lang-c:#c88ce0; --lang-default:#e0a0c8;
+  --shadow-1:0 4px 20px rgba(0,0,0,.6); --shadow-2:0 12px 40px rgba(0,0,0,.8);
+  --overlay-texture:repeating-linear-gradient(0deg,rgba(255,150,200,.035) 0 1px,transparent 1px 3px);
+  --glow:0 0 8px rgba(255,90,150,.5);
+}
+
+/* Retro-futurist, cool. No magenta, green for success - the most legible of the
+   three, and the only one without a scanline overlay. */
+[data-theme="cassette-grid"]{
+  --bg:#03080e; --panel:#061420; --surface:#061420; --surface-raised:#0a2033; --surface-sunken:#020509;
+  --overlay:rgba(3,8,14,.78);
+  --line:#0e2c3f; --line-strong:#1d6f9c; --line-focus:#5fd8ff;
+  --txt:#dff4ff; --dim:#8fc4e0; --mut:#3d7a9c; --inverse:#03080e;
+  --ok:#4fe08f; --ok-bg:#07211a; --ok-line:#1f6b4a;
+  --warn:#e0d08f; --warn-bg:#21200e; --warn-line:#6b6320;
+  --err:#ff8f9d; --err-bg:#240a0e; --err-line:#8a2f3a;
+  --lang-py:#5fd8ff; --lang-rs:#e0a878; --lang-js:#e0d08f; --lang-java:#ff8f9d; --lang-c:#9c8fe0; --lang-default:#8fc4e0;
+  --shadow-1:0 4px 20px rgba(0,0,0,.6); --shadow-2:0 12px 40px rgba(0,0,0,.8);
+  --overlay-texture:none;
+  --glow:0 0 9px rgba(95,216,255,.5);
+}
+
+/* Drafting paper in negative. The texture is a grid rather than scanlines. */
+[data-theme="blueprint"]{
+  --bg:#081a2e; --panel:#0b2540; --surface:#0b2540; --surface-raised:#123350; --surface-sunken:#05131f;
+  --overlay:rgba(8,26,46,.78);
+  --line:#1c4468; --line-strong:#4c86b8; --line-focus:#c8e4ff;
+  --txt:#e8f4ff; --dim:#a8ccea; --mut:#5f8fb8; --inverse:#081a2e;
+  --ok:#7fd8a8; --ok-bg:#0d2a1e; --ok-line:#3f7a5c;
+  --warn:#e8cf8f; --warn-bg:#2a2410; --warn-line:#8a7a3f;
+  --err:#f0a0a8; --err-bg:#2a1218; --err-line:#8a4550;
+  --lang-py:#8fd8f0; --lang-rs:#e8b48f; --lang-js:#e8cf8f; --lang-java:#f0a0a8; --lang-c:#b0a8f0; --lang-default:#a8ccea;
+  --shadow-1:0 4px 20px rgba(0,0,0,.45); --shadow-2:0 12px 40px rgba(0,0,0,.65);
+  --overlay-texture:linear-gradient(rgba(120,190,255,.07) 1px,transparent 1px),linear-gradient(90deg,rgba(120,190,255,.07) 1px,transparent 1px);
+  --glow:none;
+}
+
+/* Not a style choice. The fallback for anyone the CRT themes are unusable for:
+   maximum contrast, no texture, and no state distinguished by hue alone. */
+[data-theme="contrast"]{
+  --bg:#000; --panel:#0a0a0a; --surface:#0a0a0a; --surface-raised:#1a1a1a; --surface-sunken:#000;
+  --overlay:rgba(0,0,0,.85);
+  --line:#3a3a3a; --line-strong:#fff; --line-focus:#fff;
+  --txt:#fff; --dim:#c8c8c8; --mut:#8a8a8a; --inverse:#000;
+  --ok:#fff; --ok-bg:#000; --ok-line:#fff;
+  --warn:#fff; --warn-bg:#000; --warn-line:#fff;
+  --err:#fff; --err-bg:#000; --err-line:#fff;
+  --lang-py:#fff; --lang-rs:#fff; --lang-js:#fff; --lang-java:#fff; --lang-c:#fff; --lang-default:#fff;
+  --shadow-1:none; --shadow-2:none;
+  --overlay-texture:none; --glow:none;
+}
+
 *{margin:0;padding:0;box-sizing:border-box;}
 body{background:var(--bg);color:var(--txt);font:14px/1.5 "Segoe UI",system-ui,sans-serif;overflow:hidden;}
 #log,#plog,pre,#workspace-label,.micro,#wordmark,input,textarea,select,#status-line,.nav-btn i,#step-detail-label,.step-card-num,#res-web a,#res-gh a{
   font-family:ui-monospace,"Cascadia Mono",Consolas,monospace;}
 .micro{font-size:10px;letter-spacing:.14em;color:var(--mut);text-transform:uppercase;margin-bottom:6px;}
 #app{display:flex;height:100vh;}
+/* Static decoration - scanlines, or Blueprint's grid. It never moves: live
+   animation was built, reviewed and rejected. A theme with no texture sets
+   --overlay-texture:none and nothing happens here. */
+#app::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:1;
+  background-image:var(--overlay-texture);background-size:14px 14px;}
+[data-decor="off"] #app::before{background-image:none;}
 #rail{width:210px;border-right:1px solid var(--line);display:flex;flex-direction:column;padding:20px 14px;background:var(--panel);}
-#wordmark{font-size:15px;letter-spacing:.08em;margin-bottom:28px;}
-#wordmark span{color:var(--mut);}
+#wordmark{display:flex;align-items:center;gap:var(--sp-3);font-size:15px;letter-spacing:.08em;margin-bottom:28px;}
+#wordmark svg{width:17px;height:17px;flex:none;color:var(--txt);}
+#wordmark span span{color:var(--mut);}
+.about-mark{display:flex;align-items:center;gap:var(--sp-5);}
+.about-mark svg{width:52px;height:52px;flex:none;color:var(--txt);}
+.about-name{font-size:16px;letter-spacing:.08em;color:var(--txt);margin-bottom:var(--sp-1);}
+/* Each mark sets its own colour from a token inline - the value is data, not
+   styling, which is the one place an inline style is right. */
+.lang-mark{font-family:ui-monospace,Consolas,monospace;font-size:9px;line-height:1;
+  padding:3px 5px;border-radius:var(--r-sm);flex:none;
+  color:var(--lang-default);border:1px solid currentColor;opacity:.85;}
 nav{display:flex;flex-direction:column;gap:2px;}
 .nav-btn{display:flex;gap:10px;align-items:baseline;text-align:left;padding:9px 10px;background:none;border:none;
   border-left:2px solid transparent;color:var(--dim);font-size:13px;cursor:pointer;transition:.12s;}
 .nav-btn i{font-style:normal;font-size:10px;color:var(--mut);}
-.nav-btn:hover{color:var(--txt);background:#17171a;}
-.nav-btn.active{color:var(--txt);border-left-color:var(--txt);background:#17171a;}
+.nav-btn:hover{color:var(--txt);background:var(--surface-raised);}
+.nav-btn.active{color:var(--txt);border-left-color:var(--txt);background:var(--surface-raised);}
 .nav-btn.active i{color:var(--txt);}
 #rail-bottom{margin-top:auto;display:flex;flex-direction:column;gap:6px;}
 #workspace-label{font-size:11px;color:var(--dim);word-break:break-all;margin-bottom:6px;}
-.btn{background:none;border:1px solid var(--line2);color:var(--dim);padding:8px 14px;font-size:11px;
+.btn{background:none;border:1px solid var(--line-strong);color:var(--dim);padding:8px 14px;font-size:11px;
   letter-spacing:.08em;cursor:pointer;border-radius:3px;transition:.12s;text-transform:uppercase;}
 .btn:hover:not(:disabled){border-color:var(--txt);color:var(--txt);}
-.btn.invert{background:var(--txt);border-color:var(--txt);color:#0b0b0c;font-weight:600;}
-.btn.invert:hover:not(:disabled){background:#fff;border-color:#fff;color:#000;}
+.btn.invert{background:var(--txt);border-color:var(--txt);color:var(--inverse);font-weight:600;}
+/* brightness() rather than a hardcoded white: it works on any theme, including
+   the light one where "brighter" is not "closer to #fff". */
+.btn.invert:hover:not(:disabled){filter:brightness(1.15);}
 .btn:disabled{opacity:.35;cursor:not-allowed;}
-input,textarea,select{background:#0e0e10;border:1px solid var(--line2);color:var(--txt);padding:9px 10px;
+/* There was no focus rule at all, so tabbing through the app showed nothing.
+   Two layers so the ring reads against any theme: a gap in the page colour,
+   then the ring. :focus-visible rather than :focus, so a mouse click does not
+   leave a ring behind. */
+.btn:focus-visible,.nav-btn:focus-visible,.settings-tab:focus-visible,.theme-swatch:focus-visible,
+input:focus-visible,textarea:focus-visible,select:focus-visible,.file-card-head:focus-visible,
+.step-card:focus-visible{
+  outline:none;box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--line-focus);}
+input,textarea,select{background:var(--surface);border:1px solid var(--line-strong);color:var(--txt);padding:9px 10px;
   font-size:12px;border-radius:3px;outline:none;}
 input:focus,textarea:focus{border-color:var(--dim);}
 select{width:100%;}
@@ -56,7 +217,7 @@ select{width:100%;}
 #plan-sidebar{width:45%;max-width:520px;border:1px solid var(--line);background:var(--panel);
   display:flex;flex-direction:column;border-radius:4px;overflow:hidden;}
 #plan-sidebar.hidden{display:none;}
-#plan-head{display:flex;justify-content:space-between;align-items:center;padding:14px;border-bottom:1px solid var(--line);background:rgba(255,255,255,.02);}
+#plan-head{display:flex;justify-content:space-between;align-items:center;padding:14px;border-bottom:1px solid var(--line);background:var(--surface-raised);}
 #close-plan{padding:2px 10px;}
 #plan-content{flex:1;overflow-y:auto;padding:16px;}
 #plan-actions{display:flex;gap:8px;padding:12px 14px;border-top:1px solid var(--line);}
@@ -66,10 +227,10 @@ select{width:100%;}
 .plan-summary{font-size:14px;color:var(--txt);font-weight:600;margin-bottom:16px;line-height:1.5;}
 .plan-section{margin-bottom:20px;}
 .plan-section-title{font-size:10px;letter-spacing:.14em;color:var(--mut);text-transform:uppercase;margin-bottom:8px;}
-.plan-file-tree{background:#0e0e10;border:1px solid var(--line);border-radius:4px;padding:12px;font-family:ui-monospace,Consolas,monospace;font-size:11px;color:var(--dim);white-space:pre;line-height:1.6;}
+.plan-file-tree{background:var(--surface);border:1px solid var(--line);border-radius:4px;padding:12px;font-family:ui-monospace,Consolas,monospace;font-size:11px;color:var(--dim);white-space:pre;line-height:1.6;}
 .plan-tech-stack{display:flex;flex-wrap:wrap;gap:6px;}
-.plan-tech-tag{background:#17171a;border:1px solid var(--line2);padding:4px 10px;border-radius:3px;font-size:11px;color:var(--txt);font-family:ui-monospace,Consolas,monospace;}
-.plan-step{border:1px solid var(--line);border-radius:4px;padding:12px;margin-bottom:10px;background:#0e0e10;}
+.plan-tech-tag{background:var(--surface-raised);border:1px solid var(--line-strong);padding:4px 10px;border-radius:3px;font-size:11px;color:var(--txt);font-family:ui-monospace,Consolas,monospace;}
+.plan-step{border:1px solid var(--line);border-radius:4px;padding:12px;margin-bottom:10px;background:var(--surface);}
 .plan-step-head{display:flex;gap:10px;align-items:baseline;margin-bottom:6px;}
 .plan-step-num{font-size:11px;color:var(--mut);font-family:ui-monospace,Consolas,monospace;}
 .plan-step-title{font-size:13px;color:var(--txt);font-weight:600;}
@@ -81,9 +242,9 @@ select{width:100%;}
 .md-h{font-weight:600;color:var(--txt);margin:12px 0 6px;font-size:13px;}
 .md-ul{margin:0 0 8px;padding-left:18px;list-style:square;color:var(--dim);}
 .md-ul li{margin:2px 0;}
-.md-code{background:#0e0e10;border:1px solid var(--line);border-radius:4px;padding:10px;margin:8px 0;
+.md-code{background:var(--surface);border:1px solid var(--line);border-radius:4px;padding:10px;margin:8px 0;
   font-family:ui-monospace,Consolas,monospace;font-size:12px;color:var(--txt);white-space:pre;overflow-x:auto;}
-.md-inline{font-family:ui-monospace,Consolas,monospace;background:#17171a;border:1px solid var(--line);
+.md-inline{font-family:ui-monospace,Consolas,monospace;background:var(--surface-raised);border:1px solid var(--line);
   padding:1px 5px;border-radius:3px;font-size:12px;}
 .msg-text strong{color:var(--txt);}
 
@@ -93,19 +254,22 @@ select{width:100%;}
   display:flex;flex-direction:column;padding:12px;}
 #step-list{flex:1;overflow-y:auto;margin-top:8px;display:flex;flex-direction:column;gap:4px;}
 .step-card{border:1px solid var(--line);border-radius:3px;padding:8px 10px;font-size:12px;cursor:pointer;
-  background:#0e0e10;transition:.12s;display:flex;gap:8px;align-items:baseline;}
-.step-card:hover{border-color:var(--line2);}
-.step-card.active{border-color:var(--txt);background:#17171a;}
+  background:var(--surface);transition:.12s;display:flex;gap:8px;align-items:baseline;}
+.step-card:hover{border-color:var(--line-strong);}
+.step-card.active{border-color:var(--txt);background:var(--surface-raised);}
 .step-card-num{font-size:10px;color:var(--mut);flex:none;}
 .step-card.active .step-card-num{color:var(--txt);}
 .step-card-title{color:var(--dim);font-size:12px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .step-card.active .step-card-title{color:var(--txt);}
 .step-card-status{font-size:9px;letter-spacing:.1em;text-transform:uppercase;padding:2px 6px;
-  border:1px solid var(--line2);border-radius:2px;color:var(--mut);}
-.step-card-status.running{color:var(--txt);border-color:var(--txt);animation:pulse 1.4s infinite;}
-.step-card-status.done{color:var(--txt);border-color:var(--txt);}
-.step-card-status.failed{color:#fff;background:var(--mut);border-color:var(--mut);}
-@keyframes pulse{0%,100%{opacity:1;}50%{opacity:.4;}}
+  border:1px solid var(--line-strong);border-radius:2px;color:var(--mut);}
+/* State carries colour. These were all the same grey, which made a running
+   step and a finished one indistinguishable in the list. The amber says
+   "running" without moving, so the pulse animation is gone. */
+.step-card-status.running{color:var(--warn);background:var(--warn-bg);border-color:var(--warn-line);}
+.step-card-status.done{color:var(--ok);background:var(--ok-bg);border-color:var(--ok-line);}
+.step-card-status.failed{color:var(--err);background:var(--err-bg);border-color:var(--err-line);}
+.step-card-status.skipped{color:var(--mut);border-style:dashed;}
 
 #builder-main{flex:1;border:1px solid var(--line);border-radius:4px;background:var(--panel);
   display:flex;flex-direction:column;overflow:hidden;}
@@ -116,16 +280,17 @@ select{width:100%;}
 #step-detail-label{font-size:12px;color:var(--txt);}
 #step-detail-status{font-size:11px;color:var(--dim);}
 #step-detail-body{flex:1;overflow-y:auto;padding:12px 14px;}
-.file-card{border:1px solid var(--line);border-radius:3px;margin-bottom:10px;overflow:hidden;background:#0e0e10;}
-.file-card-head{padding:8px 12px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;
+.file-card{border:1px solid var(--line);border-radius:3px;margin-bottom:10px;overflow:hidden;background:var(--surface);}
+.file-card-head{padding:8px 12px;border-bottom:1px solid var(--line);display:flex;gap:var(--sp-3);align-items:center;
   cursor:pointer;font-size:12px;}
-.file-card-head:hover{background:#17171a;}
+.file-card-head .file-path{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;}
+.file-card-head:hover{background:var(--surface-raised);}
 .file-path{color:var(--txt);font-family:ui-monospace,Consolas,monospace;}
 .file-mode{font-size:10px;color:var(--mut);letter-spacing:.1em;text-transform:uppercase;}
 .file-mode.create{color:var(--txt);}
 .file-mode.overwrite{color:var(--dim);}
 .file-mode.search_replace{color:var(--dim);}
-.file-body{display:none;padding:12px;background:#050506;}
+.file-body{display:none;padding:12px;background:var(--surface-sunken);}
 .file-body.open{display:block;}
 .file-body pre{font-family:ui-monospace,Consolas,monospace;font-size:11px;color:var(--dim);white-space:pre-wrap;line-height:1.5;}
 
@@ -133,8 +298,8 @@ select{width:100%;}
 #research-results{display:flex;gap:14px;flex:1;min-height:0;margin-top:8px;}
 .research-col{flex:1;border:1px solid var(--line);border-radius:4px;background:var(--panel);padding:12px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;}
 .research-col .micro{margin-bottom:2px;}
-.res-item{border:1px solid var(--line);border-radius:3px;padding:10px;background:#0e0e10;}
-.res-item:hover{border-color:var(--line2);}
+.res-item{border:1px solid var(--line);border-radius:3px;padding:10px;background:var(--surface);}
+.res-item:hover{border-color:var(--line-strong);}
 .res-item a{color:var(--txt);font-size:12px;text-decoration:none;display:block;margin-bottom:4px;word-break:break-word;}
 .res-item a:hover{text-decoration:underline;}
 .res-snippet{font-size:11px;color:var(--dim);line-height:1.4;}
@@ -143,53 +308,105 @@ select{width:100%;}
 /* Logs */
 #log-row{display:flex;gap:12px;height:160px;}
 .log-box{flex:1;display:flex;flex-direction:column;min-width:0;}
-#log,#plog{flex:1;overflow-y:auto;background:#0e0e10;border:1px solid var(--line);border-radius:4px;
+#log,#plog{flex:1;overflow-y:auto;background:var(--surface);border:1px solid var(--line);border-radius:4px;
   padding:8px 10px;font-size:11px;color:var(--dim);}
 .log-line.ok{color:var(--txt);}
 .log-line.err{color:var(--txt);font-weight:600;}
 .log-line.step{color:var(--txt);}
 
 /* Modal + toast */
-#approval-modal{position:fixed;inset:0;background:rgba(0,0,0,.7);display:none;align-items:center;justify-content:center;z-index:50;}
+#approval-modal{position:fixed;inset:0;background:var(--overlay);display:none;align-items:center;justify-content:center;z-index:50;}
 #approval-modal.show{display:flex;}
-#approval-card{width:520px;background:var(--panel);border:1px solid var(--line2);border-radius:6px;padding:20px;}
+#approval-card{width:520px;background:var(--panel);border:1px solid var(--line-strong);border-radius:6px;padding:20px;}
 #approval-card p{font-size:12px;color:var(--dim);margin:8px 0 4px;}
-#approval-cmd{background:#0e0e10;border:1px solid var(--line);border-radius:4px;padding:10px;color:var(--txt);
+#approval-cmd{background:var(--surface);border:1px solid var(--line);border-radius:4px;padding:10px;color:var(--txt);
   margin:8px 0 14px;white-space:pre-wrap;font-size:12px;}
 #toast-stack{position:fixed;top:14px;right:14px;z-index:80;display:flex;flex-direction:column;gap:8px;}
-.toast{background:#101012;border:1px solid var(--line2);border-left:2px solid var(--txt);
+.toast{background:var(--panel);border:1px solid var(--line-strong);border-left:2px solid var(--txt);
   color:var(--txt);font-family:ui-monospace,Consolas,monospace;font-size:11px;letter-spacing:.06em;
-  padding:10px 14px;border-radius:3px;box-shadow:0 4px 20px rgba(0,0,0,.5);animation:toast-in .18s ease;}
-.toast.err{border-left-color:#8a8a8a;background:#1a1a1d;}
+  padding:10px 14px;border-radius:3px;box-shadow:var(--shadow-1);animation:toast-in .18s ease;}
+.toast.err{border-left-color:var(--err-line);background:var(--err-bg);}
 @keyframes toast-in{from{transform:translateX(12px);opacity:0;}to{transform:none;opacity:1;}}
 
+/* Depth by layering, in place of the literal 3D item 19 asked for: two CSS
+   properties, no GPU budget, and it does not fight a flat aesthetic. */
+#approval-modal{backdrop-filter:blur(3px);}
+#approval-card{box-shadow:var(--shadow-2);}
+
+/* Glow, where a theme defines one. Static, like the texture. */
+.step-card.active .step-card-title,#status-line,#builder-status{text-shadow:var(--glow);}
+[data-decor="off"] .step-card.active .step-card-title,
+[data-decor="off"] #status-line,
+[data-decor="off"] #builder-status{text-shadow:none;}
+
+/* The two animations left both carry meaning - progress advancing, and a toast
+   arriving. Neither should move for anyone who asked the OS for less motion. */
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation-duration:.001ms !important;animation-iteration-count:1 !important;
+    transition-duration:.001ms !important;}
+}
+
 #builder-toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
-#builder-progress-wrap{flex:1;min-width:120px;height:6px;background:#17171a;border:1px solid var(--line);border-radius:3px;overflow:hidden;}
+#builder-progress-wrap{flex:1;min-width:120px;height:6px;background:var(--surface-raised);border:1px solid var(--line);border-radius:3px;overflow:hidden;}
 #builder-progress{height:100%;width:0%;background:var(--txt);transition:width .4s ease;}
 #builder-status{font-family:ui-monospace,Consolas,monospace;font-size:11px;color:var(--dim);}
-.step-card-status.done{color:var(--txt);border-color:var(--txt);}
-.step-card-status.failed{color:#fff;background:var(--mut);border-color:var(--mut);}
-.step-card-status.skipped{color:var(--mut);border-style:dashed;}
-.step-card-status.running{color:var(--txt);border-color:var(--txt);animation:pulse 1.4s infinite;}
+/* The duplicate copies of these four rules lived here. They are declared once,
+   above, beside the base .step-card-status rule. */
 
-#suggest-bar{display:flex;gap:8px;padding:10px 12px;border-top:1px solid var(--line);background:#0b0b0d;}
-#suggest-input{flex:1;background:#050506;border:1px solid var(--line);color:var(--txt);padding:8px 10px;border-radius:3px;font-family:inherit;font-size:12px;}
+#suggest-bar{display:flex;gap:8px;padding:10px 12px;border-top:1px solid var(--line);background:var(--bg);}
+#suggest-input{flex:1;background:var(--surface-sunken);border:1px solid var(--line);color:var(--txt);padding:8px 10px;border-radius:3px;font-family:inherit;font-size:12px;}
 #suggest-input:disabled{opacity:.5;}
 .diff-line{display:block;white-space:pre-wrap;word-break:break-word;padding:0 4px;}
-.diff-line.add{background:#0d2416;color:#8fe0a8;}
-.diff-line.remove{background:#2a1214;color:#eda1a6;}
+.diff-line.add{background:var(--ok-bg);color:var(--ok);}
+.diff-line.remove{background:var(--err-bg);color:var(--err);}
 .diff-line.same{color:var(--dim);}
-.diff-line.gap{color:var(--mut);font-style:italic;background:#0a0a0c;}
+.diff-line.gap{color:var(--mut);font-style:italic;background:var(--surface-sunken);}
 
-#autonomy-select{width:100%;background:#050506;border:1px solid var(--line);color:var(--txt);padding:7px 8px;border-radius:3px;font-family:inherit;font-size:12px;}
+/* #autonomy-select and #provider-select each re-declared what the shared
+   input,textarea,select rule already says. Deleted; they inherit it. */
 #test-summary{margin:14px 0 6px;}
 #test-results{max-height:340px;overflow-y:auto;}
-.test-row{display:flex;justify-content:space-between;gap:12px;padding:5px 8px;border:1px solid var(--line);border-radius:3px;margin-bottom:4px;background:#0e0e10;font-size:11px;}
+.test-row{display:flex;justify-content:space-between;gap:12px;padding:5px 8px;border:1px solid var(--line);border-radius:3px;margin-bottom:4px;background:var(--surface);font-size:11px;}
 .test-row .cmd{color:var(--dim);word-break:break-all;}
 .test-row .verdict{letter-spacing:.1em;text-transform:uppercase;font-size:10px;}
-.test-row.pass .verdict{color:#8fe0a8;}
-.test-row.fail .verdict{color:#eda1a6;}
-.test-output{border:1px solid var(--line);border-radius:3px;background:#050506;padding:10px;margin-top:8px;}
+.test-row.pass .verdict{color:var(--ok);}
+.test-row.fail .verdict{color:var(--err);}
+.test-output{border:1px solid var(--line);border-radius:3px;background:var(--surface-sunken);padding:10px;margin-top:8px;}
 .test-output pre{white-space:pre-wrap;word-break:break-word;font-size:11px;color:var(--dim);}
 
-#provider-select{width:100%;background:#050506;border:1px solid var(--line);color:var(--txt);padding:7px 8px;border-radius:3px;font-family:inherit;font-size:12px;}
+/* Settings */
+#settings-view{display:flex;gap:var(--sp-5);flex:1;min-height:0;}
+#settings-nav{width:150px;flex:none;display:flex;flex-direction:column;gap:2px;}
+.settings-tab{background:none;border:none;border-left:2px solid transparent;color:var(--dim);
+  text-align:left;padding:var(--sp-3) var(--sp-4);font-size:12px;cursor:pointer;transition:var(--dur-fast);}
+.settings-tab:hover{color:var(--txt);background:var(--surface-raised);}
+.settings-tab.active{color:var(--txt);border-left-color:var(--txt);background:var(--surface-raised);}
+#settings-body{flex:1;border:1px solid var(--line);border-radius:var(--r-lg);background:var(--panel);
+  padding:var(--sp-6);overflow-y:auto;}
+.settings-section{display:none;flex-direction:column;gap:var(--sp-3);max-width:460px;}
+.settings-section.active{display:flex;}
+.settings-row{display:flex;align-items:center;gap:var(--sp-2);}
+.settings-row input[type="checkbox"]{width:auto;flex:none;accent-color:var(--txt);}
+.settings-row label{font-size:11px;color:var(--dim);cursor:pointer;}
+
+#theme-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:var(--sp-3);}
+.theme-swatch{display:flex;align-items:center;gap:var(--sp-3);padding:var(--sp-3);cursor:pointer;
+  background:var(--panel);border:1px solid var(--line);border-radius:var(--r-md);transition:var(--dur-fast);}
+.theme-swatch:hover{border-color:var(--line-strong);}
+.theme-swatch.active{border-color:var(--txt);}
+/* The chip previews the theme it selects: the swatch element carries its own
+   data-theme, so these tokens resolve to that theme's palette rather than the
+   one currently applied. */
+.theme-swatch-chip{width:26px;height:18px;flex:none;border-radius:var(--r-sm);
+  background:var(--bg);border:1px solid var(--line-strong);}
+.theme-swatch-name{font-size:11px;color:var(--dim);text-align:left;}
+.theme-swatch.active .theme-swatch-name{color:var(--txt);}
+
+/* Utility classes replacing the inline styles the markup used to carry. */
+.btn-block{width:100%;}
+.btn-sm{font-size:10px;padding:var(--sp-1) var(--sp-3);}
+.mt-1{margin-top:var(--sp-3);}
+.mb-1{margin-bottom:var(--sp-2);}
+/* Initial state for controls that builder.js later shows with an inline
+   style. Inline wins over a class, so show() keeps working untouched. */
+.is-hidden{display:none;}

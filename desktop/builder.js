@@ -76,7 +76,13 @@
         fc.className = "file-card";
         const head = document.createElement("div");
         head.className = "file-card-head";
-        head.innerHTML = '<span class="file-path">' + CN.escapeHtml(f.path) + '</span><span class="file-mode ' + (f.mode || "create") + '">' + (f.mode || "create") + '</span>';
+        // The mark's colour is a token value, so it goes inline - that is data
+        // about the file, not styling of the card.
+        const lm = window.CNLang ? window.CNLang.languageMark(f.path) : null;
+        const markHtml = lm
+          ? '<span class="lang-mark" style="color:var(' + lm.token + ')">' + CN.escapeHtml(lm.label) + "</span>"
+          : "";
+        head.innerHTML = markHtml + '<span class="file-path">' + CN.escapeHtml(f.path) + '</span><span class="file-mode ' + (f.mode || "create") + '">' + (f.mode || "create") + '</span>';
         head.onclick = function () { const bb = fc.querySelector(".file-body"); if (bb) bb.classList.toggle("open"); };
         const bb = document.createElement("div");
         bb.className = "file-body";
