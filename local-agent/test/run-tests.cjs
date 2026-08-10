@@ -468,6 +468,15 @@ function testLogo() {
   // currentColor is what lets one file serve nine themes and an installer icon.
   check("it inherits its colour", svg.indexOf("currentColor") !== -1);
   check("no raster is embedded", svg.indexOf("data:image") === -1);
+
+  // electron-builder cannot read SVG. It needs a PNG of at least 512x512.
+  const png = fs.readFileSync(path.join(__dirname, "..", "..", "build", "icon.png"));
+  check("the png is a png", png.slice(1, 4).toString() === "PNG");
+  // IHDR puts width and height at bytes 16-23, big-endian. No library needed.
+  const w = png.readUInt32BE(16);
+  const h = png.readUInt32BE(20);
+  check("the png is 512 wide", w === 512, String(w));
+  check("the png is 512 tall", h === 512, String(h));
 }
 
 function testLanguageMark() {
@@ -498,6 +507,106 @@ function testLanguageMark() {
   check("a windows path works", languageMark("src\\main.rs").token === "--lang-rs");
   check("a long extension is truncated", languageMark("a.mjsonschema").label.length <= 4);
   check("missing input is survivable", languageMark(undefined).token === "--lang-default");
+}
+
+function testStoragePaths() {
+  section("storage paths");
+  const { storagePaths } = require(path.join(DIST, "storage-paths.js"));
+  const cfg = { id: "deepseek", profileDir: "local-agent/storage/browser-profiles/deepseek" };
+
+  // Unset is not a legacy fallback - it is what the e2e suite uses. It writes
+  // provider configs into a temp directory and relies on storage following
+  // profileDir, so this branch must reproduce today's behaviour exactly.
+  const dev = storagePaths(undefined, cfg);
+  check("unset keeps sessions beside the profiles",
+    dev.sessionsFile === path.join("local-agent", "storage", "sessions.json"), dev.sessionsFile);
+  check("unset resolves the profile directory",
+    dev.profileDir === path.resolve("local-agent/storage/browser-profiles/deepseek"), dev.profileDir);
+
+  // A temp-directory config, which is the shape the e2e suite actually writes.
+  const tmp = storagePaths(undefined, { id: "mock", profileDir: "/tmp/run-42/profiles/mock" });
+  check("a temp profileDir keeps its own sessions file",
+    tmp.sessionsFile === path.join("/tmp/run-42", "sessions.json"), tmp.sessionsFile);
+
+  // Packaged: everything under one writable root.
+  const packed = storagePaths("/home/u/.config/CloseNI", cfg);
+  check("a root places sessions at its top",
+    packed.sessionsFile === path.join("/home/u/.config/CloseNI", "sessions.json"), packed.sessionsFile);
+  check("a root places profiles by provider id",
+    packed.profileDir === path.join("/home/u/.config/CloseNI", "browser-profiles", "deepseek"), packed.profileDir);
+  check("the root is reported", packed.root === "/home/u/.config/CloseNI");
+  // Two providers must not share a profile directory - that would share a login.
+  check("providers are separated",
+    storagePaths("/r", { id: "glm", profileDir: "x" }).profileDir !==
+    storagePaths("/r", { id: "qwen-studio", profileDir: "x" }).profileDir);
+
+  // An env var set to nothing is the same as not set. Treating "" as a root
+  // would put profiles at the filesystem root.
+  check("an empty root is treated as unset",
+    storagePaths("", cfg).sessionsFile === dev.sessionsFile);
+  check("whitespace is treated as unset",
+    storagePaths("   ", cfg).sessionsFile === dev.sessionsFile);
+}
+
+function testBrowserCheck() {
+  section("browser presence");
+  const { hasChromium } = require(path.join(__dirname, "..", "..", "desktop", "browser-check.js"));
+
+  check("a chromium build counts", hasChromium(["chromium-1234"]) === true);
+  check("a different revision counts", hasChromium(["chromium-9999"]) === true);
+  check("extras alongside it are fine", hasChromium(["ffmpeg-1011", "chromium-1234"]) === true);
+  check("an empty directory does not count", hasChromium([]) === false);
+  check("a missing directory does not count", hasChromium(null) === false);
+  // The headless shell cannot show a login page, and signing in is the whole
+  // reason the app opens a visible browser.
+  check("the headless shell alone does not count", hasChromium(["chromium_headless_shell-1234"]) === false);
+  check("ffmpeg alone does not count", hasChromium(["ffmpeg-1011"]) === false);
+  check("a partial download does not count", hasChromium(["chromium-1234.downloads-in-progress"]) === false);
+}
+
+function testBuildConfig() {
+  section("build configuration");
+  const root = path.join(__dirname, "..", "..");
+  const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
+  const b = pkg.build || {};
+
+  check("the app entry point is the desktop main", pkg.main === "desktop/main.js", String(pkg.main));
+  check("the version matches what the app calls itself", pkg.version === "1.0.0", String(pkg.version));
+  check("desktop is a workspace", (pkg.workspaces || []).indexOf("desktop") !== -1);
+  check("electron-builder is a dev dependency", !!(pkg.devDependencies || {})["electron-builder"]);
+  check("electron is a dev dependency", !!(pkg.devDependencies || {}).electron);
+
+  check("there is an app id", typeof b.appId === "string" && b.appId.length > 0);
+  check("windows builds nsis", JSON.stringify((b.win || {}).target || []).indexOf("nsis") !== -1);
+  check("linux builds an appimage", JSON.stringify((b.linux || {}).target || []).indexOf("AppImage") !== -1);
+  check("linux builds a deb", JSON.stringify((b.linux || {}).target || []).indexOf("deb") !== -1);
+
+  const icon = (b.win || {}).icon || b.icon;
+  check("an icon is configured", !!icon, String(icon));
+  check("the icon exists", fs.existsSync(path.join(root, String(icon))), String(icon));
+
+  // The agent is spawned as a child process, and the provider configs are meant
+  // to be edited by hand - glm.json says so in as many words.
+  check("the agent is unpacked from the asar",
+    JSON.stringify(b.asarUnpack || []).indexOf("local-agent") !== -1, JSON.stringify(b.asarUnpack));
+
+  // --- the check that matters most ---
+  // local-agent/storage holds live session cookies and private chat URLs, and
+  // .gitignore does not constrain electron-builder. An allow-list is used so a
+  // mistake is a missing file rather than a published credential.
+  const files = b.files || [];
+  check("there is a files allow-list", files.length > 0);
+  check("no catch-all glob", files.indexOf("**/*") === -1 && files.indexOf("**") === -1);
+  const agentGlobs = files.filter(function (f) { return String(f).indexOf("local-agent") === 0; });
+  check("only the agent's dist and config are included",
+    agentGlobs.length > 0 && agentGlobs.every(function (f) {
+      return f.indexOf("local-agent/dist") === 0 || f.indexOf("local-agent/config") === 0;
+    }), agentGlobs.join(" "));
+  ["local-agent/storage", ".superpowers", "docs", "samples", "app", "instance", "vscode-extension"]
+    .forEach(function (dir) {
+      check("nothing includes " + dir,
+        files.every(function (f) { return String(f).indexOf(dir) !== 0; }), dir);
+    });
 }
 
 function testToolchain() {
@@ -901,6 +1010,9 @@ async function testBrowserExtraction() {
   testControlDecisions();
   testControlSettings();
   testCssTokens();
+  testStoragePaths();
+  testBrowserCheck();
+  testBuildConfig();
   testTheme();
   testLogo();
   testLanguageMark();
