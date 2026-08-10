@@ -251,7 +251,8 @@ ipcMain.handle("start-session", function (event, payload) {
     let proc;
     try {
       proc = spawnAgent(["build-session", payload.workspace, payload.provider, payload.autonomy || "ask"],
-        agentEnv(headed, payload.controls));
+        Object.assign(agentEnv(headed, payload.controls),
+          { AGENT_CONCURRENCY: String(payload.concurrency || 2) }));
     } catch (e) {
       resolve({ ok: false, error: String(e) });
       return;

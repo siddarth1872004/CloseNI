@@ -8,6 +8,7 @@ import { PlaywrightController, ProviderConfig } from "./providers/playwright-con
 import { ProviderRegistry } from "./providers/provider-registry.js";
 import { runCommand, normalizeCommand } from "./verification/command-runner.js";
 import { planChecksForWorkspace } from "./verification/check-planner.js";
+import { createMutex, createPool } from "./async-pool.js";
 import { decideApproval } from "./verification/approval-policy.js";
 import { getProjectContext } from "./context/context-engine.js";
 import { selectRelevantFiles, WorkspaceFile } from "./context/relevance.js";
@@ -120,11 +121,13 @@ async function planMode(transcript: string, workspace: string, providerId: strin
   transcript = capText(transcript, 8000);
   const ctx = getProjectContext(workspace, transcript);
   const prompt = "Create an implementation plan as JSON:\n" +
-    "{\"summary\":\"goal\",\"runCommand\":\"how to run the finished project\",\"steps\":[{\"title\":\"\",\"detail\":\"\",\"files\":[\"path\"]}]}" +
+    "{\"summary\":\"goal\",\"runCommand\":\"how to run the finished project\",\"steps\":[{\"title\":\"\",\"detail\":\"\",\"files\":[\"path\"],\"dependsOn\":[]}]}" +
     "Rules: as many steps as the work genuinely needs - a one-file script might be 2, " +
     "a full application with a database, API and UI might be 20 or more. Never pad, never compress. " +
     "Each step must touch a different set of files. Wrap in \`\`\`json.\n" +
-    "runCommand is the single command that starts the finished project, e.g. \"python3 src/app/server.py\".\n\n" +
+    "runCommand is the single command that starts the finished project, e.g. \"python3 src/app/server.py\".\n" +
+    "dependsOn lists the earlier steps whose files this step imports or builds on; a step that needs nothing lists []. " +
+    "Be accurate: steps with no declared dependency between them may run at the same time.\n\n" +
     "Project:\n" + ctx.tree + "\n\nChat:\n" + transcript;
   const { controller, config } = await openProvider(providerId, true, workspace);  // FRESH chat
   try {
@@ -207,8 +210,9 @@ async function askMode(workspace: string, providerId: string, question: string, 
 
 async function revisePlanMode(changes: string, workspace: string, providerId: string) {
   const prompt = "Update plan with: " + changes +
-    "\n\nJSON format: {\"summary\":\"\",\"runCommand\":\"how to run the finished project\",\"steps\":[{\"title\":\"\",\"detail\":\"\",\"files\":[\"\"]}]}\n" +
-    "As many steps as the work needs - never pad, never compress. Different files per step.";
+    "\n\nJSON format: {\"summary\":\"\",\"runCommand\":\"how to run the finished project\",\"steps\":[{\"title\":\"\",\"detail\":\"\",\"files\":[\"\"],\"dependsOn\":[]}]}\n" +
+    "As many steps as the work needs - never pad, never compress. Different files per step.\n" +
+    "dependsOn lists earlier steps this one builds on; [] if it needs nothing.";
   const { controller, config } = await openProvider(providerId, true, workspace);  // FRESH chat
   try {
     let prevCount = await controller.countMessages(config);
@@ -365,6 +369,15 @@ interface StepOutcome {
  * rather than emitting, so a long-lived session can call it repeatedly without
  * the caller having to parse stdout.
  */
+/**
+ * Guards everything after a reply: applying the patch, updating the ledger,
+ * syntax checks, and running suggested commands.
+ *
+ * Conversations run in parallel; this does not. It removes every shared-state
+ * race by construction rather than by careful locking.
+ */
+const applyLock = createMutex();
+
 async function runBuildStep(controller: PlaywrightController, config: ProviderConfig, req: StepRequest): Promise<StepOutcome> {
   const { prompt, workspace, autonomy, stepIndex, stepDetail, goalSummary } = req;
   const maxFollowUps = 2;
@@ -447,6 +460,13 @@ async function runBuildStep(controller: PlaywrightController, config: ProviderCo
       return { success: false, error: "No file changes found in AI response.", raw: response };
     }
 
+    // Everything from here to the end of the block runs one step at a time,
+    // even when several conversations are in flight. Two workers must not
+    // interleave writes to the delta ledger or both create the same backup
+    // directory - and, worst of all, must not both ask for command approval:
+    // replies arrive on one stdin queue with nothing saying which command they
+    // answer, so a second prompt could receive the first one's "allow".
+    const locked = await applyLock.run(async () => {
     const applyResult = applyPatch(workspace, plan);
     let failed: { command: string; output: string } | null = null;
 
@@ -499,6 +519,10 @@ async function runBuildStep(controller: PlaywrightController, config: ProviderCo
         }
       }
     }
+    return { applyResult: applyResult, failed: failed };
+    });
+    const applyResult = locked.applyResult;
+    const failed = locked.failed;
 
     if (!failed) return { success: true, appliedFiles: applyResult.appliedFiles, backupDir: applyResult.backupDir };
 
@@ -600,14 +624,45 @@ function sessionEvent(payload: any) {
  */
 async function buildSessionMode(workspace: string, providerId: string, autonomy: string) {
   const { controller, config } = await openProviderForBuild(providerId, workspace, true);
-  sessionEvent({ type: "ready" });
+
+  // Default 2. The realistic failure of raising this is not a crash - it is the
+  // user's provider account being throttled, and a throttled session looks like
+  // a slow reply, which the completion detector will patiently wait out.
+  const limit = Math.max(1, Math.min(4, parseInt(process.env.AGENT_CONCURRENCY || "2", 10) || 2));
+  const workers: PlaywrightController[] = [controller];
+  const sharedContext = controller.getContext();
+  for (let i = 1; i < limit && sharedContext; i++) {
+    // Another page in the same context, never a second profile: Chromium locks
+    // a profile directory, and cloning one is what sub-project 8 refused.
+    const extra = new PlaywrightController(config);
+    extra.setWorkspace(workspace);
+    // "worker", not "build": its thread is transient and must not overwrite the
+    // main build thread that a resume depends on.
+    extra.setThreadKind("worker");
+    await extra.attachTo(sharedContext, config);
+    // attachTo opens a blank page. Without navigating it, the first step routed
+    // to this worker finds no chat input and fails - which is exactly what the
+    // end-to-end suite caught. Each worker starts its own fresh conversation:
+    // it is a separate thread by design, so it must not resume the main one.
+    await extra.navigateFresh(config);
+    const ready = await extra.waitForLogin();
+    if (!ready) {
+      console.log("Worker " + i + " never got a chat input; continuing with fewer workers.");
+      await extra.close();
+      break;
+    }
+    workers.push(extra);
+  }
+  console.log("Build session ready with " + workers.length + " worker(s).");
+  const pool = createPool(workers);
 
   let closing = false;
-  // Steps run one at a time; the chain stops a fast writer from interleaving two
-  // steps in the same browser.
-  let chain: Promise<void> = Promise.resolve();
+  let inFlight = 0;
+  let onIdle: (() => void) | null = null;
 
   await new Promise<void>((resolve) => {
+    const finishIfIdle = () => { if (closing && inFlight === 0 && onIdle) { const f = onIdle; onIdle = null; f(); } };
+
     // Returning false leaves the line for the approval queue, so an
     // {"approved":...} reply sent mid-step still reaches askApproval.
     sessionLineHandler = (line: string): boolean => {
@@ -617,14 +672,19 @@ async function buildSessionMode(workspace: string, providerId: string, autonomy:
 
       if (msg.type === "close") {
         closing = true;
-        chain = chain.then(() => { resolve(); });
+        // Let work already in flight finish: cutting off a step mid-apply would
+        // leave the workspace in a state nobody asked for.
+        if (inFlight === 0) resolve();
+        else onIdle = resolve;
         return true;
       }
 
       if (msg.type === "step" && !closing) {
-        chain = chain.then(async () => {
+        inFlight++;
+        void (async () => {
+          const worker = await pool.acquire();
           try {
-            const outcome = await runBuildStep(controller, config, {
+            const outcome = await runBuildStep(worker, config, {
               prompt: msg.prompt || msg.detail || "",
               workspace: workspace,
               autonomy: autonomy,
@@ -635,17 +695,29 @@ async function buildSessionMode(workspace: string, providerId: string, autonomy:
             sessionEvent(Object.assign({ type: "step-result", index: msg.index }, outcome));
           } catch (e: any) {
             sessionEvent({ type: "step-result", index: msg.index, success: false, error: String(e && e.message ? e.message : e) });
+          } finally {
+            pool.release(worker);
+            inFlight--;
+            finishIfIdle();
           }
-        });
+        })();
         return true;
       }
 
       return false;
     };
-    rl.on("close", () => { chain = chain.then(() => resolve()); });
+    rl.on("close", () => { closing = true; if (inFlight === 0) resolve(); else onIdle = resolve; });
+
+    // Announced only now. The caller sends its first step the instant it sees
+    // this, and worker setup above contains awaits - so announcing before the
+    // handler exists drops that step on the floor.
+    sessionEvent({ type: "ready" });
   });
 
   sessionLineHandler = null;
+  // Workers first: each closes only its own page. The launcher closes last and
+  // takes the shared context with it.
+  for (let i = 1; i < workers.length; i++) await workers[i].close();
   await controller.close();
   sessionEvent({ type: "closed" });
 }

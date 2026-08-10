@@ -72,13 +72,21 @@ export class PlaywrightController {
   private isHeaded: boolean = false;
   // Build steps share a thread that is tracked separately from the Chat/Plan
   // thread, so the two never overwrite each other in sessions.json.
-  private threadKind: "chat" | "build" = "chat";
+  /**
+   * "worker" is a parallel build worker: it holds its own transient thread and
+   * persists nothing. Without it, every worker would overwrite the workspace's
+   * activeBuildThread with its own, and a resumed build would reopen whichever
+   * worker happened to finish last instead of the main thread.
+   */
+  private threadKind: "chat" | "build" | "worker" = "chat";
   // Held from launch() so controls can be applied wherever a conversation
   // opens, without threading the config through every navigation path.
   private launchedConfig: ProviderConfig | null = null;
   // Resolved once in the constructor: packaged it comes from CLOSENI_STORAGE,
   // otherwise from the provider config, which is what the tests rely on.
   private profilePath: string = "";
+  /** Workers share the launcher's context and must not close it. */
+  private ownsContext: boolean = true;
 
   constructor(config: ProviderConfig) {
     const paths = storagePaths(process.env.CLOSENI_STORAGE, config);
@@ -100,7 +108,7 @@ export class PlaywrightController {
     writeSessions(this.sessionStoreFile, sessions);
   }
 
-  setThreadKind(kind: "chat" | "build") {
+  setThreadKind(kind: "chat" | "build" | "worker") {
     this.threadKind = kind;
   }
 
@@ -129,6 +137,9 @@ export class PlaywrightController {
 
   setChatUrlForWorkspace(workspace: string, url: string, title?: string) {
     if (!workspace) return;
+    // A worker's thread is transient by design: recording it would clobber the
+    // main build thread that a resume depends on.
+    if (this.threadKind === "worker") return;
     if (this.threadKind === "build") {
       setBuildThread(this.sessionStoreFile, workspace, url);
       return;
@@ -165,6 +176,29 @@ export class PlaywrightController {
       args: ["--disable-blink-features=AutomationControlled"],
     });
     this.page = this.context.pages()[0] || (await this.context.newPage());
+    this.launchedConfig = config;
+  }
+
+  /** The context this controller launched, for workers to attach to. */
+  getContext(): BrowserContext | null {
+    return this.context;
+  }
+
+  /**
+   * Open another page in an existing context.
+   *
+   * This is how concurrency happens: one launchPersistentContext, several
+   * pages. Chromium locks a profile directory, so a second launch on the same
+   * profile would collide - but a second page in the same context is exactly
+   * what a person with two tabs open is doing.
+   *
+   * The context is not owned here: close() shuts only this controller's page,
+   * so one worker finishing does not take the browser out from under the rest.
+   */
+  async attachTo(context: BrowserContext, config: ProviderConfig): Promise<void> {
+    this.context = context;
+    this.ownsContext = false;
+    this.page = await context.newPage();
     this.launchedConfig = config;
   }
 
@@ -520,6 +554,15 @@ export class PlaywrightController {
   // lock) alive, which blocks the next launch on the same profile.
   async close(): Promise<void> {
     if (!this.context) return;
+    // A worker borrowed the launcher's context. Closing it would take the
+    // browser out from under every other worker still mid-step.
+    if (!this.ownsContext) {
+      if (this.page) { await this.page.close().catch(() => {}); }
+      this.page = null;
+      this.context = null;
+      this.pickedSelector = null;
+      return;
+    }
     try {
       await this.context.close();
     } catch (e) {

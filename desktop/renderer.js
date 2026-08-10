@@ -667,6 +667,16 @@ $("test-run-project").onclick = async function () {
   toast("Detected: " + detected);
 };
 
+// Persist the concurrency choice. The realistic cost of raising it is a
+// throttled provider account, not a crash, which is why the hint beside it says
+// so and the default is conservative.
+(function () {
+  const sel = $("concurrency-select");
+  if (!sel) return;
+  try { const saved = localStorage.getItem("closeni.concurrency"); if (saved) sel.value = saved; } catch (e) {}
+  sel.onchange = function () { try { localStorage.setItem("closeni.concurrency", sel.value); } catch (e) {} };
+})();
+
 // Persist the permission policy: a setting that resets on restart is a nuisance.
 (function () {
   const sel = $("autonomy-select");
@@ -761,6 +771,11 @@ window.CN = {
   getWorkspace: function () { return workspace; },
   getProvider: function () { return provider; },
   getAutonomy: function () { const s = $("autonomy-select"); return (s && s.value) || "ask"; },
+  getConcurrency: function () {
+    const s = $("concurrency-select");
+    const n = parseInt((s && s.value) || "2", 10);
+    return Math.max(1, Math.min(3, isNaN(n) ? 2 : n));
+  },
   getPlan: function () { return currentPlan; },
   runAgent: runAgent,
   suggest: function (stepIndex, text) {
@@ -777,7 +792,7 @@ window.CN = {
   startSession: function (ws, prov, autonomy) {
     try {
       const cb = $("show-browser");
-      return window.api.startSession(ws, prov, autonomy, cb ? cb.checked : false, desiredControls())
+      return window.api.startSession(ws, prov, autonomy, cb ? cb.checked : false, desiredControls(), window.CN.getConcurrency())
         .catch(function (e) { return { ok: false, error: String(e) }; });
     } catch (e) { return Promise.resolve({ ok: false, error: String(e) }); }
   },

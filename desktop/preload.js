@@ -15,8 +15,8 @@ contextBridge.exposeInMainWorld("api", {
   installBrowser: function () { return ipcRenderer.invoke("install-browser"); },
   onBrowserProgress: function (cb) { ipcRenderer.on("browser-progress", function (e, line) { cb(line); }); },
   signIn: function (providerId) { return ipcRenderer.invoke("sign-in", providerId); },
-  startSession: function (workspace, provider, autonomy, headed, controls) {
-    return ipcRenderer.invoke("start-session", { workspace: workspace, provider: provider, autonomy: autonomy, headed: headed, controls: controls });
+  startSession: function (workspace, provider, autonomy, headed, controls, concurrency) {
+    return ipcRenderer.invoke("start-session", { workspace: workspace, provider: provider, autonomy: autonomy, headed: headed, controls: controls, concurrency: concurrency });
   },
   sendStep: function (index, detail, goal) {
     return ipcRenderer.invoke("send-step", { index: index, detail: detail, goal: goal });

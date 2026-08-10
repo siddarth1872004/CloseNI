@@ -271,6 +271,9 @@ select{width:100%;}
 .step-card-status.done{color:var(--ok);background:var(--ok-bg);border-color:var(--ok-line);}
 .step-card-status.failed{color:var(--err);background:var(--err-bg);border-color:var(--err-line);}
 .step-card-status.skipped{color:var(--mut);border-style:dashed;}
+/* Blocked is not failed: a dependency failed, so this step never ran. Dashed
+   like skipped, because in both cases no code was executed. */
+.step-card-status.blocked{color:var(--mut);border-style:dashed;opacity:.7;}
 
 #builder-main{flex:1;border:1px solid var(--line);border-radius:4px;background:var(--panel);
   display:flex;flex-direction:column;overflow:hidden;}
@@ -478,6 +481,7 @@ select{width:100%;}
 .btn-block{width:100%;}
 .btn-sm{font-size:10px;padding:var(--sp-1) var(--sp-3);}
 .mt-1{margin-top:var(--sp-3);}
+.mt-2{margin-top:var(--sp-5);}
 .mb-1{margin-bottom:var(--sp-2);}
 /* Initial state for controls that builder.js later shows with an inline
    style. Inline wins over a class, so show() keeps working untouched. */
