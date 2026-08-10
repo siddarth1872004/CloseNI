@@ -7,22 +7,18 @@ import { isComplete } from "./completion.js";
 export interface ProviderConfig {
   id: string;
   name: string;
-  kind: string;
   baseUrl: string;
-  requiresLogin: boolean;
   enabled: boolean;
   selectors: {
     chatInput: string;
     sendButton: string;
-    stopButton: string;
+    /** Optional. With waitForStopButtonDisappear, ends a wait the moment the
+     *  provider's own stop button vanishes instead of waiting out stability. */
+    stopButton?: string;
     assistantMessage: string;
-    codeBlock: string;
-    copyButton: string;
   };
   completionRules: {
     waitForStopButtonDisappear: boolean;
-    waitForCopyButton: boolean;
-    stableMs: number;
     maxWaitMs: number;
   };
   profileDir: string;

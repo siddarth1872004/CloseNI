@@ -1,11 +1,12 @@
 {
   "id": "huggingchat",
   "name": "HuggingChat",
-  "kind": "web",
   "baseUrl": "https://huggingface.co/chat/",
-  "requiresLogin": true,
   "enabled": false,
   "selectors": {},
-  "completionRules": {},
+  "completionRules": {
+    "waitForStopButtonDisappear": false,
+    "maxWaitMs": 120000
+  },
   "profileDir": ""
 }
