@@ -52,17 +52,31 @@ agent must apply them every time it opens a conversation.
 
 ### Config
 
-`ProviderConfig` gains an optional `controls` array. Each entry is one of two
-kinds.
+`ProviderConfig` gains an optional `controls` array. The schema is deliberately
+**not** shaped around DeepSeek: GLM and Qwen have not been observed and are
+likely to differ in kind, not just in selector.
+
+Three things vary between providers, so all three are declared rather than
+assumed:
+
+**1. Whether options must be revealed first.** DeepSeek shows its modes inline.
+A provider with a dropdown has no options in the DOM until a trigger is clicked.
+An optional `open` selector covers that; absent, the control is already visible.
+
+**2. How state is read.** DeepSeek exposes `aria-pressed` and `aria-checked`.
+Another provider may mark the selection with a CSS class, or expose nothing.
+
+**3. What kind of interaction it is.** A toggle flips; a select chooses one of
+several.
 
 ```json
 "controls": [
   {
     "id": "mode",
     "label": "Mode",
-    "kind": "radio",
+    "kind": "select",
     "selector": "[role=\"radiogroup\"] [data-model-type=\"{value}\"]",
-    "stateAttr": "aria-checked",
+    "state": { "by": "attr", "attr": "aria-checked", "on": "true" },
     "options": [
       { "value": "default", "label": "Instant" },
       { "value": "expert",  "label": "Advanced" }
@@ -74,26 +88,56 @@ kinds.
     "kind": "toggle",
     "selector": ".ds-toggle-button",
     "matchText": "Deep thinking",
-    "stateAttr": "aria-pressed"
-  },
-  {
-    "id": "smart-search",
-    "label": "Smart Search",
-    "kind": "toggle",
-    "selector": ".ds-toggle-button",
-    "matchText": "Smart Search",
-    "stateAttr": "aria-pressed"
+    "state": { "by": "attr", "attr": "aria-pressed", "on": "true" }
   }
 ]
 ```
 
-`{value}` in a radio selector is substituted with the chosen option. `matchText`
-disambiguates toggles that share a class — the label sits inside the clickable
-element, so a text filter targets it exactly.
+A provider whose menu must be opened, and which marks selection with a class:
+
+```json
+{
+  "id": "model",
+  "label": "Model",
+  "kind": "select",
+  "open": "button[class*=\"model-picker\"]",
+  "selector": "[role=\"menuitem\"]",
+  "matchText": "{label}",
+  "state": { "by": "class", "class": "is-selected" },
+  "close": "Escape",
+  "options": [{ "value": "pro", "label": "GLM-4 Pro" }]
+}
+```
+
+And one that exposes nothing readable:
+
+```json
+{ "id": "x", "label": "X", "kind": "toggle", "selector": "…",
+  "state": { "by": "none" } }
+```
+
+`state.by` is one of `attr`, `class` or `none`. With `none`, the agent cannot
+tell whether a click is needed, so it does not guess: it clicks only when the
+desired value differs from what it last set in this session, and logs that the
+state is unverifiable. Silently flipping a setting the user wanted is worse than
+leaving it alone.
+
+`{value}` and `{label}` are substituted from the chosen option, so a provider can
+target either a data attribute or visible text. `close` names an optional key to
+press after choosing, for menus that stay open.
 
 **Hashed classes are deliberately absent.** `f79352dc` and `_9f2341b` are build
 artefacts and will change on any DeepSeek deploy. `ds-toggle-button`,
 `aria-pressed`, `aria-checked` and `data-model-type` are semantic and survive.
+
+### Decoding a new provider
+
+GLM and Qwen get no `controls` block until their markup has been observed.
+`scripts/capture-provider-ui.mjs` is extended to report **candidate controls** —
+every element carrying `aria-pressed`, `aria-checked`, `role="switch"`,
+`role="radio"`, `role="menuitem"`, or a `data-*` attribute whose name suggests a
+mode or model — printed in roughly the shape the config wants, so decoding a
+provider is reading a list rather than trawling markup.
 
 ### Applying
 
@@ -127,9 +171,10 @@ Switching providers re-renders; a provider with no `controls` shows nothing.
 
 - Per-task automatic switching. Explicitly rejected: invisible decisions.
 - The `vision` mode.
-- Controls for GLM or Qwen. Their markup has not been observed; adding a
-  `controls` block for either would be the same guesswork this item was deferred
-  to avoid.
+- Shipping controls for GLM or Qwen. Their markup has not been observed, and
+  they are expected to differ in kind rather than only in selector. The schema is
+  built to accommodate them and the capture tool is built to decode them; the
+  configs follow once someone with an account runs it.
 - Verifying that DeepSeek's selectors still work after a DeepSeek redesign. They
   are semantic, which is the best available mitigation, not a guarantee.
 
