@@ -453,7 +453,8 @@ $("research-go").onclick = async function () {
     el.className = "res-item";
     el.innerHTML = '<a href="' + escapeHtml(r.url) + '" target="_blank">' + escapeHtml(r.title) + '</a>' +
       '<div class="res-snippet">' + escapeHtml(r.snippet || "") + '</div>' +
-      '<div class="res-meta">' + (r.stars || 0) + ' stars</div>';
+      '<div class="res-meta">' + (r.stars || 0) + " stars" +
+        (r.license ? " &middot; " + escapeHtml(r.license) : " &middot; no licence stated") + "</div>";
 
     const actions = document.createElement("div");
     actions.className = "res-actions";
@@ -478,10 +479,22 @@ function renderTestResults(rows, summary) {
   const box = $("test-results");
   if (!box) return;
   box.innerHTML = "";
+  // Language tokens, keyed the same way desktop/language-mark.js keys them, so a
+  // check row is marked by what it checked. The row's own text is a command and
+  // has nothing to derive this from.
+  const LANG_TOKEN = {
+    python: "--lang-py", javascript: "--lang-js", rust: "--lang-rs",
+    java: "--lang-java", c: "--lang-c", cpp: "--lang-c",
+  };
   (rows || []).forEach(function (r) {
     const el = document.createElement("div");
     el.className = "test-row " + (r.success ? "pass" : "fail");
-    el.innerHTML = '<span class="cmd">' + escapeHtml(r.command) + '</span><span class="verdict">' + (r.success ? "pass" : "fail") + "</span>";
+    const token = LANG_TOKEN[r.language];
+    const mark = token
+      ? '<span class="lang-mark" style="color:var(' + token + ')">' + escapeHtml(r.language) + "</span>"
+      : "";
+    el.innerHTML = mark + '<span class="cmd">' + escapeHtml(r.command) + '</span><span class="verdict">' +
+      (r.success ? "pass" : "fail") + "</span>";
     box.appendChild(el);
   });
 }

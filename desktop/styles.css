@@ -466,7 +466,8 @@ select{width:100%;}
 #test-summary{margin:14px 0 6px;}
 #test-results{max-height:340px;overflow-y:auto;}
 .test-row{display:flex;justify-content:space-between;gap:12px;padding:5px 8px;border:1px solid var(--line);border-radius:3px;margin-bottom:4px;background:var(--surface);font-size:11px;}
-.test-row .cmd{color:var(--dim);word-break:break-all;}
+.test-row{align-items:center;}
+.test-row .cmd{color:var(--dim);word-break:break-all;flex:1;}
 .test-row .verdict{letter-spacing:.1em;text-transform:uppercase;font-size:10px;}
 .test-row.pass .verdict{color:var(--ok);}
 .test-row.fail .verdict{color:var(--err);}
