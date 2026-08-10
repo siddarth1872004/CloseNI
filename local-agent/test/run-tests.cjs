@@ -384,6 +384,50 @@ function testCssTokens() {
 
   const blocks = themeBlocks(css);
   check("a :root block exists", blocks.some(function (b) { return b.name === ":root"; }));
+
+  // Every theme must redefine the whole palette. A theme that omits --err-bg
+  // inherits Midnight's near-black, which looks correct until the day a build
+  // fails - on Paper, that is dark red text on a near-black background.
+  const { STRUCTURAL_PREFIXES } = require(path.join(__dirname, "css-lint.cjs"));
+  const { THEMES } = require(path.join(__dirname, "..", "..", "desktop", "theme.js"));
+  const rootBlock = blocks.find(function (b) { return b.name === ":root"; });
+  const palette = rootBlock.tokens.filter(function (t) {
+    return !STRUCTURAL_PREFIXES.some(function (p) { return t.indexOf(p) === 0; });
+  });
+
+  check("the palette is substantial", palette.length >= 25, String(palette.length));
+  check("structural tokens are excluded from the palette",
+    palette.indexOf("--sp-1") === -1 && palette.indexOf("--r-md") === -1);
+
+  THEMES.forEach(function (t) {
+    if (t.id === "midnight") return;   // midnight IS :root
+    const block = blocks.find(function (b) { return b.name === t.id; });
+    if (!block) { check("theme " + t.id + " has a block", false); return; }
+    const missing = palette.filter(function (tok) { return block.tokens.indexOf(tok) === -1; });
+    check("theme " + t.id + " defines the whole palette", missing.length === 0, missing.join(" "));
+  });
+
+  // Structural tokens belong to :root alone; a theme redefining spacing would
+  // change layout, which is not what a theme is for.
+  blocks.forEach(function (b) {
+    if (b.name === ":root") return;
+    const structural = b.tokens.filter(function (t) {
+      return STRUCTURAL_PREFIXES.some(function (p) { return t.indexOf(p) === 0; });
+    });
+    check("theme " + b.name + " does not redefine structure", structural.length === 0, structural.join(" "));
+  });
+
+  // The decor flag drives whether Appearance offers a decoration toggle, so it
+  // has to agree with which themes actually declare a texture. Drift between
+  // the two shows up as a toggle that does nothing.
+  const textured = blocks.filter(function (b) {
+    return b.name !== ":root" && /--overlay-texture:\s*(?!none)/.test(
+      css.slice(css.indexOf('[data-theme="' + b.name + '"]'))
+         .slice(0, css.slice(css.indexOf('[data-theme="' + b.name + '"]')).indexOf("}")));
+  }).map(function (b) { return b.name; });
+  const flagged = THEMES.filter(function (t) { return t.decor; }).map(function (t) { return t.id; });
+  check("the crt flag matches the themes with a texture",
+    textured.sort().join() === flagged.sort().join(), "textured=" + textured.join() + " flagged=" + flagged.join());
 }
 
 function testTheme() {
@@ -396,11 +440,12 @@ function testTheme() {
   check("every theme has an id and a name", THEMES.every(function (t) { return t.id && t.name; }));
   check("ids are unique",
     new Set(THEMES.map(function (t) { return t.id; })).size === THEMES.length);
-  // Only the themes carrying scanlines and glow are marked, so the Appearance
-  // toggle knows when it is worth showing.
-  check("four themes are marked as CRT",
-    THEMES.filter(function (t) { return t.crt; }).length === 4,
-    THEMES.filter(function (t) { return t.crt; }).map(function (t) { return t.id; }).join());
+  // Only the themes carrying a texture are marked, so the Appearance toggle
+  // knows when it is worth showing. Task 3's test proves this agrees with the
+  // CSS; this one just pins the count.
+  check("five themes carry decoration",
+    THEMES.filter(function (t) { return t.decor; }).length === 5,
+    THEMES.filter(function (t) { return t.decor; }).map(function (t) { return t.id; }).join());
 
   check("a saved theme is honoured", resolveTheme("paper") === "paper");
   check("nothing saved yields the default", resolveTheme(null) === "midnight");

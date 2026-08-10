@@ -16,6 +16,128 @@
   --shadow-1:0 4px 20px rgba(0,0,0,.5); --shadow-2:0 12px 40px rgba(0,0,0,.75);
   --overlay-texture:none; --glow:none;
 }
+
+/* Light. The demanding one: every surface, line and state needs a counterpart,
+   which is what forces the token set to be complete. */
+[data-theme="paper"]{
+  --bg:#f7f7f5; --panel:#fff; --surface:#fff; --surface-raised:#eeeee9; --surface-sunken:#f0f0ec;
+  --overlay:rgba(40,40,38,.45);
+  --line:#ddddd7; --line-strong:#c6c6bf; --line-focus:#3b4fd8;
+  --txt:#1b1b1d; --dim:#55555a; --mut:#8a8a84; --inverse:#f7f7f5;
+  --ok:#2f6b45; --ok-bg:#eaf6ee; --ok-line:#a8d4b6;
+  --warn:#7a6520; --warn-bg:#faf5e2; --warn-line:#d8c98a;
+  --err:#9c2f38; --err-bg:#fbeced; --err-line:#e0b0b4;
+  --lang-py:#1f5f85; --lang-rs:#a85c22; --lang-js:#7a6520; --lang-java:#9c2f38; --lang-c:#4a448a; --lang-default:#55555a;
+  --shadow-1:0 4px 20px rgba(40,40,38,.14); --shadow-2:0 12px 40px rgba(40,40,38,.2);
+  --overlay-texture:none; --glow:none;
+}
+
+/* Green CRT. The character is the scanline overlay and the phosphor glow. */
+[data-theme="phosphor"]{
+  --bg:#020a04; --panel:#04140a; --surface:#04140a; --surface-raised:#0a2412; --surface-sunken:#010603;
+  --overlay:rgba(0,10,4,.78);
+  --line:#12401f; --line-strong:#2f8a52; --line-focus:#7bffa0;
+  --txt:#9dffb8; --dim:#4ec46f; --mut:#2f8a52; --inverse:#020a04;
+  --ok:#7bffa0; --ok-bg:#04240f; --ok-line:#2f8a52;
+  --warn:#d8ff7b; --warn-bg:#141f04; --warn-line:#6b8a2f;
+  --err:#ff9d8f; --err-bg:#240a06; --err-line:#8a3f2f;
+  --lang-py:#7bffd8; --lang-rs:#d8ff7b; --lang-js:#b8ff7b; --lang-java:#ff9d8f; --lang-c:#7bd8ff; --lang-default:#4ec46f;
+  --shadow-1:0 4px 20px rgba(0,0,0,.6); --shadow-2:0 12px 40px rgba(0,0,0,.8);
+  --overlay-texture:repeating-linear-gradient(0deg,rgba(0,255,120,.045) 0 1px,transparent 1px 3px);
+  --glow:0 0 8px rgba(80,255,140,.55);
+}
+
+/* The same CRT in amber - easier on the eyes over a long session. */
+[data-theme="amber"]{
+  --bg:#0c0703; --panel:#150c04; --surface:#150c04; --surface-raised:#241407; --surface-sunken:#080402;
+  --overlay:rgba(12,7,3,.78);
+  --line:#40260c; --line-strong:#8a5a20; --line-focus:#ffc06b;
+  --txt:#ffd9a0; --dim:#c4913f; --mut:#8a5a20; --inverse:#0c0703;
+  --ok:#c8e06b; --ok-bg:#1a2407; --ok-line:#6b8a2f;
+  --warn:#ffc06b; --warn-bg:#241a07; --warn-line:#8a6520;
+  --err:#ff9b7b; --err-bg:#240e06; --err-line:#8a3f2f;
+  --lang-py:#6bc8e0; --lang-rs:#ffc06b; --lang-js:#e0cf8f; --lang-java:#ff9b7b; --lang-c:#c8a0e0; --lang-default:#c4913f;
+  --shadow-1:0 4px 20px rgba(0,0,0,.6); --shadow-2:0 12px 40px rgba(0,0,0,.8);
+  --overlay-texture:repeating-linear-gradient(0deg,rgba(255,180,80,.04) 0 1px,transparent 1px 3px);
+  --glow:0 0 8px rgba(255,170,70,.5);
+}
+
+/* Retro-futurist, violet. Cyan for success, magenta for what is live. */
+[data-theme="cassette-indigo"]{
+  --bg:#07060f; --panel:#0d0a1c; --surface:#0d0a1c; --surface-raised:#171233; --surface-sunken:#040309;
+  --overlay:rgba(7,6,15,.78);
+  --line:#241c47; --line-strong:#5a2a6e; --line-focus:#f08cff;
+  --txt:#e6e2ff; --dim:#a49ce0; --mut:#6a5fa8; --inverse:#07060f;
+  --ok:#4fe0d0; --ok-bg:#07211f; --ok-line:#1f6b6b;
+  --warn:#f08cff; --warn-bg:#220e2a; --warn-line:#a83fc4;
+  --err:#ff7b9d; --err-bg:#24060f; --err-line:#8a2f4a;
+  --lang-py:#4fe0d0; --lang-rs:#ffb03f; --lang-js:#f0e08c; --lang-java:#ff7b9d; --lang-c:#a49ce0; --lang-default:#a49ce0;
+  --shadow-1:0 4px 20px rgba(0,0,0,.6); --shadow-2:0 12px 40px rgba(0,0,0,.8);
+  --overlay-texture:repeating-linear-gradient(0deg,rgba(120,200,255,.035) 0 1px,transparent 1px 3px);
+  --glow:0 0 8px rgba(200,120,255,.5);
+}
+
+/* Retro-futurist, warm. Hot pink and gold on plum. */
+[data-theme="cassette-miami"]{
+  --bg:#0a0512; --panel:#150a1e; --surface:#150a1e; --surface-raised:#241033; --surface-sunken:#05020a;
+  --overlay:rgba(10,5,18,.78);
+  --line:#3a1430; --line-strong:#8a3050; --line-focus:#ffb03f;
+  --txt:#ffe0ee; --dim:#e0a0c8; --mut:#a05a86; --inverse:#0a0512;
+  --ok:#4fe0d0; --ok-bg:#07211f; --ok-line:#1f6b6b;
+  --warn:#ffc86b; --warn-bg:#2a1a06; --warn-line:#ffb03f;
+  --err:#ff5aa0; --err-bg:#2a0616; --err-line:#8a3050;
+  --lang-py:#4fe0d0; --lang-rs:#ffb03f; --lang-js:#ffc86b; --lang-java:#ff5aa0; --lang-c:#c88ce0; --lang-default:#e0a0c8;
+  --shadow-1:0 4px 20px rgba(0,0,0,.6); --shadow-2:0 12px 40px rgba(0,0,0,.8);
+  --overlay-texture:repeating-linear-gradient(0deg,rgba(255,150,200,.035) 0 1px,transparent 1px 3px);
+  --glow:0 0 8px rgba(255,90,150,.5);
+}
+
+/* Retro-futurist, cool. No magenta, green for success - the most legible of the
+   three, and the only one without a scanline overlay. */
+[data-theme="cassette-grid"]{
+  --bg:#03080e; --panel:#061420; --surface:#061420; --surface-raised:#0a2033; --surface-sunken:#020509;
+  --overlay:rgba(3,8,14,.78);
+  --line:#0e2c3f; --line-strong:#1d6f9c; --line-focus:#5fd8ff;
+  --txt:#dff4ff; --dim:#8fc4e0; --mut:#3d7a9c; --inverse:#03080e;
+  --ok:#4fe08f; --ok-bg:#07211a; --ok-line:#1f6b4a;
+  --warn:#e0d08f; --warn-bg:#21200e; --warn-line:#6b6320;
+  --err:#ff8f9d; --err-bg:#240a0e; --err-line:#8a2f3a;
+  --lang-py:#5fd8ff; --lang-rs:#e0a878; --lang-js:#e0d08f; --lang-java:#ff8f9d; --lang-c:#9c8fe0; --lang-default:#8fc4e0;
+  --shadow-1:0 4px 20px rgba(0,0,0,.6); --shadow-2:0 12px 40px rgba(0,0,0,.8);
+  --overlay-texture:none;
+  --glow:0 0 9px rgba(95,216,255,.5);
+}
+
+/* Drafting paper in negative. The texture is a grid rather than scanlines. */
+[data-theme="blueprint"]{
+  --bg:#081a2e; --panel:#0b2540; --surface:#0b2540; --surface-raised:#123350; --surface-sunken:#05131f;
+  --overlay:rgba(8,26,46,.78);
+  --line:#1c4468; --line-strong:#4c86b8; --line-focus:#c8e4ff;
+  --txt:#e8f4ff; --dim:#a8ccea; --mut:#5f8fb8; --inverse:#081a2e;
+  --ok:#7fd8a8; --ok-bg:#0d2a1e; --ok-line:#3f7a5c;
+  --warn:#e8cf8f; --warn-bg:#2a2410; --warn-line:#8a7a3f;
+  --err:#f0a0a8; --err-bg:#2a1218; --err-line:#8a4550;
+  --lang-py:#8fd8f0; --lang-rs:#e8b48f; --lang-js:#e8cf8f; --lang-java:#f0a0a8; --lang-c:#b0a8f0; --lang-default:#a8ccea;
+  --shadow-1:0 4px 20px rgba(0,0,0,.45); --shadow-2:0 12px 40px rgba(0,0,0,.65);
+  --overlay-texture:linear-gradient(rgba(120,190,255,.07) 1px,transparent 1px),linear-gradient(90deg,rgba(120,190,255,.07) 1px,transparent 1px);
+  --glow:none;
+}
+
+/* Not a style choice. The fallback for anyone the CRT themes are unusable for:
+   maximum contrast, no texture, and no state distinguished by hue alone. */
+[data-theme="contrast"]{
+  --bg:#000; --panel:#0a0a0a; --surface:#0a0a0a; --surface-raised:#1a1a1a; --surface-sunken:#000;
+  --overlay:rgba(0,0,0,.85);
+  --line:#3a3a3a; --line-strong:#fff; --line-focus:#fff;
+  --txt:#fff; --dim:#c8c8c8; --mut:#8a8a8a; --inverse:#000;
+  --ok:#fff; --ok-bg:#000; --ok-line:#fff;
+  --warn:#fff; --warn-bg:#000; --warn-line:#fff;
+  --err:#fff; --err-bg:#000; --err-line:#fff;
+  --lang-py:#fff; --lang-rs:#fff; --lang-js:#fff; --lang-java:#fff; --lang-c:#fff; --lang-default:#fff;
+  --shadow-1:none; --shadow-2:none;
+  --overlay-texture:none; --glow:none;
+}
+
 *{margin:0;padding:0;box-sizing:border-box;}
 body{background:var(--bg);color:var(--txt);font:14px/1.5 "Segoe UI",system-ui,sans-serif;overflow:hidden;}
 #log,#plog,pre,#workspace-label,.micro,#wordmark,input,textarea,select,#status-line,.nav-btn i,#step-detail-label,.step-card-num,#res-web a,#res-gh a{

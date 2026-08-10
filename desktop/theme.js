@@ -16,19 +16,21 @@
   var THEME_KEY = "closeni.theme";
   var DECOR_KEY = "closeni.theme.decor";
 
-  // `crt` marks the themes carrying scanlines and glow, so Appearance knows
-  // when the decoration toggle is worth showing. It must stay in step with
-  // which theme blocks in styles.css set --overlay-texture to something.
+  // `decor` marks the themes carrying a texture - scanlines, or Blueprint's
+  // grid - so Appearance knows when the decoration toggle is worth showing.
+  // A test asserts this stays in step with which theme blocks in styles.css
+  // actually set --overlay-texture, because the two drifting apart shows up as
+  // a toggle that does nothing.
   var THEMES = [
-    { id: "midnight",        name: "Midnight",          crt: false },
-    { id: "paper",           name: "Paper",             crt: false },
-    { id: "phosphor",        name: "Phosphor",          crt: true },
-    { id: "amber",           name: "Amber",             crt: true },
-    { id: "cassette-indigo", name: "Cassette · Indigo", crt: true },
-    { id: "cassette-miami",  name: "Cassette · Miami",  crt: true },
-    { id: "cassette-grid",   name: "Cassette · Grid",   crt: false },
-    { id: "blueprint",       name: "Blueprint",         crt: false },
-    { id: "contrast",        name: "High contrast",     crt: false },
+    { id: "midnight",        name: "Midnight",          decor: false },
+    { id: "paper",           name: "Paper",             decor: false },
+    { id: "phosphor",        name: "Phosphor",          decor: true },
+    { id: "amber",           name: "Amber",             decor: true },
+    { id: "cassette-indigo", name: "Cassette · Indigo", decor: true },
+    { id: "cassette-miami",  name: "Cassette · Miami",  decor: true },
+    { id: "cassette-grid",   name: "Cassette · Grid",   decor: false },
+    { id: "blueprint",       name: "Blueprint",         decor: true },
+    { id: "contrast",        name: "High contrast",     decor: false },
   ];
 
   /**
