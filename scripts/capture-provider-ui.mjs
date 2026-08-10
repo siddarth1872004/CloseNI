@@ -48,12 +48,73 @@ await page.goto(cfg.baseUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
 console.log("A browser window is open.");
 console.log("");
 console.log("  1. Sign in if you are asked to.");
-console.log("  2. Click whatever opens the MODEL picker, so the list of models is showing.");
-console.log("  3. Leave it open and come back here.");
+console.log("  2. That is all - do NOT open any menus yourself.");
+console.log("     Menus close when you switch windows, so the tool opens them itself.");
 console.log("");
 
 const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-await new Promise((r) => rl.question("Press Enter once the model list is visible... ", () => { rl.close(); r(); }));
+await new Promise((r) => rl.question("Press Enter once you are signed in and the chat page is showing... ", () => { rl.close(); r(); }));
+
+// Open each menu-like trigger in turn and record what appears. Doing this from
+// the script avoids the trap that made earlier captures useless: a dropdown
+// closes the moment focus leaves the window, so a human cannot hold one open
+// while pressing Enter in a terminal.
+const TRIGGERS = '[aria-haspopup], [data-dropdown-menu-trigger], .ant-select, [role="combobox"], [aria-expanded]';
+const opened = [];
+const triggerCount = await page.locator(TRIGGERS).count();
+console.log("");
+console.log("Opening " + triggerCount + " menu-like controls, one at a time...");
+
+for (let i = 0; i < Math.min(triggerCount, 12); i++) {
+  const trigger = page.locator(TRIGGERS).nth(i);
+  let label = "";
+  try {
+    if (!(await trigger.isVisible())) continue;
+    label = ((await trigger.getAttribute("aria-label")) || (await trigger.innerText()) || "").trim().replace(/\s+/g, " ").slice(0, 40);
+    const before = await page.evaluate(() => document.body.innerHTML.length);
+    await trigger.click({ timeout: 4000 });
+    await page.waitForTimeout(700);
+    const after = await page.evaluate(() => document.body.innerHTML.length);
+    if (after <= before + 200) { await page.keyboard.press("Escape").catch(() => {}); continue; }
+
+    // Something appeared. Record the newly visible option-like elements.
+    const items = await page.evaluate(() => {
+      const rows = [];
+      const sel = '[role="menuitem"], [role="option"], [role="menuitemradio"], [data-radix-collection-item], .ant-select-item, li';
+      for (const el of document.querySelectorAll(sel)) {
+        const r = el.getBoundingClientRect();
+        if (r.width === 0 || r.height === 0) continue;
+        const text = (el.textContent || "").trim().replace(/\s+/g, " ").slice(0, 60);
+        if (!text) continue;
+        const attrs = [];
+        for (const a of el.attributes) {
+          if (a.name.startsWith("data-") || a.name.startsWith("aria-") || a.name === "role") {
+            if (!/^data-(styled|beam|css-hash|token-hash|rc-order|rc-priority|spm)/.test(a.name)) {
+              attrs.push(a.name + '="' + String(a.value).slice(0, 40) + '"');
+            }
+          }
+        }
+        rows.push({ text, attrs: attrs.join(" ") });
+      }
+      return rows.slice(0, 30);
+    });
+    if (items.length) opened.push({ label: label || "(trigger " + i + ")", items });
+    fs.writeFileSync(path.join(os.tmpdir(), "closeni-open-" + providerId + "-" + i + ".html"), await page.content(), "utf-8");
+    await page.keyboard.press("Escape").catch(() => {});
+    await page.waitForTimeout(400);
+  } catch (e) {
+    await page.keyboard.press("Escape").catch(() => {});
+  }
+}
+
+console.log("");
+console.log("=== MENU CONTENTS FOUND ===");
+if (!opened.length) console.log("  none - the controls may need a different trigger.");
+for (const o of opened) {
+  console.log("");
+  console.log("  [" + o.label + "]");
+  for (const it of o.items) console.log("      " + JSON.stringify(it.text) + (it.attrs ? "   " + it.attrs : ""));
+}
 
 const out = path.join(os.tmpdir(), "closeni-ui-" + providerId + "-" + Date.now() + ".html");
 fs.writeFileSync(out, await page.content(), "utf-8");
