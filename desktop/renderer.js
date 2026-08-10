@@ -87,6 +87,9 @@ function switchTab(mode) {
   const panel = $("panel-" + mode);
   if (panel) panel.classList.add("active");
   $("mode-title").textContent = MODE_TITLES[mode] || "";
+  // The run bar reads the manifest from disk, so it must refresh on open
+  // rather than only after a build.
+  if (mode === "test" && typeof refreshRunBar === "function") refreshRunBar();
 }
 document.querySelectorAll(".nav-btn").forEach(function (btn) {
   btn.onclick = function () { switchTab(btn.dataset.mode); };
@@ -474,38 +477,51 @@ function renderTestOutput(text) {
 
 // The second argument is the prompt slot, which testall ignores. Kept rather
 // than tidied: changing the positional layout would break the mode.
-$("test-check").onclick = async function () {
-  if (!workspace) { toast("Pick a workspace", "err"); return; }
-  setStatus("testing");
-  renderTestResults([], "running syntax checks...");
-  const res = await runAgent(["testall", "x", workspace, provider]);
-  setStatus("idle");
-  if (!res) { renderTestResults([], "check failed"); return; }
-  renderTestResults(res.results || [], (res.passed || 0) + " passed, " + (res.failed || 0) + " failed");
-};
+// The last run, carried into the chat automatically so nobody pastes a
+// traceback into a box sitting directly beneath that same traceback.
+let lastRun = { command: "", output: "" };
 
-$("test-run").onclick = async function () {
-  const cmd = $("test-cmd").value.trim();
-  if (!cmd) { toast("Type a command", "err"); return; }
-  if (!workspace) { toast("Pick a workspace", "err"); return; }
-  setStatus("running");
-  renderTestResults([], "running: " + cmd);
-  const r = await window.api.runCommand({ command: cmd, cwd: workspace });
-  setStatus("idle");
-  renderTestResults([{ command: cmd, success: !!(r && r.success) }], (r && r.success) ? "command succeeded" : "command failed");
-  renderTestOutput(r && r.output);
-};
+// A short list, not a log: enough that a syntax check does not vanish the
+// moment something else runs.
+const testHistory = [];
 
-$("test-run-project").onclick = async function () {
-  if (!workspace) { toast("Pick a workspace", "err"); return; }
-  const listing = await window.api.listFiles(workspace);
-  const files = (listing && listing.files) || [];
+function pushHistory(label, ok) {
+  testHistory.unshift({ label: label, ok: ok });
+  testHistory.splice(6);
+  const box = $("test-history");
+  if (!box) return;
+  box.innerHTML = "";
+  testHistory.forEach(function (h) {
+    const row = document.createElement("div");
+    row.className = "test-row " + (h.ok ? "pass" : "fail");
+    row.innerHTML = '<span class="cmd">' + escapeHtml(h.label) + "</span>" +
+      '<span class="verdict">' + (h.ok ? "passed" : "failed") + "</span>";
+    box.appendChild(row);
+  });
+  const heading = $("test-history-label");
+  if (heading) heading.style.display = testHistory.length ? "" : "none";
+}
+
+/**
+ * What to run, and where the answer came from.
+ *
+ * The manifest wins, then the plan, then filename detection. The badge shows
+ * which, because "from your plan" and "detected from main.py" are different
+ * levels of confidence and the user should be able to tell them apart. This is
+ * the fix for "no entry point found" appearing when the app already knew.
+ */
+async function detectCommand() {
+  let files = [];
+  try {
+    const listing = await window.api.listFiles(workspace);
+    files = (listing && listing.files) || [];
+  } catch (e) { /* an unreadable workspace simply detects nothing */ }
   let pkg = null;
   if (files.indexOf("package.json") !== -1) {
     try {
       const r = await window.api.readFile(workspace + "/package.json", { full: true });
       if (r && r.ok) pkg = JSON.parse(r.text);
-    } catch (e) { /* an unreadable package.json just falls through to the file rules */ }
+    } catch (e) { /* an unreadable package.json falls through to the file rules */ }
   }
   let makefile = null;
   if (files.indexOf("Makefile") !== -1) {
@@ -514,21 +530,137 @@ $("test-run-project").onclick = async function () {
       if (mk && mk.ok) makefile = mk.text;
     } catch (e) { /* an unreadable Makefile just means no `run` target */ }
   }
-  const cmd = window.CNEntry
+  return window.CNEntry
     ? window.CNEntry.detectEntrypoint(files, pkg, { makefile: makefile }, window.api.platform)
     : null;
-  if (!cmd) {
-    renderTestResults([], "no entry point found - try a custom command");
-    toast("No entry point found", "err");
-    return;
-  }
-  $("test-cmd").value = cmd;
+}
+
+const RUN_LABELS = {
+  manifest: ["SAVED", "from closeni.run.json - edit it here and it sticks"],
+  plan: ["FROM YOUR PLAN", "the model declared this while planning"],
+  detected: ["DETECTED", "guessed from the files in this workspace"],
+  none: ["NOT FOUND", "type a command, or build a project and one gets saved"],
+};
+
+async function refreshRunBar() {
+  const box = $("test-cmd");
+  const badge = $("run-source");
+  const hint = $("run-hint");
+  if (!box || !badge || !workspace) return;
+
+  const manifest = await window.api.readManifest(workspace).catch(function () { return null; });
+  const detected = await detectCommand();
+
+  let command = null;
+  let source = "none";
+  if (manifest && String(manifest.run || "").trim()) { command = manifest.run.trim(); source = "manifest"; }
+  else if (currentPlan && String(currentPlan.runCommand || "").trim()) { command = currentPlan.runCommand.trim(); source = "plan"; }
+  else if (detected) { command = detected; source = "detected"; }
+
+  box.value = command || "";
+  badge.textContent = RUN_LABELS[source][0];
+  badge.className = "run-badge " + source;
+  if (hint) hint.textContent = RUN_LABELS[source][1];
+}
+
+// Editing the command saves it and marks it, so no later build overwrites it.
+$("test-cmd").onchange = async function () {
+  const cmd = $("test-cmd").value.trim();
+  if (!cmd || !workspace) return;
+  await window.api.writeManifest({ workspace: workspace, run: cmd, userEdited: true });
+  await refreshRunBar();
+  toast("Run command saved");
+};
+
+$("test-check").onclick = async function () {
+  if (!workspace) { toast("Pick a workspace", "err"); return; }
+  setStatus("testing");
+  renderTestResults([], "running syntax checks...");
+  const res = await runAgent(["testall", "x", workspace, provider]);
+  setStatus("idle");
+  if (!res) { renderTestResults([], "check failed"); pushHistory("syntax check", false); return; }
+  renderTestResults(res.results || [], (res.passed || 0) + " passed, " + (res.failed || 0) + " failed");
+  pushHistory("syntax check · " + ((res.passed || 0) + (res.failed || 0)) + " checks", !res.failed);
+  lastRun = { command: "syntax check", output: JSON.stringify(res.results || []).slice(0, 4000) };
+};
+
+$("test-run").onclick = async function () {
+  const cmd = $("test-cmd").value.trim();
+  if (!cmd) { toast("Nothing to run - type a command or build a project", "err"); return; }
+  if (!workspace) { toast("Pick a workspace", "err"); return; }
   setStatus("running");
   renderTestResults([], "running: " + cmd);
   const r = await window.api.runCommand({ command: cmd, cwd: workspace });
   setStatus("idle");
-  renderTestResults([{ command: cmd, success: !!(r && r.success) }], (r && r.success) ? "project ran successfully" : "project exited with an error");
+  renderTestResults([{ command: cmd, success: !!(r && r.success) }], (r && r.success) ? "command succeeded" : "command failed");
   renderTestOutput(r && r.output);
+  pushHistory(cmd, !!(r && r.success));
+  lastRun = { command: cmd, output: (r && r.output) || "" };
+  if (window.CNBuilderPreview) window.CNBuilderPreview.update((r && r.output) || "", workspace);
+};
+
+function addTestMsg(who, text) {
+  const flow = $("test-chat-flow");
+  if (!flow) return null;
+  const wrap = document.createElement("div");
+  wrap.className = "msg " + who;
+  const tag = document.createElement("span");
+  tag.className = "msg-label";
+  tag.textContent = who === "user" ? "you" : "ai";
+  const body = document.createElement("div");
+  body.className = "msg-text";
+  if (who === "ai" && text && text.length > 40) body.innerHTML = renderMarkdown(text);
+  else body.textContent = text;
+  wrap.appendChild(tag); wrap.appendChild(body);
+  flow.appendChild(wrap);
+  flow.scrollTop = flow.scrollHeight;
+  return body;
+}
+
+$("test-chat-send").onclick = async function () {
+  const input = $("test-chat-input");
+  const q = input.value.trim();
+  if (!q) return;
+  if (!workspace) { toast("Pick a workspace", "err"); return; }
+  input.value = "";
+  addTestMsg("user", q);
+  const pending = addTestMsg("ai", "thinking...");
+  const cb = $("show-browser");
+  const r = await window.api.askRun({
+    workspace: workspace, provider: provider, question: q,
+    command: lastRun.command, output: lastRun.output,
+    headed: cb ? cb.checked : false, controls: desiredControls(),
+  }).catch(function (e) { return { success: false, error: String(e) }; });
+
+  if (r && r.success) {
+    // A question usually has no fix, and a prose answer is the normal case -
+    // it used to be reported as a failure and shown as nothing at all.
+    pending.innerHTML = renderMarkdown(r.answer || "(no answer)");
+    if (r.appliedFiles && r.appliedFiles.length) {
+      const note = document.createElement("div");
+      note.className = "hint applied-note";
+      note.textContent = "Applied: " + r.appliedFiles.join(", ");
+      pending.appendChild(note);
+      toast(r.appliedFiles.length + " file(s) changed");
+    }
+  } else {
+    pending.textContent = (r && r.error) || "Could not get an answer.";
+  }
+};
+
+$("test-chat-input").addEventListener("keydown", function (e) {
+  if (e.key === "Enter") { e.preventDefault(); $("test-chat-send").onclick(); }
+});
+
+// Re-detect, rather than run. Detection is now one of three sources feeding the
+// run bar, so this refreshes it - it does not decide on its own what to execute.
+$("test-run-project").onclick = async function () {
+  if (!workspace) { toast("Pick a workspace", "err"); return; }
+  const detected = await detectCommand();
+  if (!detected) { toast("Nothing detectable in this workspace", "err"); return; }
+  await window.api.writeManifest({ workspace: workspace, run: detected });
+  await refreshRunBar();
+  toast("Detected: " + detected);
 };
 
 // Persist the permission policy: a setting that resets on restart is a nuisance.

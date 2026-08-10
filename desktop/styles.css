@@ -365,6 +365,31 @@ select{width:100%;}
 
 /* #autonomy-select and #provider-select each re-declared what the shared
    input,textarea,select rule already says. Deleted; they inherit it. */
+/* Test panel: a run bar that knows the answer, output left, chat right. */
+#run-bar{border:1px solid var(--line);border-radius:var(--r-lg);background:var(--panel);
+  padding:var(--sp-4) var(--sp-5);flex:none;}
+.run-row{display:flex;align-items:center;gap:var(--sp-3);}
+.run-row .micro{margin-bottom:0;flex:none;}
+#test-cmd{flex:1;font-family:ui-monospace,Consolas,monospace;}
+.run-meta{margin-top:var(--sp-3);}
+.run-spacer{flex:1;}
+.run-badge{font-size:9px;letter-spacing:.1em;text-transform:uppercase;padding:2px 6px;
+  border-radius:var(--r-sm);border:1px solid var(--line-strong);color:var(--mut);flex:none;}
+.run-badge.manifest,.run-badge.plan{color:var(--ok);background:var(--ok-bg);border-color:var(--ok-line);}
+.run-badge.detected{color:var(--warn);background:var(--warn-bg);border-color:var(--warn-line);}
+.run-badge.none{color:var(--err);background:var(--err-bg);border-color:var(--err-line);}
+
+#test-view{display:flex;gap:var(--sp-5);flex:1;min-height:0;}
+#test-output-col{flex:1.35;display:flex;flex-direction:column;min-width:0;overflow-y:auto;
+  border:1px solid var(--line);border-radius:var(--r-lg);background:var(--panel);padding:var(--sp-4) var(--sp-5);}
+#test-chat-col{flex:1;display:flex;flex-direction:column;min-width:0;
+  border:1px solid var(--line);border-radius:var(--r-lg);background:var(--panel);padding:var(--sp-4) var(--sp-5);}
+#test-chat-flow{flex:1;overflow-y:auto;margin-bottom:var(--sp-3);}
+#test-chat-bar{display:flex;gap:var(--sp-3);}
+#test-chat-input{flex:1;}
+#test-history-label{margin-top:var(--sp-5);display:none;}
+#test-chat-flow .msg{padding:var(--sp-3) 0;}
+.applied-note{margin-top:var(--sp-3);color:var(--ok);}
 #test-summary{margin:14px 0 6px;}
 #test-results{max-height:340px;overflow-y:auto;}
 .test-row{display:flex;justify-content:space-between;gap:12px;padding:5px 8px;border:1px solid var(--line);border-radius:3px;margin-bottom:4px;background:var(--surface);font-size:11px;}

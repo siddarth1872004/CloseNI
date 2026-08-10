@@ -111,17 +111,38 @@
     </section>
 
     <section id="panel-test" class="panel">
-      <div class="micro">Test</div>
-      <div class="row">
-        <button id="test-check" class="btn">Syntax-check all files</button>
-        <button id="test-run-project" class="btn invert">Run Project</button>
+      <div id="run-bar">
+        <div class="run-row">
+          <span class="micro">Run</span>
+          <input id="test-cmd" placeholder="no run command yet - type one, or build a project">
+          <button id="test-run" class="btn invert">Run</button>
+        </div>
+        <div class="run-row run-meta">
+          <span id="run-source" class="run-badge"></span>
+          <span id="run-hint" class="hint"></span>
+          <span class="run-spacer"></span>
+          <button id="test-run-project" class="btn btn-sm">Re-detect</button>
+          <button id="test-check" class="btn btn-sm">Syntax-check all</button>
+        </div>
       </div>
-      <div class="row">
-        <input id="test-cmd" placeholder="custom command, e.g. python3 src/main.py">
-        <button id="test-run" class="btn">Run</button>
+
+      <div id="test-view">
+        <div id="test-output-col">
+          <div class="micro">Output</div>
+          <div id="test-summary" class="micro"></div>
+          <div id="test-results"></div>
+          <div id="test-history-label" class="micro">Earlier</div>
+          <div id="test-history"></div>
+        </div>
+        <div id="test-chat-col">
+          <div class="micro">Ask about this run</div>
+          <div id="test-chat-flow"></div>
+          <div id="test-chat-bar">
+            <input id="test-chat-input" placeholder="Ask anything about this run...">
+            <button id="test-chat-send" class="btn invert">Send</button>
+          </div>
+        </div>
       </div>
-      <div id="test-summary" class="micro"></div>
-      <div id="test-results"></div>
     </section>
 
     <section id="panel-research" class="panel">
