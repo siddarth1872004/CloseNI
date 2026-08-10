@@ -10,6 +10,24 @@ shared/        Types shared between the two
 scripts/legacy/ One-shot patch scripts from earlier development — do not run
 ```
 
+## Installing a release
+
+Download the installer for your platform from the Releases page. Windows gets an
+`.exe`; Linux gets an AppImage and a `.deb`.
+
+**Builds are unsigned.** Windows SmartScreen will warn on first run — code
+signing needs a paid certificate. Choose "More info" then "Run anyway", or build
+it yourself with `npm run dist`.
+
+**First launch downloads a browser.** CloseNI drives real browsers to talk to AI
+providers and needs its own Chromium, about 389MB. It downloads once, is kept in
+your user data directory, and survives reinstalling. This needs a network
+connection; there is no offline install.
+
+Settings, sessions and browser profiles live in your user data directory
+(`%APPDATA%/CloseNI` on Windows, `~/.config/CloseNI` on Linux), never beside the
+application — a packaged app cannot write to its own install directory.
+
 ## Setup
 
 ```bash
@@ -18,6 +36,22 @@ npm run build                  # builds shared/ then local-agent/
 npx playwright install chromium
 cd desktop && npm start
 ```
+
+## Cutting a release
+
+```bash
+git tag v1.0.0
+git push --tags
+```
+
+GitHub Actions builds the Windows installer on a Windows runner and the Linux
+packages on Ubuntu, then attaches all three to a Release for the tag. Build
+locally with `npm run dist` (current platform only) or `npm run pack` for an
+unpacked directory.
+
+The mark in `build/icon.svg` is the source of truth for the app icon;
+`build/icon.png` is generated from it by `node scripts/make-icon.mjs` and
+committed, so a build never needs a browser.
 
 ### On WSL
 

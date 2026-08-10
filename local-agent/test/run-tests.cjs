@@ -609,6 +609,29 @@ function testBuildConfig() {
     });
 }
 
+function testReleaseWorkflow() {
+  section("release workflow");
+  const wf = path.join(__dirname, "..", "..", ".github", "workflows", "release.yml");
+  check("the workflow exists", fs.existsSync(wf));
+  if (!fs.existsSync(wf)) return;
+  const y = fs.readFileSync(wf, "utf8");
+
+  // No YAML parser is available here, so this is a structural check rather than
+  // a parse. It catches the breakages that actually happen; it does not prove
+  // the file is valid YAML.
+  check("tabs would break the yaml", y.indexOf("\t") === -1);
+  check("it triggers on a tag", /tags:\s*\n\s*-\s*["']?v/.test(y), "no v* tag trigger");
+  check("it builds on windows", y.indexOf("windows-latest") !== -1);
+  check("it builds on linux", y.indexOf("ubuntu-latest") !== -1);
+  check("it installs with a lockfile", y.indexOf("npm ci") !== -1);
+  check("it compiles the agent before packaging", y.indexOf("npm run build") !== -1);
+  check("it runs the unit suite", y.indexOf("run-tests.cjs") !== -1);
+  // The e2e suite drives a real browser for about fifteen minutes. It stays a
+  // local gate; running it on every tag is a poor trade.
+  check("it does not run the e2e suite", y.indexOf("run-e2e.cjs") === -1);
+  check("it publishes", y.indexOf("--publish") !== -1 || y.indexOf("GH_TOKEN") !== -1);
+}
+
 function testToolchain() {
   section("tool resolution");
   const { resolveTool, resetToolCache, TOOL_CANDIDATES } = require(path.join(DIST, "verification/toolchain.js"));
@@ -1013,6 +1036,7 @@ async function testBrowserExtraction() {
   testStoragePaths();
   testBrowserCheck();
   testBuildConfig();
+  testReleaseWorkflow();
   testTheme();
   testLogo();
   testLanguageMark();

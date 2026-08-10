@@ -1,6 +1,6 @@
 # CloseNI Roadmap
 
-28 items, grouped into 9 sub-projects. **6 of 9 complete** (1 · Conversation & context core, 2 · Provider platform, 3 · Multi-language builds, 6 · Builder IDE experience, 7 · Visual identity & polish, 9 · Housekeeping). Each sub-project gets its own design spec
+28 items, grouped into 9 sub-projects. **7 of 9 complete** (1 · Conversation & context core, 2 · Provider platform, 3 · Multi-language builds, 6 · Builder IDE experience, 7 · Visual identity & polish, 8 · Distribution, 9 · Housekeeping). Each sub-project gets its own design spec
 and implementation plan under `docs/superpowers/`, and is expected to leave the
 application working on its own.
 
@@ -160,12 +160,35 @@ decoration flag to whether its CSS actually declares a texture — it caught
 Blueprint being flagged as undecorated while declaring a grid, which would have
 shipped a toggle that did nothing.
 
-## 8 · Distribution
+## 8 · Distribution — DONE
 
-Roadmap item 28. **Depends on sub-project 7** being presentable.
+Roadmap item 28. Spec: `specs/2026-08-10-distribution-design.md`,
+plan: `plans/2026-08-10-distribution.md`
 
-- **28. Releases page, Windows + Linux packages** — `todo`. electron-builder
-  produces NSIS/`.exe` and AppImage/`.deb`; staying on Electron keeps this simple.
+- **28. Releases page, Windows + Linux packages** — `done`. electron-builder
+  produces an NSIS `.exe`, an AppImage and a `.deb`; GitHub Actions builds all
+  three on a `v*` tag and attaches them to a Release.
+
+  The packaging config was the small part. Three defects blocked it and were
+  fixed first: the app wrote state into its own install directory (on Windows,
+  `Program Files` — it would have failed to save a session at all), it spawned
+  `node` and cannot assume Node exists on a user's machine, and Playwright's
+  Chromium is 389MB. State now lives in `userData`, the agent runs on Electron's
+  own binary via `ELECTRON_RUN_AS_NODE`, and the browser is fetched on first run
+  behind a gate rather than shipped.
+
+  `local-agent/storage/` holds live session cookies, and `.gitignore` does not
+  constrain electron-builder, so the `files` config is an explicit allow-list.
+  It is checked twice — against the config, and against the actual packed output
+  — because a forgotten exclusion publishes authenticated sessions to a public
+  release, while a forgotten inclusion just fails loudly on first launch.
+
+  Not done, deliberately: code signing (needs a paid certificate), macOS (no Mac
+  to test on), and auto-update (untrustworthy while unsigned).
+
+  **Unverified:** no installer has been launched. The development environment
+  has no Windows machine and no way to run an AppImage. The tests prove the
+  configuration is coherent, not that the installer works.
 
 ## 9 · Housekeeping — DONE
 

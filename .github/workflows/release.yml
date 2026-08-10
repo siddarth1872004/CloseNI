@@ -1,0 +1,47 @@
+# Builds installers and attaches them to a GitHub Release.
+#
+#   git tag v1.0.0 && git push --tags
+#
+# Windows installers must be built on Windows, which is the whole reason this
+# exists: there is no Windows machine in the development environment.
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Compile the agent
+        run: npm run build
+
+      # The unit suite is fast and catches a broken build config before it
+      # produces an artifact. The end-to-end suite drives a real browser for
+      # around fifteen minutes and stays a local gate.
+      - name: Unit tests
+        run: node local-agent/test/run-tests.cjs
+
+      - name: Build and publish
+        run: npx electron-builder --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
