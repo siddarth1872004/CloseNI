@@ -58,26 +58,58 @@ await new Promise((r) => rl.question("Press Enter once the model list is visible
 const out = path.join(os.tmpdir(), "closeni-ui-" + providerId + "-" + Date.now() + ".html");
 fs.writeFileSync(out, await page.content(), "utf-8");
 
-// A summary of everything clickable, so the useful selectors are obvious without
-// reading the whole document.
-const clickable = await page.evaluate(() => {
-  const rows = [];
-  const els = document.querySelectorAll('button, [role="button"], [role="option"], [role="menuitem"], li, a, [class*="model"], [class*="select"]');
-  for (const el of els) {
-    const text = (el.textContent || "").trim().replace(/\s+/g, " ").slice(0, 60);
-    if (!text) continue;
+// Candidate controls first: anything that looks like a toggle, a mode selector
+// or a menu item. These are what a `controls` block is built from, so they are
+// reported in roughly that shape rather than as raw markup.
+const candidates = await page.evaluate(() => {
+  const out = [];
+  const seen = new Set();
+  const sel = [
+    "[aria-pressed]", "[aria-checked]", '[role="switch"]', '[role="radio"]',
+    '[role="menuitem"]', '[role="option"]', "select",
+  ].join(",");
+  for (const el of document.querySelectorAll(sel)) {
     const r = el.getBoundingClientRect();
     if (r.width === 0 || r.height === 0) continue;
-    const attrs = [];
-    for (const a of el.attributes) {
-      if (["class", "id", "role", "aria-label", "title"].includes(a.name) || a.name.startsWith("data-")) {
-        attrs.push(a.name + '="' + String(a.value).slice(0, 70) + '"');
-      }
-    }
-    rows.push({ tag: el.tagName.toLowerCase(), text: text, attrs: attrs.join(" ") });
+    const text = (el.textContent || "").trim().replace(/\s+/g, " ").slice(0, 50);
+    const data = {};
+    for (const a of el.attributes) if (a.name.startsWith("data-")) data[a.name] = a.value;
+    // Classes that look designed rather than generated: hashed build output is
+    // useless as a selector because it changes on every deploy.
+    const stable = (el.className || "").toString().split(/\s+/)
+      .filter((c) => c.length > 3 && /[a-z]-[a-z]/.test(c) && !/^_/.test(c));
+    const key = text + JSON.stringify(data) + stable.join();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      tag: el.tagName.toLowerCase(),
+      text: text,
+      role: el.getAttribute("role") || "",
+      pressed: el.getAttribute("aria-pressed"),
+      checked: el.getAttribute("aria-checked"),
+      data: data,
+      stableClasses: stable.slice(0, 4),
+    });
   }
-  return rows.slice(0, 120);
+  return out.slice(0, 60);
 });
+
+console.log("");
+console.log("=== CANDIDATE CONTROLS ===");
+if (!candidates.length) {
+  console.log("  none found - the controls may only exist once a menu is opened.");
+  console.log("  Re-run and open the model/settings menu before pressing Enter.");
+}
+for (const c of candidates) {
+  const state = c.pressed !== null ? "aria-pressed=" + c.pressed
+              : c.checked !== null ? "aria-checked=" + c.checked
+              : "(no readable state)";
+  const dataStr = Object.entries(c.data).map(([k, v]) => k + '="' + v + '"').join(" ");
+  console.log("  " + JSON.stringify(c.text || "(no text)"));
+  console.log("      tag=" + c.tag + (c.role ? " role=" + c.role : "") + "  " + state);
+  if (dataStr) console.log("      data: " + dataStr);
+  if (c.stableClasses.length) console.log("      stable classes: " + c.stableClasses.join(" "));
+}
 
 console.log("");
 console.log("=== clickable elements currently visible ===");

@@ -43,10 +43,14 @@ agent must apply them every time it opens a conversation.
 2. **Controls are declared in the provider config**, not hardcoded. A provider
    without a `controls` block simply has none, which is every provider but
    DeepSeek today.
-3. **State is read before clicking.** Every control reports its own state
-   (`aria-pressed`, `aria-checked`), so the agent clicks only to change it.
-   Blind toggling would turn a wanted setting off.
+3. **State is read before clicking, where it can be.** DeepSeek reports its own
+   state via `aria-pressed` and `aria-checked`, so the agent clicks only to
+   change something — blind toggling would turn a wanted setting off. A provider
+   that exposes no readable state is handled explicitly rather than assumed away;
+   see `state.by: "none"`.
 4. **`vision` is not offered.** Two modes are enough; the owner does not want it.
+5. **The schema is provider-agnostic.** GLM and Qwen are expected to differ in
+   kind, not merely in selector, so nothing about DeepSeek's shape is baked in.
 
 ## Design
 
