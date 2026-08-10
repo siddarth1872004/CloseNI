@@ -6,6 +6,7 @@ import { isComplete } from "./completion.js";
 import { applyProviderControls } from "./controls/index.js";
 import { parseDesiredControls } from "./controls/decisions.js";
 import { formatResults } from "./controls/helpers.js";
+import { storagePaths } from "../storage-paths.js";
 
 export interface ProviderConfig {
   id: string;
@@ -75,11 +76,15 @@ export class PlaywrightController {
   // Held from launch() so controls can be applied wherever a conversation
   // opens, without threading the config through every navigation path.
   private launchedConfig: ProviderConfig | null = null;
+  // Resolved once in the constructor: packaged it comes from CLOSENI_STORAGE,
+  // otherwise from the provider config, which is what the tests rely on.
+  private profilePath: string = "";
 
   constructor(config: ProviderConfig) {
-    const storageDir = path.join(config.profileDir, "..", "..");
-    if (!fs.existsSync(storageDir)) fs.mkdirSync(storageDir, { recursive: true });
-    this.sessionStoreFile = path.join(storageDir, "sessions.json");
+    const paths = storagePaths(process.env.CLOSENI_STORAGE, config);
+    if (!fs.existsSync(paths.root)) fs.mkdirSync(paths.root, { recursive: true });
+    this.sessionStoreFile = paths.sessionsFile;
+    this.profilePath = paths.profileDir;
     this.isHeaded = process.env.AGENT_HEADED === "1";
   }
 
@@ -150,7 +155,7 @@ export class PlaywrightController {
   }
 
   async launch(config: ProviderConfig): Promise<void> {
-    const profilePath = path.resolve(config.profileDir);
+    const profilePath = this.profilePath;
     if (!fs.existsSync(profilePath)) fs.mkdirSync(profilePath, { recursive: true });
     const isHeadless = !this.isHeaded;
     console.log("Launching browser (" + (isHeadless ? "headless" : "HEADED - watch me!") + ") for " + config.name + "...");

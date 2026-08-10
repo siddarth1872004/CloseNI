@@ -1,12 +1,9 @@
 {
-  "name": "closeni",
+  "name": "closeni-desktop",
   "version": "1.0.0",
   "private": true,
   "main": "main.js",
   "scripts": {
     "start": "electron ."
-  },
-  "devDependencies": {
-    "electron": "^31.0.0"
   }
 }

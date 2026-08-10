@@ -1,20 +1,61 @@
 {
   "name": "agentic-web-coder",
-  "version": "0.1.0",
+  "productName": "CloseNI",
+  "version": "1.0.0",
   "private": true,
+  "main": "desktop/main.js",
   "workspaces": [
     "shared",
     "local-agent",
-    "vscode-extension"
+    "vscode-extension",
+    "desktop"
   ],
   "scripts": {
-    "build": "npm run build --workspaces --if-present"
+    "build": "npm run build --workspaces --if-present",
+    "start": "electron .",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
-    "typescript": "^5.5.4"
+    "typescript": "^5.5.4",
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3"
   },
   "dependencies": {
     "playwright": "^1.62.1"
+  },
+  "build": {
+    "appId": "com.siddarth.closeni",
+    "productName": "CloseNI",
+    "icon": "build/icon.png",
+    "files": [
+      "package.json",
+      "desktop/**/*",
+      "local-agent/dist/**/*",
+      "local-agent/config/**/*",
+      "build/icon.png"
+    ],
+    "asarUnpack": [
+      "local-agent/**"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "icon": "build/icon.png",
+      "category": "Development"
+    }
   }
 }

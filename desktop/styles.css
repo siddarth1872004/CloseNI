@@ -402,6 +402,17 @@ select{width:100%;}
 .theme-swatch-name{font-size:11px;color:var(--dim);text-align:left;}
 .theme-swatch.active .theme-swatch-name{color:var(--txt);}
 
+/* First-run browser download. Blocks the app, because without a browser it
+   cannot do anything at all. */
+#browser-gate{position:fixed;inset:0;background:var(--overlay);display:none;
+  align-items:center;justify-content:center;z-index:90;backdrop-filter:blur(3px);}
+#browser-gate.show{display:flex;}
+#browser-card{width:460px;background:var(--panel);border:1px solid var(--line-strong);
+  border-radius:var(--r-lg);padding:var(--sp-6);box-shadow:var(--shadow-2);}
+#browser-card p{font-size:12px;color:var(--dim);margin:var(--sp-3) 0 var(--sp-5);line-height:1.6;}
+#browser-progress{font-family:ui-monospace,Consolas,monospace;font-size:11px;
+  color:var(--mut);margin-top:var(--sp-4);min-height:16px;word-break:break-all;}
+
 /* Utility classes replacing the inline styles the markup used to carry. */
 .btn-block{width:100%;}
 .btn-sm{font-size:10px;padding:var(--sp-1) var(--sp-3);}

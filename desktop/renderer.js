@@ -652,6 +652,37 @@ window.CN = {
   retryFailed: function () {},
 };
 
+/**
+ * First run: without a browser the app can do nothing at all, so this blocks
+ * rather than failing later at the first sign-in with a confusing message.
+ * In development it never appears - the developer's own Playwright cache is
+ * already there, and demanding a 389MB download would be the bug.
+ */
+(async function () {
+  const gate = $("browser-gate");
+  if (!gate || !window.api.browserStatus) return;
+  const status = await window.api.browserStatus().catch(function () { return { ready: true }; });
+  if (status.ready) return;
+
+  gate.classList.add("show");
+  const out = $("browser-progress");
+  window.api.onBrowserProgress(function (line) { out.textContent = line; });
+
+  $("browser-install").onclick = async function () {
+    const btn = $("browser-install");
+    btn.disabled = true;
+    out.textContent = "Starting...";
+    const r = await window.api.installBrowser();
+    if (r && r.ok) {
+      gate.classList.remove("show");
+      toast("Browser ready");
+    } else {
+      btn.disabled = false;
+      out.textContent = (r && r.error) || "Download failed.";
+    }
+  };
+})();
+
 // Settings section switching. Same shape as switchTab, scoped to the panel.
 document.querySelectorAll(".settings-tab").forEach(function (tab) {
   tab.onclick = function () {
