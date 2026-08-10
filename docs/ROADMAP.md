@@ -1,6 +1,6 @@
 # CloseNI Roadmap
 
-28 items, grouped into 9 sub-projects. **7 of 9 complete** (1 · Conversation & context core, 2 · Provider platform, 3 · Multi-language builds, 6 · Builder IDE experience, 7 · Visual identity & polish, 8 · Distribution, 9 · Housekeeping). Each sub-project gets its own design spec
+28 items, grouped into 10 sub-projects — 9 from the original plan plus one added after using the app. **9 of 10 complete**; only 5 · GitHub & external tools remains. Each sub-project gets its own design spec
 and implementation plan under `docs/superpowers/`, and is expected to leave the
 application working on its own.
 
@@ -87,12 +87,36 @@ plan: `plans/2026-08-10-multi-language-builds.md`
   output as a **success**, which is right for a model-suggested server and wrong
   for a syntax check. Checks now pass `timeoutIsFailure`.
 
-## 4 · Concurrency & multi-agent
+## 4 · Concurrency & multi-agent — DONE
 
-Roadmap item 4. **Depends on sub-projects 1 and 2** — a concurrent agent cannot be
-defined until a conversation has an owner and a browser profile has an owner.
+Roadmap item 4. Spec: `specs/2026-08-10-concurrency-design.md`,
+plan: `plans/2026-08-10-concurrency.md`
 
-- **4. Concurrent agents + inter-agent communication** — `todo`.
+- **4. Concurrent agents + inter-agent communication** — `done` for the
+  concurrency half. Independent steps run at the same time in separate pages of
+  one browser context.
+
+  The blocker recorded here — that browser profiles are per provider — turned
+  out to constrain two *browsers*, not two *conversations*. One context opens
+  many pages, which is what a person with three tabs is doing, and it avoids the
+  profile cloning sub-project 8 already refused.
+
+  The real constraint was that later steps read earlier steps' files, which the
+  plan never described. The model now declares `dependsOn`, because inferring it
+  from file lists would fail steps whose code was correct.
+
+  **Only conversations parallelise; applies are serialised.** That removes every
+  shared-state race by construction, including the worst one: approval replies
+  arrive on a single stdin queue with nothing saying which command they answer,
+  so two concurrent prompts could hand one command's "allow" to another.
+
+  Default 2, configurable. The realistic failure is a throttled provider
+  account, not a crash — and a throttled session looks like a slow reply, which
+  the completion detector will wait out. Conservative default, not cleverness.
+
+  **Not done:** inter-agent communication in the sense of a reviewer agent on a
+  second provider. It makes each step slower, which is the opposite of this
+  sub-project's purpose, and deserves its own decision.
 
 ## 5 · GitHub & external tools
 

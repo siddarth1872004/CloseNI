@@ -1006,6 +1006,58 @@ async function main() {
     }
   }
 
+  // ------------------------------------------------------------ concurrency
+  section("independent steps overlap in time");
+  {
+    const { createMutex, createPool } = require(path.join(__dirname, "..", "dist", "async-pool.js"));
+    const { runnableSteps } = require(path.join(__dirname, "..", "..", "desktop", "scheduler.js"));
+
+    // A diamond: 1 and 2 are independent, 3 waits for both. Each "step" sleeps,
+    // so overlap is measurable. Everything else in this suite proves the
+    // decisions are right; this proves two of them actually run at once.
+    const graph = [[], [0], [0], [1, 2]];
+    const pool = createPool(["w1", "w2"]);
+    const lock = createMutex();
+    const spans = [];
+    let applyOverlap = 0;
+    let inApply = 0;
+    const state = { completed: [], failed: [], blocked: [], skipped: [], running: [] };
+
+    async function fakeStep(i) {
+      const w = await pool.acquire();
+      const start = Date.now();
+      await new Promise(function (r) { setTimeout(r, 300); });       // the conversation
+      await lock.run(async function () {                             // the apply
+        inApply++;
+        if (inApply > 1) applyOverlap++;
+        await new Promise(function (r) { setTimeout(r, 40); });
+        inApply--;
+      });
+      spans.push({ i: i, start: start, end: Date.now() });
+      pool.release(w);
+      state.running = state.running.filter(function (x) { return x !== i; });
+      state.completed.push(i);
+    }
+
+    const t0 = Date.now();
+    while (state.completed.length < 4) {
+      runnableSteps(graph, state, 2).forEach(function (i) { state.running.push(i); fakeStep(i); });
+      await new Promise(function (r) { setTimeout(r, 30); });
+    }
+    const elapsed = Date.now() - t0;
+
+    const s1 = spans.find(function (s) { return s.i === 1; });
+    const s2 = spans.find(function (s) { return s.i === 2; });
+    const s3 = spans.find(function (s) { return s.i === 3; });
+    check("all four steps ran", spans.length === 4);
+    check("the independent pair overlapped", s1.start < s2.end && s2.start < s1.end, JSON.stringify([s1, s2]));
+    check("the join started after both finished", s3.start >= Math.max(s1.end, s2.end) - 60);
+    // Four serial steps would be ~1360ms; three waves is ~1020ms.
+    check("it beat running them serially", elapsed < 1250, elapsed + "ms");
+    // The whole point of the lock.
+    check("no two applies overlapped", applyOverlap === 0, String(applyOverlap));
+  }
+
   // ------------------------------------------------ signing in to a provider
   section("signin reports whether the chat input appeared");
   {

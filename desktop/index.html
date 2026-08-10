@@ -209,6 +209,16 @@
               <input type="checkbox" id="show-browser">
               <label for="show-browser">Show Browser</label>
             </div>
+            <div class="micro mt-2">Parallel steps</div>
+            <select id="concurrency-select">
+              <option value="1">1 - one at a time</option>
+              <option value="2" selected>2 - faster</option>
+              <option value="3">3 - fastest</option>
+            </select>
+            <div class="hint">Steps that do not depend on each other run at the same
+              time, in separate tabs. Each one is another conversation with your
+              provider, and providers rate-limit &mdash; if builds start hanging,
+              lower this. 2 is a safe default.</div>
           </div>
 
           <div class="settings-section" data-section="appearance">
@@ -277,6 +287,7 @@
 <script src="browser-check.js"></script>
 <script src="plan-scale.js"></script>
 <script src="preview-target.js"></script>
+<script src="scheduler.js"></script>
 <script src="renderer.js"></script>
 <script src="builder.js"></script>
 </body>

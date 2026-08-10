@@ -624,7 +624,6 @@ function sessionEvent(payload: any) {
  */
 async function buildSessionMode(workspace: string, providerId: string, autonomy: string) {
   const { controller, config } = await openProviderForBuild(providerId, workspace, true);
-  sessionEvent({ type: "ready" });
 
   // Default 2. The realistic failure of raising this is not a crash - it is the
   // user's provider account being throttled, and a throttled session looks like
@@ -637,8 +636,21 @@ async function buildSessionMode(workspace: string, providerId: string, autonomy:
     // a profile directory, and cloning one is what sub-project 8 refused.
     const extra = new PlaywrightController(config);
     extra.setWorkspace(workspace);
-    extra.setThreadKind("build");
+    // "worker", not "build": its thread is transient and must not overwrite the
+    // main build thread that a resume depends on.
+    extra.setThreadKind("worker");
     await extra.attachTo(sharedContext, config);
+    // attachTo opens a blank page. Without navigating it, the first step routed
+    // to this worker finds no chat input and fails - which is exactly what the
+    // end-to-end suite caught. Each worker starts its own fresh conversation:
+    // it is a separate thread by design, so it must not resume the main one.
+    await extra.navigateFresh(config);
+    const ready = await extra.waitForLogin();
+    if (!ready) {
+      console.log("Worker " + i + " never got a chat input; continuing with fewer workers.");
+      await extra.close();
+      break;
+    }
     workers.push(extra);
   }
   console.log("Build session ready with " + workers.length + " worker(s).");
@@ -695,6 +707,11 @@ async function buildSessionMode(workspace: string, providerId: string, autonomy:
       return false;
     };
     rl.on("close", () => { closing = true; if (inFlight === 0) resolve(); else onIdle = resolve; });
+
+    // Announced only now. The caller sends its first step the instant it sees
+    // this, and worker setup above contains awaits - so announcing before the
+    // handler exists drops that step on the floor.
+    sessionEvent({ type: "ready" });
   });
 
   sessionLineHandler = null;

@@ -28,7 +28,7 @@
     list.innerHTML = "";
     // No entry for "pending" or "skipped": nothing has happened to them, so
     // nothing should move.
-    const PIX_MOTION = { done: "pix-stamp", failed: "pix-flicker", running: "pix-spin" };
+    const PIX_MOTION = { done: "pix-stamp", failed: "pix-flicker", running: "pix-spin", blocked: "" };
     steps.forEach(function (s, i) {
       const card = document.createElement("div");
       card.className = "step-card" + (i === selected ? " active" : "");
@@ -192,30 +192,80 @@
     if (!sessionOn) CN.log("session unavailable, falling back to a browser per step: " + ((started && started.error) || "unknown"), "step");
     else CN.log("build session ready - one browser for the whole build", "step");
 
-    for (let i = 0; i < steps.length; i++) {
-      if (stopRequested) break;
+    // The graph, declared or implied. A plan where nothing is declared is a
+    // chain, which reproduces the old serial loop exactly - and every plan that
+    // existed before this change is such a plan.
+    const anyDeclared = steps.some(function (s) { return Array.isArray(s.dependsOn); });
+    const graph = steps.map(function (s, i) {
+      if (anyDeclared) return Array.isArray(s.dependsOn) ? s.dependsOn.slice() : [];
+      return i === 0 ? [] : [i - 1];
+    });
+    const limit = CN.getConcurrency();
+    const state = { completed: [], failed: [], blocked: [], skipped: [], running: [] };
+
+    function done() {
+      return state.completed.length + state.failed.length +
+             state.blocked.length + state.skipped.length;
+    }
+
+    function settle(i, ok) {
+      state.running = state.running.filter(function (x) { return x !== i; });
+      (ok ? state.completed : state.failed).push(i);
+      if (!ok) {
+        // Blocked, not failed: these steps never ran, and calling them failed
+        // would claim something about code nobody executed.
+        window.CNSched.blockedBy(graph, state.failed).forEach(function (b) {
+          if (state.blocked.indexOf(b) === -1 && state.completed.indexOf(b) === -1 &&
+              state.failed.indexOf(b) === -1 && state.running.indexOf(b) === -1) {
+            state.blocked.push(b);
+            setStatusOf(b, "blocked");
+            CN.log("step " + (b + 1) + " blocked: a step it depends on failed", "step");
+          }
+        });
+      }
+      progress(done() / steps.length);
+    }
+
+    while (!stopRequested) {
       while (paused && !stopRequested) await sleep(500);
       if (stopRequested) break;
-      if (skipNext) {
-        skipNext = false;
-        setStatusOf(i, "skipped");
-        CN.log("step " + (i + 1) + " skipped", "step");
-        progress((i + 1) / steps.length);
+
+      const ready = window.CNSched.runnableSteps(graph, state, limit);
+      if (!ready.length) {
+        // Nothing running and nothing startable means the build is over -
+        // either finished, or every remaining step is blocked.
+        if (state.running.length === 0) break;
+        await sleep(250);
         continue;
       }
-      const ok = await runOne(i);
-      progress((i + 1) / steps.length);
-      if (!ok) break;
+
+      ready.forEach(function (i) {
+        if (skipNext) {
+          skipNext = false;
+          state.skipped.push(i);
+          setStatusOf(i, "skipped");
+          CN.log("step " + (i + 1) + " skipped", "step");
+          progress(done() / steps.length);
+          return;
+        }
+        state.running.push(i);
+        runOne(i).then(function (ok) { settle(i, ok); }, function () { settle(i, false); });
+      });
+      await sleep(120);
     }
+
+    // Let anything still in flight finish before the session closes, or its
+    // apply would be cut off midway.
+    while (state.running.length && !stopRequested) await sleep(250);
 
     if (sessionOn) { await CN.endSession(); sessionOn = false; }
 
     running = false;
     buttons("idle");
-    const done = steps.filter(function (s) { return s.status === "done" || s.status === "skipped"; }).length;
-    status("finished: " + done + "/" + steps.length);
-    CN.log("build finished: " + done + "/" + steps.length, "step");
-    CN.toast("Build finished: " + done + "/" + steps.length);
+    const finished = steps.filter(function (s) { return s.status === "done" || s.status === "skipped"; }).length;
+    status("finished: " + finished + "/" + steps.length);
+    CN.log("build finished: " + finished + "/" + steps.length, "step");
+    CN.toast("Build finished: " + finished + "/" + steps.length);
     await saveRunManifest();
   };
 

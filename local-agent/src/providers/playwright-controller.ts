@@ -72,7 +72,13 @@ export class PlaywrightController {
   private isHeaded: boolean = false;
   // Build steps share a thread that is tracked separately from the Chat/Plan
   // thread, so the two never overwrite each other in sessions.json.
-  private threadKind: "chat" | "build" = "chat";
+  /**
+   * "worker" is a parallel build worker: it holds its own transient thread and
+   * persists nothing. Without it, every worker would overwrite the workspace's
+   * activeBuildThread with its own, and a resumed build would reopen whichever
+   * worker happened to finish last instead of the main thread.
+   */
+  private threadKind: "chat" | "build" | "worker" = "chat";
   // Held from launch() so controls can be applied wherever a conversation
   // opens, without threading the config through every navigation path.
   private launchedConfig: ProviderConfig | null = null;
@@ -102,7 +108,7 @@ export class PlaywrightController {
     writeSessions(this.sessionStoreFile, sessions);
   }
 
-  setThreadKind(kind: "chat" | "build") {
+  setThreadKind(kind: "chat" | "build" | "worker") {
     this.threadKind = kind;
   }
 
@@ -131,6 +137,9 @@ export class PlaywrightController {
 
   setChatUrlForWorkspace(workspace: string, url: string, title?: string) {
     if (!workspace) return;
+    // A worker's thread is transient by design: recording it would clobber the
+    // main build thread that a resume depends on.
+    if (this.threadKind === "worker") return;
     if (this.threadKind === "build") {
       setBuildThread(this.sessionStoreFile, workspace, url);
       return;

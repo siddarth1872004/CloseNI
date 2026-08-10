@@ -47,6 +47,19 @@ Open the project again — tomorrow, or on another machine — and the Test pane
 already knows what to run. Edit the command in the panel and it is saved back;
 later builds will not overwrite an edited command.
 
+## Parallel steps
+
+A plan declares which steps depend on which, so steps that need nothing from
+each other run at the same time in separate browser tabs. Set how many in
+Settings → Permissions; the default is 2.
+
+Only the conversations run in parallel. Applying files, syntax checks and
+command approvals happen one at a time, so two steps can never interleave writes
+to your workspace.
+
+**More is not always better.** Each parallel step is another conversation with
+your provider, and providers rate-limit. If builds start hanging, lower it.
+
 ## Cutting a release
 
 ```bash
