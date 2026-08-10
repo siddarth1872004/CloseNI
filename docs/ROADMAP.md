@@ -1,6 +1,6 @@
 # CloseNI Roadmap
 
-28 items, grouped into 9 sub-projects. **4 of 9 complete** (1 · Conversation & context core, 2 · Provider platform, 6 · Builder IDE experience, 9 · Housekeeping). Each sub-project gets its own design spec
+28 items, grouped into 9 sub-projects. **5 of 9 complete** (1 · Conversation & context core, 2 · Provider platform, 3 · Multi-language builds, 6 · Builder IDE experience, 9 · Housekeeping). Each sub-project gets its own design spec
 and implementation plan under `docs/superpowers/`, and is expected to leave the
 application working on its own.
 
@@ -63,13 +63,29 @@ Roadmap items 7, 8, 9, 10. Depends on nothing. Blocks sub-project 4.
   native `<select>`, whose options render text only, so providers are listed by
   name. A coloured mark would require replacing the control.
 
-## 3 · Multi-language builds
+## 3 · Multi-language builds — DONE
 
-Roadmap item 5. Fully independent — nothing waits on it.
+Roadmap item 5. Spec: `specs/2026-08-10-multi-language-builds-design.md`,
+plan: `plans/2026-08-10-multi-language-builds.md`
 
-- **5. JS, Rust, C, C++, Java** — `partial`. Signature extraction reads all of
-  them, so context selection already works across languages. Syntax checks still
-  cover only `.py` and `.js`; nothing compiles or runs Rust, C or Java.
+- **5. JS, Rust, C, C++, Java** — `done`. A manifest at the workspace root
+  claims its language and yields one project-level check (`cargo check`,
+  `make -n`, `mvn -q compile`, `gradle compileJava -q`); languages with no
+  manifest are checked per file (`gcc -fsyntax-only`, `rustc --emit=metadata`,
+  `javac`). Run Project handles Cargo, Makefiles and loose C/C++/Java files.
+
+  Rust and Java could not be checked per file: a `.rs` file containing
+  `mod utils;` fails alone even when the crate is perfect, and the model would
+  have spent its self-heal retries fixing code that was never broken.
+
+  A missing toolchain skips rather than fails, so a machine with Python but no
+  Rust verifies nothing for Rust and says so in the log. Go and TypeScript are
+  in the file walker but out of item 5's scope; each is a few lines in the
+  planner.
+
+  Fixed along the way: `runCommand` treated a timed-out command with no error
+  output as a **success**, which is right for a model-suggested server and wrong
+  for a syntax check. Checks now pass `timeoutIsFailure`.
 
 ## 4 · Concurrency & multi-agent
 
