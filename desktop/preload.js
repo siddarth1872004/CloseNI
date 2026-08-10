@@ -24,6 +24,13 @@ contextBridge.exposeInMainWorld("api", {
   endSession: function () { return ipcRenderer.invoke("end-session"); },
   runCommand: function (p) { return ipcRenderer.invoke("run-command", p); },
   git: function (p) { return ipcRenderer.invoke("git", p); },
+  // No token getter, deliberately. The renderer never holds the credential - it
+  // asks the main process to make calls on its behalf.
+  ghStatus: function () { return ipcRenderer.invoke("gh-status"); },
+  ghSignIn: function (token) { return ipcRenderer.invoke("gh-sign-in", token); },
+  ghSignOut: function () { return ipcRenderer.invoke("gh-sign-out"); },
+  ghCall: function (method, args) { return ipcRenderer.invoke("gh-call", { method: method, args: args }); },
+  ghClone: function (p) { return ipcRenderer.invoke("gh-clone", p); },
   readFile: function (p, opts) { return ipcRenderer.invoke("read-file", opts ? { path: p, full: !!opts.full } : p); },
   respondApproval: function (approved) { return ipcRenderer.send("approval-response", approved); },
   onLog: function (cb) { ipcRenderer.on("agent-log", function (e, line) { cb(line); }); },

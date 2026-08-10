@@ -172,11 +172,48 @@
     </section>
 
     <section id="panel-push" class="panel">
-      <div class="micro">Ship</div>
+      <div id="gh-account">
+        <div class="micro">GitHub</div>
+        <div id="gh-signed-out">
+          <div class="hint">Create a token with <strong>repo</strong> and <strong>workflow</strong>
+            scopes, then paste it here. It is encrypted with your operating
+            system's key and never leaves this machine.</div>
+          <div class="row mt-1">
+            <button id="gh-open-tokens" class="btn">Open GitHub token page</button>
+          </div>
+          <div class="row mt-1">
+            <input id="gh-token" type="password" placeholder="ghp_...">
+            <button id="gh-sign-in" class="btn invert">Sign in</button>
+          </div>
+          <div id="gh-storage-note" class="hint"></div>
+        </div>
+        <div id="gh-signed-in" class="is-hidden">
+          <div class="row">
+            <span id="gh-login"></span>
+            <span class="run-spacer"></span>
+            <button id="gh-sign-out" class="btn btn-sm">Sign out</button>
+          </div>
+          <div class="micro mt-2">Repository</div>
+          <select id="gh-repo"></select>
+          <div class="row mt-1">
+            <input id="gh-new-repo" placeholder="new repository name">
+            <button id="gh-create-repo" class="btn btn-sm">Create</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="micro mt-2">Local</div>
       <div class="row"><button id="git-init" class="btn">git init</button><button id="git-status" class="btn">git status</button></div>
       <div class="row"><input id="commit-msg" placeholder="commit message"><button id="git-commit" class="btn">commit all</button></div>
-      <div class="row"><input id="remote-url" placeholder="https://github.com/you/repo.git"><button id="git-push" class="btn">push origin</button></div>
-      <div class="hint">First push triggers a one-time GitHub sign-in via Windows.</div>
+      <div class="row"><input id="remote-url" placeholder="https://github.com/you/repo.git"><button id="git-push" class="btn invert">push origin</button></div>
+
+      <div class="micro mt-2">Actions</div>
+      <div class="row">
+        <input id="gh-workflow" placeholder="workflow file, e.g. release.yml">
+        <button id="gh-dispatch" class="btn btn-sm">Run</button>
+        <button id="gh-refresh-runs" class="btn btn-sm">Refresh</button>
+      </div>
+      <div id="gh-runs"></div>
     </section>
 
     <section id="panel-settings" class="panel">
@@ -288,6 +325,7 @@
 <script src="plan-scale.js"></script>
 <script src="preview-target.js"></script>
 <script src="scheduler.js"></script>
+<script src="github-safe.js"></script>
 <script src="renderer.js"></script>
 <script src="builder.js"></script>
 </body>

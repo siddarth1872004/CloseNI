@@ -118,17 +118,37 @@ plan: `plans/2026-08-10-concurrency.md`
   second provider. It makes each step slower, which is the opposite of this
   sub-project's purpose, and deserves its own decision.
 
-## 5 · GitHub & external tools
+## 5 · GitHub & external tools — 3 of 5
 
-Roadmap items 11-15. The largest sub-project; likely splits again at spec time.
-All of it needs a credential story the app does not have yet.
+Roadmap items 11-15. Spec: `specs/2026-08-10-github-design.md`,
+plan: `plans/2026-08-10-github.md`
 
-- **11. Repo search + integration into builds** — `partial`. Search works and is
-  tested; nothing integrates a found repo into a project being built.
-- **12. In-app sign-in, repo access, push** — `todo`.
-- **13. MCP tool support** — `todo`.
-- **14. GitHub Actions + external tooling** — `todo`.
-- **15. Skills, personas, GitHub skill-`md`** — `todo`.
+- **11. Repo search + integration into builds** — `done`. Results offer
+  **Use as reference** (README and file tree into the plan prompt, workspace
+  untouched) and **Clone** (licence shown first, into the workspace if empty and
+  a named subdirectory otherwise).
+- **12. In-app sign-in, repo access, push** — `done`. A pasted token encrypted
+  with `safeStorage`; repository list, creation, and push through a
+  `GIT_ASKPASS` helper.
+- **13. MCP tool support** — `todo`. Needs no credentials.
+- **14. GitHub Actions + external tooling** — `done` for Actions: recent runs
+  with their state, and `workflow_dispatch`.
+- **15. Skills, personas, GitHub skill-`md`** — `todo`. Needs no credentials.
+
+**A live bug was fixed on the way.** The git IPC ran
+`spawn("git", args, { shell: true })`, which concatenates arguments into a shell
+string rather than passing them separately — so a commit message containing
+`; rm -rf ~` would have run it. Now `shell: false`, with arguments type-checked
+and every git log line redacted. Verified closed: that message now produces a
+commit with it as the literal subject and executes nothing.
+
+**Where the token must never go**, enforced rather than documented:
+`.git/config`, a process argument list, a log line, a plaintext file, the
+renderer, or the agent process.
+
+**Unverified:** everything needing a real token. There is no GitHub credential
+in the development environment, so sign-in, push, repository listing, cloning
+and Actions have been built and compiled but never run against GitHub.
 
 ## 6 · Builder IDE experience — DONE
 
