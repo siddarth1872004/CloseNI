@@ -4,7 +4,7 @@
 
 # CloseNI
 
-**A desktop agent that turns web-based AI chats into an automated build pipeline — zero API keys required.**
+**Transform free web-based AI chats into an autonomous software engineering engine.**
 
 `Electron` · `TypeScript` · `Playwright` · `No API Keys` · `Cross-Platform`
 
@@ -12,9 +12,23 @@
 
 ---
 
-## ⚡ What is CloseNI?
+> CloseNI drives real browser sessions with models like DeepSeek, Qwen, and GLM, turning standard web chat interfaces into a local development backend. It crafts execution plans, writes code patches, runs multi-language syntax diagnostics, and heals build errors — without requiring API credentials.
 
-CloseNI automates browser sessions with leading AI models (DeepSeek, Qwen, GLM). It interacts with chat DOMs directly to send prompts, parse code responses, apply workspace patches, syntax check code changes, and heal build errors autonomously.
+---
+
+### Key Capabilities
+
+* **Zero-Credential Operations** — Playwright manages persistent browser profiles using existing web sign-ins.
+* **Adaptive Planning** — Deconstructs high-level prompts into granular, dependency-mapped task graphs.
+* **Concurrent Step Execution** — Runs independent task steps in parallel across isolated chat sessions.
+* **Autonomous Error Recovery** — Captures compiler and linter outputs, feeding tracebacks back to the model to repair code.
+* **Multi-Toolchain Diagnostics** — Native syntax verification for Rust (`cargo`), C/C++ (`make`/`gcc`/`g++`), Java (`mvn`/`gradle`), Python, and Node.js.
+* **Portable Project Runner** — Generates `closeni.run.json` and standalone execution scripts (`run.sh` / `run.bat`).
+* **Tailored Aesthetics** — Built-in visual themes, including high-contrast and retro CRT options.
+
+---
+
+### Pipeline Workflow
 
 ```
    YOU                CloseNI                  CHAT SITE               YOUR DISK
@@ -42,25 +56,11 @@ CloseNI automates browser sessions with leading AI models (DeepSeek, Qwen, GLM).
 
 ---
 
-## ✨ Features
-
-- **Zero API Keys**: Operates via persistent Playwright browser sessions using your existing accounts.
-- **Dynamic Task Planning**: Generates step-by-step execution plans scaled to project complexity.
-- **Parallel Step Execution**: Runs non-dependent tasks concurrently across isolated chat tabs.
-- **Self-Healing Build Pipeline**: Automatically captures compiler/linter errors and re-prompts the model to fix issues.
-- **Multi-Language Verification**: Supports Rust (`cargo`), C/C++ (`make`/`gcc`/`g++`), Java (`mvn`/`gradle`), Python, and Node.js.
-- **Self-Running Projects**: Generates `closeni.run.json` along with `run.sh` / `run.bat` scripts for execution.
-- **Customizable UI Themes**: Includes 9 built-in themes (including retro CRT modes and high-contrast fallbacks).
-
----
-
-## 🏗️ Architecture
-
-CloseNI separates the UI renderer from the agent logic for security and stability:
+### System Architecture
 
 ```mermaid
 flowchart TB
-    subgraph desktop["desktop/ — Electron App"]
+    subgraph desktop["desktop/ — Electron Host"]
         R["renderer.js<br/>Panels, Plans, Diffs"]
         B["builder.js<br/>Step Scheduler"]
         M["main.js<br/>IPC, Git, Credentials"]
@@ -68,7 +68,7 @@ flowchart TB
         B <--> M
     end
 
-    subgraph agent["local-agent/ — TypeScript CLI"]
+    subgraph agent["local-agent/ — TypeScript Core"]
         C["PlaywrightController<br/>Send · Wait · Extract"]
         P["Parser<br/>JSON Repair"]
         A["Patch Applier<br/>Backups & Containment"]
@@ -76,7 +76,7 @@ flowchart TB
         C --> P --> A --> V
     end
 
-    subgraph web["Web Browser Sessions"]
+    subgraph web["Web Browser Drivers"]
         D["DeepSeek"]
         Q["Qwen"]
         G["GLM"]
@@ -91,37 +91,41 @@ flowchart TB
 
 ---
 
-## 🚀 Quickstart
+### Getting Started
 
 ```bash
-# 1. Install dependencies & build core agent
+# Clone and install dependencies
+git clone https://github.com/siddarth1872004/CloseNI.git
+cd CloseNI
 npm install
 npm run build
 
-# 2. Install Playwright Chromium browser
+# Download required Chromium binary
 npx playwright install chromium
 
-# 3. Launch desktop app
+# Launch application host
 cd desktop && npm start
 ```
 
-### Usage Steps:
-1. **Workspace**: Select your project folder.
-2. **Settings**: Choose a provider and sign in to your browser session.
-3. **Chat**: Describe what you want built.
-4. **Build**: Review the generated plan and click **Build**.
-5. **Test**: Run your application directly from the **Test** tab.
+#### Workflow Overview
 
-#### WSL Setup
+1. **Workspace** — Select a target directory for your project.
+2. **Settings** — Select an AI provider and authenticate your session.
+3. **Chat** — Specify requirements or project goals.
+4. **Build** — Inspect the generated graph and trigger automated assembly.
+5. **Test** — Launch and verify the built application directly.
+
+#### WSL Integration
+
 ```bash
 source scripts/wsl-env.sh
 ```
 
 ---
 
-## 🛠️ Supported Languages & Build Tools
+### Language Diagnostics Matrix
 
-| Language / Framework | Manifest Check | Standalone Check |
+| Environment | Project Manifest | File Diagnostic |
 |---|---|---|
 | **Rust** | `Cargo.toml` (`cargo check`) | `rustc --emit=metadata` |
 | **C / C++** | `Makefile` (`make -n`) | `gcc -fsyntax-only` / `g++ -fsyntax-only` |
@@ -131,38 +135,37 @@ source scripts/wsl-env.sh
 
 ---
 
-## 🧪 Testing
+### Test Suites
 
 ```bash
-# Unit tests
+# Unit suite
 node local-agent/test/run-tests.cjs
 
-# End-to-end integration tests
+# End-to-end browser integration suite
 node local-agent/test/run-e2e.cjs
 ```
 
 ---
 
-## 📦 Packaging & Building Installers
+### Distribution Builds
 
 ```bash
-# Build unpacked distribution
+# Unpacked distribution directory
 npm run pack
 
-# Create platform installer (.exe / .deb / AppImage)
+# Target platform installer (.exe / .deb / AppImage)
 npm run dist
 ```
 
 ---
 
-## 📂 Project Structure
+### Directory Tree
 
 ```
-desktop/          Electron main process, preload, and UI renderer
-local-agent/      Playwright controller, DOM parser, patch applier, and verification
-shared/           Shared TypeScript data types and schemas
-build/            Icons and branding assets
-docs/             Architecture design specs and implementation plans
-scripts/          Environment initialization and automation helpers
+desktop/          Electron UI host, IPC handlers, and renderer
+local-agent/      Playwright drivers, DOM parsers, and patch application engine
+shared/           Shared type definitions and schemas
+build/            Brand assets and icons
+docs/             Architecture specifications and implementation plans
+scripts/          Environment configuration and helper scripts
 ```
-
