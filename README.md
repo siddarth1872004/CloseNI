@@ -1,98 +1,133 @@
+<div align="center">
+
+<img src="build/icon.png" alt="CloseNI" width="120">
+
 # CloseNI
 
-Electron desktop app that drives a web-based AI chat (DeepSeek by default) through
-Playwright to plan and build software projects.
+**A desktop agent that drives the AI chat sites you already pay nothing for,
+and turns them into a build pipeline.**
+
+`Electron` · `TypeScript` · `Playwright` · `no API keys` · `no bundler`
+
+</div>
+
+---
+
+## What it is
+
+Every coding agent needs an API key. CloseNI doesn't. It opens a real browser,
+signs into DeepSeek, Qwen or GLM the way you would, and then **drives that chat
+window as if it were an API** — sending prompts, reading replies out of the DOM,
+parsing them into file changes, applying them to your workspace, and syntax
+checking the result.
+
+You describe an idea in plain language. It produces a plan, builds it step by
+step, verifies each step, and hands you a project that knows how to run itself.
 
 ```
-desktop/       Electron app (main process, preload bridge, renderer, builder UI)
-local-agent/   Node backend: browser control, response parsing, patch application
-shared/        Types shared between the two
-scripts/legacy/ One-shot patch scripts from earlier development — do not run
+   YOU                CloseNI                  A CHAT SITE              YOUR DISK
+    │                    │                          │                       │
+    │  "build me a       │                          │                       │
+    │   flask todo api"  │                          │                       │
+    ├───────────────────►│                          │                       │
+    │                    │   plan this, as JSON     │                       │
+    │                    ├─────────────────────────►│                       │
+    │                    │◄─────────────────────────┤                       │
+    │   ┌─────────────┐  │   6 steps, a run command │                       │
+    │◄──┤ review plan │  │                          │                       │
+    │   └─────────────┘  │                          │                       │
+    │      approve       │                          │                       │
+    ├───────────────────►│   step 1 …               │                       │
+    │                    ├─────────────────────────►│                       │
+    │                    │◄─────────────────────────┤                       │
+    │                    │   {"files":[…]}          │                       │
+    │                    ├──────────────────────────┼──────────────────────►│
+    │                    │   apply, syntax check    │        files written  │
+    │                    │                          │                       │
+    │                    │   step 2 and 3 …         │                       │
+    │                    ├═════════════════════════►│   (in parallel)       │
 ```
 
-## Installing a release
+---
 
-Download the installer for your platform from the Releases page. Windows gets an
-`.exe`; Linux gets an AppImage and a `.deb`.
+## Highlights
 
-**Builds are unsigned.** Windows SmartScreen will warn on first run — code
-signing needs a paid certificate. Choose "More info" then "Run anyway", or build
-it yourself with `npm run dist`.
+| | |
+|---|---|
+| **No API key, ever** | Playwright drives a real signed-in browser session. Your provider account is the only credential. |
+| **Plans as long as the work** | The model decides how many steps a project needs — 2 for a script, 20+ for an application. |
+| **Parallel steps** | Independent steps run at the same time in separate tabs. Conversations parallelise; file writes never do. |
+| **Self-healing builds** | A failed syntax check goes back to the model with the error, up to a retry budget. |
+| **Nine languages, two ways** | A manifest at the root means one project-level check; no manifest means per-file. Rust, C, C++, Java, Python, JS. |
+| **Projects that run themselves** | Every build writes `closeni.run.json` plus `run.sh` / `run.bat`. Reopen it next month and Test already knows the command. |
+| **Ask about a failure** | The Test chat carries the last command and its output automatically. You never paste a traceback. |
+| **Nine themes** | Including three retro-futurist CRT variants and a high-contrast fallback. |
+| **Ships as an installer** | electron-builder produces `.exe`, AppImage and `.deb` on a tag. |
 
-**First launch downloads a browser.** CloseNI drives real browsers to talk to AI
-providers and needs its own Chromium, about 389MB. It downloads once, is kept in
-your user data directory, and survives reinstalling. This needs a network
-connection; there is no offline install.
+---
 
-Settings, sessions and browser profiles live in your user data directory
-(`%APPDATA%/CloseNI` on Windows, `~/.config/CloseNI` on Linux), never beside the
-application — a packaged app cannot write to its own install directory.
+## Architecture
 
-## Setup
+Two processes, one contract. The desktop app never touches a browser; the agent
+never touches a window.
+
+```mermaid
+flowchart TB
+    subgraph desktop["desktop/ — Electron"]
+        R["renderer.js<br/>panels, plan, diffs"]
+        B["builder.js<br/>step scheduler"]
+        M["main.js<br/>IPC, git, tokens"]
+        R <--> M
+        B <--> M
+    end
+
+    subgraph agent["local-agent/ — TypeScript, spawned per task"]
+        C["PlaywrightController<br/>send · wait · extract"]
+        P["parser<br/>JSON repair"]
+        A["patch applier<br/>backups, containment"]
+        V["check planner<br/>per-file or per-project"]
+        C --> P --> A --> V
+    end
+
+    subgraph web["A provider, in a real browser"]
+        D["DeepSeek"]
+        Q["Qwen"]
+        G["GLM"]
+    end
+
+    M -->|"spawn, JSON on stdio"| C
+    C -->|"persistent profile"| D
+    C --> Q
+    C --> G
+    A -->|"writes"| W[("your workspace")]
+```
+
+**The seam is deliberate.** The agent is a CLI you can run by hand
+(`node local-agent/dist/index.js plan "…" /path deepseek`), which is exactly how
+the end-to-end suite drives it — against a mock chat server, with only the
+model's answers faked.
+
+---
+
+## Quickstart
 
 ```bash
 npm install
-npm run build                  # builds shared/ then local-agent/
+npm run build                  # shared/ then local-agent/
 npx playwright install chromium
 cd desktop && npm start
 ```
 
-## The run file
+Then, in the app:
 
-Every project CloseNI builds gets a `closeni.run.json` describing how to start
-it, plus `run.sh` and `run.bat` generated from it. The app writes them at the end
-of a build, from the command the model declared while planning.
-
-Open the project again — tomorrow, or on another machine — and the Test panel
-already knows what to run. Edit the command in the panel and it is saved back;
-later builds will not overwrite an edited command.
-
-## GitHub
-
-Ship → GitHub. Create a token with `repo` and `workflow` scopes — the button
-opens GitHub's page with those pre-selected — and paste it once.
-
-The token is encrypted with your operating system's key (Keychain, DPAPI or
-libsecret) and stored in your user data directory. **If your system offers no
-secure storage, it is kept in memory only** and must be re-entered each launch;
-it is never written in plaintext.
-
-It never enters `.git/config`, a command line, or a log. Pushing authenticates
-through a `GIT_ASKPASS` helper that reads it from the environment. Signing out
-deletes it.
-
-Search results in Research gain two actions. **Use as reference** feeds the
-repository's README and file layout into your next plan without touching your
-workspace. **Clone** copies it in, after showing you its licence.
-
-## Parallel steps
-
-A plan declares which steps depend on which, so steps that need nothing from
-each other run at the same time in separate browser tabs. Set how many in
-Settings → Permissions; the default is 2.
-
-Only the conversations run in parallel. Applying files, syntax checks and
-command approvals happen one at a time, so two steps can never interleave writes
-to your workspace.
-
-**More is not always better.** Each parallel step is another conversation with
-your provider, and providers rate-limit. If builds start hanging, lower it.
-
-## Cutting a release
-
-```bash
-git tag v1.0.0
-git push --tags
 ```
-
-GitHub Actions builds the Windows installer on a Windows runner and the Linux
-packages on Ubuntu, then attaches all three to a Release for the tag. Build
-locally with `npm run dist` (current platform only) or `npm run pack` for an
-unpacked directory.
-
-The mark in `build/icon.svg` is the source of truth for the app icon;
-`build/icon.png` is generated from it by `node scripts/make-icon.mjs` and
-committed, so a build never needs a browser.
+  1  Browse            pick an empty folder
+  2  Settings          choose a provider, press Sign in, log in as yourself
+  3  Chat              describe what you want built
+  4  Generate Plan     review the steps and the estimated duration
+  5  Build with this   watch it write, check, and heal
+  6  Test              press Run — the command is already there
+```
 
 ### On WSL
 
@@ -100,189 +135,267 @@ committed, so a build never needs a browser.
 source scripts/wsl-env.sh      # then the commands above work as written
 ```
 
-WSL needs three things the script handles: a Linux node ahead of the Windows one
-on `PATH` (a Windows node cannot run from a `\\wsl.localhost\...` path), the
-chromium/electron system libraries, and `ELECTRON_RUN_AS_NODE` unset. See the
-Notes section for the underlying details.
+WSL needs three things the script handles: a Linux Node ahead of the Windows one
+on `PATH` (a Windows Node cannot run from a `\\wsl.localhost\...` path), the
+Chromium and Electron system libraries, and `ELECTRON_RUN_AS_NODE` unset.
 
-`npm run build` must be run before starting the desktop app: it spawns
-`local-agent/dist/index.js`, which does not exist until the build runs.
+---
+
+## How a build step actually runs
+
+```
+                    ┌──────────────────────────────────────────┐
+                    │  context: tree + relevant files, DELTA    │
+                    │  only — the thread already saw the rest   │
+                    └────────────────────┬─────────────────────┘
+                                         ▼
+   send prompt ──► wait for reply ──► parse ──► repair JSON if needed
+                        │                            │
+                        │ stop button vanished,      │ no files parsed?
+                        │ or text stable 4 ticks     │ re-ask once, strictly
+                        ▼                            ▼
+                   ┌─────────────────────────────────────────┐
+                   │      everything below is SERIALISED     │
+                   │      even when steps run in parallel    │
+                   ├─────────────────────────────────────────┤
+                   │  apply patch  ──►  backup overwritten   │
+                   │  update ledger ──► what the thread saw  │
+                   │  syntax check  ──► gcc / rustc / py …   │
+                   │  suggested commands ──► your approval   │
+                   └────────────────────┬────────────────────┘
+                                        ▼
+                              pass? ──► done
+                              fail? ──► send the error back, retry
+```
+
+**Why serialised.** Two steps can talk to two chat tabs at once, but only one
+may write. Otherwise they interleave writes to the delta ledger, race on the
+same backup directory, and — worst — both raise a permission prompt, when
+approval replies arrive on a single queue with nothing saying which command
+they answer.
+
+---
+
+## Parallel steps
+
+A plan declares which steps depend on which, so independent ones run together.
+
+```
+   serial (a plan with no graph)        with a declared graph, limit 2
+
+   1 ──► 2 ──► 3 ──► 4                  1 ──┬──► 2 ──┐
+                                            └──► 3 ──┴──► 4
+   ~6 min                                ~4 min
+```
+
+Set the limit in **Settings → Permissions**. Default 2.
+
+> More is not always better. Each parallel step is another conversation with
+> your provider, and providers rate-limit. If builds start hanging, lower it.
+
+---
+
+## The run file
+
+Every project CloseNI builds gets:
+
+```
+closeni.run.json     what the app reads
+run.sh / run.bat     so the project runs without CloseNI
+```
+
+```json
+{
+  "version": 1,
+  "run": "python3 src/app/server.py",
+  "install": "pip install -r requirements.txt",
+  "userEdited": false
+}
+```
+
+Written from the command the model declared while planning. **An edited command
+is never overwritten** — correcting it and having the next build undo you is how
+people stop trusting a tool.
+
+The Test panel says where the answer came from:
+
+```
+  SAVED             from closeni.run.json
+  FROM YOUR PLAN    the model declared it while planning
+  DETECTED          guessed from the files present
+  NOT FOUND         nothing to go on — type one
+```
+
+---
+
+## Language support
+
+| Manifest at the root | Check | Claims |
+|---|---|---|
+| `Cargo.toml` | `cargo check` | all `.rs` |
+| `Makefile` | `make -n` | `.c` `.cpp` `.h` `.hpp` |
+| `pom.xml` | `mvn -q compile` | all `.java` |
+| `build.gradle` | `gradle compileJava -q` | all `.java` |
+
+No manifest means per-file: `gcc -fsyntax-only`, `g++ -fsyntax-only`,
+`rustc --emit=metadata`, `javac`, `py_compile`, `node --check`.
+
+Rust and Java cannot be checked file by file — a `.rs` containing `mod utils;`
+fails alone even when the crate is perfect, and the model would then burn its
+retries "fixing" code that was never broken. A missing toolchain skips the check
+rather than failing it.
+
+---
+
+## GitHub
+
+**Ship → GitHub.** Create a token with `repo` and `workflow` scopes — the button
+opens GitHub's page with those pre-selected — and paste it once.
+
+Where the token goes, and where it never does:
+
+```
+  stored    encrypted with your OS key (Keychain / DPAPI / libsecret)
+            no secure storage available?  memory only, never plaintext
+
+  used      GIT_ASKPASS helper, reading it from its own environment
+
+  NEVER     .git/config          (it would persist in your project)
+            process arguments    (ps would show it)
+            any log line         (redacted on every path)
+            the renderer         (no getter exists)
+            the agent process    (it drives browsers; it has no business with it)
+```
+
+Search results in **Research** gain two actions. **Use as reference** feeds a
+repository's README and file layout into your next plan without touching your
+workspace. **Clone** copies it in, after showing you its licence.
+
+---
+
+## Providers
+
+The picker lists every enabled config in `local-agent/config/providers/`. Adding
+a provider is a JSON file — no code change, no markup change.
+
+| Provider | Controls it exposes | How its state is read |
+|---|---|---|
+| **DeepSeek** | Mode, Deep thinking, Smart Search | `aria-pressed` / `aria-checked`, inline |
+| **Qwen Studio** | Model, Thinking level | the trigger's visible text |
+| **GLM (Z.ai)** | Model, Deep Think level | `data-selected` on Radix menu items |
+
+Three UI stacks, three ways of reading state — which is why each provider gets
+its own control module rather than a shared schema that would have forced them
+into one shape.
+
+Completion is detected two ways: the provider's own stop button vanishing
+(exact, immediate) or the reply text sitting still for four polls (the fallback).
+A wrong `stopButton` selector costs speed, not correctness.
+
+> `GLM (Z.ai)` ships with **unverified chat selectors** — never checked against
+> the live site. If it hangs or sends nothing, correct `chatInput` and
+> `sendButton` in `glm.json` first; it is a text edit, not a code change.
+
+---
 
 ## Tests
 
 ```bash
 npm run build
-cd local-agent
-npm test        # unit: parsing, JSON repair, patching, browser extraction
-npm run test:e2e   # end-to-end: every agent mode against a mock provider
-npm run test:all   # both
+node local-agent/test/run-tests.cjs     # unit
+node local-agent/test/run-e2e.cjs       # end to end, ~15 min
 ```
 
-`npm test` covers response parsing, JSON repair, patch application (including
-workspace containment) and browser text extraction against a local fixture page.
+```
+   unit   470   parsing · JSON repair · patching · context ranking · delta
+                storage paths · check planning · themes · scheduler · redaction
+                git argument safety · repo URL parsing · API call shapes
 
-`npm run test:e2e` runs the real CLI end to end — Playwright drives a real browser,
-replies are extracted from the DOM, parsed, applied to a scratch workspace and
-syntax checked. Only the model's answers are faked, by `test/mock-provider.cjs`:
-a local server that serves a chat-shaped page and returns whatever the test
-queued. It covers plan/revise/build/chat/testall, the re-ask path, the self-heal
-retry loop, command approval and denial, oversized-argument spilling, headed mode,
-and a full plan → multi-step build → execute-the-result run.
+   e2e    155   the real CLI against a mock chat server. Playwright drives a
+                real browser; only the model's answers are faked.
+```
 
-Both suites skip the browser sections cleanly if Playwright's chromium is missing.
+The end-to-end suite covers plan, revise, build, chat, testall, the re-ask path,
+the self-heal loop, command approval and denial, oversized-argument spilling,
+headed mode, thread persistence, delta context, build sessions, provider
+controls, and a full plan → multi-step build → run.
 
-To point the agent at a different set of provider configs (the e2e suite does this
-to avoid touching the shipped ones), set `AGENT_PROVIDER_DIR`.
+Both suites skip browser sections cleanly when Chromium is unavailable. Point
+the agent at different provider configs with `AGENT_PROVIDER_DIR`.
 
-## How a build step runs
+---
 
-1. The renderer sends `run-agent` over IPC with the step arguments.
-2. For a build, `desktop/main.js` starts **one** `local-agent` process in
-   `build-session` mode and feeds it steps over stdin, so the browser opens once
-   per build rather than once per step. If the session cannot start, the builder
-   logs why and falls back to spawning `local-agent/dist/index.js` per step,
-   which is what the one-shot modes always do. Arguments longer than 8000 chars
-   are spilled to a temp file and the path passed instead; the agent reads those
-   back (`resolveArg`).
+## Building installers
 
-   Session commands share the stdin the approval flow reads, so both go through
-   one `readline` interface in the agent and are dispatched by content. A second
-   reader would queue every step command as a pending approval answer, and the
-   next `askApproval` would parse one, find no `approved` field, and deny the
-   command.
+```bash
+npm run pack       # unpacked directory, current platform
+npm run dist       # a real installer, current platform
 
-   Pause, skip and stop remain between-step operations owned by `builder.js`;
-   the session does not change them.
-3. Step 0 of a build opens a **fresh** chat thread and records its URL in
-   `sessions.json` as `activeBuildThread`; every later step of the same build
-   resumes that thread, so a step can see what earlier steps said. The prompt
-   still carries the project tree plus signatures of the most relevant existing
-   files. One-shot modes (chat, plan, revise, research, testall) keep opening a
-   fresh chat each time.
+git tag v1.0.0 && git push --tags
+```
 
-   From step 2 onward the prompt carries only a delta: signatures for files the
-   thread has never seen or whose content changed since it saw them, plus the
-   paths that appeared since the previous step. The project structure is sent
-   once, not with every step. What the thread already holds is not re-sent.
+The tag triggers GitHub Actions: Windows builds the NSIS `.exe`, Ubuntu builds
+the AppImage and `.deb`, and all three attach to a Release.
 
-   The ledger of what it has seen lives in `sessions.json` as `buildLedger` and
-   is cleared when a build starts. Files are recorded there both when their
-   signatures are sent *and* when the model writes them — the workspace scan runs
-   before a step executes, so files a step creates would otherwise never be
-   recorded and the delta would never fire.
+**First launch downloads Chromium** — about 389MB, once, kept in your user data
+directory. Bundling it would put half a gigabyte in every release.
 
-   Because a file that changed on disk is re-sent, a self-heal retry that
-   rewrote a file cannot leave the model reasoning from what it *proposed*
-   rather than what was actually applied.
-4. The reply is parsed into file changes, applied under the workspace, and syntax
-   checked. Failures are sent back to the model for up to two retries.
+**Builds are unsigned.** SmartScreen will warn; code signing needs a paid
+certificate.
 
-## Revising a step
+---
 
-The Builder shows what each step changed as a diff. `applyPatch` copies the
-previous version of every overwritten file into
-`<workspace>/.agent-backups/<timestamp>/` and reports that directory, so the
-renderer reads both versions and diffs them; a created file has no backup and
-renders as entirely added. Long runs of unchanged lines collapse so a small
-change in a large file stays readable.
+## Where your data lives
 
-The suggestion box under a selected step runs
-`suggest <workspace> <provider> <stepIndex> <text>`, which resumes that build's
-chat thread and applies the reply through the same parse-apply-check path a
-build step uses. Because the thread is still open, the model has the whole build
-in view — "rename that function" needs no explanation of which function.
+```
+  <userData>/                     %APPDATA%/CloseNI  ·  ~/.config/CloseNI
+    sessions.json                 chat threads per workspace
+    browser-profiles/<provider>/  your signed-in session — treat as a password
+    browsers/                     Chromium, downloaded on first run
+    github.token                  encrypted, or absent
+    skills/ · personas/           your reusable instructions
+```
 
-If the build thread is missing or will not reopen, `suggest` refuses rather than
-starting a fresh chat. A model without the build conversation would answer
-confidently having never seen the code it is revising.
+Never beside the application: a packaged app cannot write to its own install
+directory, and on Windows that would be `Program Files`.
 
-Suggestions do not cascade: revising step 2 does not re-run steps 3 onward.
-Starting a new build clears the thread, and with it the ability to revise the
-previous one.
+---
 
+## Notes and known traps
 
-## Permissions
+- **Provider profiles are credentials.** `browser-profiles/` holds live session
+  cookies and `sessions.json` holds private chat URLs. Both are git-ignored, and
+  the packaging config uses an allow-list so neither can reach a release.
+- **On WSL, Node must live inside Linux.** A Windows Node on `/mnt/c` cannot run
+  from a `\\wsl.localhost\...` path. This repo expects `~/.local/node`.
+- **`node_modules/electron/dist` must hold the Linux `electron`**, not
+  `electron.exe`. If `npm install` ran on Windows and the tree was copied in,
+  delete it and reinstall.
+- **`ELECTRON_RUN_AS_NODE=1` in your shell breaks the app** — Electron runs as
+  plain Node, reports a Node version, rejects `--no-sandbox`, and never opens a
+  window. `scripts/wsl-env.sh` unsets it. The app sets it deliberately on the
+  *agent* child process, which is the opposite case.
+- **Chromium needs system libraries** (`libnspr4`, `libnss3`, `libasound2`, …).
+  Without root, extract them from .deb packages onto `LD_LIBRARY_PATH`; this
+  repo expects `~/.local/chromium-deps`.
+- **Python is resolved at runtime** — `python3`, then `python`, then `py -3`.
+  "python" alone does not exist on most Linux and macOS installs.
 
-The sidebar's Permissions setting controls what happens when a build wants to run
-a terminal command:
+---
 
-- **Ask each command** (default) — a modal per command, the original behaviour.
-- **Auto-allow** — commands run without prompting, so a long build finishes
-  unattended.
-- **Never run commands** — commands are skipped. Files are still written and
-  syntax checked; nothing executes.
+## Repository layout
 
-Anything unrecognised falls back to asking, so a missing or corrupted setting
-cannot silently run unapproved commands. A command skipped by policy logs
-`COMMAND_DENIED` exactly as a manual denial does, so the self-heal path does not
-mistake "did not run" for "failed". The choice is stored in `localStorage`, so it
-is per-machine and survives a restart.
+```
+  desktop/           Electron app — main, preload, renderer, panels
+  local-agent/       the agent: providers, parser, patcher, verification
+    src/providers/   PlaywrightController + per-provider control modules
+    config/          one JSON file per provider
+    test/            unit and end-to-end suites
+  shared/            types shared by both
+  build/             icon source and generated PNG
+  docs/              roadmap, and a design spec + plan per sub-project
+  scripts/           environment setup, icon generation, UI capture
+```
 
-## Test and Run
-
-**Syntax-check all files** reports one row per check with its command and
-outcome, plus a summary. **Run Project** detects the entry point — `scripts.start`,
-then `package.json` `main`, then `main.py`, `src/main.py`, `app.py`, `index.js`,
-`src/index.js` — and runs it, reporting that it found nothing rather than
-guessing. Output appears in the tab as well as the Project log.
-
-
-## Providers
-
-The picker lists every enabled config in `local-agent/config/providers/`. Adding a
-provider means adding a JSON file there — no code change, no markup change.
-
-**Every field in a provider config is read.** `chatInput`, `sendButton` and
-`assistantMessage` drive the conversation. `stopButton` with
-`waitForStopButtonDisappear` ends a wait the moment the provider's own stop
-button vanishes, instead of waiting for the reply text to sit still for eight
-seconds. A provider without a stop button falls back to that stability check, so
-a wrong selector costs speed rather than correctness.
-
-That optimisation only helps replies slower than about five seconds: `sendPrompt`
-sleeps 2s after sending to capture the thread URL and `waitForResponse` waits 3s
-before its first poll, so a faster reply's stop button appears and vanishes
-unobserved. Those are the replies where waiting does not matter anyway.
-
-`GLM (Z.ai)` ships with **unverified selectors** — they have never been checked
-against the live site. If it hangs or sends nothing, correct `chatInput` and
-`sendButton` in `glm.json` first. `huggingchat.json` and `open-webui.json` are
-empty placeholders with no selectors at all; they are disabled, and enabling one
-without filling it in will fail immediately.
-
-## Signing in
-
-**Sign in** beside the provider picker opens a visible browser at that provider
-and waits for the chat input to appear, then closes. It forces a visible window
-regardless of the Show Browser checkbox — a login in a window nobody can see is
-the bug it exists to fix. The session lives in that provider's persistent profile
-under `local-agent/storage/browser-profiles/`, which is the only record of being
-signed in.
-
-A headless run that finds no chat input gives up after 15 seconds and says to
-sign in, rather than waiting out the full two-minute timeout for a login that
-cannot happen.
-
-
-## Notes
-
-- Chat threads per workspace are stored in `local-agent/storage/sessions.json`.
-  Both the agent (`PlaywrightController`) and the desktop IPC handlers read and
-  write this same file, so the two must stay in agreement on its shape:
-  `{ "<workspace>": { chats: [{url,title,createdAt}], activeChat } }`.
-- The "Show Browser" checkbox sets `AGENT_HEADED=1` on the spawned agent, which
-  `PlaywrightController` reads in its constructor.
-- On WSL, Node must be installed inside the Linux environment. A Windows Node on
-  `/mnt/c` cannot run from a `\\wsl.localhost\...` path and will fail with
-  "UNC paths are not supported". This repo expects it at `~/.local/node`.
-- `node_modules/electron/dist` must hold the Linux build (`electron`), not
-  `electron.exe`. If `npm install` was run from Windows and the tree copied into
-  WSL, delete `desktop/node_modules/electron` and reinstall.
-- If `ELECTRON_RUN_AS_NODE=1` is set, electron runs as plain node: it reports a
-  node version, rejects `--no-sandbox` as a "bad option", and never opens a window.
-- Chromium/electron need system libraries (`libnspr4`, `libnss3`, `libasound2`,
-  …). Without root they can be extracted from .deb packages into a prefix and put
-  on `LD_LIBRARY_PATH`; this repo expects `~/.local/chromium-deps`.
-- Python syntax checks resolve the interpreter at runtime (`python3`, then
-  `python`, then `py -3`) — "python" alone does not exist on most Linux/macOS
-  installs.
+Every sub-project in `docs/superpowers/` carries a design spec and an
+implementation plan, including the decisions that were rejected and why.
