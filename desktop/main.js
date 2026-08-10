@@ -315,6 +315,50 @@ ipcMain.handle("sign-in", function (event, providerId) {
   });
 });
 
+// The agent's compiled module, so the rules about which command wins and what
+// an edited command means live in one place rather than two.
+const RUN = require(path.join(__dirname, "..", "local-agent", "dist", "run-manifest.js"));
+
+function manifestPath(workspace) { return path.join(workspace, RUN.MANIFEST_NAME); }
+
+ipcMain.handle("read-manifest", function (event, workspace) {
+  try {
+    return JSON.parse(fs.readFileSync(manifestPath(workspace), "utf-8"));
+  } catch (e) {
+    // Absent and corrupt both mean "no manifest". A malformed file must not
+    // stop the panel from loading.
+    return null;
+  }
+});
+
+/**
+ * Write the manifest and the scripts beside it.
+ *
+ * The scripts are regenerated every time, so they cannot drift from the
+ * manifest the app actually reads.
+ */
+ipcMain.handle("write-manifest", function (event, payload) {
+  try {
+    let existing = null;
+    try { existing = JSON.parse(fs.readFileSync(manifestPath(payload.workspace), "utf-8")); } catch (e) {}
+    const merged = RUN.mergeManifest(existing, payload.run, {
+      userEdited: !!payload.userEdited,
+      install: payload.install,
+      language: payload.language,
+    });
+    fs.writeFileSync(manifestPath(payload.workspace), JSON.stringify(merged, null, 2) + "\n");
+
+    const sh = path.join(payload.workspace, "run.sh");
+    fs.writeFileSync(sh, RUN.renderRunScript(merged, "posix"));
+    try { fs.chmodSync(sh, 0o755); } catch (e) { /* chmod is meaningless on Windows */ }
+    fs.writeFileSync(path.join(payload.workspace, "run.bat"), RUN.renderRunScript(merged, "win32"));
+
+    return { ok: true, manifest: merged };
+  } catch (e) {
+    return { ok: false, error: String(e) };
+  }
+});
+
 ipcMain.handle("browser-status", function () {
   // Development uses the developer's own ~/.cache/ms-playwright, which
   // PLAYWRIGHT_BROWSERS_PATH deliberately does not override there.

@@ -210,7 +210,33 @@
     status("finished: " + done + "/" + steps.length);
     CN.log("build finished: " + done + "/" + steps.length, "step");
     CN.toast("Build finished: " + done + "/" + steps.length);
+    await saveRunManifest();
   };
+
+  /**
+   * Persist how to run what was just built.
+   *
+   * The model declared this while planning; without writing it down the answer
+   * dies with the session and the Test panel is back to guessing from
+   * filenames. mergeManifest preserves a command the user edited, so this
+   * cannot undo a correction.
+   */
+  async function saveRunManifest() {
+    const ws = CN.getWorkspace();
+    if (!ws) return;
+    const plan = CN.getPlan();
+    let detected = null;
+    try {
+      const files = await window.api.listFiles(ws);
+      detected = window.CNEntry
+        ? window.CNEntry.detectEntrypoint(files, null, null, window.api.platform)
+        : null;
+    } catch (e) { /* an unreadable workspace just means no detection */ }
+    const chosen = (plan && plan.runCommand) || detected;
+    if (!chosen) return;
+    const r = await window.api.writeManifest({ workspace: ws, run: chosen });
+    if (r && r.ok) CN.log("run command saved: " + r.manifest.run, "ok");
+  }
 
   CN.retryFailed = async function () {
     if (running) { CN.toast("Already running", "err"); return; }
