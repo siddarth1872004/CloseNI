@@ -386,6 +386,31 @@ function testCssTokens() {
   check("a :root block exists", blocks.some(function (b) { return b.name === ":root"; }));
 }
 
+function testTheme() {
+  section("theme resolution");
+  const { THEMES, resolveTheme, DEFAULT_THEME } = require(path.join(__dirname, "..", "..", "desktop", "theme.js"));
+
+  check("nine themes are offered", THEMES.length === 9, String(THEMES.length));
+  check("midnight is the default", DEFAULT_THEME === "midnight");
+  check("midnight is in the list", THEMES.some(function (t) { return t.id === "midnight"; }));
+  check("every theme has an id and a name", THEMES.every(function (t) { return t.id && t.name; }));
+  check("ids are unique",
+    new Set(THEMES.map(function (t) { return t.id; })).size === THEMES.length);
+  // Only the themes carrying scanlines and glow are marked, so the Appearance
+  // toggle knows when it is worth showing.
+  check("four themes are marked as CRT",
+    THEMES.filter(function (t) { return t.crt; }).length === 4,
+    THEMES.filter(function (t) { return t.crt; }).map(function (t) { return t.id; }).join());
+
+  check("a saved theme is honoured", resolveTheme("paper") === "paper");
+  check("nothing saved yields the default", resolveTheme(null) === "midnight");
+  check("an empty string yields the default", resolveTheme("") === "midnight");
+  // A theme removed in a later version must not leave the app unstyled - every
+  // token would go unresolved, which renders as black text on white.
+  check("an unknown theme falls back", resolveTheme("vaporwave-deluxe") === "midnight");
+  check("a non-string falls back", resolveTheme({ id: "paper" }) === "midnight");
+}
+
 function testToolchain() {
   section("tool resolution");
   const { resolveTool, resetToolCache, TOOL_CANDIDATES } = require(path.join(DIST, "verification/toolchain.js"));
@@ -787,6 +812,7 @@ async function testBrowserExtraction() {
   testControlDecisions();
   testControlSettings();
   testCssTokens();
+  testTheme();
   testToolchain();
   testCheckPlanner();
   await testCommandTimeout();

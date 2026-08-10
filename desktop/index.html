@@ -4,6 +4,18 @@
 <meta charset="UTF-8">
 <title>CloseNI</title>
 <link rel="stylesheet" href="styles.css">
+<script>
+  /* Before first paint. Applying the theme from renderer.js instead would show
+     Midnight for a frame and then switch, which reads as a flicker on every
+     launch. Inline and synchronous is the only way to avoid that. */
+  try {
+    var t = localStorage.getItem("closeni.theme");
+    if (t) document.documentElement.setAttribute("data-theme", t);
+    if (localStorage.getItem("closeni.theme.decor") === "off") {
+      document.documentElement.setAttribute("data-decor", "off");
+    }
+  } catch (e) { /* storage disabled: the default theme is correct anyway */ }
+</script>
 </head>
 <body>
 <div id="app">
@@ -165,6 +177,7 @@
 <script src="diff.js"></script>
 <script src="entrypoint.js"></script>
 <script src="controls-settings.js"></script>
+<script src="theme.js"></script>
 <script src="renderer.js"></script>
 <script src="builder.js"></script>
 </body>
