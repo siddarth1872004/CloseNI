@@ -362,7 +362,8 @@ select{width:100%;}
 .diff-line.same{color:var(--dim);}
 .diff-line.gap{color:var(--mut);font-style:italic;background:var(--surface-sunken);}
 
-#autonomy-select{width:100%;background:var(--surface-sunken);border:1px solid var(--line);color:var(--txt);padding:7px 8px;border-radius:3px;font-family:inherit;font-size:12px;}
+/* #autonomy-select and #provider-select each re-declared what the shared
+   input,textarea,select rule already says. Deleted; they inherit it. */
 #test-summary{margin:14px 0 6px;}
 #test-results{max-height:340px;overflow-y:auto;}
 .test-row{display:flex;justify-content:space-between;gap:12px;padding:5px 8px;border:1px solid var(--line);border-radius:3px;margin-bottom:4px;background:var(--surface);font-size:11px;}
@@ -372,8 +373,6 @@ select{width:100%;}
 .test-row.fail .verdict{color:var(--err);}
 .test-output{border:1px solid var(--line);border-radius:3px;background:var(--surface-sunken);padding:10px;margin-top:8px;}
 .test-output pre{white-space:pre-wrap;word-break:break-word;font-size:11px;color:var(--dim);}
-
-#provider-select{width:100%;background:var(--surface-sunken);border:1px solid var(--line);color:var(--txt);padding:7px 8px;border-radius:3px;font-family:inherit;font-size:12px;}
 
 /* Settings */
 #settings-view{display:flex;gap:var(--sp-5);flex:1;min-height:0;}
@@ -406,3 +405,8 @@ select{width:100%;}
 /* Utility classes replacing the inline styles the markup used to carry. */
 .btn-block{width:100%;}
 .btn-sm{font-size:10px;padding:var(--sp-1) var(--sp-3);}
+.mt-1{margin-top:var(--sp-3);}
+.mb-1{margin-bottom:var(--sp-2);}
+/* Initial state for controls that builder.js later shows with an inline
+   style. Inline wins over a class, so show() keeps working untouched. */
+.is-hidden{display:none;}

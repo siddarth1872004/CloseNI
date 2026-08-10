@@ -1,6 +1,6 @@
 # CloseNI Roadmap
 
-28 items, grouped into 9 sub-projects. **5 of 9 complete** (1 · Conversation & context core, 2 · Provider platform, 3 · Multi-language builds, 6 · Builder IDE experience, 9 · Housekeeping). Each sub-project gets its own design spec
+28 items, grouped into 9 sub-projects. **6 of 9 complete** (1 · Conversation & context core, 2 · Provider platform, 3 · Multi-language builds, 6 · Builder IDE experience, 7 · Visual identity & polish, 9 · Housekeeping). Each sub-project gets its own design spec
 and implementation plan under `docs/superpowers/`, and is expected to leave the
 application working on its own.
 
@@ -123,16 +123,42 @@ Roadmap items 16, 17, 18, 22. Benefits from sub-project 1 but is not blocked by 
   sidebar, persisted, feeding both build call sites. An unrecognised value
   falls back to asking.
 
-## 7 · Visual identity & polish
+## 7 · Visual identity & polish — DONE
 
-Roadmap items 19, 20, 21, 26, 27. Unblocked by the decision to stay on Electron.
-Blocks sub-project 8.
+Roadmap items 19, 20, 21, 26, 27. Spec: `specs/2026-08-10-visual-identity-design.md`,
+plan: `plans/2026-08-10-visual-identity.md`
 
-- **19. UI refresh — 3D elements, transitions, animations** — `todo`.
-- **20. Programming-language logos** — `todo`.
-- **21. Detailed settings page** — `todo`.
-- **26. Beautiful, detailed UI** — `todo`.
-- **27. Logo** — `todo`.
+- **19. UI refresh — 3D elements, transitions, animations** — `done`,
+  reinterpreted twice and both times deliberately. 3D became layered elevation
+  and a backdrop blur: literal 3D costs GPU and startup time and fights a flat
+  terminal aesthetic. Live animation was built, reviewed in the visual companion
+  and **rejected by the owner** — decoration is static, and the only animations
+  left are the progress bar and the toast, both behind `prefers-reduced-motion`.
+- **20. Programming-language logos** — `done` as drawn marks. The extension in a
+  per-language accent colour; no trademarked asset is reproduced or vendored,
+  matching the call item 10 made for provider logos.
+- **21. Detailed settings page** — `done`. `06 Settings` with Provider,
+  Permissions, Appearance and About. The provider controls, autonomy policy and
+  Show Browser moved out of the rail keeping their ids and storage keys, so
+  nothing was rewritten and their tests never changed.
+- **26. Beautiful, detailed UI** — `done`, made finite. 47 colour literals became
+  32 tokens; nine themes; focus rings where there were none at all;
+  reduced-motion support; state carried by colour instead of four identical grey
+  chips; six duplicated rules and 14 inline styles removed.
+- **27. Logo** — `done`. Two inward-facing brackets — closing. One 32×32 SVG in
+  `currentColor`, serving the rail, the About section and, for sub-project 8,
+  the installer icon.
+
+**Themes: Midnight, Paper, Phosphor, Amber, Cassette · Indigo, Cassette · Miami,
+Cassette · Grid, Blueprint, High contrast.** They style CloseNI's own chrome and
+never the projects built with it.
+
+Token completeness is enforced by a lint that fails on any colour literal
+outside a theme block, because a theme reaches exactly as far as the tokens do
+and a single stray hex fails silently. A second check ties each theme's
+decoration flag to whether its CSS actually declares a texture — it caught
+Blueprint being flagged as undecorated while declaring a grid, which would have
+shipped a toggle that did nothing.
 
 ## 8 · Distribution
 

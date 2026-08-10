@@ -38,8 +38,8 @@
       <div class="micro">Workspace</div>
       <div id="workspace-label">none selected</div>
       <button id="browse-btn" class="btn">Browse</button>
-      <div class="micro" style="margin-top:10px;">Chat Session</div>
-      <select id="chat-select" style="margin-bottom:6px;">
+      <div class="micro mt-1">Chat Session</div>
+      <select id="chat-select" class="mb-1">
         <option value="new">+ New Chat</option>
       </select>
       <button id="new-chat-btn" class="btn btn-sm">New Chat</button>
@@ -78,11 +78,11 @@
     <section id="panel-build" class="panel">
       <div id="builder-toolbar">
         <button id="builder-start" class="btn invert">Start Build</button>
-        <button id="builder-pause" class="btn" style="display:none;">Pause</button>
-        <button id="builder-resume" class="btn" style="display:none;">Resume</button>
-        <button id="builder-skip" class="btn" style="display:none;">Skip Step</button>
-        <button id="builder-retry" class="btn" style="display:none;">Retry Failed</button>
-        <button id="builder-stop" class="btn" style="display:none;">Stop</button>
+        <button id="builder-pause" class="btn is-hidden">Pause</button>
+        <button id="builder-resume" class="btn is-hidden">Resume</button>
+        <button id="builder-skip" class="btn is-hidden">Skip Step</button>
+        <button id="builder-retry" class="btn is-hidden">Retry Failed</button>
+        <button id="builder-stop" class="btn is-hidden">Stop</button>
         <div id="builder-progress-wrap"><div id="builder-progress"></div></div>
         <span id="builder-status">idle</span>
       </div>
