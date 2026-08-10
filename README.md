@@ -8,6 +8,8 @@
 
 `Electron` · `TypeScript` · `Playwright` · `No API Keys` · `Cross-Platform`
 
+[**closeni site**](https://siddarth1872004.github.io/CloseNI/) · [**Releases**](https://github.com/siddarth1872004/CloseNI/releases)
+
 </div>
 
 ---
