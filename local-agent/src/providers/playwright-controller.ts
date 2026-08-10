@@ -218,8 +218,19 @@ export class PlaywrightController {
     if (Object.keys(desired).length === 0) return;
     const results = await applyProviderControls(this.page, config.id, config.controlSelectors, desired);
     if (!results.length) return;
-    console.log("Provider controls:");
-    for (const line of formatResults(config.id, results)) console.log(line);
+    // A control that is simply not on the page is reported once, quietly. It
+    // repeats on every conversation open, and a provider redesign would
+    // otherwise bury the run log in identical lines.
+    const acted = results.filter((r) => r.action !== "unavailable");
+    const missing = results.filter((r) => r.action === "unavailable");
+    if (acted.length) {
+      console.log("Provider controls:");
+      for (const line of formatResults(config.id, acted)) console.log(line);
+    }
+    if (missing.length) {
+      console.log("Provider controls not found on this page: " +
+        missing.map((r) => r.id).join(", ") + " (selectors may need re-capturing)");
+    }
   }
 
   async navigateToChat(config: ProviderConfig): Promise<void> {

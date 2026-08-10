@@ -8,6 +8,7 @@ import { PlaywrightController, ProviderConfig } from "./providers/playwright-con
 import { ProviderRegistry } from "./providers/provider-registry.js";
 import { runCommand, normalizeCommand } from "./verification/command-runner.js";
 import { planChecksForWorkspace } from "./verification/check-planner.js";
+import { needsConfirmation, isEnvironmentSetup, isGeneratedFile, GENERATED_FILES } from "./verification/command-policy.js";
 import { createMutex, createPool } from "./async-pool.js";
 import { decideApproval } from "./verification/approval-policy.js";
 import { getProjectContext } from "./context/context-engine.js";
@@ -324,6 +325,8 @@ function buildPrompt(userPrompt: string, tree: string, relevantFiles: { path: st
     "- Docstrings on public functions. Comments explain why, not what.\n" +
     "- Avoid needless passes, quadratic loops over large inputs, and repeated I/O.\n" +
     "- The project must be runnable: keep requirements.txt / package.json in step with what the code imports.\n" +
+    "- DO NOT create or edit " + GENERATED_FILES.join(", ") + " — the app generates those.\n" +
+    "- Do not add commands that create virtualenvs or install packages unless the step is specifically about that.\n" +
     contextStr +
     "\n\nUser request:\n" + userPrompt;
 }
@@ -469,6 +472,14 @@ async function runBuildStep(controller: PlaywrightController, config: ProviderCo
     // replies arrive on one stdin queue with nothing saying which command they
     // answer, so a second prompt could receive the first one's "allow".
     const locked = await applyLock.run(async () => {
+    // The app writes closeni.run.json, run.sh and run.bat at the end of a build.
+    // They then show up in the workspace listing, and the model starts
+    // maintaining them - overwriting what the app wrote with its own version.
+    const adopted = plan.changes.filter((c) => isGeneratedFile(c.filePath));
+    if (adopted.length) {
+      console.log("IGNORING_GENERATED: " + adopted.map((c) => c.filePath).join(", "));
+      plan.changes = plan.changes.filter((c) => !isGeneratedFile(c.filePath));
+    }
     const applyResult = applyPatch(workspace, plan);
     let failed: { command: string; output: string } | null = null;
 
@@ -511,13 +522,31 @@ async function runBuildStep(controller: PlaywrightController, config: ProviderCo
           const cmd = normalizeCommand(suggested);
           if (cmd !== suggested) console.log("NORMALIZED_COMMAND: " + suggested + "  ->  " + cmd);
           console.log("REQUESTING_COMMAND: " + cmd);
-          const ok = await askApproval(cmd, workspace, autonomy);
+          // Auto-allow means "do not interrupt me for pytest". It was never
+          // meant to mean "install system packages as root" or "pipe a
+          // downloaded script into an interpreter" - both of which a real run
+          // executed with no confirmation at all.
+          const forced = needsConfirmation(cmd);
+          if (forced) console.log("COMMAND_NEEDS_REVIEW: " + cmd);
+          const ok = await askApproval(cmd, workspace, forced ? "ask" : autonomy);
           if (!ok) { console.log("COMMAND_DENIED: " + cmd); continue; }
           console.log("RUNNING_COMMAND: " + cmd);
           const r = await runCommand(cmd, workspace, 60000);
           console.log("COMMAND_RESULT: " + (r.success ? "PASS" : "FAIL"));
           if (r.output) projLog(r.output.slice(0, 2000));
-          if (!r.success) { failed = { command: cmd, output: r.output }; break; }
+          if (!r.success) {
+            // A virtualenv that cannot be created, or a pip blocked by PEP 668,
+            // is a fact about this machine - not about the code just written,
+            // which has already passed its syntax checks. Failing the step for
+            // it once blocked fourteen good steps behind one bad laptop.
+            if (isEnvironmentSetup(cmd)) {
+              console.log("ENVIRONMENT_COMMAND_SKIPPED: " + cmd);
+              projLog("Environment setup did not work here, continuing: " + cmd);
+              continue;
+            }
+            failed = { command: cmd, output: r.output };
+            break;
+          }
         }
       }
     }

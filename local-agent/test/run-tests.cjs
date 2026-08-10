@@ -1100,6 +1100,65 @@ async function testGitHubApi() {
   check("a plain 403 mentions scopes", /scope/i.test(scopeMsg), scopeMsg);
 }
 
+function testCommandPolicy() {
+  section("command policy");
+  const p = require(path.join(DIST, "verification/command-policy.js"));
+
+  // --- the safety floor. Auto-allow used to mean literally everything: a real
+  // run auto-executed "sudo apt install" and "curl ... | python3" with no
+  // confirmation at all.
+  check("sudo always asks", p.needsConfirmation("sudo apt install -y x") === true);
+  check("apt always asks", p.needsConfirmation("apt install -y python3-venv") === true);
+  check("a piped remote script always asks",
+    p.needsConfirmation("curl -sS https://example.com/get-pip.py | python3") === true);
+  check("wget piped to a shell always asks",
+    p.needsConfirmation("wget -qO- https://x.sh | sh") === true);
+  check("rm -rf always asks", p.needsConfirmation("rm -rf build") === true);
+  check("a disk write always asks", p.needsConfirmation("dd if=/dev/zero of=/dev/sda") === true);
+  check("chmod 777 always asks", p.needsConfirmation("chmod 777 /etc") === true);
+  check("a shutdown always asks", p.needsConfirmation("shutdown -h now") === true);
+  // An || chain hides the dangerous half behind a harmless first command.
+  check("a dangerous second clause is caught",
+    p.needsConfirmation("apt install -y x || sudo apt install -y x") === true);
+  check("a dangerous clause after && is caught",
+    p.needsConfirmation("echo hi && sudo rm -rf /") === true);
+
+  // Ordinary project commands stay automatic, or auto-allow means nothing.
+  check("running the project is fine", p.needsConfirmation("python3 app.py") === false);
+  check("running tests is fine", p.needsConfirmation("pytest -q") === false);
+  check("npm run build is fine", p.needsConfirmation("npm run build") === false);
+  check("a plain mkdir is fine", p.needsConfirmation("mkdir -p src") === false);
+  check("an empty command is fine", p.needsConfirmation("") === false);
+  check("a missing command is fine", p.needsConfirmation(null) === false);
+
+  // --- environment setup. These failing is a machine problem, not a code
+  // problem, and failing the step for it blocked fourteen good steps.
+  check("venv is environment setup", p.isEnvironmentSetup("python3 -m venv venv") === true);
+  check("pip install is environment setup", p.isEnvironmentSetup("pip install -r requirements.txt") === true);
+  check("pip3 install too", p.isEnvironmentSetup("pip3 install flask") === true);
+  check("apt install too", p.isEnvironmentSetup("apt install -y python3-venv") === true);
+  check("npm install too", p.isEnvironmentSetup("npm install") === true);
+  check("poetry install too", p.isEnvironmentSetup("poetry install") === true);
+  check("activating a venv too", p.isEnvironmentSetup("source venv/bin/activate") === true);
+
+  // Running or testing the project is verification, and must still fail a step.
+  check("running the app is not setup", p.isEnvironmentSetup("python3 app.py") === false);
+  check("running tests is not setup", p.isEnvironmentSetup("pytest") === false);
+  check("npm run build is not setup", p.isEnvironmentSetup("npm run build") === false);
+  check("npm test is not setup", p.isEnvironmentSetup("npm test") === false);
+  check("an empty command is not setup", p.isEnvironmentSetup("") === false);
+
+  // --- files the app generates and the model must not adopt. It saw run.sh in
+  // the workspace and started maintaining it, overwriting what we wrote.
+  check("the manifest is protected", p.isGeneratedFile("closeni.run.json") === true);
+  check("run.sh is protected", p.isGeneratedFile("run.sh") === true);
+  check("run.bat is protected", p.isGeneratedFile("run.bat") === true);
+  check("a nested run.sh is the project's own", p.isGeneratedFile("scripts/run.sh") === false);
+  check("app.py is not protected", p.isGeneratedFile("app.py") === false);
+  check("a windows path is normalised", p.isGeneratedFile(".\\run.sh") === true);
+  check("no path is not protected", p.isGeneratedFile("") === false);
+}
+
 function testToolchain() {
   section("tool resolution");
   const { resolveTool, resetToolCache, TOOL_CANDIDATES } = require(path.join(DIST, "verification/toolchain.js"));
@@ -1504,6 +1563,7 @@ async function testBrowserExtraction() {
   testStoragePaths();
   testPlanScale();
   testPlanGraph();
+  testCommandPolicy();
   testGitHubSafe();
   testGitSpawnHardening();
   await testGitHubApi();
