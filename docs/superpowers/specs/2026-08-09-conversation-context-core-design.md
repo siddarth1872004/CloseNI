@@ -134,21 +134,20 @@ Remove the per-step process and browser cost.
 - `main.js` gains `start-build-session` / `send-build-command` plus an event
   stream to the renderer. `builder.js` opens a session once and awaits
   `step-result` per step instead of calling `runAgent` per step.
-- The ledger moves into the session process; no disk persistence. A crashed
-  session restarts with an empty ledger and re-sends everything — slower but
-  correct.
+- The ledger stays in `sessions.json` where Phase 2 put it; no work needed here.
 - The per-step spawn path is retained as a fallback when a session fails to
   start, so a regression here cannot make builds impossible.
 
-**Pause / skip / stop are the real cost.** Today they work by not spawning the
-next process, which is trivial because nothing runs between steps. Against a live
-process they become messages that must be honoured mid-flight, including while
-blocked on a model response that can take two minutes. `stop` must tear down a
-browser mid-request without orphaning it.
+**Correction, made during Phase 3.** This section originally claimed pause, skip
+and stop would become messages honoured mid-flight, and called that the main cost
+of the approach. That was wrong. Reading `builder.js` showed all three are
+*between-step* operations — `paused` gates the next iteration, `skipNext` skips
+the next one, `stopRequested` breaks the loop — and none interrupts a running
+step. Because `builder.js` kept owning the loop, all three were untouched by this
+phase.
 
 **Verifiable by:** a test that runs a full build through one session and asserts
-Chromium launched once; and tests that pause, skip and stop each take effect
-while a step is in flight.
+Chromium launched once.
 
 **Risk:** high, and isolated here by design. Phases 1 and 2 remain functional if
 this is reverted.
@@ -164,29 +163,40 @@ account.
 New coverage per phase is listed above. Each phase is complete only when its
 tests pass and the desktop app has been launched and driven.
 
-## Known issue: intermittent empty plan
+## Resolved: the "intermittent empty plan"
 
-Observed once during Phase 1: plan mode returned a result object with no `plan`
-field, against the local mock provider, and passed on the next run of identical
-code. The reply pulled off the page that one time did not parse into a plan.
+Observed once during Phase 1: plan mode returned a result with no `plan` field,
+against the local mock provider, and passed on the next run of identical code.
+It was recorded as an intermittent race in response handling and deferred
+through Phases 2 and 3.
 
-This is a race between the reply being complete and `waitForResponse` deciding it
-is complete — the same class of defect as the "AI is thinking" hang fixed earlier,
-where detection and reality disagree. Against a real provider it would present as
-"Generate Implementation Plan" silently returning nothing.
+**It was almost certainly not a race in the product.** Investigation:
 
-Not fixed in Phase 1, because Phase 1 does not touch response handling and a fix
-without a reliable reproduction would be a guess. The end-to-end assertions that
-dereference `result.plan` are now guarded so a recurrence reports the actual
-result rather than throwing an uninformative `TypeError`.
+- `parsePlanRobust` can only return `null` or an object that has `steps`, so the
+  failure means the reply was unparseable **twice** — the initial parse and the
+  re-ask both failed. Against a mock that returns valid JSON every time, that
+  points away from a timing race in extraction.
+- Plan mode ran **25 times in isolation with zero failures**, against the same
+  mock, the same profile directory and the same fixed reply.
+- Feeding plan mode a *build* reply (`files`, not `steps`) reproduces the
+  observed result exactly: `success: false`, no `plan`, `error: "Could not parse
+  plan."`, the wrong reply in `raw`, and a re-ask in the log.
+- The original failure occurred in a suite launched while another was still
+  finishing. At that time both suites wrote their provider config to a single
+  fixed path under the repo, so the second overwrote the first, pointing one
+  suite's agent at the other's mock server — which answered its plan request
+  with whatever that suite had queued.
 
-**Correction.** This section originally named Phase 2 as the place to fix it.
-That was wrong: Phase 2 changed what is *sent* to the model, while this race is
-in how a reply is *read*. Phase 2 shipped without addressing it and the bug
-remains open. Phase 3 owns `waitForResponse` across a whole build rather than a
-single step, which is the first point where the reply lifecycle is genuinely
-being reworked — but this should be treated as its own defect with its own
-reproduction, not as something a phase picks up in passing.
+That collision was fixed independently during Phase 2, when `PROVIDER_DIR`
+became a per-run temporary directory. The symptom has not recurred since.
+
+**Residual uncertainty.** This explains the symptom completely and the mechanism
+was demonstrably present, but the original failure was not captured with its
+`raw` field visible — the assertion threw before printing it. So this is a
+strong evidence-backed explanation rather than a certainty. The assertions that
+dereference `result.plan` are now guarded, and an end-to-end test locks in that
+an unparseable reply is reported with the text it could not parse, so a genuine
+recurrence would arrive with its evidence attached.
 
 ## Consequences
 

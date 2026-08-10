@@ -32,9 +32,10 @@ all context had to be rebuilt from disk each time.
 - **3. Better prompts & parsing** — `done`. Prompts carry a delta rather than the
   whole project each step, and the structure is sent once.
 
-**Still open here:** the intermittent empty-plan race, recorded in the spec.
-Plan mode occasionally returns no plan and passes on the next identical run. It
-was not fixed by any of the three phases and needs its own reproduction.
+**The intermittent empty-plan issue is resolved** — see the spec. It was
+traced to concurrent end-to-end suites sharing one provider config file, not to
+a race in the product; that collision was fixed in Phase 2. Plan mode ran 25/25
+clean in isolation.
 
 ## 2 · Provider platform
 
@@ -129,7 +130,7 @@ Roadmap items 23, 24, 25.
 - **25. QoL across all features** — `done` for this sub-project's scope. QoL
   belonging to a specific feature is tracked with that feature.
 
-Verified at 81 unit + 95 end-to-end with a clean build after the deletions.
+Verified with a clean build after the deletions.
 
 ---
 
@@ -161,7 +162,7 @@ depend on:
   commands (was failing every Python step); response-detection hanging for the
   full timeout on short replies; context ranking that omitted the module a step
   had to import from; dead IPC handlers behind the New Chat button.
-- Test suite from nothing to 176 tests (81 unit + 95 end-to-end) — unit coverage
+- Test suite from nothing to 226 tests (110 unit + 116 end-to-end) — unit coverage
   plus a suite that drives the real CLI and a real browser against a mock chat
   provider.
 - Two bugs found by reading code rather than by a failing test, both invisible to
