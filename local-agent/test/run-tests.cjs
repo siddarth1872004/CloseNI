@@ -632,6 +632,133 @@ function testReleaseWorkflow() {
   check("it publishes", y.indexOf("--publish") !== -1 || y.indexOf("GH_TOKEN") !== -1);
 }
 
+function testPlanScale() {
+  section("plan scale");
+  const { estimateDuration, MAX_PLAN_STEPS } = require(path.join(DIST, "plan-scale.js"));
+
+  check("the bound is 40", MAX_PLAN_STEPS === 40);
+
+  // Each step is a browser round-trip of a minute or two, so a long plan is a
+  // long build. The estimate exists so that is a choice, not a surprise.
+  check("a short plan reads in minutes", /min/.test(estimateDuration(3)), estimateDuration(3));
+  check("a long plan reads differently", estimateDuration(30) !== estimateDuration(3));
+  check("zero steps is survivable", typeof estimateDuration(0) === "string");
+
+  const mk = (n) => {
+    const steps = [];
+    for (let i = 0; i < n; i++) steps.push({ title: "s" + i, detail: "d", files: ["f" + i + ".py"] });
+    return F + "json\n" + JSON.stringify({ summary: "x", steps: steps }) + "\n" + F;
+  };
+
+  // The eight-step cap was the complaint. Anything up to the bound must parse.
+  check("a nine-step plan parses", (parsePlanRobust(mk(9)) || {}).steps.length === 9);
+  check("a twenty-step plan parses", (parsePlanRobust(mk(20)) || {}).steps.length === 20);
+  check("exactly forty parses", (parsePlanRobust(mk(40)) || {}).steps.length === 40);
+
+  // Rejecting rather than truncating: a truncated plan silently loses the end
+  // of the project - deployment, tests - while looking like it worked.
+  check("forty-one is rejected, not truncated", parsePlanRobust(mk(41)) === null);
+
+  // runCommand is optional so older and hand-written plans still parse.
+  const withRun = F + 'json\n{"summary":"x","runCommand":"python3 app.py","steps":[{"title":"t","detail":"d","files":["a.py"]}]}\n' + F;
+  check("a plan may declare how to run itself", parsePlanRobust(withRun).runCommand === "python3 app.py");
+  check("a plan without runCommand still parses",
+    !!parsePlanRobust(F + 'json\n{"summary":"x","steps":[{"title":"t","detail":"d","files":["a.py"]}]}\n' + F));
+
+  // The renderer cannot require the agent's module - no bundler, no require -
+  // so the estimate is duplicated in desktop/plan-scale.js. Duplication is only
+  // acceptable while something proves the copies agree.
+  const ui = require(path.join(__dirname, "..", "..", "desktop", "plan-scale.js"));
+  [0, 1, 3, 8, 20, 40, 100].forEach(function (n) {
+    check("both copies agree at " + n + " steps",
+      ui.estimateDuration(n) === estimateDuration(n),
+      "ui=" + ui.estimateDuration(n) + " agent=" + estimateDuration(n));
+  });
+}
+
+function testRunManifest() {
+  section("run manifest");
+  const m = require(path.join(DIST, "run-manifest.js"));
+
+  check("the manifest has a stable name", m.MANIFEST_NAME === "closeni.run.json");
+
+  // --- resolution order. This is the logic behind the original complaint:
+  // "no entry point found" when the app already knew the answer.
+  const man = { version: 1, run: "python3 src/app/server.py" };
+  check("the manifest wins", m.resolveRun(man, "python3 other.py", "python3 main.py").command === "python3 src/app/server.py");
+  check("and says so", m.resolveRun(man, "x", "y").source === "manifest");
+  check("the plan wins over detection", m.resolveRun(null, "python3 plan.py", "python3 main.py").command === "python3 plan.py");
+  check("and says so", m.resolveRun(null, "python3 plan.py", "y").source === "plan");
+  check("detection is the fallback", m.resolveRun(null, undefined, "python3 main.py").source === "detected");
+  // "none" rather than a broken command: the panel says it found nothing.
+  check("nothing found is reported", m.resolveRun(null, undefined, null).source === "none");
+  check("and yields no command", m.resolveRun(null, undefined, null).command === null);
+  // An empty run must fall through, not resolve to "".
+  check("an empty manifest run falls through",
+    m.resolveRun({ version: 1, run: "" }, undefined, "python3 main.py").source === "detected");
+  check("a whitespace run falls through",
+    m.resolveRun({ version: 1, run: "  " }, "python3 plan.py", null).source === "plan");
+
+  // --- an edited command survives a rebuild. Watching the next build undo your
+  // correction is how people stop trusting a tool.
+  const edited = m.mergeManifest({ version: 1, run: "python3 mine.py", userEdited: true }, "python3 generated.py");
+  check("an edited command is kept", edited.run === "python3 mine.py");
+  check("and stays flagged", edited.userEdited === true);
+  const fresh = m.mergeManifest({ version: 1, run: "python3 old.py", userEdited: false }, "python3 new.py");
+  check("an unedited command is replaced", fresh.run === "python3 new.py");
+  check("editing sets the flag",
+    m.mergeManifest(null, "python3 x.py", { userEdited: true }).userEdited === true);
+  check("a new manifest carries a version", m.mergeManifest(null, "python3 x.py").version === 1);
+  check("extra fields are kept",
+    m.mergeManifest(null, "python3 x.py", { install: "pip install -r requirements.txt" }).install === "pip install -r requirements.txt");
+
+  // --- scripts
+  const sh = m.renderRunScript({ version: 1, run: "python3 app.py", install: "pip install -r requirements.txt" }, "posix");
+  check("the shell script has a shebang", sh.indexOf("#!/bin/sh") === 0, sh.slice(0, 20));
+  check("the shell script installs first", sh.indexOf("pip install") < sh.indexOf("python3 app.py"));
+  check("the shell script runs the command", sh.indexOf("python3 app.py") !== -1);
+  const bat = m.renderRunScript({ version: 1, run: "python app.py" }, "win32");
+  check("the batch file suppresses echo", bat.indexOf("@echo off") === 0, bat.slice(0, 20));
+  check("the batch file runs the command", bat.indexOf("python app.py") !== -1);
+  // A command with quotes must survive verbatim - mangling it produces a script
+  // that fails in a way nobody can explain.
+  const quoted = m.renderRunScript({ version: 1, run: 'python3 -c "print(1)"' }, "posix");
+  check("quotes survive", quoted.indexOf('python3 -c "print(1)"') !== -1, quoted);
+}
+
+function testPreviewTarget() {
+  section("preview target");
+  const { previewTarget } = require(path.join(__dirname, "..", "..", "desktop", "preview-target.js"));
+
+  // Real output from the servers these projects actually produce.
+  const flask = " * Running on http://127.0.0.1:5000\n * Press CTRL+C to quit";
+  check("a flask url is found", previewTarget(flask, []).url === "http://127.0.0.1:5000");
+  check("and is a server", previewTarget(flask, []).kind === "server");
+  const vite = "  VITE v5.0.0  ready in 300 ms\n  Local:   http://localhost:5173/";
+  check("a vite url is found", previewTarget(vite, []).url === "http://localhost:5173/");
+  const py = "Serving HTTP on 0.0.0.0 port 8000 (http://0.0.0.0:8000/) ...";
+  check("a python http.server url is found", previewTarget(py, []).url.indexOf("8000") !== -1);
+  // The last url wins: a server that reprints its address as it restarts should
+  // not pin the preview to the first line it ever wrote.
+  check("the last url wins",
+    previewTarget("http://localhost:1111\nhttp://localhost:2222", []).url === "http://localhost:2222");
+
+  // No server: a static page is the next best thing.
+  check("index.html is used when there is no url", previewTarget("", ["index.html"]).kind === "file");
+  check("and points at the file", previewTarget("", ["index.html"]).url.indexOf("index.html") !== -1);
+  check("a nested index.html is found", previewTarget("", ["public/index.html"]).url.indexOf("public/index.html") !== -1);
+  check("a root index.html beats a nested one",
+    previewTarget("", ["public/index.html", "index.html"]).url.indexOf("public") === -1);
+
+  // Nothing to show means the toggle hides, rather than an empty frame.
+  check("no url and no html yields nothing", previewTarget("", ["main.py"]) === null);
+  check("empty input is survivable", previewTarget("", []) === null);
+  check("missing input is survivable", previewTarget(null, null) === null);
+  // A documentation link in a traceback is not a server, and pointing the
+  // preview at the open internet is not what anyone asked for.
+  check("an external doc link is ignored", previewTarget("see https://docs.python.org/3/", []) === null);
+}
+
 function testToolchain() {
   section("tool resolution");
   const { resolveTool, resetToolCache, TOOL_CANDIDATES } = require(path.join(DIST, "verification/toolchain.js"));
@@ -1034,6 +1161,9 @@ async function testBrowserExtraction() {
   testControlSettings();
   testCssTokens();
   testStoragePaths();
+  testPlanScale();
+  testRunManifest();
+  testPreviewTarget();
   testBrowserCheck();
   testBuildConfig();
   testReleaseWorkflow();

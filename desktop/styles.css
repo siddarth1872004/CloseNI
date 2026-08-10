@@ -224,7 +224,8 @@ select{width:100%;}
 #plan-actions .btn{flex:1;}
 
 /* Rich plan document styles */
-.plan-summary{font-size:14px;color:var(--txt);font-weight:600;margin-bottom:16px;line-height:1.5;}
+.plan-summary{font-size:14px;color:var(--txt);font-weight:600;margin-bottom:var(--sp-2);line-height:1.5;}
+.plan-scale{margin-bottom:16px;}
 .plan-section{margin-bottom:20px;}
 .plan-section-title{font-size:10px;letter-spacing:.14em;color:var(--mut);text-transform:uppercase;margin-bottom:8px;}
 .plan-file-tree{background:var(--surface);border:1px solid var(--line);border-radius:4px;padding:12px;font-family:ui-monospace,Consolas,monospace;font-size:11px;color:var(--dim);white-space:pre;line-height:1.6;}
@@ -364,6 +365,66 @@ select{width:100%;}
 
 /* #autonomy-select and #provider-select each re-declared what the shared
    input,textarea,select rule already says. Deleted; they inherit it. */
+/* Test panel: a run bar that knows the answer, output left, chat right. */
+#run-bar{border:1px solid var(--line);border-radius:var(--r-lg);background:var(--panel);
+  padding:var(--sp-4) var(--sp-5);flex:none;}
+.run-row{display:flex;align-items:center;gap:var(--sp-3);}
+.run-row .micro{margin-bottom:0;flex:none;}
+#test-cmd{flex:1;font-family:ui-monospace,Consolas,monospace;}
+.run-meta{margin-top:var(--sp-3);}
+.run-spacer{flex:1;}
+.run-badge{font-size:9px;letter-spacing:.1em;text-transform:uppercase;padding:2px 6px;
+  border-radius:var(--r-sm);border:1px solid var(--line-strong);color:var(--mut);flex:none;}
+.run-badge.manifest,.run-badge.plan{color:var(--ok);background:var(--ok-bg);border-color:var(--ok-line);}
+.run-badge.detected{color:var(--warn);background:var(--warn-bg);border-color:var(--warn-line);}
+.run-badge.none{color:var(--err);background:var(--err-bg);border-color:var(--err-line);}
+
+#test-view{display:flex;gap:var(--sp-5);flex:1;min-height:0;}
+#test-output-col{flex:1.35;display:flex;flex-direction:column;min-width:0;overflow-y:auto;
+  border:1px solid var(--line);border-radius:var(--r-lg);background:var(--panel);padding:var(--sp-4) var(--sp-5);}
+#test-chat-col{flex:1;display:flex;flex-direction:column;min-width:0;
+  border:1px solid var(--line);border-radius:var(--r-lg);background:var(--panel);padding:var(--sp-4) var(--sp-5);}
+#test-chat-flow{flex:1;overflow-y:auto;margin-bottom:var(--sp-3);}
+#test-chat-bar{display:flex;gap:var(--sp-3);}
+#test-chat-input{flex:1;}
+#test-history-label{margin-top:var(--sp-5);display:none;}
+#test-chat-flow .msg{padding:var(--sp-3) 0;}
+.applied-note{margin-top:var(--sp-3);color:var(--ok);}
+
+/* Pixel motion. Event-driven only: each of these fires when something happens
+   and then stops. Nothing here runs on an idle screen - ambient motion was
+   built, reviewed and rejected. */
+@keyframes pix-stamp{0%{transform:scale(0);opacity:0;}100%{transform:scale(1);opacity:1;}}
+@keyframes pix-flicker{0%,100%{opacity:1;}25%,75%{opacity:.25;}50%{opacity:1;}}
+@keyframes pix-spin{0%{content:"|";}25%{content:"/";}50%{content:"-";}75%{content:"\\";}}
+
+/* steps() is the whole technique: a linear transition reads as modern UI, a
+   stepped one reads as a sprite. */
+.pix-stamp{animation:pix-stamp .24s steps(4) 1;}
+.pix-flicker{animation:pix-flicker .36s steps(2) 2;}
+.pix-spin::after{display:inline-block;width:1ch;margin-left:var(--sp-1);content:"|";
+  animation:pix-spin .6s steps(4) infinite;}
+
+/* The progress bar advances in chunks rather than sliding. */
+#builder-progress{transition:width var(--dur-slow) steps(12);}
+
+/* Both switches still turn everything off. */
+[data-decor="off"] .pix-stamp,
+[data-decor="off"] .pix-flicker,
+[data-decor="off"] .pix-spin::after{animation:none;}
+@media (prefers-reduced-motion: reduce){
+  .pix-stamp,.pix-flicker,.pix-spin::after{animation:none;}
+}
+
+/* Frontend preview */
+#preview-pane{width:46%;min-width:320px;display:flex;flex-direction:column;flex:none;
+  border:1px solid var(--line);border-radius:var(--r-lg);background:var(--panel);overflow:hidden;}
+#preview-pane.is-hidden{display:none;}
+#preview-head{display:flex;align-items:center;gap:var(--sp-3);padding:var(--sp-3) var(--sp-4);
+  border-bottom:1px solid var(--line);}
+#preview-head .micro{margin-bottom:0;flex:none;}
+#preview-url{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+#preview-frame{flex:1;border:none;background:var(--surface-sunken);}
 #test-summary{margin:14px 0 6px;}
 #test-results{max-height:340px;overflow-y:auto;}
 .test-row{display:flex;justify-content:space-between;gap:12px;padding:5px 8px;border:1px solid var(--line);border-radius:3px;margin-bottom:4px;background:var(--surface);font-size:11px;}

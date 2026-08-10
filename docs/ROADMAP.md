@@ -190,6 +190,39 @@ plan: `plans/2026-08-10-distribution.md`
   has no Windows machine and no way to run an AppImage. The tests prove the
   configuration is coherent, not that the installer works.
 
+## 10 · Run & test experience — DONE
+
+Not in the original 28. Added after using the app: a built project gave no
+indication of how to run it. Spec: `specs/2026-08-10-run-and-test-flow-design.md`,
+plan: `plans/2026-08-10-run-and-test-flow.md`
+
+- **Run manifest** — `closeni.run.json` plus `run.sh`/`run.bat`, written by the
+  app from the command the model declares while planning. The app writes it
+  rather than the model, because a model that forgets is a failure mode this
+  project has already hit. An edited command is never overwritten.
+- **Test panel** — a run bar showing the command and where it came from
+  (`SAVED` / `FROM YOUR PLAN` / `DETECTED` / `NOT FOUND`), output with history,
+  and a chat beside it.
+- **Ask about this run** — carries the last command and its output into the
+  build thread automatically, and can apply fixes through the existing patch
+  pipeline. **A prose answer is now a success**; previously a reply with no file
+  changes was reported as an error and displayed nothing, which is the common
+  case for a question.
+- **Plan length follows the work** — `"Rules: 3-8 steps"` was hardcoded in two
+  places and silently compressed larger projects into eight. Now guidance,
+  bounded at 40, which **rejects rather than truncates**: truncating drops the
+  end of a project while looking like it worked. The plan shows an estimated
+  duration, because each step is a browser round-trip.
+- **Code quality directives** in the build prompt — error handling, docstrings,
+  efficiency, and dependency files kept in step with imports. Placed last and
+  kept to four lines; the e2e suite was the gate and passed unchanged.
+- **Frontend preview** in a `<webview>` with its own partition and node
+  integration off, because it renders AI-written code and the default partition
+  holds live provider session cookies.
+- **Pixel motion on events only** — `steps()` timing on step completion, failure
+  and progress. Nothing animates on an idle screen; ambient motion stays
+  rejected.
+
 ## 9 · Housekeeping — DONE
 
 Roadmap items 23, 24, 25.

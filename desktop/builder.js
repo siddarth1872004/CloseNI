@@ -26,13 +26,19 @@
   function renderList() {
     const list = $("step-list"); if (!list) return;
     list.innerHTML = "";
+    // No entry for "pending" or "skipped": nothing has happened to them, so
+    // nothing should move.
+    const PIX_MOTION = { done: "pix-stamp", failed: "pix-flicker", running: "pix-spin" };
     steps.forEach(function (s, i) {
       const card = document.createElement("div");
       card.className = "step-card" + (i === selected ? " active" : "");
       card.innerHTML =
         '<span class="step-card-num">0' + (i + 1) + '</span>' +
         '<span class="step-card-title">' + CN.escapeHtml(s.title || "Step") + '</span>' +
-        '<span class="step-card-status ' + s.status + '">' + s.status + '</span>';
+        // Pixel motion marks the change: a finished step stamps in, a running
+        // one spins, a failed one flickers. Event-driven only - none of this
+        // runs on an idle screen.
+        '<span class="step-card-status ' + s.status + ' ' + PIX_MOTION[s.status] + '">' + s.status + '</span>';
       card.onclick = function () { selectStep(i); };
       list.appendChild(card);
     });
@@ -210,6 +216,69 @@
     status("finished: " + done + "/" + steps.length);
     CN.log("build finished: " + done + "/" + steps.length, "step");
     CN.toast("Build finished: " + done + "/" + steps.length);
+    await saveRunManifest();
+  };
+
+  /**
+   * Persist how to run what was just built.
+   *
+   * The model declared this while planning; without writing it down the answer
+   * dies with the session and the Test panel is back to guessing from
+   * filenames. mergeManifest preserves a command the user edited, so this
+   * cannot undo a correction.
+   */
+  async function saveRunManifest() {
+    const ws = CN.getWorkspace();
+    if (!ws) return;
+    const plan = CN.getPlan();
+    let detected = null;
+    try {
+      const files = await window.api.listFiles(ws);
+      detected = window.CNEntry
+        ? window.CNEntry.detectEntrypoint(files, null, null, window.api.platform)
+        : null;
+    } catch (e) { /* an unreadable workspace just means no detection */ }
+    const chosen = (plan && plan.runCommand) || detected;
+    if (!chosen) return;
+    const r = await window.api.writeManifest({ workspace: ws, run: chosen });
+    if (r && r.ok) CN.log("run command saved: " + r.manifest.run, "ok");
+  }
+
+  /**
+   * The frontend preview.
+   *
+   * Only offered when there is genuinely something to show - an empty frame is
+   * worse than no button. Exposed for renderer.js to call after a run, since
+   * that is where the server output arrives.
+   */
+  window.CNBuilderPreview = {
+    update: function (runOutput, ws, files) {
+      const btn = document.getElementById("builder-preview");
+      if (!btn || !window.CNPreview) return;
+      const target = window.CNPreview.previewTarget(runOutput || "", files || []);
+      btn.classList.toggle("is-hidden", !target);
+      btn.dataset.url = target ? target.url : "";
+      btn.dataset.kind = target ? target.kind : "";
+      btn.dataset.ws = ws || CN.getWorkspace() || "";
+    },
+  };
+
+  document.getElementById("builder-preview").onclick = function () {
+    const btn = document.getElementById("builder-preview");
+    if (!btn.dataset.url) return;
+    const url = btn.dataset.kind === "file"
+      ? "file://" + btn.dataset.ws + "/" + btn.dataset.url
+      : btn.dataset.url;
+    document.getElementById("preview-frame").src = url;
+    document.getElementById("preview-url").textContent = url;
+    document.getElementById("preview-pane").classList.remove("is-hidden");
+  };
+
+  document.getElementById("preview-close").onclick = function () {
+    document.getElementById("preview-pane").classList.add("is-hidden");
+    // about:blank rather than leaving it loaded: a preview nobody is looking at
+    // should not keep running a generated page's scripts.
+    document.getElementById("preview-frame").src = "about:blank";
   };
 
   CN.retryFailed = async function () {

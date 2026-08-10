@@ -85,6 +85,7 @@
         <button id="builder-stop" class="btn is-hidden">Stop</button>
         <div id="builder-progress-wrap"><div id="builder-progress"></div></div>
         <span id="builder-status">idle</span>
+        <button id="builder-preview" class="btn is-hidden">Preview</button>
       </div>
       <div id="builder-view">
         <div id="builder-sidebar">
@@ -107,21 +108,55 @@
             </div>
           </div>
         </div>
+        <div id="preview-pane" class="is-hidden">
+          <div id="preview-head">
+            <span class="micro">Preview</span>
+            <span id="preview-url" class="hint"></span>
+            <button id="preview-close" class="btn btn-sm">Close</button>
+          </div>
+          <!-- This renders code an AI wrote. nodeintegration off,
+               contextIsolation on, and its own partition, so a generated page
+               cannot reach Electron APIs, the preload bridge, or the session
+               cookies belonging to the user's provider logins. -->
+          <webview id="preview-frame" partition="persist:closeni-preview"
+                   nodeintegration="false" webpreferences="contextIsolation=yes"></webview>
+        </div>
       </div>
     </section>
 
     <section id="panel-test" class="panel">
-      <div class="micro">Test</div>
-      <div class="row">
-        <button id="test-check" class="btn">Syntax-check all files</button>
-        <button id="test-run-project" class="btn invert">Run Project</button>
+      <div id="run-bar">
+        <div class="run-row">
+          <span class="micro">Run</span>
+          <input id="test-cmd" placeholder="no run command yet - type one, or build a project">
+          <button id="test-run" class="btn invert">Run</button>
+        </div>
+        <div class="run-row run-meta">
+          <span id="run-source" class="run-badge"></span>
+          <span id="run-hint" class="hint"></span>
+          <span class="run-spacer"></span>
+          <button id="test-run-project" class="btn btn-sm">Re-detect</button>
+          <button id="test-check" class="btn btn-sm">Syntax-check all</button>
+        </div>
       </div>
-      <div class="row">
-        <input id="test-cmd" placeholder="custom command, e.g. python3 src/main.py">
-        <button id="test-run" class="btn">Run</button>
+
+      <div id="test-view">
+        <div id="test-output-col">
+          <div class="micro">Output</div>
+          <div id="test-summary" class="micro"></div>
+          <div id="test-results"></div>
+          <div id="test-history-label" class="micro">Earlier</div>
+          <div id="test-history"></div>
+        </div>
+        <div id="test-chat-col">
+          <div class="micro">Ask about this run</div>
+          <div id="test-chat-flow"></div>
+          <div id="test-chat-bar">
+            <input id="test-chat-input" placeholder="Ask anything about this run...">
+            <button id="test-chat-send" class="btn invert">Send</button>
+          </div>
+        </div>
       </div>
-      <div id="test-summary" class="micro"></div>
-      <div id="test-results"></div>
     </section>
 
     <section id="panel-research" class="panel">
@@ -240,6 +275,8 @@
 <script src="theme.js"></script>
 <script src="language-mark.js"></script>
 <script src="browser-check.js"></script>
+<script src="plan-scale.js"></script>
+<script src="preview-target.js"></script>
 <script src="renderer.js"></script>
 <script src="builder.js"></script>
 </body>

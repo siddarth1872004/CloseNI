@@ -13,7 +13,10 @@ function createWindow() {
     width: 1400, height: 900,
     backgroundColor: "#0b0b0c",
     title: "CloseNI",
-    webPreferences: { preload: path.join(__dirname, "preload.js"), contextIsolation: true, nodeIntegration: false }
+    // webviewTag is needed for the frontend preview. The <webview> itself
+    // disables node integration and uses its own partition, so a generated page
+    // cannot reach Electron APIs or the provider session cookies.
+    webPreferences: { preload: path.join(__dirname, "preload.js"), contextIsolation: true, nodeIntegration: false, webviewTag: true }
   });
   win.loadFile(path.join(__dirname, "index.html"));
 }
@@ -196,6 +199,48 @@ ipcMain.handle("suggest", function (event, payload) {
   });
 });
 
+/**
+ * Ask about a run. Same shape as "suggest" - the difference is entirely in what
+ * the agent does with it, not in how the process is driven.
+ */
+ipcMain.handle("ask-run", function (event, payload) {
+  return new Promise(function (resolve) {
+    let proc;
+    try {
+      proc = spawnAgent(["ask", payload.workspace, payload.provider, payload.question,
+        payload.command || "", payload.output || ""],
+        agentEnv(payload.headed ? "1" : "0", payload.controls));
+    } catch (e) { resolve({ success: false, error: String(e) }); return; }
+    agentProc = proc;
+    let output = "";
+    let lineBuf = "";
+    proc.stdout.on("data", function (d) {
+      const text = d.toString();
+      output += text;
+      lineBuf += text;
+      let idx;
+      while ((idx = lineBuf.indexOf("\n")) !== -1) {
+        const line = lineBuf.substring(0, idx).replace(/\r$/, "");
+        lineBuf = lineBuf.substring(idx + 1);
+        routeLine(line);
+      }
+    });
+    proc.stderr.on("data", function (d) { routeLine(d.toString()); });
+    proc.on("close", function () {
+      agentProc = null;
+      const start = output.indexOf("AGENT_OUTPUT_START");
+      const end = output.indexOf("AGENT_OUTPUT_END");
+      let result = null;
+      if (start !== -1 && end !== -1) {
+        const lines = output.substring(start + 18, end).split(/\r?\n/).map(function (l) { return l.trim(); }).filter(function (l) { return l.indexOf("{") === 0; });
+        if (lines.length) { try { result = JSON.parse(lines[lines.length - 1]); } catch (e) {} }
+      }
+      resolve(result || { success: false, error: "No structured output from agent." });
+    });
+    proc.on("error", function (e) { agentProc = null; resolve({ success: false, error: String(e) }); });
+  });
+});
+
 let sessionProc = null;
 const pendingSteps = new Map();
 
@@ -313,6 +358,50 @@ ipcMain.handle("sign-in", function (event, providerId) {
     });
     proc.on("error", function (e) { agentProc = null; resolve({ success: false, error: String(e) }); });
   });
+});
+
+// The agent's compiled module, so the rules about which command wins and what
+// an edited command means live in one place rather than two.
+const RUN = require(path.join(__dirname, "..", "local-agent", "dist", "run-manifest.js"));
+
+function manifestPath(workspace) { return path.join(workspace, RUN.MANIFEST_NAME); }
+
+ipcMain.handle("read-manifest", function (event, workspace) {
+  try {
+    return JSON.parse(fs.readFileSync(manifestPath(workspace), "utf-8"));
+  } catch (e) {
+    // Absent and corrupt both mean "no manifest". A malformed file must not
+    // stop the panel from loading.
+    return null;
+  }
+});
+
+/**
+ * Write the manifest and the scripts beside it.
+ *
+ * The scripts are regenerated every time, so they cannot drift from the
+ * manifest the app actually reads.
+ */
+ipcMain.handle("write-manifest", function (event, payload) {
+  try {
+    let existing = null;
+    try { existing = JSON.parse(fs.readFileSync(manifestPath(payload.workspace), "utf-8")); } catch (e) {}
+    const merged = RUN.mergeManifest(existing, payload.run, {
+      userEdited: !!payload.userEdited,
+      install: payload.install,
+      language: payload.language,
+    });
+    fs.writeFileSync(manifestPath(payload.workspace), JSON.stringify(merged, null, 2) + "\n");
+
+    const sh = path.join(payload.workspace, "run.sh");
+    fs.writeFileSync(sh, RUN.renderRunScript(merged, "posix"));
+    try { fs.chmodSync(sh, 0o755); } catch (e) { /* chmod is meaningless on Windows */ }
+    fs.writeFileSync(path.join(payload.workspace, "run.bat"), RUN.renderRunScript(merged, "win32"));
+
+    return { ok: true, manifest: merged };
+  } catch (e) {
+    return { ok: false, error: String(e) };
+  }
 });
 
 ipcMain.handle("browser-status", function () {

@@ -37,6 +37,16 @@ npx playwright install chromium
 cd desktop && npm start
 ```
 
+## The run file
+
+Every project CloseNI builds gets a `closeni.run.json` describing how to start
+it, plus `run.sh` and `run.bat` generated from it. The app writes them at the end
+of a build, from the command the model declared while planning.
+
+Open the project again — tomorrow, or on another machine — and the Test panel
+already knows what to run. Edit the command in the panel and it is saved back;
+later builds will not overwrite an edited command.
+
 ## Cutting a release
 
 ```bash
