@@ -272,6 +272,17 @@ function renderPlanDocument(plan) {
   summary.textContent = plan.summary || "Implementation Plan";
   content.appendChild(summary);
 
+  // Each step is a browser round-trip, so a long plan is a long build. Say so
+  // before the Build button rather than after twenty minutes of waiting.
+  const stepCount = (plan.steps || []).length;
+  if (stepCount) {
+    const scale = document.createElement("div");
+    scale.className = "plan-scale hint";
+    scale.textContent = stepCount + " steps · " +
+      (window.CNScale ? window.CNScale.estimateDuration(stepCount) : "");
+    content.appendChild(scale);
+  }
+
   const allFiles = new Set();
   (plan.steps || []).forEach(function (s) { (s.files || []).forEach(function (f) { allFiles.add(f); }); });
   if (allFiles.size > 0) {

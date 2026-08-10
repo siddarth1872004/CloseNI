@@ -1,3 +1,5 @@
+import { MAX_PLAN_STEPS } from "../plan-scale.js";
+
 export function extractBalanced(text: string): string | null {
   const start = text.indexOf("{");
   if (start === -1) return null;
@@ -105,6 +107,14 @@ export function extractStepsHeuristic(text: string): any {
 }
 
 export function parsePlanRobust(text: string): any {
+  const plan = parsePlanShape(text);
+  // Over the bound, treat the reply as unparseable so the caller re-asks.
+  // Truncating to the bound would silently drop the end of the project.
+  if (plan && plan.steps && plan.steps.length > MAX_PLAN_STEPS) return null;
+  return plan;
+}
+
+function parsePlanShape(text: string): any {
   const parsed = robustParseJson(text);
   if (parsed && parsed.steps && Array.isArray(parsed.steps)) return parsed;
   if (parsed && parsed.plan && parsed.plan.steps) return parsed.plan;

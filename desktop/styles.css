@@ -224,7 +224,8 @@ select{width:100%;}
 #plan-actions .btn{flex:1;}
 
 /* Rich plan document styles */
-.plan-summary{font-size:14px;color:var(--txt);font-weight:600;margin-bottom:16px;line-height:1.5;}
+.plan-summary{font-size:14px;color:var(--txt);font-weight:600;margin-bottom:var(--sp-2);line-height:1.5;}
+.plan-scale{margin-bottom:16px;}
 .plan-section{margin-bottom:20px;}
 .plan-section-title{font-size:10px;letter-spacing:.14em;color:var(--mut);text-transform:uppercase;margin-bottom:8px;}
 .plan-file-tree{background:var(--surface);border:1px solid var(--line);border-radius:4px;padding:12px;font-family:ui-monospace,Consolas,monospace;font-size:11px;color:var(--dim);white-space:pre;line-height:1.6;}
