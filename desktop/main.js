@@ -79,7 +79,32 @@ function createWindow() {
 app.whenReady().then(createWindow);
 app.on("window-all-closed", function () { if (process.platform !== "darwin") app.quit(); });
 
-function agentPath() { return path.join(__dirname, "..", "local-agent", "dist", "index.js"); }
+/*
+ * Paths that survive being packaged.
+ *
+ * Packaged, __dirname is inside the archive: .../resources/app.asar/desktop.
+ * So path.join(__dirname, "..") is .../resources/app.asar - which is a FILE.
+ * Handing that to spawn as a working directory fails with ENOENT, and Node
+ * reports the error against the executable, so it reads as
+ * "spawn C:\Program Files\CloseNI\CloseNI.exe ENOENT" - the one path that is
+ * definitely fine. That is what an installed 1.0.1 hit on every agent run.
+ *
+ * resourcesPath is a real directory, and anything in asarUnpack has a real copy
+ * beneath app.asar.unpacked with the same relative layout.
+ */
+function unpackedPath(rel) {
+  if (!app.isPackaged) return path.join(__dirname, "..", rel);
+  const unpacked = path.join(process.resourcesPath, "app.asar.unpacked", rel);
+  if (fs.existsSync(unpacked)) return unpacked;
+  return path.join(app.getAppPath(), rel);
+}
+
+/** A real directory to spawn children in. Never an archive. */
+function spawnCwd() {
+  return app.isPackaged ? process.resourcesPath : path.join(__dirname, "..");
+}
+
+function agentPath() { return unpackedPath(path.join("local-agent", "dist", "index.js")); }
 
 /**
  * Where the app may write. Packaged, it cannot write beside its own executable:
@@ -153,7 +178,7 @@ function spawnAgent(args, extraEnv) {
   // developer is told to download 389MB they already have.
   if (app.isPackaged) env.PLAYWRIGHT_BROWSERS_PATH = browsersDir();
   return spawn(process.execPath, [agentPath()].concat(args), {
-    cwd: path.join(__dirname, ".."),
+    cwd: spawnCwd(),
     env: env,
   });
 }
@@ -749,7 +774,7 @@ ipcMain.handle("sign-in", function (event, providerId) {
 
 // The agent's compiled module, so the rules about which command wins and what
 // an edited command means live in one place rather than two.
-const RUN = require(path.join(__dirname, "..", "local-agent", "dist", "run-manifest.js"));
+const RUN = require(unpackedPath(path.join("local-agent", "dist", "run-manifest.js")));
 
 function manifestPath(workspace) { return path.join(workspace, RUN.MANIFEST_NAME); }
 
@@ -831,7 +856,7 @@ ipcMain.handle("install-browser", function () {
       return;
     }
     const proc = spawn(process.execPath, [cli, "install", "chromium"], {
-      cwd: path.join(__dirname, ".."),
+      cwd: spawnCwd(),
       env: Object.assign({}, process.env, {
         ELECTRON_RUN_AS_NODE: "1",
         PLAYWRIGHT_BROWSERS_PATH: browsersDir(),
@@ -852,7 +877,7 @@ ipcMain.handle("install-browser", function () {
 
 ipcMain.handle("list-providers", function () {
   // Four small JSON files; spawning the agent to read a directory would be absurd.
-  const dir = path.join(__dirname, "..", "local-agent", "config", "providers");
+  const dir = unpackedPath(path.join("local-agent", "config", "providers"));
   const out = [];
   try {
     for (const f of fs.readdirSync(dir)) {

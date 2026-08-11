@@ -595,9 +595,15 @@ function testBuildConfig() {
   // version is well formed and that the release workflow will accept a tag for
   // it, not what the digits happen to be.
   check("the version is semver", /^\d+\.\d+\.\d+$/.test(pkg.version), String(pkg.version));
-  check("no source file hardcodes a version string", (() => {
+  // Quoted literals only. The first version of this flagged a comment that
+  // mentioned the release it was describing, which is prose, not a hardcoded
+  // version - and a check that punishes explaining yourself is a bad check.
+  check("no source file hardcodes a version as a string literal", (() => {
     const files = ["desktop/main.js", "desktop/renderer.js", "desktop/index.html"];
-    return files.every((f) => !/\b\d+\.\d+\.\d+\b/.test(fs.readFileSync(path.join(root, f), "utf8")));
+    return files.every((f) => {
+      const src = fs.readFileSync(path.join(root, f), "utf8");
+      return !/["'`]\d+\.\d+\.\d+["'`]/.test(src);
+    });
   })());
   check("desktop is a workspace", (pkg.workspaces || []).indexOf("desktop") !== -1);
   check("electron-builder is a dev dependency", !!(pkg.devDependencies || {})["electron-builder"]);
@@ -1263,6 +1269,37 @@ function testRobustFileParsing() {
     parseFilesRobust("```\nsrc/x.py\n```") === null);
   check("a normal first line is not mistaken for a path",
     parseFilesRobust("```\nimport os\nprint(1)\n```") === null);
+}
+
+function testPackagedPaths() {
+  section("paths that must survive packaging");
+  const root = path.join(__dirname, "..", "..");
+  const main = fs.readFileSync(path.join(root, "desktop/main.js"), "utf8");
+  const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
+
+  // Packaged, __dirname is inside the archive, so path.join(__dirname, "..") is
+  // app.asar itself - a file. Spawning with that as cwd fails ENOENT, and Node
+  // blames the executable, which is how an installed build reported
+  // "spawn C:\Program Files\CloseNI\CloseNI.exe ENOENT" - the one path that was
+  // definitely fine.
+  const spawnCwds = [...main.matchAll(/cwd:\s*([^,\n]+)/g)].map((m) => m[1].trim());
+  check("no spawn uses an archive-relative cwd",
+    spawnCwds.every((c) => !/__dirname,\s*"\.\."/.test(c)), spawnCwds.join(" | "));
+  check("spawns use a real directory helper",
+    spawnCwds.some((c) => /spawnCwd\(\)/.test(c)), spawnCwds.join(" | "));
+  check("the helper points at resourcesPath when packaged",
+    /isPackaged\s*\?\s*process\.resourcesPath/.test(main));
+
+  // Anything reached through unpackedPath must actually be unpacked, or the
+  // helper falls back to a path inside the archive.
+  const unpacked = (pkg.build && pkg.build.asarUnpack) || [];
+  const referenced = [...main.matchAll(/unpackedPath\(path\.join\("([^"]+)"/g)].map((m) => m[1]);
+  for (const r of new Set(referenced)) {
+    check("asarUnpack covers " + r,
+      unpacked.some((u) => u.split("/")[0] === r), JSON.stringify(unpacked));
+  }
+  check("the agent is reached through the unpacked path",
+    /function agentPath\(\)[^\n]*unpackedPath/.test(main));
 }
 
 function testPlaywrightCliResolution() {
@@ -2041,6 +2078,7 @@ async function testBrowserExtraction() {
   testLogo();
   testLanguageMark();
   testRobustFileParsing();
+  testPackagedPaths();
   testPlaywrightCliResolution();
   testBehaviourChecker();
   testAbbreviationGuard();

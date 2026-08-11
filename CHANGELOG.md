@@ -3,6 +3,24 @@
 All notable changes to CloseNI are recorded here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.2] — 2026-08-11
+
+**Every agent run failed on an installed build** with
+`spawn C:\Program Files\CloseNI\CloseNI.exe ENOENT` — naming the one path
+that was certainly fine.
+
+The executable was never the problem. Packaged, `__dirname` is inside the
+archive, so `path.join(__dirname, "..")` resolves to `app.asar` — a *file*.
+Both spawns used that as their working directory, and a cwd that is not a
+directory fails ENOENT, which Node reports against the command. Children now
+run in `process.resourcesPath`, which is a real directory, and the agent and
+its config are reached through `app.asar.unpacked` where the real copies live.
+
+Verified in a packaged build rather than from the source: the app launches,
+`listProviders` reads its config, and `authStatus` spawns the agent, which
+runs and reports that no browser is downloaded yet — the correct answer for a
+fresh install, and the one that used to be an ENOENT.
+
 ## [1.0.1] — 2026-08-11
 
 Fixes two things that only showed up once 1.0 was installed.
