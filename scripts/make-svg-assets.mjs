@@ -1,9 +1,14 @@
 #!/usr/bin/env node
-// Generates the animated SVGs used by README.md.
+// Generates the animated pixel-art SVGs used by README.md and the Pages site.
 //
 // GitHub renders repo-relative SVGs through its image proxy and strips <script>
 // and (unreliably) <style>. SMIL animation elements survive, so every animation
-// here is expressed as <animate> / <animateMotion> with no CSS and no JS.
+// here is expressed as <animate> with no CSS and no JS.
+//
+// Everything is drawn on a cell grid at whole-pixel coordinates with
+// shape-rendering="crispEdges", and every animation uses calcMode="discrete".
+// Pixel art that eases and tweens stops reading as pixel art - the stepping is
+// the whole point, and it matches the steps() motion the app itself uses.
 //
 //   node scripts/make-svg-assets.mjs
 
@@ -17,76 +22,222 @@ mkdirSync(OUT, { recursive: true });
 
 const C = {
   bg: '#0b0d0f',
-  panel: '#101418',
-  bar: '#161b22',
-  edge: '#212934',
+  panel: '#12171c',
+  edge: '#232c37',
+  edge2: '#39465699',
   text: '#c9d1d9',
-  dim: '#6b7684',
-  faint: '#3d4655',
+  dim: '#7d8896',
+  faint: '#49556420',
   green: '#57d38c',
   red: '#ff7b72',
   amber: '#e3b341',
   blue: '#79c0ff',
   violet: '#bc8cff',
+  white: '#e8e8ea',
 };
 
 const MONO = "ui-monospace,'SF Mono','DejaVu Sans Mono',Menlo,Consolas,monospace";
+const PX = 6; // one art pixel, in user units
 
 const esc = (s) =>
   String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-/** Opacity animate that fades in at `t0` and holds for the rest of `cycle`. */
-function fadeIn(t0, cycle, ramp = 0.28) {
-  const k = [0, t0 / cycle, (t0 + ramp) / cycle, 1].map((n) => n.toFixed(5));
-  return `<animate attributeName="opacity" dur="${cycle}s" repeatCount="indefinite" keyTimes="${k.join(';')}" values="0;0;1;1" calcMode="linear"/>`;
+// ------------------------------------------------------------ primitives ----
+
+/** One art pixel at cell (cx, cy). */
+function p(cx, cy, fill, extra = '') {
+  return `<rect x="${cx * PX}" y="${cy * PX}" width="${PX}" height="${PX}" fill="${fill}"${extra ? ' ' + extra : ''}/>`;
 }
 
-/** Character-by-character reveal driven by a clipPath rect. */
-function typewriter(id, x, y, w, h, chars, charW, typeDur, cycle) {
-  const values = [];
-  const keys = [];
-  for (let i = 0; i <= chars; i++) {
-    values.push((i * charW).toFixed(2));
-    keys.push(((i * typeDur) / chars / cycle).toFixed(5));
-  }
-  values.push((chars * charW).toFixed(2));
-  keys.push('1');
-  const clip =
-    `<clipPath id="${id}"><rect x="${x}" y="${y}" height="${h}" width="0">` +
-    `<animate attributeName="width" dur="${cycle}s" repeatCount="indefinite" calcMode="discrete"` +
-    ` keyTimes="${keys.join(';')}" values="${values.join(';')}"/></rect></clipPath>`;
-  const cursorX = [];
-  for (let i = 0; i <= chars; i++) cursorX.push((x + i * charW).toFixed(2));
-  cursorX.push((x + chars * charW).toFixed(2));
-  const cursor =
-    `<rect y="${y + 3}" width="${charW.toFixed(2)}" height="${h - 6}" fill="${C.text}" x="${x}">` +
-    `<animate attributeName="x" dur="${cycle}s" repeatCount="indefinite" calcMode="discrete"` +
-    ` keyTimes="${keys.join(';')}" values="${cursorX.join(';')}"/>` +
-    `<animate attributeName="opacity" dur="1.06s" repeatCount="indefinite" calcMode="discrete"` +
-    ` keyTimes="0;0.5" values="1;0"/></rect>`;
-  return { clip, cursor, width: w };
+/** A solid run of cells - cheaper than one rect per pixel for straight lines. */
+function run(cx, cy, w, h, fill, extra = '') {
+  return `<rect x="${cx * PX}" y="${cy * PX}" width="${w * PX}" height="${h * PX}" fill="${fill}"${extra ? ' ' + extra : ''}/>`;
 }
+
+/** A one-cell-thick hollow border. */
+function frame(cx, cy, w, h, fill) {
+  return (
+    run(cx, cy, w, 1, fill) +
+    run(cx, cy + h - 1, w, 1, fill) +
+    run(cx, cy + 1, 1, h - 2, fill) +
+    run(cx + w - 1, cy + 1, 1, h - 2, fill)
+  );
+}
+
+/**
+ * Draw a sprite map. `map` is an array of equal-length strings; each character
+ * is looked up in `pal`, and '.' / ' ' are transparent. Consecutive identical
+ * cells on a row collapse into one rect.
+ */
+function sprite(map, cx, cy, pal) {
+  let out = '';
+  for (let y = 0; y < map.length; y++) {
+    const row = map[y];
+    let x = 0;
+    while (x < row.length) {
+      const ch = row[x];
+      if (ch === '.' || ch === ' ' || !pal[ch]) { x++; continue; }
+      let n = 1;
+      while (x + n < row.length && row[x + n] === ch) n++;
+      out += run(cx + x, cy + y, n, 1, pal[ch]);
+      x += n;
+    }
+  }
+  return out;
+}
+
+/** Discrete keyTimes/values animate - the only kind used here. */
+function step(attr, cycle, keys, values) {
+  return `<animate attributeName="${attr}" dur="${cycle}s" repeatCount="indefinite" calcMode="discrete" keyTimes="${keys.map((k) => k.toFixed(5)).join(';')}" values="${values.join(';')}"/>`;
+}
+
+/** Visible from t0 to t1 within the cycle, hidden otherwise. */
+function visible(t0, t1, cycle) {
+  const keys = [0, t0 / cycle];
+  const vals = ['0', '1'];
+  if (t1 < cycle) { keys.push(t1 / cycle); vals.push('0'); }
+  return step('opacity', cycle, keys, vals);
+}
+
+// --------------------------------------------------------------- sprites ----
+
+// The CloseNI mark: ] [ - arms facing outward, verticals inward.
+const MARK = [
+  'aaaa...aaaa',
+  '...a...a...',
+  '...a...a...',
+  '...a...a...',
+  '...a...a...',
+  '...a...a...',
+  '...a...a...',
+  '...a...a...',
+  '...a...a...',
+  'aaaa...aaaa',
+];
+
+const BUBBLE = [
+  '.wwwwwwwwwwww.',
+  'w............w',
+  'w..d..d..d...w',
+  'w............w',
+  'w............w',
+  '.wwwwwwwwwwww.',
+  '..w.w.........',
+  '..ww..........',
+];
+
+// Two gear frames sharing one body, with the teeth an eighth-turn apart.
+// Alternating them reads as rotation while every pixel stays on the grid -
+// an actual <animateTransform rotate> resamples the art off-grid and turns a
+// pixel gear into a blurred diamond.
+const GEAR_A = [
+  '....ggg....',
+  '....ggg....',
+  '..ggggggg..',
+  '..ggggggg..',
+  'gggg...gggg',
+  'gggg...gggg',
+  'gggg...gggg',
+  '..ggggggg..',
+  '..ggggggg..',
+  '....ggg....',
+  '....ggg....',
+];
+
+const GEAR_B = [
+  '...........',
+  '.gg.....gg.',
+  '.ggggggggg.',
+  '..ggggggg..',
+  '..gg...gg..',
+  '..gg...gg..',
+  '..gg...gg..',
+  '..ggggggg..',
+  '.ggggggggg.',
+  '.gg.....gg.',
+  '...........',
+];
+
+const BROWSER = [
+  'wwwwwwwwwwwwwwwwww',
+  'w................w',
+  'w.r..y..g........w',
+  'wwwwwwwwwwwwwwwwww',
+  'w................w',
+  'w..mmmmmmmm......w',
+  'w................w',
+  'w......uuuuuuuuu.w',
+  'w................w',
+  'w..mmmmm.........w',
+  'w................w',
+  'wwwwwwwwwwwwwwwwww',
+];
+
+const FILES = [
+  '....ffffffff....',
+  '....f......f....',
+  '....f.tttt.f....',
+  '..ffffffffff....',
+  '..f........f....',
+  '..f.tttttt.f....',
+  'ffffffffffff....',
+  'f..........f....',
+  'f..tttttt..f....',
+  'f..........f....',
+  'f..tttt....f....',
+  'ffffffffffff....',
+];
+
+const CHECK = [
+  '......c',
+  '.....cc',
+  'c...cc.',
+  'cc.cc..',
+  '.ccc...',
+  '..c....',
+];
+
+const CROSS = [
+  'x.....x',
+  '.x...x.',
+  '..x.x..',
+  '...x...',
+  '..x.x..',
+  '.x...x.',
+  'x.....x',
+];
 
 // ---------------------------------------------------------------- banner ----
 
 function banner() {
   const W = 1200;
   const CYCLE = 16;
-  const CW = 9.02; // advance width of 15px monospace
+  const CW = 9.02;
   const LH = 25;
   const X = 34;
   const top = 76;
 
   const cmd = '$ closeni build "flask todo api with jwt auth"';
-  const tw = typewriter('type', X, top - 17, cmd.length * CW, 22, cmd.length, CW, 2.6, CYCLE);
+  const n = cmd.length;
+  const keys = [];
+  const widths = [];
+  const cursors = [];
+  for (let i = 0; i <= n; i++) {
+    keys.push((i * 2.6) / n / CYCLE);
+    widths.push((i * CW).toFixed(2));
+    cursors.push((X + i * CW).toFixed(2));
+  }
+  keys.push(1); widths.push((n * CW).toFixed(2)); cursors.push((X + n * CW).toFixed(2));
 
-  // Fixed columns keep the status stack readable: label | detail | tag | status
-  const LABEL = 0;
-  const DETAIL = 9;
-  const TAG = 46;
-  const STATUS = 58;
+  const clip =
+    `<clipPath id="type"><rect x="${X}" y="${top - 17}" height="22" width="0">` +
+    step('width', CYCLE, keys, widths) + `</rect></clipPath>`;
+  const cursor =
+    `<rect y="${top - 14}" width="${CW.toFixed(2)}" height="16" fill="${C.text}" x="${X}" shape-rendering="crispEdges">` +
+    step('x', CYCLE, keys, cursors) +
+    `<animate attributeName="opacity" dur="1.06s" repeatCount="indefinite" calcMode="discrete" keyTimes="0;0.5" values="1;0"/></rect>`;
 
-  // rows: [appearTime, [text, colour, column]...]
+  const LABEL = 0, DETAIL = 9, TAG = 46, STATUS = 58;
   const rows = [
     [3.3, ['plan', C.dim, LABEL], ['7 steps  ·  about 11 min', C.text, DETAIL]],
     null,
@@ -106,39 +257,35 @@ function banner() {
     if (!row) return;
     const [t0, ...cells] = row;
     const y = top + (i + 1) * LH + 14;
-    const spans = cells
-      .map(([txt, fill, col]) => {
-        const cx = X + col * CW;
-        const weight = fill === C.green || fill === C.red ? '600' : '400';
-        return `<text x="${cx.toFixed(1)}" y="${y}" fill="${fill}" font-weight="${weight}">${esc(txt)}</text>`;
-      })
-      .join('');
-    body += `<g opacity="0">${spans}${fadeIn(t0, CYCLE)}</g>`;
+    const spans = cells.map(([txt, fill, col]) => {
+      const weight = fill === C.green || fill === C.red ? '600' : '400';
+      return `<text x="${(X + col * CW).toFixed(1)}" y="${y}" fill="${fill}" font-weight="${weight}">${esc(txt)}</text>`;
+    }).join('');
+    body += `<g opacity="0">${spans}${visible(t0, CYCLE, CYCLE)}</g>`;
   });
 
   const H = top + rows.length * LH + 36;
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="CloseNI planning and building a Flask todo API, one step at a time">
+  // Pixel chrome: square lights and the mark, instead of the usual round dots.
+  const chrome =
+    sprite(MARK, 3, 2.2, { a: C.dim }) +
+    run(14.5, 2.4, 2, 2, C.edge) + run(17.5, 2.4, 2, 2, C.edge) + run(20.5, 2.4, 2, 2, C.edge);
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" shape-rendering="crispEdges" aria-label="CloseNI planning and building a Flask todo API, one step at a time">
 <title>CloseNI — a build in progress</title>
-<defs>
-${tw.clip}
-<linearGradient id="glow" x1="0" y1="0" x2="1" y2="1">
-  <stop offset="0" stop-color="#1c2430"/><stop offset="1" stop-color="#0b0d0f"/>
-</linearGradient>
-</defs>
-<rect width="${W}" height="${H}" rx="12" fill="url(#glow)"/>
-<rect x="0.5" y="0.5" width="${W - 1}" height="${H - 1}" rx="12" fill="none" stroke="${C.edge}"/>
-<rect x="1" y="1" width="${W - 2}" height="40" rx="11" fill="${C.bar}"/>
-<rect x="1" y="30" width="${W - 2}" height="12" fill="${C.bar}"/>
-<line x1="1" y1="41.5" x2="${W - 1}" y2="41.5" stroke="${C.edge}"/>
-<circle cx="24" cy="21" r="5" fill="#2d3540"/><circle cx="42" cy="21" r="5" fill="#2d3540"/><circle cx="60" cy="21" r="5" fill="#2d3540"/>
-<g font-family="${MONO}" font-size="12" letter-spacing="2.4">
-  <text x="84" y="25" fill="${C.dim}">CLOSENI</text>
-  <text x="${W - 34}" y="25" fill="${C.faint}" text-anchor="end">NO API KEYS</text>
+<defs>${clip}</defs>
+<rect width="${W}" height="${H}" fill="${C.bg}"/>
+${frame(0, 0, W / PX, H / PX, C.edge)}
+${run(1, 1, W / PX - 2, 6, C.panel)}
+${run(1, 7, W / PX - 2, 1, C.edge)}
+${chrome}
+<g font-family="${MONO}" font-size="12" letter-spacing="2.4" shape-rendering="auto">
+  <text x="150" y="30" fill="${C.dim}">CLOSENI</text>
+  <text x="${W - 24}" y="30" fill="${C.dim}" text-anchor="end">NO API KEYS</text>
 </g>
-<g font-family="${MONO}" font-size="15">
+<g font-family="${MONO}" font-size="15" shape-rendering="auto">
   <g clip-path="url(#type)"><text x="${X}" y="${top}" fill="${C.text}">${esc(cmd)}</text></g>
-  ${tw.cursor}
+  ${cursor}
   ${body}
 </g>
 </svg>
@@ -146,113 +293,228 @@ ${tw.clip}
 }
 
 // -------------------------------------------------------------- pipeline ----
+// Four pixel-art stations with packets that jump between them cell by cell.
 
 function pipeline() {
-  const W = 1200;
-  const H = 250;
   const CYCLE = 8;
-  const boxes = [
-    ['YOU', 'a sentence', 40],
-    ['CLOSENI', 'plan · steps · checks', 330],
-    ['CHAT SITE', 'a real browser tab', 620],
-    ['YOUR DISK', 'files, plus a run file', 910],
-  ];
-  const BW = 250;
-  const BH = 84;
-  const BY = 74;
+  const COLS = 200;   // cells
+  const ROWS = 50;
+  const W = COLS * PX;
+  const H = ROWS * PX;
 
-  let out = '';
-  boxes.forEach(([title, sub, x], i) => {
-    const accent = [C.blue, C.green, C.violet, C.amber][i];
-    out += `<g>
-  <rect x="${x}" y="${BY}" width="${BW}" height="${BH}" rx="10" fill="${C.panel}" stroke="${C.edge}"/>
-  <rect x="${x}" y="${BY}" width="3" height="${BH}" rx="1.5" fill="${accent}"/>
-  <text x="${x + 22}" y="${BY + 35}" fill="${C.text}" font-size="16" font-weight="600" letter-spacing="1.6">${esc(title)}</text>
-  <text x="${x + 22}" y="${BY + 60}" fill="${C.dim}" font-size="13">${esc(sub)}</text>
-</g>`;
+  const pal = {
+    w: C.text, d: C.dim, g: C.green, r: C.red, y: C.amber,
+    m: C.dim, u: C.blue, a: C.white, f: C.text, t: C.dim, c: C.green, x: C.red,
+  };
+
+  const stations = [
+    { x: 8,   label: 'YOU',       sub: 'a sentence',        accent: C.blue },
+    { x: 58,  label: 'CLOSENI',   sub: 'plan · run · check', accent: C.green },
+    { x: 108, label: 'CHAT SITE', sub: 'a real browser',    accent: C.violet },
+    { x: 158, label: 'YOUR DISK', sub: 'files + a run file', accent: C.amber },
+  ];
+  const SW = 34; // station width in cells
+  const SY = 9;  // station top
+  const SH = 26;
+
+  let g = '';
+
+  stations.forEach((s, i) => {
+    g += run(s.x, SY, SW, SH, C.panel);
+    g += frame(s.x, SY, SW, SH, C.edge);
+    g += run(s.x, SY, SW, 1, s.accent);
+
+    const artY = SY + 4;
+    if (i === 0) g += sprite(BUBBLE, s.x + 10, artY + 2, { w: C.blue, d: C.text });
+    if (i === 1) {
+      g += sprite(MARK, s.x + 6, artY + 1, { a: C.white });
+      const gx = s.x + 20, gy = artY + 1;
+      g += `<g opacity="1">${sprite(GEAR_A, gx, gy, { g: C.green })}` +
+        `<animate attributeName="opacity" dur="0.64s" repeatCount="indefinite" calcMode="discrete" keyTimes="0;0.5" values="1;0"/></g>`;
+      g += `<g opacity="0">${sprite(GEAR_B, gx, gy, { g: C.green })}` +
+        `<animate attributeName="opacity" dur="0.64s" repeatCount="indefinite" calcMode="discrete" keyTimes="0;0.5" values="0;1"/></g>`;
+    }
+    if (i === 2) g += sprite(BROWSER, s.x + 8, artY + 1, pal);
+    if (i === 3) g += sprite(FILES, s.x + 9, artY + 1, { f: C.amber, t: C.dim });
+
+    g += `<text x="${(s.x + SW / 2) * PX}" y="${(SY + SH - 6) * PX}" fill="${C.text}" font-size="14" font-weight="600" text-anchor="middle" letter-spacing="1.6">${esc(s.label)}</text>`;
+    g += `<text x="${(s.x + SW / 2) * PX}" y="${(SY + SH - 2.2) * PX}" fill="${C.dim}" font-size="11.5" text-anchor="middle">${esc(s.sub)}</text>`;
   });
 
-  // connecting rails + travelling packets
+  // Rails: a dashed row of single cells between stations.
+  const railY = SY + 11;
   for (let i = 0; i < 3; i++) {
-    const x1 = boxes[i][2] + BW;
-    const x2 = boxes[i + 1][2];
-    const y = BY + BH / 2;
-    out += `<line x1="${x1}" y1="${y}" x2="${x2}" y2="${y}" stroke="${C.edge}" stroke-width="2"/>`;
-    out += `<path d="M ${x2 - 11} ${y - 5} L ${x2 - 2} ${y} L ${x2 - 11} ${y + 5} Z" fill="${C.faint}"/>`;
-    const delay = (i * 0.9).toFixed(2);
-    out += `<circle r="4.5" fill="${C.green}" opacity="0">
-  <animate attributeName="opacity" dur="${CYCLE}s" repeatCount="indefinite" keyTimes="0;${(delay / CYCLE).toFixed(4)};${((+delay + 0.1) / CYCLE).toFixed(4)};${((+delay + 0.85) / CYCLE).toFixed(4)};${((+delay + 0.95) / CYCLE).toFixed(4)};1" values="0;0;1;1;0;0"/>
-  <animateMotion dur="${CYCLE}s" repeatCount="indefinite" keyTimes="0;${(delay / CYCLE).toFixed(4)};${((+delay + 0.9) / CYCLE).toFixed(4)};1" values="0,0;0,0;0,0;0,0" path="M ${x1} ${y} L ${x2 - 12} ${y}" calcMode="linear"/>
-</circle>`;
+    const from = stations[i].x + SW + 1;
+    const to = stations[i + 1].x - 1;
+    for (let cx = from; cx < to; cx += 2) g += p(cx, railY, C.edge);
+
+    // A 2x2 packet stepping one cell at a time - discrete, never tweened.
+    const t0 = i * 0.85;
+    const dur = 0.75;
+    const cells = [];
+    const keys = [];
+    const n = to - from;
+    for (let k = 0; k <= n; k++) {
+      cells.push(((from + k) * PX).toString());
+      keys.push((t0 + (k * dur) / n) / CYCLE);
+    }
+    const colour = [C.blue, C.green, C.violet][i];
+    g += `<rect x="${from * PX}" y="${(railY - 0.5) * PX}" width="${PX * 2}" height="${PX * 2}" fill="${colour}" opacity="0">` +
+      step('x', CYCLE, keys, cells) +
+      step('opacity', CYCLE, [0, t0 / CYCLE, (t0 + dur) / CYCLE], ['0', '1', '0']) +
+      `</rect>`;
   }
 
-  // return path: disk -> you (the review loop)
-  const ry = BY + BH + 46;
-  out += `<path d="M ${boxes[3][2] + 40} ${BY + BH} L ${boxes[3][2] + 40} ${ry} L ${boxes[0][2] + 40} ${ry} L ${boxes[0][2] + 40} ${BY + BH}" fill="none" stroke="${C.edge}" stroke-width="2" stroke-dasharray="5 5"/>
-<text x="${W / 2}" y="${ry + 22}" fill="${C.dim}" font-size="12.5" text-anchor="middle" letter-spacing="1.4">EVERY STEP IS SHOWN TO YOU BEFORE THE NEXT ONE STARTS</text>
-<circle r="4" fill="${C.blue}">
-  <animateMotion dur="${CYCLE}s" repeatCount="indefinite" keyPoints="0;0;1;1" keyTimes="0;0.36;0.72;1" calcMode="linear"
-    path="M ${boxes[3][2] + 40} ${BY + BH} L ${boxes[3][2] + 40} ${ry} L ${boxes[0][2] + 40} ${ry} L ${boxes[0][2] + 40} ${BY + BH}"/>
-</circle>`;
+  // Return rail along the bottom: the review that gates the next step.
+  const backY = SY + SH + 4;
+  for (let cx = stations[0].x + 4; cx <= stations[3].x + SW - 4; cx += 2) g += p(cx, backY, C.edge);
+  const bFrom = stations[3].x + SW - 4, bTo = stations[0].x + 4;
+  const bKeys = [], bCells = [];
+  const bn = bFrom - bTo;
+  for (let k = 0; k <= bn; k++) {
+    bCells.push(((bFrom - k) * PX).toString());
+    bKeys.push((3.4 + (k * 1.6) / bn) / CYCLE);
+  }
+  g += `<rect x="${bFrom * PX}" y="${(backY - 0.5) * PX}" width="${PX * 2}" height="${PX * 2}" fill="${C.text}" opacity="0">` +
+    step('x', CYCLE, bKeys, bCells) +
+    step('opacity', CYCLE, [0, 3.4 / CYCLE, 5.0 / CYCLE], ['0', '1', '0']) + `</rect>`;
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="A prompt travels from you to CloseNI, to a chat site, to files on your disk, and back to you for review">
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" shape-rendering="crispEdges" aria-label="A prompt travels from you to CloseNI, to a chat site, to files on your disk, and back to you for review">
 <title>The loop CloseNI runs</title>
-<rect width="${W}" height="${H}" rx="12" fill="${C.bg}"/>
-<rect x="0.5" y="0.5" width="${W - 1}" height="${H - 1}" rx="12" fill="none" stroke="${C.edge}"/>
+<rect width="${W}" height="${H}" fill="${C.bg}"/>
+${frame(0, 0, COLS, ROWS, C.edge)}
 <g font-family="${MONO}">
-  <text x="40" y="42" fill="${C.dim}" font-size="12.5" letter-spacing="2.6">ONE STEP, END TO END</text>
-  ${out}
+  <text x="${8 * PX}" y="${5.6 * PX}" fill="${C.dim}" font-size="12" letter-spacing="2.6">ONE STEP, END TO END</text>
+  ${g}
+  <text x="${(COLS / 2) * PX}" y="${(backY + 4) * PX}" fill="${C.dim}" font-size="12" text-anchor="middle" letter-spacing="1.2">EVERY STEP IS SHOWN TO YOU BEFORE THE NEXT ONE STARTS</text>
 </g>
 </svg>
 `;
 }
 
 // ------------------------------------------------------------ repair loop ----
+// A filmstrip of one file's actual state, rather than four labelled boxes.
 
 function repairLoop() {
-  const W = 1200;
-  const H = 300;
   const CYCLE = 9;
-  const cx = 600;
-  const cy = 158;
-  const rx = 400;
-  const ry = 92;
+  const COLS = 214;
+  const ROWS = 52;
+  const W = COLS * PX;
+  const H = ROWS * PX;
 
-  const nodes = [
-    ['ASK', 'the step, as a prompt', -1, 0, C.blue],
-    ['WRITE', 'files land on disk', 0, -1, C.violet],
-    ['CHECK', 'compiler, not vibes', 1, 0, C.green],
-    ['REPAIR', 'the real error goes back', 0, 1, C.amber],
+  const PANW = 46;
+  const PANH = 30;
+  const PY = 10;
+  const gap = 6;
+  const x0 = 6;
+
+  const panels = [
+    { t: 'WRITE',  sub: 'model returns a file', accent: C.violet, state: 'plain' },
+    { t: 'CHECK',  sub: 'python3 -m py_compile', accent: C.blue,  state: 'fail' },
+    { t: 'REPAIR', sub: 'the real error goes back', accent: C.amber, state: 'fixing' },
+    { t: 'PASS',   sub: 'step 4 done', accent: C.green, state: 'pass' },
   ];
 
-  let g = '';
-  g += `<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="none" stroke="${C.edge}" stroke-width="2" stroke-dasharray="6 7"/>`;
+  const at = [0.4, 2.2, 4.2, 6.2];
 
-  nodes.forEach(([title, sub, ux, uy, accent]) => {
-    const x = cx + ux * rx;
-    const y = cy + uy * ry;
-    const bw = 210;
-    const bh = 68;
-    g += `<rect x="${x - bw / 2}" y="${y - bh / 2}" width="${bw}" height="${bh}" rx="10" fill="${C.panel}" stroke="${C.edge}"/>
-<rect x="${x - bw / 2}" y="${y - bh / 2}" width="${bw}" height="3" rx="1.5" fill="${accent}"/>
-<text x="${x}" y="${y - 4}" fill="${C.text}" font-size="15" font-weight="600" text-anchor="middle" letter-spacing="1.8">${esc(title)}</text>
-<text x="${x}" y="${y + 18}" fill="${C.dim}" font-size="12.5" text-anchor="middle">${esc(sub)}</text>`;
+  let g = '';
+  panels.forEach((pan, i) => {
+    const x = x0 + i * (PANW + gap);
+    g += run(x, PY, PANW, PANH, C.panel);
+    g += frame(x, PY, PANW, PANH, C.edge);
+
+    // Lit accent bar - only while this panel is the active one.
+    g += `<g opacity="0">${run(x, PY, PANW, 1, pan.accent)}${visible(at[i], i === 3 ? CYCLE : at[i + 1], CYCLE)}</g>`;
+    g += `<g opacity="0.35">${run(x, PY, PANW, 1, C.edge2)}</g>`;
+
+    // The file sprite, coloured by what this frame is showing.
+    const fileCol = pan.state === 'fail' ? C.red : pan.state === 'pass' ? C.green : pan.state === 'fixing' ? C.amber : C.dim;
+    g += sprite(FILES, x + 4, PY + 6, { f: fileCol, t: C.dim });
+
+    // Code lines beside it: the failing line flips red, then amber, then green.
+    // Kept short enough to clear the status badge in the corner - a check mark
+    // sitting on top of the code reads as a rendering fault, not a status.
+    const lines = [8, 11, 6, 12, 9, 6];
+    lines.forEach((len, li) => {
+      const ly = PY + 8 + li * 2;
+      let col = C.edge;
+      if (li === 3) col = pan.state === 'fail' ? C.red : pan.state === 'fixing' ? C.amber : pan.state === 'pass' ? C.green : C.edge;
+      g += run(x + 22, ly, len, 1, col);
+    });
+
+    if (pan.state === 'fail') g += sprite(CROSS, x + PANW - 9, PY + 3, { x: C.red });
+    if (pan.state === 'pass') g += sprite(CHECK, x + PANW - 9, PY + 3, { c: C.green });
+
+    g += `<text x="${(x + 3) * PX}" y="${(PY + PANH - 5) * PX}" fill="${C.text}" font-size="13" font-weight="600" letter-spacing="1.6">${esc(pan.t)}</text>`;
+    g += `<text x="${(x + 3) * PX}" y="${(PY + PANH - 1.6) * PX}" fill="${C.dim}" font-size="11">${esc(pan.sub)}</text>`;
+
+    // Pixel arrow to the next panel.
+    if (i < 3) {
+      const ax = x + PANW + 1;
+      const ay = PY + Math.floor(PANH / 2);
+      g += p(ax, ay - 1, C.edge) + p(ax + 1, ay, C.edge) + p(ax, ay + 1, C.edge);
+      g += `<g opacity="0">${p(ax, ay - 1, C.text)}${p(ax + 1, ay, C.text)}${p(ax, ay + 1, C.text)}${visible(at[i + 1] - 0.25, at[i + 1] + 0.25, CYCLE)}</g>`;
+    }
   });
 
-  const path = `M ${cx - rx} ${cy} A ${rx} ${ry} 0 0 1 ${cx} ${cy - ry} A ${rx} ${ry} 0 0 1 ${cx + rx} ${cy} A ${rx} ${ry} 0 0 1 ${cx} ${cy + ry} A ${rx} ${ry} 0 0 1 ${cx - rx} ${cy}`;
-  g += `<circle r="6" fill="${C.green}"><animateMotion dur="${CYCLE}s" repeatCount="indefinite" path="${path}" calcMode="linear"/>
-  <animate attributeName="fill" dur="${CYCLE}s" repeatCount="indefinite" calcMode="discrete" keyTimes="0;0.25;0.5;0.75" values="${C.blue};${C.violet};${C.green};${C.amber}"/></circle>`;
-  g += `<circle r="12" fill="${C.green}" opacity="0.14"><animateMotion dur="${CYCLE}s" repeatCount="indefinite" path="${path}" calcMode="linear"/></circle>`;
+  // Attempt budget, spelled out: two slots, the second one never needed here.
+  const by = PY + PANH + 4;
+  g += `<text x="${x0 * PX}" y="${(by + 1.6) * PX}" fill="${C.dim}" font-size="11.5" letter-spacing="1.4">REPAIR BUDGET</text>`;
+  for (let k = 0; k < 2; k++) {
+    const bx = x0 + 26 + k * 5;
+    g += frame(bx, by, 4, 3, C.edge);
+    if (k === 0) g += `<g opacity="0">${run(bx + 1, by + 1, 2, 1, C.amber)}${visible(4.2, CYCLE, CYCLE)}</g>`;
+  }
+  g += `<text x="${(x0 + 38) * PX}" y="${(by + 1.6) * PX}" fill="${C.dim}" font-size="11.5">two attempts per step, then it stops and tells you</text>`;
 
-  g += `<text x="${cx}" y="${cy - 12}" fill="${C.text}" font-size="14" text-anchor="middle" letter-spacing="1.6">TWO REPAIR ATTEMPTS PER STEP</text>
-<text x="${cx}" y="${cy + 12}" fill="${C.dim}" font-size="12.5" text-anchor="middle">then it stops and tells you, instead of writing broken code forever</text>`;
-
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="A loop: ask, write, check with a real compiler, feed the error back, retry twice at most">
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" shape-rendering="crispEdges" aria-label="One file across four frames: written, failing a compile check, repaired from the real error, then passing">
 <title>What happens when a step fails</title>
-<rect width="${W}" height="${H}" rx="12" fill="${C.bg}"/>
-<rect x="0.5" y="0.5" width="${W - 1}" height="${H - 1}" rx="12" fill="none" stroke="${C.edge}"/>
+<rect width="${W}" height="${H}" fill="${C.bg}"/>
+${frame(0, 0, COLS, ROWS, C.edge)}
 <g font-family="${MONO}">
-  <text x="40" y="42" fill="${C.dim}" font-size="12.5" letter-spacing="2.6">WHEN A STEP FAILS</text>
+  <text x="${x0 * PX}" y="${6.4 * PX}" fill="${C.dim}" font-size="12" letter-spacing="2.6">WHEN A STEP FAILS</text>
+  ${g}
+</g>
+</svg>
+`;
+}
+
+// ------------------------------------------------- pixel strip for the site --
+// A compact looping build strip the Pages hero can sit beside.
+
+function buildStrip() {
+  const CYCLE = 7;
+  const COLS = 132;
+  const ROWS = 22;
+  const W = COLS * PX;
+  const H = ROWS * PX;
+
+  let g = '';
+  const y = 8;
+  const n = 7;
+  const bw = 15;
+  const outcome = ['ok', 'ok', 'ok', 'fail', 'ok', 'ok', 'ok'];
+
+  for (let i = 0; i < n; i++) {
+    const x = 4 + i * (bw + 3);
+    g += frame(x, y, bw, 6, C.edge);
+    const t0 = 0.5 + i * 0.7;
+    const col = outcome[i] === 'fail' ? C.red : C.green;
+    g += `<g opacity="0">${run(x + 1, y + 1, bw - 2, 4, col)}${visible(t0, CYCLE, CYCLE)}</g>`;
+    // the failing block flips to green when the repair lands
+    if (outcome[i] === 'fail') {
+      g += `<g opacity="0">${run(x + 1, y + 1, bw - 2, 4, C.green)}${visible(t0 + 1.4, CYCLE, CYCLE)}</g>`;
+      g += `<g opacity="0">${sprite(CROSS, x + 4, y - 8, { x: C.red })}${visible(t0, t0 + 1.4, CYCLE)}</g>`;
+    }
+    g += `<text x="${(x + bw / 2) * PX}" y="${(y + 9) * PX}" fill="${C.dim}" font-size="10" text-anchor="middle">${i + 1}</text>`;
+  }
+  g += `<g opacity="0">${sprite(CHECK, COLS - 12, y, { c: C.green })}${visible(6.0, CYCLE, CYCLE)}</g>`;
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" shape-rendering="crispEdges" aria-label="Seven build steps filling in, one failing and turning green after a repair">
+<title>Seven steps, one repair</title>
+<rect width="${W}" height="${H}" fill="none"/>
+<g font-family="${MONO}">
+  <text x="${4 * PX}" y="${4.6 * PX}" fill="${C.dim}" font-size="10.5" letter-spacing="2.2">BUILD</text>
   ${g}
 </g>
 </svg>
@@ -263,10 +525,10 @@ const files = {
   'banner.svg': banner(),
   'pipeline.svg': pipeline(),
   'repair-loop.svg': repairLoop(),
+  'build-strip.svg': buildStrip(),
 };
 
 for (const [name, svg] of Object.entries(files)) {
-  const p = resolve(OUT, name);
-  writeFileSync(p, svg);
+  writeFileSync(resolve(OUT, name), svg);
   console.log(`${name.padEnd(18)} ${(svg.length / 1024).toFixed(1)} KB`);
 }

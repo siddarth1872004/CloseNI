@@ -9,6 +9,7 @@
 <meta property="og:description" content="Turns the AI chat sites you already use into a build pipeline. No API keys.">
 <meta property="og:image" content="screenshots/builder.png">
 <meta name="twitter:card" content="summary_large_image">
+<script>document.documentElement.className+=" js";</script>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><path d='M7 6 H13 V26 H7' fill='none' stroke='%23e8e8ea' stroke-width='2.8'/><path d='M25 6 H19 V26 H25' fill='none' stroke='%23e8e8ea' stroke-width='2.8'/></svg>">
 <style>
 /* The site runs on the application's own tokens, so switching a theme here
@@ -123,7 +124,20 @@ h1{font-family:ui-monospace,Consolas,monospace;font-size:clamp(34px,6vw,58px);le
   background:var(--surface-sunken);text-align:left;overflow:hidden;box-shadow:var(--shadow-2);}
 .term-bar{display:flex;align-items:center;gap:var(--sp-2);padding:9px var(--sp-5);
   border-bottom:1px solid var(--line);background:var(--panel);}
-.dot{width:9px;height:9px;border-radius:50%;background:var(--line-strong);}
+/* Square, because every other light in this app is square. */
+.dot{width:9px;height:9px;background:var(--line-strong);}
+
+/* ---------- pixel art ---------- */
+.pixfig{margin:var(--sp-7) 0;}
+.pixfig img{display:block;width:100%;height:auto;image-rendering:pixelated;
+  border:1px solid var(--line);border-radius:var(--r-md);background:var(--surface-sunken);}
+.pixfig figcaption{margin-top:var(--sp-4);font-size:13px;color:var(--mut);text-align:center;}
+.strip{max-width:760px;margin:var(--sp-6) auto 0;}
+.strip img{display:block;width:100%;height:auto;image-rendering:pixelated;}
+/* A row of pixels instead of a hairline rule. */
+.pixrule{height:4px;margin:var(--sp-7) 0;
+  background-image:linear-gradient(90deg,var(--line-strong) 4px,transparent 4px);
+  background-size:8px 4px;opacity:.7;}
 .term-body{padding:var(--sp-5) var(--sp-6);font-family:ui-monospace,Consolas,monospace;
   font-size:12.5px;line-height:1.85;min-height:238px;}
 .term-line{opacity:0;animation:line-in .01s steps(1) forwards;white-space:pre-wrap;}
@@ -142,9 +156,14 @@ p{color:var(--dim);margin-bottom:var(--sp-4);max-width:74ch;}
 p strong,li strong{color:var(--txt);font-weight:600;}
 .lead{font-size:17px;}
 
-/* scroll reveal */
-.reveal{opacity:0;transform:translateY(14px);transition:opacity .4s steps(5),transform .4s steps(5);}
-.reveal.in{opacity:1;transform:none;}
+/* Scroll reveal.
+   Scoped to html.js, which is set by an inline script before the body parses.
+   Hiding content in the stylesheet at rest means one JS error - or a browser
+   that never fires the observer - leaves the whole page blank, which is exactly
+   how this looked before. Content is visible by default and only hidden once
+   something has confirmed it can be shown again. */
+html.js .reveal{opacity:0;transform:translateY(10px);transition:opacity .45s ease,transform .45s cubic-bezier(.2,.7,.3,1);}
+html.js .reveal.in{opacity:1;transform:none;}
 
 /* ---------- shots ---------- */
 .tabs{display:flex;gap:var(--sp-2);flex-wrap:wrap;margin-bottom:var(--sp-5);}
@@ -209,7 +228,7 @@ footer p{color:var(--dim);font-size:13.5px;margin:0 auto var(--sp-2);}
 }
 @media (prefers-reduced-motion:reduce){
   *{transition:none!important;animation:none!important;}
-  .reveal{opacity:1;transform:none;}
+  html.js .reveal{opacity:1;transform:none;}
 }
 </style>
 </head>
@@ -261,6 +280,9 @@ footer p{color:var(--dim);font-size:13.5px;margin:0 auto var(--sp-2);}
       <span class="micro" style="margin-left:8px">closeni — habit tracker</span></div>
     <div class="term-body" id="term"></div>
   </div>
+  <div class="strip">
+    <img src="assets/build-strip.svg" alt="Seven build steps filling in, one failing and turning green after a repair" loading="lazy">
+  </div>
 </div>
 
 <section id="how">
@@ -275,28 +297,10 @@ footer p{color:var(--dim);font-size:13.5px;margin:0 auto var(--sp-2);}
       repairing not-quite-valid JSON, applying file changes with backups and workspace
       containment, choosing the right syntax check for each language, and feeding failures
       back to the model until they pass.</p>
-<pre>   YOU                CloseNI                  A CHAT SITE              YOUR DISK
-    │                    │                          │                       │
-    │  "build me a       │                          │                       │
-    │   habit tracker"   │                          │                       │
-    ├───────────────────►│                          │                       │
-    │                    │   plan this, as JSON     │                       │
-    │                    ├─────────────────────────►│                       │
-    │                    │◄─────────────────────────┤                       │
-    │   <b>review the plan</b> │   7 steps, a dependency  │                       │
-    │◄───────────────────┤   graph, a run command   │                       │
-    │      approve       │                          │                       │
-    ├───────────────────►│   step 1 …               │                       │
-    │                    ├─────────────────────────►│                       │
-    │                    │◄─────────────────────────┤   {"files":[…]}       │
-    │                    ├──────────────────────────┼──────────────────────►│
-    │                    │   apply · syntax check   │        <span class="ok">files written</span>  │
-    │                    │                          │                       │
-    │                    │   steps 2 and 3 …        │                       │
-    │                    ├═════════════════════════►│   <b>(in parallel)</b>       │
-    │                    │   step 4 failed          │                       │
-    │                    ├──── error sent back ────►│                       │
-    │                    │◄─────────────────────────┤   <span class="ok">fixed, passes</span>       │</pre>
+    <figure class="pixfig">
+      <img src="assets/pipeline.svg" alt="A prompt travels from you to CloseNI, to a chat site, to files on your disk, and back to you for review" loading="lazy">
+      <figcaption>One step, end to end. Nothing reaches disk before you approve the plan.</figcaption>
+    </figure>
   </div>
 </section>
 
@@ -381,6 +385,18 @@ footer p{color:var(--dim);font-size:13.5px;margin:0 auto var(--sp-2);}
     <p style="margin-top:var(--sp-5)">A missing toolchain <strong>skips</strong> the check
       rather than failing it. A machine with Python but no Rust should not fail a build for
       a problem it cannot solve.</p>
+
+    <div class="pixrule"></div>
+
+    <h3 style="font-family:ui-monospace,Consolas,monospace;font-weight:400;letter-spacing:.04em;margin-bottom:var(--sp-4)">
+      When a check fails</h3>
+    <p>The compiler's own stderr goes back to the model with the step, so it repairs the
+      defect it actually made rather than rewriting from memory. Two attempts, then the
+      build stops and tells you — instead of grinding forward on code that does not compile.</p>
+    <figure class="pixfig">
+      <img src="assets/repair-loop.svg" alt="One file across four frames: written, failing a compile check, repaired from the real error, then passing" loading="lazy">
+      <figcaption>One file, four frames. The failing line is the one that changes colour.</figcaption>
+    </figure>
   </div>
 </section>
 
@@ -542,6 +558,12 @@ cd desktop &amp;&amp; npm start</pre>
         run against a real project of that kind.</li>
       <li>GitHub sign-in, push and Actions are unit-tested with an injected transport.
         No live request has been made.</li>
+      <li>Only the <strong>Linux</strong> installers are verified. The AppImage and
+        <code>.deb</code> were built, audited to confirm no session data reached the
+        artifact, and launched with the renderer loading. There is no Windows machine
+        here, so the first <code>.exe</code> is unverified until someone installs it.</li>
+      <li>Installers are <strong>unsigned</strong>. SmartScreen will warn about an
+        unrecognised publisher, and it is right to.</li>
     </ul>
     <p>The roadmap, every design spec and every implementation plan — including the
       decisions that were rejected and why — are in the repository under
@@ -650,13 +672,22 @@ cd desktop &amp;&amp; npm start</pre>
   }); } else { typeLine(0); }
 
   /* ---------- scroll reveal ---------- */
+  function revealAll() {
+    document.querySelectorAll(".reveal").forEach(function (r) { r.classList.add("in"); });
+  }
   if ("IntersectionObserver" in window && !reduced) {
     var io = new IntersectionObserver(function (entries) {
       entries.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); } });
-    }, { rootMargin: "0px 0px -60px 0px" });
+    }, { rootMargin: "200px 0px -40px 0px" });
     document.querySelectorAll(".reveal").forEach(function (r) { io.observe(r); });
+    // A reveal that never fires is indistinguishable from a broken page. Print
+    // and restored-from-bfcache both reach content the observer skipped, so
+    // both force everything visible rather than trusting the scroll position.
+    window.addEventListener("beforeprint", revealAll);
+    window.addEventListener("pageshow", function (e) { if (e.persisted) revealAll(); });
+    setTimeout(revealAll, 4000);
   } else {
-    document.querySelectorAll(".reveal").forEach(function (r) { r.classList.add("in"); });
+    revealAll();
   }
 
   /* ---------- counters ---------- */

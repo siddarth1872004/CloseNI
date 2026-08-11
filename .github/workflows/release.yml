@@ -1,6 +1,7 @@
 # Builds installers and attaches them to a GitHub Release.
 #
-#   git tag v1.0.0 && git push --tags
+#   npm version 1.0.1        # bumps package.json and tags v1.0.1
+#   git push && git push --tags
 #
 # Windows installers must be built on Windows, which is the whole reason this
 # exists: there is no Windows machine in the development environment.
@@ -14,10 +15,20 @@ on:
 permissions:
   contents: write
 
+# Two tags pushed in quick succession would otherwise build against each other.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build:
     strategy:
       fail-fast: false
+      # Serialised on purpose. Both jobs publish to the same release, and
+      # electron-builder creates it if it is missing - run them together and
+      # they race to create it, which ends with one job's artifacts orphaned on
+      # a release the other job replaced.
+      max-parallel: 1
       matrix:
         os: [windows-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
@@ -29,6 +40,19 @@ jobs:
           node-version: "20"
           cache: npm
 
+      # A tag that disagrees with package.json produces installers named after
+      # the wrong version, which is only ever noticed after they are published.
+      - name: Check the tag matches package.json
+        shell: bash
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pkg="$(node -p "require('./package.json').version")"
+          if [ "$tag" != "$pkg" ]; then
+            echo "tag $GITHUB_REF_NAME does not match package.json version $pkg" >&2
+            exit 1
+          fi
+          echo "releasing $pkg"
+
       - name: Install
         run: npm ci
 
@@ -37,7 +61,7 @@ jobs:
 
       # The unit suite is fast and catches a broken build config before it
       # produces an artifact. The end-to-end suite drives a real browser for
-      # around fifteen minutes and stays a local gate.
+      # around twenty minutes and stays a local gate.
       - name: Unit tests
         run: node local-agent/test/run-tests.cjs
 
@@ -45,3 +69,19 @@ jobs:
         run: npx electron-builder --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Kept even when publishing succeeds: a draft release can be deleted by
+      # accident, and rebuilding an unsigned installer from a tag is slower than
+      # downloading the one CI already made.
+      - name: Keep the installers as workflow artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: installers-${{ matrix.os }}
+          path: |
+            dist/*.exe
+            dist/*.AppImage
+            dist/*.deb
+            dist/*.yml
+          if-no-files-found: ignore
+          retention-days: 30

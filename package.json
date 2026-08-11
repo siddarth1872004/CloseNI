@@ -64,7 +64,14 @@
         "deb"
       ],
       "icon": "build/icon.png",
-      "category": "Development"
+      "category": "Development",
+      "maintainer": "Siddarth S <sid1872004@gmail.com>",
+      "synopsis": "Drive web AI chats as a build pipeline",
+      "description": "A desktop agent that drives web-based AI chats through a real browser to plan, build and verify software projects. No API keys."
+    },
+    "publish": {
+      "provider": "github",
+      "releaseType": "draft"
     }
   }
 }

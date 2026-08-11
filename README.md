@@ -42,6 +42,8 @@ Every other coding agent bills per token through an API key. CloseNI does not ha
 - [Directory Tree](#directory-tree)
 - [Current Limitations](#current-limitations)
 
+Also: [CHANGELOG](CHANGELOG.md) · [Release process](docs/RELEASING.md)
+
 ---
 
 ### Key Capabilities
@@ -454,6 +456,16 @@ The end-to-end suite drives a real Chromium against a local HTTP server that imi
 
 ### Distribution Builds
 
+Releases are driven by a tag. `npm version 1.0.1 -m "Release %s"` then `git push --tags` builds on `windows-latest` and `ubuntu-latest` and attaches the installers to a draft release. The full process, including how to verify an artifact before publishing, is in [docs/RELEASING.md](docs/RELEASING.md).
+
+| Platform | Artifact |
+|---|---|
+| Windows | `CloseNI Setup <version>.exe` (NSIS, chooses its own install directory) |
+| Linux | `CloseNI-<version>.AppImage` |
+| Linux | `closeni_<version>_amd64.deb` |
+
+Locally:
+
 ```bash
 # Unpacked distribution directory
 npm run pack
@@ -462,7 +474,7 @@ npm run pack
 npm run dist
 ```
 
-The packaged `files` list is an explicit allow-list. Widening it to a glob would sweep `local-agent/storage/` — live session cookies and private chat URLs — into a shipped artifact.
+The packaged `files` list is an explicit allow-list. Widening it to a glob would sweep `local-agent/storage/` — live session cookies and private chat URLs — into a shipped artifact. The 1.0.0 Linux artifacts were audited for exactly that and contain nothing from `storage/`.
 
 ---
 
@@ -498,7 +510,8 @@ Stated plainly, because a README that only lists strengths is not useful.
 
 * **Chat sites change.** Provider control is per-site page automation. A redesign on DeepSeek, Qwen, or GLM can break extraction until the selectors are updated.
 * **Verification is syntax and compilation, not correctness.** A project can pass every check and still be wrong. `make -n` and `--noEmit` prove things parse and resolve; they do not prove behaviour.
-* **Installers are unsigned.** SmartScreen and Gatekeeper will say so.
+* **Installers are unsigned.** SmartScreen and Gatekeeper will say so, and that warning is accurate.
+* **Only the Linux artifacts have been verified.** The AppImage and `.deb` were built, audited for leaked session data, and launched with the renderer confirmed loading. There is no Windows machine in the development environment, so the first `.exe` the release workflow produces is unverified until someone installs it.
 * **Large projects are not yet proven at scale.** Builds in the range of a few dozen steps behave well. Beyond that is untested.
 * **Terms of service are your responsibility.** Automating a web interface may conflict with a provider's terms. Check before pointing this at an account you care about.
 
