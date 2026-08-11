@@ -21,7 +21,7 @@ all context had to be rebuilt from disk each time.
 
 | Phase | What it does | Status |
 |---|---|---|
-| 1 | All steps of one build share a chat thread | done — `plans/2026-08-09-build-thread-persistence.md` |
+| 1 | All steps of one build share a chat thread | done, and since 2026-08-11 it is the *same* thread as chat and planning — `plans/2026-08-09-build-thread-persistence.md`, see sub-project 4 |
 | 2 | Send only what the thread has not already seen | done — `plans/2026-08-09-delta-context.md` |
 | 3 | One long-lived process per build; browser opens once | done — `plans/2026-08-09-build-session.md` |
 
@@ -87,14 +87,46 @@ plan: `plans/2026-08-10-multi-language-builds.md`
   output as a **success**, which is right for a model-suggested server and wrong
   for a syntax check. Checks now pass `timeoutIsFailure`.
 
-## 4 · Concurrency & multi-agent — DONE
+## 4 · Concurrency & multi-agent — BUILT, THEN DELIBERATELY REVERSED
 
 Roadmap item 4. Spec: `specs/2026-08-10-concurrency-design.md`,
 plan: `plans/2026-08-10-concurrency.md`
 
+> **Superseded on 2026-08-11 by the one-conversation decision.** Steps now run
+> one at a time. This section is kept in full below because the reasoning still
+> holds on its own terms and the reversal is only legible next to it.
+>
+> **Why it was reversed.** Parallel steps needed a chat thread each, and a
+> worker thread has never seen the discussion or the plan. So every step prompt
+> had to carry the plan, the file tree and the ~3100-character reply-format
+> specification into a model starting from nothing: step 1 of a fifteen-step
+> build reached **9853 characters** and spent the entire completion wait being
+> read rather than answered. Every step then failed, and each failure blocked
+> the fourteen behind it.
+>
+> Running the build in the conversation that already holds the chat and the plan
+> removes all of that context from the prompt. The format specification is sent
+> once instead of per step, which alone is 2801 characters saved on every step
+> after the first.
+>
+> **The trade is real and was made knowingly**: a conversation has one composer,
+> so the parallelism goes. A serial step in a thread that already has the
+> context is smaller, faster to answer and far likelier to come back parseable
+> than a parallel one that must re-explain the project. Speed was never the
+> failing part; correctness was.
+>
+> **What went with it**: the worker pages, `attachTo`, `getContext`, the
+> separate build thread, and the Settings control for parallel steps. All
+> removed rather than left as dead paths.
+>
+> **How to bring it back** if a provider ever makes long prompts cheap: restore
+> per-worker threads and re-add the concurrency setting. The dependency graph,
+> the scheduler and the serialised-apply mutex are all untouched and still
+> correct — only the thread-per-worker part was removed.
+
 - **4. Concurrent agents + inter-agent communication** — `done` for the
-  concurrency half. Independent steps run at the same time in separate pages of
-  one browser context.
+  concurrency half, then reversed as above. Independent steps ran at the same
+  time in separate pages of one browser context.
 
   The blocker recorded here — that browser profiles are per provider — turned
   out to constrain two *browsers*, not two *conversations*. One context opens

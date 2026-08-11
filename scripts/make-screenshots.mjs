@@ -23,19 +23,32 @@ const repo = path.resolve(import.meta.dirname, "..");
 const out = path.join(repo, "docs", "screenshots");
 fs.mkdirSync(out, { recursive: true });
 
-/** Everything preload.js exposes. Without it the renderer throws on load. */
+/*
+ * Stands in for preload.js.
+ *
+ * The interesting values are spelled out; everything else falls through a Proxy
+ * to a no-op that resolves to []. That fallback is the point: this used to be a
+ * hand-maintained list of "everything preload exposes", so adding one method to
+ * preload threw inside renderer.js before it reached `window.CN = {...}`, and
+ * every screenshot came out as an empty shell. The failure looked like a
+ * screenshot bug rather than a missing stub, which is how it survived a run.
+ */
 const STUB = `
-window.api = {
+const API = {
   platform: "linux",
   listProviders: async () => ([
     { id: "deepseek", name: "DeepSeek Chat", controls: [
       { id: "mode", label: "Mode", kind: "select", default: "default",
         options: [{ value: "default", label: "Instant" }, { value: "expert", label: "Advanced" }] },
-      { id: "deep-thinking", label: "Deep thinking", kind: "toggle", default: true },
+      { id: "deep-thinking", label: "Deep thinking", kind: "toggle", default: false },
       { id: "smart-search", label: "Smart Search", kind: "toggle", default: false }] },
-    { id: "qwen-studio", name: "Qwen Studio", controls: [] },
-    { id: "glm", name: "GLM (Z.ai)", controls: [] },
+    { id: "qwen-studio", name: "Qwen Studio", comingSoon: true, controls: [] },
+    { id: "glm", name: "GLM (Z.ai)", comingSoon: true, controls: [] },
   ]),
+  authStatus: async () => ({
+    success: true, signedIn: true, provider: "deepseek", name: "DeepSeek Chat",
+    thread: { label: "…a7e6c2", url: "https://example.invalid/c/x" },
+  }),
   getChats: async () => ([]),
   browserStatus: async () => ({ ready: true }),
   ghStatus: async () => ({ signedIn: false, encryptionAvailable: true }),
@@ -55,6 +68,18 @@ window.api = {
   ghSignIn: async () => ({ ok: true }), ghSignOut: async () => ({ ok: true }), ghClone: async () => ({ ok: true }),
   listMcp: async () => ([]),
 };
+
+// Anything preload gains later resolves to [] instead of being undefined, so a
+// new method can never blank every screenshot again. on* handlers must return a
+// plain function rather than a promise: the renderer calls them with a callback
+// and does not await them.
+window.api = new Proxy(API, {
+  get(target, key) {
+    if (key in target) return target[key];
+    if (typeof key === "string" && key.startsWith("on")) return function () {};
+    return async function () { return []; };
+  },
+});
 `;
 
 /** Small helpers available to every setup script, using the real class names. */
@@ -326,3 +351,7 @@ for (const shot of shots) {
 }
 await browser.close();
 console.log(failures ? failures + " setup failures" : "all screenshots captured");
+// A non-zero exit, because these run unattended from `npm run assets`. Writing
+// eight empty shells and exiting 0 is how a whole set of blank screenshots got
+// committed once already.
+if (failures) process.exit(1);

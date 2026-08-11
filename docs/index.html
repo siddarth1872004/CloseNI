@@ -330,20 +330,29 @@ footer p{color:var(--dim);font-size:13.5px;margin:0 auto var(--sp-2);}
     <div class="eyebrow">Inside a build</div>
     <h2>Plans as long as the work needs</h2>
     <p>The model decides how many steps a project takes — two for a script, twenty or more
-      for an application — and declares which steps depend on which. Steps with no
-      dependency between them run <strong>at the same time</strong>, in separate chat tabs.</p>
-<pre>   serial, no graph                    with a declared graph, limit 2
+      for an application — and declares which steps depend on which, so a step is never
+      asked for before the files it imports exist.</p>
+    <p><strong>Chat, planning and building all continue one conversation</strong> — the same
+      thread you can open in your own browser. That is what keeps a step prompt short:
+      the model already has the plan, so the step is an instruction rather than a
+      re-explanation of the project.</p>
+<pre>one profile, one login, one thread
 
-   1 ──► 2 ──► 3 ──► 4 ──► 5 ──► 6     1 ──┬──► 2 ──┐
-                                           ├──► 3 ──┼──► 4 ──┬──► 6
-   ~11 min                                 └────────┘        └──► 5
-
-                                       ~7 min</pre>
-    <p><strong>Only the conversations parallelise.</strong> Applying files, running syntax
-      checks and asking for command approval all happen one at a time, behind a single lock.
-      Two steps can talk at once; only one may write. That removes every shared-state race
-      by construction rather than by careful locking — including the worst one, where two
-      permission prompts race and the answer meant for one command is given to the other.</p>
+  "build me a flask todo api"     <span class="dimt">chat</span>
+  the plan, as JSON               <span class="dimt">planning, same thread</span>
+  step 1 …  step 2 …  step 3 …    <span class="dimt">the build, still the same thread</span>
+  "why did this fail?"            <span class="dimt">Test and Suggest, same thread</span></pre>
+    <p>Steps ran in parallel across separate tabs until August 2026. A worker thread has
+      never seen the discussion, so every step had to carry the plan, the file tree and the
+      reply-format rules with it — step 1 of a fifteen-step build reached <b>9853
+      characters</b> and spent its whole completion wait being read rather than answered.
+      Sharing the conversation removed all of that from the prompt, at the cost of the
+      parallelism: a conversation has one composer, so steps now run one at a time.</p>
+    <p><strong>Applies are still serialised.</strong> Writing files, running syntax checks
+      and asking for command approval happen one at a time behind a single lock — which is
+      what removes every shared-state race by construction, including the worst one, where
+      two permission prompts race and the answer meant for one command is given to the
+      other.</p>
 
     <div class="grid" style="margin-top:var(--sp-7)">
       <div class="card"><span class="micro">Self-healing</span>
@@ -619,7 +628,7 @@ cd desktop &amp;&amp; npm start</pre>
      wrong theme than a missing image. */
   var CAPS = {
     chat: "<b>Chat</b> — describe the project, then generate a plan. The sidebar shows the steps, the files they touch, and an estimated duration before you commit to anything.",
-    builder: "<b>Builder</b> — steps run, some in parallel. Each shows the files it wrote as a diff against the backup taken before the write.",
+    builder: "<b>Builder</b> — steps run one at a time in the shared conversation. Each shows the files it wrote as a diff against the backup taken before the write.",
     test: "<b>Test</b> — the run command is already there, with a badge saying where it came from. The chat beside it carries the last command and its output, so you never paste a traceback.",
     ship: "<b>Ship</b> — sign in with a token, pick a repository, commit and push. The token is encrypted with your OS key and never enters .git/config, a command line, or a log.",
     settings: "<b>Settings</b> — provider controls, permissions including how many steps run at once, and the theme picker."
@@ -656,7 +665,7 @@ cd desktop &amp;&amp; npm start</pre>
     ['', 160],
     ['<span class="dimt">step 1</span>  requirements.txt, src/app/config.py      <span class="ok">done</span>', 460],
     ['<span class="dimt">step 2</span>  src/app/models.py                       <span class="ok">done</span>', 420],
-    ['<span class="dimt">step 3</span>  src/app/store.py         <b>parallel</b>      <span class="ok">done</span>', 420],
+    ['<span class="dimt">step 3</span>  src/app/store.py                       <span class="ok">done</span>', 420],
     ['<span class="dimt">step 4</span>  src/app/routes.py                       <span class="err">failed</span>', 460],
     ["        SyntaxError: line 41, closing brace does not match opening bracket", 200],
     ['        <span class="dimt">error sent back to the model …</span>', 620],

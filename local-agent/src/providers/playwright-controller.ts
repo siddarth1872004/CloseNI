@@ -1,7 +1,7 @@
 import { chromium, BrowserContext, Page } from "playwright";
 import * as path from "path";
 import * as fs from "fs";
-import { readSessions, writeSessions, getBuildThread, setBuildThread, resetBuildRun, getBuildLedger, setBuildLedger, BuildLedger, describeThread } from "../session-store.js";
+import { readSessions, writeSessions, resetBuildRun, getBuildLedger, setBuildLedger, BuildLedger, describeThread } from "../session-store.js";
 import { isComplete } from "./completion.js";
 import { applyProviderControls } from "./controls/index.js";
 import { parseDesiredControls } from "./controls/decisions.js";
@@ -110,7 +110,7 @@ export class PlaywrightController {
    * activeBuildThread with its own, and a resumed build would reopen whichever
    * worker happened to finish last instead of the main thread.
    */
-  private threadKind: "chat" | "build" | "worker" = "chat";
+  private threadKind: "chat" | "worker" = "chat";
   // Held from launch() so controls can be applied wherever a conversation
   // opens, without threading the config through every navigation path.
   private launchedConfig: ProviderConfig | null = null;
@@ -147,12 +147,8 @@ export class PlaywrightController {
     writeSessions(this.sessionStoreFile, sessions);
   }
 
-  setThreadKind(kind: "chat" | "build" | "worker") {
+  setThreadKind(kind: "chat" | "worker") {
     this.threadKind = kind;
-  }
-
-  getBuildThreadUrl(): string | null {
-    return getBuildThread(this.sessionStoreFile, this.workspace);
   }
 
   /** Thread and ledger belong to the same run and are cleared together. */
@@ -213,10 +209,6 @@ export class PlaywrightController {
     // A worker's thread is transient by design: recording it would clobber the
     // main build thread that a resume depends on.
     if (this.threadKind === "worker") return;
-    if (this.threadKind === "build") {
-      setBuildThread(this.sessionStoreFile, workspace, url);
-      return;
-    }
     const sessions = this.loadSessions();
     if (!sessions[workspace]) sessions[workspace] = { chats: [], activeChat: null };
     sessions[workspace].activeChat = url;
@@ -254,28 +246,6 @@ export class PlaywrightController {
   }
 
   /** The context this controller launched, for workers to attach to. */
-  getContext(): BrowserContext | null {
-    return this.context;
-  }
-
-  /**
-   * Open another page in an existing context.
-   *
-   * This is how concurrency happens: one launchPersistentContext, several
-   * pages. Chromium locks a profile directory, so a second launch on the same
-   * profile would collide - but a second page in the same context is exactly
-   * what a person with two tabs open is doing.
-   *
-   * The context is not owned here: close() shuts only this controller's page,
-   * so one worker finishing does not take the browser out from under the rest.
-   */
-  async attachTo(context: BrowserContext, config: ProviderConfig): Promise<void> {
-    this.context = context;
-    this.ownsContext = false;
-    this.page = await context.newPage();
-    this.launchedConfig = config;
-  }
-
   /**
    * Put the provider's UI into the state the user asked for.
    *
@@ -384,29 +354,6 @@ export class PlaywrightController {
     console.log("Starting new chat for workspace: " + this.workspace);
     await this.page.goto(config.baseUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
     return false;
-  }
-
-  /**
-   * Resume this workspace's build thread. Returns false (and lands on a fresh
-   * chat) when there is nothing to resume or the saved thread will not load.
-   */
-  async navigateToBuildThread(config: ProviderConfig): Promise<boolean> {
-    if (!this.page) throw new Error("Browser not launched");
-    const saved = this.getBuildThreadUrl();
-    if (!saved) {
-      await this.navigateFresh(config);
-      return false;
-    }
-    console.log("Resuming build thread " + describeThread(saved) + ".");
-    try {
-      await this.page.goto(saved, { waitUntil: "domcontentloaded", timeout: 30000 });
-      await this.page.waitForSelector(config.selectors.chatInput, { timeout: 5000, state: "visible" });
-      return true;
-    } catch {
-      console.log("Build thread would not load; starting a fresh one.");
-      await this.navigateFresh(config);
-      return false;
-    }
   }
 
   async navigateFresh(config: ProviderConfig): Promise<void> {
@@ -701,13 +648,46 @@ export class PlaywrightController {
       // Scope code blocks to the newest message. Querying the whole page would also
       // pick up earlier replies, so a re-ask would return the stale answer glued to
       // the new one and the parser would read the wrong JSON.
-      const codeBlocks = await lastMessageLocator
-        .locator("pre code")
-        .evaluateAll((els) => els.map((el) => el.textContent || ""));
-      const nonEmpty = (codeBlocks || []).filter((b) => b.trim().length > 0);
-      if (nonEmpty.length > 0) {
-        return nonEmpty.map((block) => FENCE + "json\n" + block + "\n" + FENCE).join("\n\n");
-      }
+      // Blocks WITH the prose around them, in document order.
+      //
+      // This used to return the code blocks alone, concatenated and relabelled
+      // as json - correct while JSON was the only accepted answer, since the
+      // prose really was noise. It is wrong now that a reply may be one code
+      // block per file: the path often lives in the sentence or heading above
+      // the block, and dropping it means the file cannot be attributed to
+      // anything and is silently skipped. A ten-step trial build lost three
+      // files exactly that way.
+      //
+      // The language is kept on the fence too, because sites carry it as a
+      // class on <code> and a path can ride there.
+      const parts: string[] = await lastMessageLocator.evaluateAll((els: any[]) => {
+        const root = els[els.length - 1];
+        if (!root) return [];
+        const out: string[] = [];
+        const walk = (el: any): void => {
+          const tag = String(el.tagName || "").toLowerCase();
+          if (tag === "pre") {
+            const code = el.querySelector("code") || el;
+            const cls = String(code.getAttribute && code.getAttribute("class") || "");
+            const lang = (cls.match(/language-([\w+#-]+)/) || [])[1] || "";
+            const text = String(code.textContent || "").replace(/\n$/, "");
+            if (text.trim()) out.push("```" + lang + "\n" + text + "\n```");
+            return;
+          }
+          if (el.children && el.children.length) {
+            for (const c of el.children) walk(c);
+            return;
+          }
+          const t = String(el.textContent || "").trim();
+          // "Copy Download" and friends are toolbar buttons, not content.
+          if (t && !/^(?:[\w#+.-]+\s+)?(?:Copy\s+Download|Copy|Download)$/i.test(t)) out.push(t);
+        };
+        walk(root);
+        return out;
+      });
+
+      const joined = (parts || []).join("\n\n").trim();
+      if (joined) return joined;
       return (await lastMessageLocator.textContent()) || "";
     } catch {
       return "";

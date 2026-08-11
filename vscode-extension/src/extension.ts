@@ -1,4 +1,4 @@
-﻿import * as vscode from 'vscode';
+import * as vscode from 'vscode';
 import * as path from 'path';
 import { spawn } from 'child_process';
 
@@ -44,13 +44,13 @@ export function activate(context: vscode.ExtensionContext) {
                     output += text;
                     
                     if (text.includes('Waiting for manual login')) {
-                        vscode.window.showInformationMessage('ðŸ” Please log in to the AI provider in the browser window.');
+                        vscode.window.showInformationMessage('Please log in to the AI provider in the browser window.');
                     }
                     if (text.includes('Typing prompt')) {
-                        vscode.window.showInformationMessage('âœï¸ Sending prompt to AI...');
+                        vscode.window.showInformationMessage('Sending prompt to AI...');
                     }
                     if (text.includes('Response complete')) {
-                        vscode.window.showInformationMessage('ðŸ§  Parsing AI response and applying patches...');
+                        vscode.window.showInformationMessage('Parsing AI response and applying patches...');
                     }
                 });
 
@@ -69,14 +69,14 @@ export function activate(context: vscode.ExtensionContext) {
                             const result = JSON.parse(jsonStr);
                             
                             if (result.success) {
-                                vscode.window.showInformationMessage(`âœ… Success! Applied changes to: ${result.appliedFiles.join(', ')}`);
+                                vscode.window.showInformationMessage(`Success! Applied changes to: ${result.appliedFiles.join(', ')}`);
                                 // Open the first modified file
                                 if (result.appliedFiles.length > 0) {
                                     const filePath = path.join(workspaceRoot, result.appliedFiles[0]);
                                     vscode.window.showTextDocument(vscode.Uri.file(filePath));
                                 }
                             } else {
-                                vscode.window.showErrorMessage(`âŒ Agent failed: ${result.error || 'Unknown error'}`);
+                                vscode.window.showErrorMessage(`Agent failed: ${result.error || 'Unknown error'}`);
                             }
                         } else {
                             vscode.window.showErrorMessage("Agent finished but returned no valid output.");

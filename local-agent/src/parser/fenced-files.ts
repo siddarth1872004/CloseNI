@@ -38,7 +38,13 @@ export function looksLikePath(raw: string): boolean {
   const s = String(raw || "").trim().replace(/^[`'"*#\s]+|[`'"*:\s]+$/g, "");
   if (!s || s.length > 200) return false;
   if (/\s/.test(s)) return false;                 // paths in these replies never have spaces
-  if (s.startsWith("/") || /^[a-zA-Z]:[\\/]/.test(s)) return false;  // absolute: not ours to write
+  // Absolute, drive-qualified, or a UNC share: none of them are ours to write.
+  // The UNC form was accepted until an edge-case run tried \\server\share\x.py,
+  // which the applier would still have contained but which should never have
+  // been read as a workspace path in the first place.
+  if (s.startsWith("/") || s.startsWith("\\")) return false;
+  if (/^[a-zA-Z]:[\\/]/.test(s)) return false;
+  if (s.includes("\\")) return false;            // backslash paths are not used here
   if (s.includes("..")) return false;             // escaping the workspace
   if (/^https?:/i.test(s)) return false;
   return PATHY.test(s) || BARE_FILES.test(s) || (s.includes("/") && /\.[a-z0-9]+$/i.test(s));
@@ -80,17 +86,32 @@ function pathFromLeadIn(before: string): string | null {
   return null;
 }
 
-/** A path in the first line of the block, as a comment. */
+/**
+ * A path in the first line of the block, as a comment - or bare.
+ *
+ * Bare matters because of what the DOM does to a fence. `\`\`\`python src/x.py`
+ * renders as a <pre> whose language becomes a class, and the rest of the info
+ * string ends up as the first line of the code. By the time the reply has been
+ * read back out of the page, the path is sitting there on its own with no
+ * comment marker, and a trial build lost two files to exactly that.
+ *
+ * Safe because looksLikePath is strict: a bare line only counts when it has no
+ * spaces and a real extension, which ordinary first lines of source do not.
+ */
 function pathFromFirstLine(body: string): { filePath: string; body: string } | null {
   const nl = body.indexOf("\n");
   if (nl === -1) return null;
   const first = body.substring(0, nl);
-  const m = first.match(/^\s*(?:#|\/\/|--|;|<!--|\/\*)\s*(.+?)\s*(?:-->|\*\/)?\s*$/);
-  if (!m) return null;
-  const p = cleanPath(m[1]);
+  const rest = body.substring(nl + 1);
+  // A block that is only a path is not a file.
+  if (!rest.trim()) return null;
+
+  const commented = first.match(/^\s*(?:#|\/\/|--|;|<!--|\/\*)\s*(.+?)\s*(?:-->|\*\/)?\s*$/);
+  const candidate = commented ? commented[1] : first;
+  const p = cleanPath(candidate);
   if (!p) return null;
-  // The comment named the file; it is not part of the file.
-  return { filePath: p, body: body.substring(nl + 1) };
+  // The line named the file; it is not part of the file.
+  return { filePath: p, body: rest };
 }
 
 /**

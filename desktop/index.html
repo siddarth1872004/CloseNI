@@ -276,16 +276,13 @@
               <input type="checkbox" id="show-browser">
               <label for="show-browser">Show Browser</label>
             </div>
-            <div class="micro mt-2">Parallel steps</div>
-            <select id="concurrency-select">
-              <option value="1">1 - one at a time</option>
-              <option value="2" selected>2 - faster</option>
-              <option value="3">3 - fastest</option>
-            </select>
-            <div class="hint">Steps that do not depend on each other run at the same
-              time, in separate tabs. Each one is another conversation with your
-              provider, and providers rate-limit &mdash; if builds start hanging,
-              lower this. 2 is a safe default.</div>
+            <!-- The parallel-steps control was removed rather than left to sit
+                 there doing nothing: chat, planning and building all share one
+                 conversation now, and a conversation has one composer. A
+                 setting that cannot change anything is worse than no setting. -->
+            <div class="hint mt-2">Chat, planning and building share one conversation
+              with your provider, so build steps run one at a time. That keeps each
+              step prompt small, because the model can already see the plan.</div>
           </div>
 
           <div class="settings-section" data-section="appearance">

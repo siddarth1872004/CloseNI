@@ -18,7 +18,11 @@ export type BuildLedger = Record<string, LedgerEntry>;
 export interface WorkspaceSession {
   chats: ChatRef[];
   activeChat: string | null;
-  /** Thread shared by every step of the current build run. */
+  /**
+   * Legacy: the build used to run in a thread of its own. Chat, plan and build
+   * now share activeChat. Kept in the type so an existing sessions.json still
+   * parses, and still cleared by resetBuildRun so nothing stale lingers.
+   */
   activeBuildThread?: string | null;
   /** What that thread has already been shown. Reset when a build starts. */
   buildLedger?: BuildLedger;
@@ -81,25 +85,6 @@ function ensureEntry(sessions: Sessions, workspace: string): WorkspaceSession {
   if (!sessions[workspace]) sessions[workspace] = { chats: [], activeChat: null };
   if (!Array.isArray(sessions[workspace].chats)) sessions[workspace].chats = [];
   return sessions[workspace];
-}
-
-export function getBuildThread(file: string, workspace: string): string | null {
-  if (!workspace) return null;
-  return readSessions(file)[workspace]?.activeBuildThread ?? null;
-}
-
-export function setBuildThread(file: string, workspace: string, url: string): void {
-  if (!workspace || !url) return;
-  const sessions = readSessions(file);
-  ensureEntry(sessions, workspace).activeBuildThread = url;
-  writeSessions(file, sessions);
-}
-
-export function clearBuildThread(file: string, workspace: string): void {
-  if (!workspace) return;
-  const sessions = readSessions(file);
-  ensureEntry(sessions, workspace).activeBuildThread = null;
-  writeSessions(file, sessions);
 }
 
 export function getBuildLedger(file: string, workspace: string): BuildLedger {

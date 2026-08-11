@@ -252,7 +252,7 @@ function banner() {
     null,
     [4.1, ['step 1', C.dim, LABEL], ['requirements.txt, src/config.py', C.text, DETAIL], ['done', C.green, STATUS]],
     [4.7, ['step 2', C.dim, LABEL], ['src/models.py', C.text, DETAIL], ['done', C.green, STATUS]],
-    [5.3, ['step 3', C.dim, LABEL], ['src/store.py', C.text, DETAIL], ['parallel', C.violet, TAG], ['done', C.green, STATUS]],
+    [5.3, ['step 3', C.dim, LABEL], ['src/store.py', C.text, DETAIL], ['done', C.green, STATUS]],
     [5.9, ['step 4', C.dim, LABEL], ['src/routes.py', C.text, DETAIL], ['failed', C.red, STATUS]],
     [6.5, ['SyntaxError: line 41 · unmatched brace → sent back to the model', C.amber, DETAIL]],
     [7.4, ['step 4', C.dim, LABEL], ['src/routes.py', C.text, DETAIL], ['retry', C.amber, TAG], ['done', C.green, STATUS]],

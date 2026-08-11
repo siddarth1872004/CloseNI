@@ -96,21 +96,36 @@ export function salvageTruncatedJson(text: string): string[] {
   const body = text.substring(start);
   const shut = (s: string) => s + closers.slice().reverse().join("");
 
+  // Ordered by how much they invent, least first. This ordering is the whole
+  // safety property: closing an open string recovers content that was cut off
+  // mid-write, and for a source file that means a truncated, uncompilable one -
+  // which then either fails its syntax check or, worse, overwrites a file that
+  // was fine. Dropping the half-written element costs one re-ask; keeping it
+  // costs correctness. An end-to-end build proved the point by salvaging
+  // `"import os\nprint(` into b.py and failing the step on it.
   const out: string[] = [];
-  // 1. Close the open string, then the open containers.
-  if (inString) out.push(shut(body + '"'));
-  else out.push(shut(body));
-  // 2. Same, minus a dangling "key": that never got a value.
-  const noDanglingKey = (inString ? body + '"' : body)
-    .replace(/,?\s*"(?:[^"\\]|\\.)*"\s*:\s*$/, "");
-  out.push(shut(noDanglingKey));
-  // 3. Same, minus the whole half-written last element.
+  const closed = inString ? body + '"' : body;
+
+  // 1. Drop the whole half-written last element.
+  const noDanglingKey = closed.replace(/,?\s*"(?:[^"\\]|\\.)*"\s*:\s*$/, "");
   const lastComma = noDanglingKey.lastIndexOf(",");
   if (lastComma > 0) out.push(shut(noDanglingKey.substring(0, lastComma)));
+  // 2. Drop only a dangling "key": that never got a value.
+  out.push(shut(noDanglingKey));
+  // 3. Last resort: keep what was written and just close it. Reached only when
+  //    neither of the above parses, so nothing usable would be recovered
+  //    otherwise.
+  out.push(shut(closed));
   return out;
 }
 
-export function robustParseJson(text: string): any {
+export function robustParseJson(input: string): any {
+  // Coerced rather than assumed. Every caller passes something read out of a
+  // page, and a locator that resolves to nothing yields null - which threw here
+  // on `.match`, crashing the agent instead of failing the step and re-asking.
+  // An empty reply is an ordinary outcome, not an exceptional one.
+  const text = typeof input === "string" ? input : String(input ?? "");
+  if (!text) return null;
   const candidates: string[] = [];
   const fenced = text.match(/\`\`\`(?:json)?\s*([\s\S]*?)\`\`\`/);
   if (fenced) candidates.push(fenced[1]);
@@ -147,7 +162,9 @@ function unq(s: string): string {
   return s.substring(1, s.length - 1);
 }
 
-export function extractStepsHeuristic(text: string): any {
+export function extractStepsHeuristic(input: string): any {
+  const text = typeof input === "string" ? input : String(input ?? "");
+  if (!text) return null;
   const steps: any[] = [];
   const titleRe = /"title"\s*:\s*"((?:[^"\\]|\\.)*)"/g;
   const titles: { title: string; index: number }[] = [];

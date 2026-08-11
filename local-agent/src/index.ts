@@ -102,7 +102,26 @@ async function openProvider(providerId: string, fresh: boolean = false, workspac
   return { controller: controller, config: config, resumed: resumed };
 }
 
-/** Build steps share one thread: step 0 starts it, later steps resume it. */
+/**
+ * Chat, plan and build all run in one conversation.
+ *
+ * The build used to open a thread of its own, which meant every step prompt had
+ * to carry the plan, the file tree and the format rules into a model that had
+ * never seen any of it - step 1 of a fifteen-step build came to 9853 characters
+ * and spent the entire completion wait being read rather than answered.
+ *
+ * Continuing the thread that already holds the discussion and the plan is both
+ * what a person would do and dramatically less to send. The cost is that a
+ * conversation has one composer, so steps run one at a time; buildSessionMode
+ * enforces that.
+ *
+ * resetBuildRunForWorkspace still runs on the first step. It clears the ledger
+ * of which files the thread has been shown - and only that, plus the now-unused
+ * build thread; activeChat is untouched, which is what lets the conversation
+ * survive the reset. Starting a build after New Chat means the thread really is
+ * empty, so re-sending the context is the safe default; the cost when the
+ * thread is the same one is a little repetition on step 1.
+ */
 async function openProviderForBuild(providerId: string, workspace: string, isFirstStep: boolean) {
   const registry = new ProviderRegistry();
   registry.loadProviders();
@@ -110,16 +129,16 @@ async function openProviderForBuild(providerId: string, workspace: string, isFir
   if (!config) throw new Error("Provider not found: " + providerId);
   const controller = new PlaywrightController(config);
   controller.setWorkspace(workspace);
-  controller.setThreadKind("build");
+  // "chat", not "build": one conversation, tracked in one place.
+  controller.setThreadKind("chat");
   await controller.launch(config);
-  if (isFirstStep) {
-    controller.resetBuildRunForWorkspace();
-    await controller.navigateFresh(config);
-  } else {
-    await controller.navigateToBuildThread(config);
-  }
+  if (isFirstStep) controller.resetBuildRunForWorkspace();
+  const resumed = await controller.navigateToChat(config);
+  console.log(resumed
+    ? "Building in the existing conversation (it already has the plan)."
+    : "No conversation to continue - building in a new one.");
   await controller.waitForLogin();
-  return { controller: controller, config: config };
+  return { controller: controller, config: config, resumed: resumed };
 }
 
 async function chatMode(prompt: string, providerId: string, workspace: string = "") {
@@ -202,18 +221,18 @@ async function askMode(workspace: string, providerId: string, question: string, 
 
   const controller = new PlaywrightController(config);
   controller.setWorkspace(workspace);
-  controller.setThreadKind("build");
+  controller.setThreadKind("chat");
 
-  if (!controller.getBuildThreadUrl()) {
-    emit({ success: false, error: "No build thread for this workspace. Build a project before asking about a run." });
+  if (!controller.describeSavedThread(workspace)) {
+    emit({ success: false, error: "No conversation for this workspace yet. Build a project before asking about a run." });
     return;
   }
 
   await controller.launch(config);
   try {
-    const resumed = await controller.navigateToBuildThread(config);
+    const resumed = await controller.navigateToChat(config);
     if (!resumed) {
-      emit({ success: false, error: "The build thread could not be reopened, so there is no context to answer against." });
+      emit({ success: false, error: "The conversation could not be reopened, so there is no context to answer against." });
       return;
     }
     await controller.waitForLogin();
@@ -254,28 +273,6 @@ async function revisePlanMode(changes: string, workspace: string, providerId: st
   // Sent to a fresh chat it asked the model to revise something it had never
   // seen, which is why revisions came back as unrelated plans.
   const { controller, config } = await openProvider(providerId, false, workspace);
-  try {
-    let prevCount = await controller.countMessages(config);
-    let prevContent = await controller.getLastMessageText(config);
-    await controller.sendPrompt(prompt, config);
-    let response = await controller.waitForResponse(config, prevCount, prevContent);
-    let plan = parsePlanRobust(response);
-    if (!plan) {
-      prevCount = await controller.countMessages(config);
-      prevContent = await controller.getLastMessageText(config);
-      await controller.sendPrompt(REASK_PROMPT, config);
-      response = await controller.waitForResponse(config, prevCount, prevContent);
-      plan = parsePlanRobust(response);
-    }
-    if (plan && plan.steps) emit({ success: true, plan: plan });
-    else emit({ success: false, error: "Could not parse revised plan.", raw: response });
-  } finally { await controller.close(); }
-}
-
-async function revisePlanModeOld(changes: string, workspace: string, providerId: string) {
-  const prompt = "Please update the implementation plan you created earlier with these changes:\n" + changes +
-    "\n\nReply with ONLY the complete updated plan as a JSON object wrapped in a \`\`\`json code block, using the exact same format as before (summary + steps with title, detail, files). No extra text.";
-  const { controller, config } = await openProvider(providerId, true, workspace);  // FRESH chat
   try {
     let prevCount = await controller.countMessages(config);
     let prevContent = await controller.getLastMessageText(config);
@@ -340,6 +337,21 @@ function buildPrompt(userPrompt: string, tree: string, relevantFiles: { path: st
       : "\n\nNew files since the last step (DO NOT recreate or collapse into these):\n";
     for (const f of priorFiles) contextStr += "- " + f + "\n";
   }
+  // The format specification runs to about two thousand characters and used to
+  // be repeated on every single step, because each step was talking to a thread
+  // that had never seen it. In one conversation it is said once and then
+  // referred back to, which is most of why a step prompt is now a fraction of
+  // what it was. A one-line reminder still goes with each step: models drift,
+  // and re-stating the shape is cheaper than a re-ask.
+  if (!isFirstStep) {
+    return "Next step. Same reply format as before - either the " +
+      "{\"files\":[{\"path\",\"mode\",\"content\"}]} JSON block, or one code block per " +
+      "file with the path on the fence line. Write every file completely; no " +
+      "ellipses and no '... rest unchanged'." +
+      contextStr +
+      "\n\nStep:\n" + userPrompt;
+  }
+
   return "You are an autonomous coding agent assistant.\n" +
     "Reply with the file changes. There are two accepted formats. Pick ONE.\n" +
     "\n" +
@@ -704,10 +716,10 @@ async function suggestMode(workspace: string, providerId: string, stepIndex: num
 
   const controller = new PlaywrightController(config);
   controller.setWorkspace(workspace);
-  controller.setThreadKind("build");
+  controller.setThreadKind("chat");
 
-  if (!controller.getBuildThreadUrl()) {
-    emit({ success: false, error: "No build thread for this workspace. Run a build before suggesting changes." });
+  if (!controller.describeSavedThread(workspace)) {
+    emit({ success: false, error: "No conversation for this workspace yet. Run a build before suggesting changes." });
     return;
   }
 
@@ -715,9 +727,9 @@ async function suggestMode(workspace: string, providerId: string, stepIndex: num
   try {
     // A fresh chat would answer confidently with none of the build in view, so
     // a failed resume is a refusal rather than a fallback.
-    const resumed = await controller.navigateToBuildThread(config);
+    const resumed = await controller.navigateToChat(config);
     if (!resumed) {
-      emit({ success: false, error: "The build thread could not be reopened, so there is no context to revise against." });
+      emit({ success: false, error: "The conversation could not be reopened, so there is no context to revise against." });
       return;
     }
     await controller.waitForLogin();
@@ -752,35 +764,20 @@ function sessionEvent(payload: any) {
 async function buildSessionMode(workspace: string, providerId: string, autonomy: string) {
   const { controller, config } = await openProviderForBuild(providerId, workspace, true);
 
-  // Default 2. The realistic failure of raising this is not a crash - it is the
-  // user's provider account being throttled, and a throttled session looks like
-  // a slow reply, which the completion detector will patiently wait out.
-  const limit = Math.max(1, Math.min(4, parseInt(process.env.AGENT_CONCURRENCY || "2", 10) || 2));
-  const workers: PlaywrightController[] = [controller];
-  const sharedContext = controller.getContext();
-  for (let i = 1; i < limit && sharedContext; i++) {
-    // Another page in the same context, never a second profile: Chromium locks
-    // a profile directory, and cloning one is what sub-project 8 refused.
-    const extra = new PlaywrightController(config);
-    extra.setWorkspace(workspace);
-    // "worker", not "build": its thread is transient and must not overwrite the
-    // main build thread that a resume depends on.
-    extra.setThreadKind("worker");
-    await extra.attachTo(sharedContext, config);
-    // attachTo opens a blank page. Without navigating it, the first step routed
-    // to this worker finds no chat input and fails - which is exactly what the
-    // end-to-end suite caught. Each worker starts its own fresh conversation:
-    // it is a separate thread by design, so it must not resume the main one.
-    await extra.navigateFresh(config);
-    const ready = await extra.waitForLogin();
-    if (!ready) {
-      console.log("Worker " + i + " never got a chat input; continuing with fewer workers.");
-      await extra.close();
-      break;
-    }
-    workers.push(extra);
+  // One conversation means one composer, so steps run one at a time.
+  //
+  // Parallel workers each needed a thread of their own, which is exactly what
+  // made every step prompt carry the whole plan: a worker had never seen the
+  // discussion. Sharing the conversation is worth more than the parallelism -
+  // a serial step in a thread that already has the context is smaller, faster
+  // to answer and far more likely to come back parseable than a parallel one
+  // that has to re-explain the project from nothing.
+  const requested = Math.max(1, Math.min(4, parseInt(process.env.AGENT_CONCURRENCY || "2", 10) || 2));
+  if (requested > 1) {
+    console.log("Steps run one at a time: chat, plan and build share a single conversation.");
   }
-  console.log("Build session ready with " + workers.length + " worker(s).");
+  const workers: PlaywrightController[] = [controller];
+  console.log("Build session ready (one conversation).");
   const pool = createPool(workers);
 
   let closing = false;

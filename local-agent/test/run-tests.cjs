@@ -96,34 +96,50 @@ function testSessionStore() {
   const file = path.join(dir, "sessions.json");
 
   check("missing file reads as empty", JSON.stringify(store.readSessions(file)) === "{}");
-  check("missing build thread is null", store.getBuildThread(file, "/ws") === null);
 
-  store.setBuildThread(file, "/ws", "https://chat.example.com/c/abc");
-  check("build thread round-trips", store.getBuildThread(file, "/ws") === "https://chat.example.com/c/abc");
-
-  // The desktop app owns activeChat and chats. Writing a build thread must not
-  // disturb them.
-  const existing = store.readSessions(file);
-  existing["/ws"].activeChat = "https://chat.example.com/c/zzz";
-  existing["/ws"].chats = [{ url: "https://chat.example.com/c/zzz", title: "T", createdAt: "2026-01-01" }];
-  store.writeSessions(file, existing);
-  store.setBuildThread(file, "/ws", "https://chat.example.com/c/def");
+  // The build used to keep a thread of its own; chat, plan and build now share
+  // activeChat, so getBuildThread / setBuildThread / clearBuildThread are gone.
+  // What those tests were really protecting is kept here against the API that
+  // survived.
+  store.writeSessions(file, {
+    "/ws": {
+      chats: [{ url: "https://chat.example.com/c/zzz", title: "T", createdAt: "2026-01-01" }],
+      activeChat: "https://chat.example.com/c/zzz",
+      activeChatProvider: "deepseek",
+    },
+  });
   const after = store.readSessions(file);
-  check("activeChat preserved", after["/ws"].activeChat === "https://chat.example.com/c/zzz");
-  check("chats preserved", after["/ws"].chats.length === 1);
-  check("build thread updated", after["/ws"].activeBuildThread === "https://chat.example.com/c/def");
+  check("activeChat round-trips", after["/ws"].activeChat === "https://chat.example.com/c/zzz");
+  check("chats round-trip", after["/ws"].chats.length === 1);
+  check("the provider that owns the thread is recorded", after["/ws"].activeChatProvider === "deepseek");
 
-  store.clearBuildThread(file, "/ws");
-  check("cleared build thread reads null", store.getBuildThread(file, "/ws") === null);
-  check("clearing leaves activeChat alone", store.readSessions(file)["/ws"].activeChat === "https://chat.example.com/c/zzz");
+  // THE invariant of the one-conversation design: starting a build resets the
+  // ledger, and must not take the conversation with it. If this ever regresses,
+  // every build silently starts a new thread and every step prompt grows back
+  // to carrying the whole project.
+  store.setBuildLedger(file, "/ws", { "a.py": { hash: "h1", step: 0 } });
+  store.resetBuildRun(file, "/ws");
+  const reset = store.readSessions(file);
+  check("a build reset clears the ledger",
+    JSON.stringify(reset["/ws"].buildLedger) === "{}", JSON.stringify(reset["/ws"].buildLedger));
+  check("a build reset leaves the conversation alone",
+    reset["/ws"].activeChat === "https://chat.example.com/c/zzz", reset["/ws"].activeChat);
+  check("a build reset leaves the chat list alone", reset["/ws"].chats.length === 1);
+
+  // Session files carry live conversation URLs and must not be world-readable.
+  if (process.platform !== "win32") {
+    check("the session file is written 0600",
+      (fs.statSync(file).mode & 0o777) === 0o600, "0" + (fs.statSync(file).mode & 0o777).toString(8));
+  }
 
   fs.writeFileSync(file, "{ this is not json");
   check("corrupt file reads as empty", JSON.stringify(store.readSessions(file)) === "{}");
 
   check("workspaces are independent", (() => {
-    store.setBuildThread(file, "/a", "https://x/1");
-    store.setBuildThread(file, "/b", "https://x/2");
-    return store.getBuildThread(file, "/a") === "https://x/1" && store.getBuildThread(file, "/b") === "https://x/2";
+    store.setBuildLedger(file, "/a", { "x.py": { hash: "1", step: 0 } });
+    store.setBuildLedger(file, "/b", { "y.py": { hash: "2", step: 0 } });
+    const s = store.readSessions(file);
+    return !!s["/a"].buildLedger["x.py"] && !s["/a"].buildLedger["y.py"] && !!s["/b"].buildLedger["y.py"];
   })());
 
   // --- build ledger
@@ -135,13 +151,15 @@ function testSessionStore() {
   check("ledger round-trips", led["a.py"].hash === "h1" && led["b.py"].hash === null, JSON.stringify(led));
   check("ledger records the step", led["a.py"].step === 0);
 
-  store.setBuildThread(lf, "/ws", "https://chat.example.com/c/run1");
   store.setBuildLedger(lf, "/ws", { "a.py": { hash: "h2", step: 1 } });
-  check("ledger and thread coexist", store.getBuildThread(lf, "/ws") === "https://chat.example.com/c/run1" && store.getBuildLedger(lf, "/ws")["a.py"].hash === "h2");
+  check("ledger updates in place", store.getBuildLedger(lf, "/ws")["a.py"].hash === "h2");
 
   store.resetBuildRun(lf, "/ws");
-  check("resetBuildRun clears the thread", store.getBuildThread(lf, "/ws") === null);
   check("resetBuildRun clears the ledger", JSON.stringify(store.getBuildLedger(lf, "/ws")) === "{}");
+  // Legacy field from when the build had a thread of its own. Still cleared, so
+  // an upgraded install does not keep a stale one in its session file forever.
+  check("resetBuildRun clears the legacy build thread",
+    (store.readSessions(lf)["/ws"].activeBuildThread ?? null) === null);
 
   // The desktop app's fields must survive a reset.
   const s2 = store.readSessions(lf);
@@ -1175,10 +1193,17 @@ function testRobustFileParsing() {
     paths('```json\n{"files":[{"path":"ok.py","content":"x=1"}]}\n```') === "ok.py");
 
   // Truncation - what a completion timeout leaves behind.
-  check("a reply cut off mid-string keeps the files already written",
-    paths('```json\n{"files":[{"path":"a.py","content":"import os\\nprint(1)') === "a.py");
+  check("a reply cut off mid-file keeps the files completed before the cut",
+    paths('{"files":[{"path":"a.py","content":"x=1"},{"path":"b.py","content":"import os\\nprint(') === "a.py");
   check("a reply cut off after a key keeps the complete entries",
     paths('{"files":[{"path":"a.py","content":"x=1"},{"path":"b.py","content":') === "a.py");
+  // The half-written file is dropped rather than written truncated. Closing an
+  // open string recovers content that was cut off mid-write, which for source
+  // means a file that will not compile - and may overwrite one that did. An
+  // end-to-end build caught this: `"import os\nprint(` was salvaged into b.py
+  // and failed the step. One re-ask is cheaper than a broken file.
+  check("a single file cut off mid-content is refused, not written partial",
+    parseFilesRobust('```json\n{"files":[{"path":"a.py","content":"import os\\nprint(1)') === null);
   check("salvage does nothing to already-balanced json",
     salvageTruncatedJson('{"a":1}').length === 0);
 
@@ -1218,6 +1243,59 @@ function testRobustFileParsing() {
     parseFilesRobust('{"files":[{"path":"b.py"}]}') === null);
 
   check("empty blocks are ignored", extractFencedFiles("```python x.py\n\n```").length === 0);
+
+  // Reading a reply back out of a page loses the fence info string: the
+  // language becomes a class on <code> and anything after it lands as the first
+  // line of the code. A trial build lost two files to this before the bare
+  // first line was accepted as a path.
+  check("a bare path on the block's first line is accepted",
+    paths("\n```\n src/store.py\nHABITS = []\n```\n") === "src/store.py");
+  check("a block that is only a path is not a file",
+    parseFilesRobust("```\nsrc/x.py\n```") === null);
+  check("a normal first line is not mistaken for a path",
+    parseFilesRobust("```\nimport os\nprint(1)\n```") === null);
+}
+
+function testAbbreviationGuard() {
+  section("abbreviated files never overwrite real ones");
+  const { isAbbreviated, applyPatch } = require(path.join(DIST, "patch/patch-applier.js"));
+
+  // Flagged: a stand-in for the file rather than the file.
+  check("'rest of the file unchanged' is caught", isAbbreviated("A = 1\n# ... rest of the file unchanged ...\n"));
+  check("'existing code here' is caught", isAbbreviated("function a(){}\n// existing code here\n"));
+  check("'same as before' is caught", isAbbreviated("x = 1\n# ... same as before\n"));
+  check("'keep the rest as-is' is caught", isAbbreviated("x = 1\n// keep the rest of the file as-is\n"));
+
+  // Allowed: an ellipsis on its own is ordinary code.
+  check("python Ellipsis is not flagged", !isAbbreviated("def f():\n    ...\n"));
+  check("slicing is not flagged", !isAbbreviated("xs = data[...]\n"));
+  check("prose using the word rest is not flagged",
+    !isAbbreviated('"""Handles the rest of the pipeline."""\nx = 1\n'));
+  check("empty content is not flagged", !isAbbreviated(""));
+
+  // And the behaviour that matters: it must not reach disk.
+  const ws = fs.mkdtempSync(path.join(os.tmpdir(), "agentic-abbrev-"));
+  const target = path.join(ws, "config.py");
+  fs.writeFileSync(target, "DEBUG = True\nDB_PATH = 'habits.db'\n");
+
+  const res = applyPatch(ws, {
+    changes: [{ filePath: "config.py", mode: "overwrite", language: "python",
+      newContent: "DEBUG = True\n# ... rest of the file unchanged ...\n" }],
+  });
+  check("the overwrite is refused", res.appliedFiles.length === 0, JSON.stringify(res.appliedFiles));
+  check("the error names the problem", (res.errors || []).some(function (e) { return /abbreviated/i.test(e); }), JSON.stringify(res.errors));
+  check("the real file is untouched",
+    fs.readFileSync(target, "utf8").includes("DB_PATH"), fs.readFileSync(target, "utf8"));
+
+  // Creating a NEW file with the same text destroys nothing, so it is allowed:
+  // refusing there would risk blocking legitimate code on a guess.
+  const fresh = applyPatch(ws, {
+    changes: [{ filePath: "brand-new.py", mode: "create", language: "python",
+      newContent: "A = 1\n# ... rest of the file unchanged ...\n" }],
+  });
+  check("a new file with the same text is allowed", fresh.appliedFiles.length === 1, JSON.stringify(fresh.errors));
+
+  fs.rmSync(ws, { recursive: true, force: true });
 }
 
 async function testAgentQueue() {
@@ -1799,24 +1877,28 @@ async function testBrowserExtraction() {
     c.createNewChat("/my/ws");
     check("new chat clears the active thread", c.getChatUrlForWorkspace("/my/ws") === null);
 
-    // A build thread is tracked separately from the Chat/Plan thread, so the two
-    // never overwrite each other.
+    // Chat, plan and build all write the one conversation. "worker" is the
+    // only kind that does not: it is the read-only account probe, and it must
+    // never adopt or overwrite the conversation it is reporting on.
     const readStore = () => JSON.parse(fs.readFileSync(storeFile, "utf-8"));
     c.setWorkspace("/my/ws");
-    c.setThreadKind("build");
-    c.setChatUrlForWorkspace("/my/ws", "https://example.test/c/build-1");
-    check("build kind writes activeBuildThread", readStore()["/my/ws"].activeBuildThread === "https://example.test/c/build-1", JSON.stringify(readStore()["/my/ws"]));
-    check("build kind leaves activeChat untouched", readStore()["/my/ws"].activeChat !== "https://example.test/c/build-1");
-    check("getBuildThreadUrl reads it back", c.getBuildThreadUrl() === "https://example.test/c/build-1");
-
     c.setThreadKind("chat");
     c.setChatUrlForWorkspace("/my/ws", "https://example.test/a/chat-1");
-    check("chat kind still writes activeChat", readStore()["/my/ws"].activeChat === "https://example.test/a/chat-1");
-    check("writing the chat thread preserves the build thread", readStore()["/my/ws"].activeBuildThread === "https://example.test/c/build-1");
+    check("chat kind writes activeChat", readStore()["/my/ws"].activeChat === "https://example.test/a/chat-1");
+    // Read from cfg rather than hardcoded: this is what stops a resumed thread
+    // being handed to a provider it does not belong to.
+    check("the thread records which provider owns it",
+      readStore()["/my/ws"].activeChatProvider === cfg.id, JSON.stringify(readStore()["/my/ws"]));
 
+    c.setThreadKind("worker");
+    c.setChatUrlForWorkspace("/my/ws", "https://example.test/c/probe-1");
+    check("a worker never overwrites the conversation",
+      readStore()["/my/ws"].activeChat === "https://example.test/a/chat-1", readStore()["/my/ws"].activeChat);
+
+    c.setThreadKind("chat");
     c.resetBuildRunForWorkspace();
-    check("build thread can be cleared", c.getBuildThreadUrl() === null);
-    check("clearing the build thread preserves activeChat", readStore()["/my/ws"].activeChat === "https://example.test/a/chat-1");
+    check("starting a build preserves the conversation",
+      readStore()["/my/ws"].activeChat === "https://example.test/a/chat-1");
   } finally {
     await c.close();
     fs.rmSync(root, { recursive: true, force: true });
@@ -1852,6 +1934,7 @@ async function testBrowserExtraction() {
   testLogo();
   testLanguageMark();
   testRobustFileParsing();
+  testAbbreviationGuard();
   await testAgentQueue();
   testProviderGating();
   testToolchain();

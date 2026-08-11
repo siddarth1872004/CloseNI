@@ -198,6 +198,64 @@ async function main() {
     fs.rmSync(ws, { recursive: true, force: true });
   }
 
+  // ------------------------- a reply that is code blocks rather than JSON
+  //
+  // Models drop the JSON format without warning, usually when a file is long
+  // enough that escaping it is awkward, and answer the way they answer
+  // everything else. The reply contains exactly the files that were asked for,
+  // so the whole path through the parser, the applier and the syntax checks has
+  // to work on it - not just the unit-level parse.
+  section("build mode — recovers files from a reply written as code blocks");
+  {
+    const ws = mkWorkspace();
+    mock.setReplies([
+      "Sure. Here is the config, and then the model.\n\n" +
+      "**src/config.py**\n" +
+      F + "python\nDEBUG = True\nDB_PATH = 'habits.db'\n" + F + "\n\n" +
+      "And the model itself:\n\n" +
+      F + "python\n# src/models.py\nclass Habit:\n    def __init__(self, name):\n        self.name = name\n" + F + "\n\n" +
+      "That should be everything for this step.",
+    ]);
+    const { result } = await runAgent(["browser", "build it", ws, "mock", "auto", "0", "Config and model", "Habits"]);
+
+    check("a code-block reply still succeeds", !!result && result.success === true, JSON.stringify(result));
+    check("the file named by a heading is written", fs.existsSync(path.join(ws, "src/config.py")));
+    check("the file named by a comment is written", fs.existsSync(path.join(ws, "src/models.py")));
+
+    const models = fs.existsSync(path.join(ws, "src/models.py"))
+      ? fs.readFileSync(path.join(ws, "src/models.py"), "utf8") : "";
+    check("real code lands on disk", models.includes("class Habit:"), models.slice(0, 120));
+    // The comment naming the file is not part of the file.
+    check("the path comment is not written into the file", !models.includes("# src/models.py"), models.slice(0, 120));
+    // Prose around the blocks must not be mistaken for a file.
+    check("only the two real files were written",
+      !!result && Array.isArray(result.appliedFiles) && result.appliedFiles.length === 2,
+      JSON.stringify(result && result.appliedFiles));
+
+    fs.rmSync(ws, { recursive: true, force: true });
+  }
+
+  // ------------------------------- a reply cut off by the completion timeout
+  section("build mode — salvages a reply that stops mid-JSON");
+  {
+    const ws = mkWorkspace();
+    // No closing brace and no closing fence: what an extraction taken while the
+    // model was still writing actually looks like.
+    mock.setReplies([
+      F + 'json\n{"files":[' +
+      '{"path":"a.py","mode":"create","content":"VALUE = 1\\n"},' +
+      '{"path":"b.py","mode":"create","content":"import os\\nprint(',
+    ]);
+    const { result } = await runAgent(["browser", "build it", ws, "mock", "auto", "0", "Two files", "Salvage"]);
+
+    check("a truncated reply still succeeds", !!result && result.success === true, JSON.stringify(result));
+    check("the file completed before the cut is written", fs.existsSync(path.join(ws, "a.py")));
+    check("its content is intact",
+      fs.existsSync(path.join(ws, "a.py")) && fs.readFileSync(path.join(ws, "a.py"), "utf8").includes("VALUE = 1"));
+
+    fs.rmSync(ws, { recursive: true, force: true });
+  }
+
   // ------------------------------------------------- build mode: cross-step context
   section("build mode — later steps see earlier files");
   {
@@ -547,11 +605,15 @@ async function main() {
     check("all three steps used ONE thread", mock.threadCount() === 1, "threads: " + mock.threadCount());
     check("that thread saw three prompts", mock.promptsForThread("1").length === 3, "prompts: " + mock.promptsForThread("1").length);
 
-    // A new build (step 0 again) must NOT reuse the previous run's thread.
+    // Chat, plan and build now share one conversation, so a new build continues
+    // it rather than opening another. This reverses the previous contract on
+    // purpose: a build in its own thread had to re-explain the whole project in
+    // every step prompt, which is what pushed step 1 past the completion wait.
+    // Starting over is what New Chat is for.
     mock.setReplies([F + 'json\n{"files":[{"path":"fresh.js","mode":"create","content":"console.log(9);\\n"}]}\n' + F]);
     const d0 = "Execute ONLY this step: step 0. Expected files: fresh.js";
     await runAgent(["browser", d0, ws, "mock", "auto", "0", d0, "goal"]);
-    check("a new build starts a new thread", mock.threadCount() === 2, "threads: " + mock.threadCount());
+    check("a new build continues the same conversation", mock.threadCount() === 1, "threads: " + mock.threadCount());
 
     fs.rmSync(ws, { recursive: true, force: true });
   }
@@ -574,7 +636,7 @@ async function main() {
     const { result, out } = await runAgent(["browser", d1, ws, "mock", "auto", "1", d1, "goal"]);
 
     check("step 1 succeeds", !!result && result.success === true, JSON.stringify(result));
-    check("step 1 resumed rather than starting fresh", /Resuming build thread/.test(out), (out.match(/Starting fresh chat.*/) || [""])[0]);
+    check("step 1 resumed rather than starting fresh", /Resuming session chat/.test(out), (out.match(/Starting fresh chat.*/) || [""])[0]);
     check("step 1 landed in the same thread", mock.threadCount() === 1, "threads: " + mock.threadCount());
     check("the thread holds both prompts", mock.promptsForThread("1").length === 2, "thread prompts: " + mock.promptsForThread("1").length);
 
@@ -722,7 +784,7 @@ async function main() {
   }
 
   // ------------------------------------ revising a step through its build thread
-  section("suggest revises a step in the build thread");
+  section("suggest revises a step in the shared conversation");
   {
     const ws = mkWorkspace();
     mock.resetThreads();
@@ -730,14 +792,14 @@ async function main() {
     mock.setReplies([F + 'json\n{"files":[{"path":"src/store.js","mode":"create","content":"function add(x) { items.push(x); }\\n"}]}\n' + F]);
     const d0 = "Execute ONLY this step: step 0. Expected files: src/store.js";
     await runAgent(["browser", d0, ws, "mock", "auto", "0", d0, "goal"]);
-    check("the build created one thread", mock.threadCount() === 1, "threads: " + mock.threadCount());
+    check("the build used the one conversation", mock.threadCount() === 1, "threads: " + mock.threadCount());
 
     mock.setReplies([F + 'json\n{"files":[{"path":"src/store.js","mode":"overwrite","content":"function add(x) { items.push(x); return x; }\\n"}]}\n' + F]);
     const sug = await runAgent(["suggest", ws, "mock", "0", "make add() return the item"]);
 
     check("suggest succeeds", !!sug.result && sug.result.success === true, JSON.stringify(sug.result));
-    check("suggest reuses the build thread", mock.threadCount() === 1, "threads: " + mock.threadCount());
-    check("suggest resumed rather than starting fresh", /Resuming build thread/.test(sug.out), (sug.out.match(/Starting fresh chat.*/) || [""])[0]);
+    check("suggest reuses the conversation", mock.threadCount() === 1, "threads: " + mock.threadCount());
+    check("suggest resumed rather than starting fresh", /Resuming session chat/.test(sug.out), (sug.out.match(/Starting fresh chat.*/) || [""])[0]);
     check("the suggestion text reached the model", (mock.prompts()[0] || "").includes("make add() return the item"), (mock.prompts()[0] || "").slice(0, 200));
     check("the change was applied", fs.readFileSync(path.join(ws, "src/store.js"), "utf8").includes("return x"), fs.readFileSync(path.join(ws, "src/store.js"), "utf8"));
     check("an overwrite reports a backup", !!sug.result && !!sug.result.backupDir, JSON.stringify(sug.result));
@@ -746,14 +808,14 @@ async function main() {
   }
 
   // ----------------------------------- refusing rather than guessing blind
-  section("suggest refuses without a build thread");
+  section("suggest refuses without a conversation");
   {
     const ws = mkWorkspace();
     mock.resetThreads();
     mock.setReplies([F + 'json\n{"files":[{"path":"x.js","mode":"create","content":"1;\\n"}]}\n' + F]);
     const sug = await runAgent(["suggest", ws, "mock", "0", "change something"]);
-    check("suggest fails when there is no build thread", !!sug.result && sug.result.success === false, JSON.stringify(sug.result));
-    check("the reason names the missing thread", !!sug.result && /build/i.test(sug.result.error || ""), sug.result && sug.result.error);
+    check("suggest fails when there is no conversation", !!sug.result && sug.result.success === false, JSON.stringify(sug.result));
+    check("the reason names the missing conversation", !!sug.result && /conversation/i.test(sug.result.error || ""), sug.result && sug.result.error);
     check("no thread was created", mock.threadCount() === 0, "threads: " + mock.threadCount());
     fs.rmSync(ws, { recursive: true, force: true });
   }

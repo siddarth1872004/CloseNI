@@ -32,7 +32,7 @@ Every other coding agent bills per token through an API key. CloseNI does not ha
 - [Error Recovery](#error-recovery)
 - [Language Diagnostics Matrix](#language-diagnostics-matrix)
 - [The Run File](#the-run-file)
-- [Concurrency Model](#concurrency-model)
+- [One Conversation](#one-conversation)
 - [Safety Model](#safety-model)
 - [Version Control and Shipping](#version-control-and-shipping)
 - [Visual Themes](#visual-themes)
@@ -52,7 +52,7 @@ Also: [CHANGELOG](CHANGELOG.md) · [Release process](docs/RELEASING.md)
 * **Zero-Credential Operations** — Playwright manages persistent browser profiles using existing web sign-ins. No key, no billing account, no quota dashboard.
 * **One verified provider** — DeepSeek is driven end to end. Qwen Studio and GLM are implemented but gated as coming soon rather than shipped as working.
 * **Adaptive Planning** — Deconstructs high-level prompts into granular, dependency-mapped task graphs. Step count scales with project size rather than being pinned to a fixed ceiling.
-* **Concurrent Step Execution** — Runs independent task steps in parallel across isolated chat sessions inside one browser context.
+* **One Conversation End To End** — Chat, planning and building all continue the same provider conversation, so a build step is a short instruction to a model that can already see the plan rather than a prompt that re-explains the project.
 * **Autonomous Error Recovery** — Captures compiler and linter output verbatim and feeds the real traceback back to the model, twice per step, then stops rather than looping.
 * **Multi-Toolchain Diagnostics** — Native syntax verification across twelve languages, project-wide where the toolchain demands it and per-file where it does not.
 * **Portable Project Runner** — Generates `closeni.run.json` plus standalone `run.sh` / `run.bat`, so a finished project runs with or without CloseNI installed.
@@ -114,8 +114,8 @@ Each provider is a JSON file in [`local-agent/config/providers/`](local-agent/co
     │                    ├──────────────────────────┼─────────────────────►│
     │                    │   apply, syntax check    │       files written  │
     │                    │                          │                      │
-    │                    │   step 2 & 3 (parallel)  │                      │
-    │                    ├═════════════════════════►│                      │
+    │                    │   step 2, same thread    │                      │
+    │                    ├─────────────────────────►│                      │
 ```
 
 Nothing is written before you approve the plan, and every step reports what it touched before the next one begins.
@@ -142,7 +142,7 @@ The step list on the left carries live status. The pane on the right shows the e
 
 Two logs run beneath. **Agent** is CloseNI's own narration (`step 4/7: API routes`). **Project** is raw toolchain output (`RUNNING_CHECK: python3 -m py_compile "src/app/store.py"` → `CHECK_RESULT: PASS`). They are kept separate because one is a story and the other is evidence.
 
-The header carries progress (`building 4/7 · 2 in parallel`) and a **Preview** button that opens a live frontend preview when the project serves one.
+The header carries progress (`building 4/7`) and a **Preview** button that opens a live frontend preview when the project serves one.
 
 #### 03 · Test — run it, and ask about it
 
@@ -182,7 +182,7 @@ Four tabs.
 
 **Provider** selects the chat site, reports whether Chromium is installed, and starts the sign-in.
 
-**Permissions** sets autonomy — *ask each command*, *auto-allow*, or *never run commands* — plus whether the browser window is visible, and how many steps may run in parallel (1, 2, or 3). Two is the default: independent steps run in separate tabs, and each tab is another conversation with your provider, which rate-limits.
+**Permissions** sets autonomy — *ask each command*, *auto-allow*, or *never run commands* — and whether the browser window is visible. There is no parallelism setting: chat, planning and building share one conversation, and a conversation has one composer.
 
 **Appearance** is the theme picker above, with a *texture and glow* toggle for the themes that carry one.
 
@@ -281,20 +281,28 @@ Detection, used only as a last resort, understands Node, Python, Go, Rust, Ruby,
 
 ---
 
-### Concurrency Model
+### One Conversation
 
-One persistent browser context, several pages. Independent steps get their own chat tab and run at the same time.
+Chat, planning and building all continue **the same conversation** on the provider's site — the one you can open in your own browser from the sidebar.
 
 ```
-context (one profile, one login)
-├── page 0   session chat      ← plan, research, the conversation you see
-├── page 1   worker            ← step 2
-└── page 2   worker            ← step 3
+one profile, one login, one thread
+│
+├── "build me a flask todo api"        ← chat
+├── the plan, as JSON                  ← planning, in the same thread
+├── step 1 …  step 2 …  step 3 …       ← the build, still the same thread
+└── "why did this fail?"               ← Test and Suggest, same thread again
 ```
 
-Parallelism is configurable from one to three in Settings, defaulting to two. Higher is faster until the provider starts rate-limiting, at which point builds hang rather than fail cleanly — so the ceiling is deliberately low.
+This is the difference between a step prompt being an instruction and a step prompt being an essay. A build used to run in a thread of its own, so every step had to carry the plan, the file tree and the ~3100-character reply-format specification to a model that had never seen any of it. Step 1 of a fifteen-step build reached **9853 characters** and spent its whole completion wait being read rather than answered — and each failed step blocked every step behind it.
 
-Worker pages are deliberately stateless with respect to your conversation: they navigate fresh, wait for the login to be recognised, do one step, and persist nothing back into the active chat thread. Without that separation, parallel steps overwrite each other's notion of which conversation is current, and the session chat ends up showing a step it never ran.
+In the shared conversation the model already has the plan. The format specification is stated once and referred back to, which alone is **2801 characters saved on every step after the first**.
+
+**The trade-off, stated plainly.** A conversation has one composer, so steps run one at a time. Parallel steps needed a thread each, which is exactly what forced the oversized prompts. A serial step in a thread that already has the context is smaller, faster to answer and far likelier to come back parseable than a parallel one starting from nothing — speed was never the part that was failing.
+
+Earlier versions ran up to three steps in parallel across separate tabs. That work is recorded, with the reasoning for reversing it, in [docs/ROADMAP.md](docs/ROADMAP.md#4--concurrency--multi-agent--built-then-deliberately-reversed). The dependency graph, the scheduler and the serialised-apply lock are all still in place and still correct.
+
+**New Chat** is how you start over: it clears the saved thread, and the next chat, plan or build opens a fresh one.
 
 ---
 
@@ -482,7 +490,7 @@ npm run verify        # 41 structural checks: claims vs code, release config, pa
 npm run verify:visual # all nine themes rendered and contrast-checked, plus the site
 ```
 
-The end-to-end suite drives a real Chromium against a local HTTP server that imitates a chat site. Only the model's answers are faked; the page interaction, streaming detection, extraction, parsing, patch application, and verification are all the production paths. This is what caught the concurrency defects — blank worker pages, workers clobbering the active chat thread, and a session reporting itself ready before its output handler was attached.
+The end-to-end suite drives a real Chromium against a local HTTP server that imitates a chat site. Only the model's answers are faked; the page interaction, streaming detection, extraction, parsing, patch application, and verification are all the production paths. It is the suite that finds the defects reading cannot: blank worker pages and a session reporting itself ready before its output handler was attached, back when steps ran in parallel; and, when chat, plan and build were merged into one conversation, the two assertions that were still checking for the old separate build thread.
 
 #### What the verification scripts cover
 
@@ -535,6 +543,12 @@ local-agent/      Playwright drivers, DOM parsers, and patch application engine
   src/verification/ Check planning and command policy
   src/run-manifest  closeni.run.json read, write, and merge
   test/             Unit and end-to-end harnesses
+
+vscode-extension/ A 97-line VS Code prototype: one command that runs the agent
+                  against the open workspace. It compiles and is kept, but it
+                  predates the desktop app, is not part of any roadmap item, and
+                  has never been exercised by the test suites. The desktop app
+                  is the supported interface.
 
 shared/           Shared type definitions and schemas
 build/            Brand assets and icons

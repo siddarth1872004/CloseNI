@@ -35,7 +35,10 @@
     "verify:visual": "node scripts/verify-visual.mjs",
     "test": "node local-agent/test/run-tests.cjs",
     "test:e2e": "node local-agent/test/run-e2e.cjs",
-    "assets": "node scripts/make-svg-assets.mjs && node scripts/make-screenshots.mjs"
+    "assets": "node scripts/make-svg-assets.mjs && node scripts/make-screenshots.mjs",
+    "trial": "node scripts/trial-build.mjs",
+    "edge": "node scripts/edge-cases.mjs",
+    "verify:all": "npm run verify && npm run edge && npm test"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

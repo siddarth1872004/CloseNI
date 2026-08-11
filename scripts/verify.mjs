@@ -104,6 +104,32 @@ for (const p of gated) {
     readme.includes(p.name.split(' (')[0]), p.name);
 }
 
+// Steps run one at a time now, because chat, plan and build share a
+// conversation. Every one of these claimed otherwise until it was hunted down
+// by hand; a grep is cheaper than the next hunt.
+const agentSrc = read('local-agent/src/index.ts');
+const indexHtml = read('desktop/index.html');
+check('the build no longer spawns parallel workers',
+  !/setThreadKind\("build"\)/.test(agentSrc) && !agentSrc.includes('attachTo('),
+  'a worker path came back');
+check('Settings offers no parallelism control', !indexHtml.includes('concurrency-select'));
+check('README does not promise parallel steps',
+  !/steps? .{0,20}(run|execute).{0,20}in parallel|Concurrent Step Execution/i.test(readme));
+check('the site does not promise parallel steps',
+  !/run <strong>at the same time<\/strong>/.test(site));
+check('the roadmap records the concurrency reversal',
+  /BUILT, THEN DELIBERATELY REVERSED/.test(read('docs/ROADMAP.md')));
+
+// Mojibake, not merely non-ASCII: an emoji-stripping pass once decoded emoji as
+// Latin-1 instead of removing them, leaving "ðŸ”" in a source file. Em dashes,
+// bullets, ellipses and middots are deliberate typography and must not trip
+// this - the first version of this check flagged them and was wrong.
+const MOJIBAKE = /Ã[-ÿ]|â€|â€™|ðŸ|Â[ -¿]|Å’|Å¸/;
+const mojibakeTargets = ['local-agent/src/index.ts', 'desktop/renderer.js', 'desktop/main.js',
+  'desktop/builder.js', 'vscode-extension/src/extension.ts', 'README.md'];
+const garbled = mojibakeTargets.filter((f) => MOJIBAKE.test(read(f)));
+check('no mojibake in source', garbled.length === 0, garbled.join(', '));
+
 // The retry budget the docs quote.
 const agent = read('local-agent/src/index.ts');
 const budget = agent.match(/const maxFollowUps = (\d+)/);
@@ -119,7 +145,10 @@ const refs = [
   ...[...readme.matchAll(/\]\((?!http)([^)#][^)]*)\)/g)].map((m) => ['README', m[1]]),
   ...[...site.matchAll(/(?:src|href)="((?:assets|screenshots)\/[^"]+)"/g)].map((m) => ['site', 'docs/' + m[1]]),
 ];
-const missing = refs.filter(([, p]) => !existsSync(join(ROOT, p)));
+// A link may carry a fragment (docs/ROADMAP.md#some-heading). Only the path
+// part names a file; leaving the fragment on reported a missing file that was
+// right there.
+const missing = refs.filter(([, p]) => !existsSync(join(ROOT, p.split('#')[0])));
 check('every referenced file exists', missing.length === 0, missing.map(([w, p]) => `${w}:${p}`).join(', '));
 
 // Anchors in the README table of contents must resolve to a heading.
