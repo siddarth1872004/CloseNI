@@ -22,6 +22,10 @@ local-agent/storage/last-chat-url.json
 # Backups the agent writes while patching a workspace.
 .agent-backups/
 
+# A build's plan and step statuses, written into whatever workspace is being
+# built. This repo is also a workspace when the app is pointed at it.
+.closeni/
+
 # Stale compiled output checked in beside the TypeScript sources; the real build
 # goes to shared/dist.
 shared/src/*.js

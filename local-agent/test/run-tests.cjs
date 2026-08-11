@@ -2275,6 +2275,67 @@ function testSchedulerGraph() {
     JSON.stringify(sched.blockedBy(chain, [0])) === JSON.stringify([1, 2, 3]));
 }
 
+function testBuildState() {
+  section("a build survives closing the app");
+  const B = require(path.join(DIST, "build-state.js"));
+
+  const plan = { summary: "Flask habit tracker", runCommand: "python app.py" };
+  const steps = [
+    { title: "Scaffold", detail: "make dirs", files: ["app.py"], dependsOn: [], status: "done" },
+    { title: "Schema", detail: "sqlite", files: ["db.py"], dependsOn: [0], status: "failed" },
+    { title: "Routes", detail: "crud", files: ["routes.py"], dependsOn: [0], status: "pending" },
+  ];
+
+  const state = B.serialiseBuildState(plan, steps, { provider: "deepseek", now: "2026-08-11T10:00:00.000Z" });
+  check("the summary is kept", state.summary === "Flask habit tracker");
+  check("so is the run command", state.runCommand === "python app.py");
+  check("and the provider", state.provider === "deepseek");
+  check("startedAt defaults to now", state.startedAt === "2026-08-11T10:00:00.000Z");
+
+  // The regression that ate the last feature: dependsOn dropped in a map.
+  check("dependsOn survives serialising",
+    JSON.stringify(state.steps.map(function (s) { return s.dependsOn; })) === JSON.stringify([[], [0], [0]]));
+
+  const back = B.parseBuildState(JSON.stringify(state));
+  check("it round-trips", JSON.stringify(back.steps) === JSON.stringify(state.steps), JSON.stringify(back.steps));
+  check("statuses come back", back.steps[0].status === "done" && back.steps[1].status === "failed");
+
+  // A step that was running when the app closed is not running now. Restoring
+  // it as running would seed the scheduler with a step it waits on forever.
+  const mid = B.parseBuildState(JSON.stringify(
+    B.serialiseBuildState(plan, [{ title: "x", detail: "", files: [], status: "running" }], {})));
+  check("a step caught mid-run comes back pending", mid.steps[0].status === "pending");
+
+  // Anything unreadable means "no build here", never a crash: refusing to open
+  // a workspace because a state file is malformed is worse than no resume.
+  check("garbage is no build", B.parseBuildState("{{{") === null);
+  check("null is no build", B.parseBuildState(null) === null);
+  check("an array is no build", B.parseBuildState("[1,2]") === null);
+  check("a wrong version is no build", B.parseBuildState('{"version":99,"steps":[{}]}') === null);
+  check("no steps is no build", B.parseBuildState('{"version":1,"steps":[]}') === null);
+  check("a non-object step is no build", B.parseBuildState('{"version":1,"steps":[5]}') === null);
+  check("an unknown status reads as pending",
+    B.parseBuildState('{"version":1,"steps":[{"status":"exploded"}]}').steps[0].status === "pending");
+  check("a missing files array becomes empty",
+    JSON.stringify(B.parseBuildState('{"version":1,"steps":[{"title":"a"}]}').steps[0].files) === "[]");
+  check("a non-string in files is dropped",
+    JSON.stringify(B.parseBuildState('{"version":1,"steps":[{"files":["a",7,null]}]}').steps[0].files) === '["a"]');
+
+  const prog = B.describeProgress(back);
+  check("progress counts done steps", prog.done === 1 && prog.total === 3);
+  check("and knows it is unfinished", prog.unfinished === true);
+  // A skipped step is finished as far as the user is concerned - the scheduler
+  // already treats it as a satisfied dependency.
+  const allDone = B.parseBuildState(JSON.stringify(B.serialiseBuildState(plan,
+    [{ title: "a", status: "done" }, { title: "b", status: "skipped" }], {})));
+  check("a skipped step counts as finished", B.describeProgress(allDone).unfinished === false);
+  check("no state is not unfinished", B.describeProgress(null).unfinished === false);
+
+  // Where it goes. The workspace, beside closeni.run.json - so the answer
+  // survives this install rather than living in app state.
+  check("it is stored in the workspace", B.BUILD_STATE_DIR === ".closeni" && B.BUILD_STATE_NAME === "build.json");
+}
+
 (async () => {
   testEditPlanParsing();
   testPlanParsing();
@@ -2321,6 +2382,7 @@ function testSchedulerGraph() {
   await testBrowserExtraction();
   testApplyFollowUp();
   testSchedulerGraph();
+  testBuildState();
 
   console.log("\n" + (fail === 0 ? "PASS" : "FAIL") + " — " + pass + " passed, " + fail + " failed");
   process.exit(fail === 0 ? 0 : 1);

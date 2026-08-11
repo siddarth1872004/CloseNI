@@ -418,7 +418,11 @@ ipcMain.handle("start-session", async function (event, payload) {
     try {
       proc = spawnAgent(["build-session", payload.workspace, payload.provider, payload.autonomy || "ask"],
         Object.assign(agentEnv(headed, payload.controls),
-          { AGENT_CONCURRENCY: String(payload.concurrency || 2) }));
+          { AGENT_CONCURRENCY: String(payload.concurrency || 2),
+            // A resumed build keeps the ledger: the conversation it is
+            // rejoining has already been shown these files, and wiping it would
+            // re-send the whole project on the step it happens to stop at.
+            AGENT_RESUMING: payload.resuming ? "1" : "0" }));
     } catch (e) {
       resolve({ ok: false, error: String(e) });
       return;
@@ -789,6 +793,58 @@ ipcMain.handle("sign-in", function (event, providerId) {
 const RUN = require(unpackedPath(path.join("local-agent", "dist", "run-manifest.js")));
 
 function manifestPath(workspace) { return path.join(workspace, RUN.MANIFEST_NAME); }
+
+const BUILDSTATE = require(unpackedPath(path.join("local-agent", "dist", "build-state.js")));
+
+function buildStatePath(workspace) {
+  return path.join(workspace, BUILDSTATE.BUILD_STATE_DIR, BUILDSTATE.BUILD_STATE_NAME);
+}
+
+ipcMain.handle("read-build-state", function (event, workspace) {
+  try {
+    if (!workspace) return null;
+    // parseBuildState treats absent, corrupt, wrong-version and empty alike:
+    // there is no build here. A malformed file must not stop a workspace from
+    // opening - that would make resuming worse than not having it.
+    return BUILDSTATE.parseBuildState(fs.readFileSync(buildStatePath(workspace), "utf-8"));
+  } catch (e) {
+    return null;
+  }
+});
+
+/**
+ * Save the build so closing the app does not lose the plan.
+ *
+ * Written whole rather than merged. The run manifest merges because it has a
+ * field the user edits; this file has none, and merging would be a way to keep
+ * a status that is no longer true.
+ */
+ipcMain.handle("write-build-state", function (event, payload) {
+  try {
+    if (!payload || !payload.workspace) return { ok: false, error: "no workspace" };
+    const state = BUILDSTATE.serialiseBuildState(payload.plan || null, payload.steps || [], {
+      provider: payload.provider,
+      startedAt: payload.startedAt,
+    });
+    const file = buildStatePath(payload.workspace);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify(state, null, 2) + "\n");
+    return { ok: true, startedAt: state.startedAt };
+  } catch (e) {
+    // A build must not fail because its bookkeeping could not be written -
+    // a read-only workspace should cost the resume, not the run.
+    return { ok: false, error: String(e) };
+  }
+});
+
+ipcMain.handle("clear-build-state", function (event, workspace) {
+  try {
+    if (workspace) fs.rmSync(buildStatePath(workspace), { force: true });
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: String(e) };
+  }
+});
 
 ipcMain.handle("read-manifest", function (event, workspace) {
   try {

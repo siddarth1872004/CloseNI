@@ -48,7 +48,84 @@
     steps[i].status = st;
     renderList();
     if (i === selected) $("step-detail-status").textContent = st;
+    saveBuildState();
   }
+
+  /**
+   * Write the build to the workspace so closing the app does not lose it.
+   *
+   * Hung off setStatusOf rather than settle() because it is the one place every
+   * status change passes through - settle misses a skip and misses the blocked
+   * steps a failure cascades into.
+   *
+   * Coalesced on a timer: marking a failure blocks its whole subtree, which is
+   * one setStatusOf per blocked step, and that should be one write rather than
+   * fourteen. Fire-and-forget, and a failure is deliberately silent - a build
+   * must not stop because its bookkeeping could not be written. A read-only
+   * workspace costs the resume, not the run.
+   */
+  let saveTimer = null;
+  let buildStartedAt = null;
+  function saveBuildState() {
+    if (saveTimer) return;
+    saveTimer = setTimeout(function () {
+      saveTimer = null;
+      const ws = CN.getWorkspace();
+      if (!ws || !steps.length || !window.api.writeBuildState) return;
+      window.api.writeBuildState({
+        workspace: ws, plan: CN.getPlan(), steps: steps,
+        provider: CN.getProvider(), startedAt: buildStartedAt,
+      }).then(function (r) {
+        if (r && r.ok && !buildStartedAt) buildStartedAt = r.startedAt;
+      }, function () { /* see above: never fatal */ });
+    }, 250);
+  }
+
+  /**
+   * Bring back the build this workspace was in the middle of.
+   *
+   * Restores the plan and its statuses and stops there. Nothing runs: a restart
+   * is as often a crash or a deliberate escape as a tidy shutdown, and resuming
+   * into one automatically would repeat whatever went wrong, unattended. The
+   * user presses Build, and seedState skips what is already done.
+   */
+  CN.restoreBuild = async function (workspace) {
+    if (running || !workspace || !window.api.readBuildState) return null;
+    let state = null;
+    try { state = await window.api.readBuildState(workspace); } catch (e) { return null; }
+    if (!state || !state.steps || !state.steps.length) return null;
+
+    steps = state.steps.map(function (s) {
+      return {
+        title: s.title, detail: s.detail, files: s.files || [],
+        dependsOn: Array.isArray(s.dependsOn) ? s.dependsOn.slice() : undefined,
+        status: s.status || "pending", result: null,
+      };
+    });
+    buildStartedAt = state.startedAt || null;
+    selected = -1;
+    renderList();
+    $("builder-empty").style.display = "none";
+    $("step-detail").classList.add("hidden");
+    buttons("idle");
+
+    const done = steps.filter(function (s) { return s.status === "done" || s.status === "skipped"; }).length;
+    progress(done / steps.length);
+    status(done ? "resumable: " + done + "/" + steps.length + " done" : "ready: " + steps.length + " steps");
+    if (done) CN.log("found an unfinished build here: " + done + "/" + steps.length +
+      " steps done - press Build to carry on", "step");
+
+    // Handed back so the caller can restore currentPlan. Every step is told the
+    // overall goal alongside its own detail; without the summary a resumed
+    // build sends each remaining step off with no idea what it is building.
+    return {
+      summary: state.summary || "",
+      runCommand: state.runCommand || undefined,
+      steps: steps.map(function (s) {
+        return { title: s.title, detail: s.detail, files: s.files, dependsOn: s.dependsOn };
+      }),
+    };
+  };
 
   function selectStep(i) {
     selected = i;
@@ -188,6 +265,9 @@
     buttons("idle");
     progress(0);
     status("ready: " + steps.length + " steps");
+    // A new plan starts a new build, so the old one's timestamp goes with it.
+    buildStartedAt = null;
+    saveBuildState();
   };
 
   CN.startBuild = async function () {
@@ -197,7 +277,11 @@
     running = true; stopRequested = false; paused = false;
     buttons("running");
 
-    const started = await CN.startSession(CN.getWorkspace(), CN.getProvider(), CN.getAutonomy());
+    // A build with steps already done is being picked up, not started. The
+    // session needs to know: it decides whether to clear the record of what the
+    // conversation has been shown.
+    const resuming = steps.some(function (s) { return s.status === "done"; });
+    const started = await CN.startSession(CN.getWorkspace(), CN.getProvider(), CN.getAutonomy(), resuming);
     sessionOn = !!(started && started.ok);
     if (!sessionOn) CN.log("session unavailable, falling back to a browser per step: " + ((started && started.error) || "unknown"), "step");
     else CN.log("build session ready - one browser for the whole build", "step");

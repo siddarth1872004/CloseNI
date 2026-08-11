@@ -11,6 +11,9 @@ contextBridge.exposeInMainWorld("api", {
   listProviders: function () { return ipcRenderer.invoke("list-providers"); },
   readManifest: function (workspace) { return ipcRenderer.invoke("read-manifest", workspace); },
   writeManifest: function (p) { return ipcRenderer.invoke("write-manifest", p); },
+  readBuildState: function (workspace) { return ipcRenderer.invoke("read-build-state", workspace); },
+  writeBuildState: function (p) { return ipcRenderer.invoke("write-build-state", p); },
+  clearBuildState: function (workspace) { return ipcRenderer.invoke("clear-build-state", workspace); },
   browserStatus: function () { return ipcRenderer.invoke("browser-status"); },
   installBrowser: function () { return ipcRenderer.invoke("install-browser"); },
   onBrowserProgress: function (cb) { ipcRenderer.on("browser-progress", function (e, line) { cb(line); }); },
@@ -20,8 +23,8 @@ contextBridge.exposeInMainWorld("api", {
   },
   signOutProvider: function (providerId) { return ipcRenderer.invoke("provider-sign-out", providerId); },
   openThread: function (url) { return ipcRenderer.invoke("open-thread", url); },
-  startSession: function (workspace, provider, autonomy, headed, controls, concurrency) {
-    return ipcRenderer.invoke("start-session", { workspace: workspace, provider: provider, autonomy: autonomy, headed: headed, controls: controls, concurrency: concurrency });
+  startSession: function (workspace, provider, autonomy, headed, controls, concurrency, resuming) {
+    return ipcRenderer.invoke("start-session", { workspace: workspace, provider: provider, autonomy: autonomy, headed: headed, controls: controls, concurrency: concurrency, resuming: resuming });
   },
   sendStep: function (index, detail, goal) {
     return ipcRenderer.invoke("send-step", { index: index, detail: detail, goal: goal });

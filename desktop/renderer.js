@@ -103,7 +103,20 @@ document.querySelectorAll(".nav-btn").forEach(function (btn) {
 
 $("browse-btn").onclick = async function () {
   const f = await window.api.selectFolder();
-  if (f) { workspace = f; $("workspace-label").textContent = f; log("workspace: " + f, "ok"); loadChatsForWorkspace(); }
+  if (f) {
+    workspace = f;
+    $("workspace-label").textContent = f;
+    log("workspace: " + f, "ok");
+    loadChatsForWorkspace();
+    // A build left unfinished in this folder comes back with it. Restoring
+    // only - nothing runs until the user presses Build.
+    if (window.CN && window.CN.restoreBuild) {
+      const restored = await window.CN.restoreBuild(f);
+      // Replaces whatever plan was in memory: the plan and the step list have
+      // to describe the same build, and the step list has just been replaced.
+      if (restored) { currentPlan = restored; renderPlanDocument(restored); }
+    }
+  }
 };
 // The picker lists whatever is enabled in local-agent/config/providers, so
 // adding a provider is a JSON file rather than a markup edit.
@@ -1173,10 +1186,10 @@ window.CN = {
   },
   readFile: function (p, opts) { return window.api.readFile(p, opts); },
   isHeaded: function () { const cb = $("show-browser"); return cb ? cb.checked : false; },
-  startSession: function (ws, prov, autonomy) {
+  startSession: function (ws, prov, autonomy, resuming) {
     try {
       const cb = $("show-browser");
-      return window.api.startSession(ws, prov, autonomy, cb ? cb.checked : false, desiredControls(), window.CN.getConcurrency())
+      return window.api.startSession(ws, prov, autonomy, cb ? cb.checked : false, desiredControls(), window.CN.getConcurrency(), resuming)
         .catch(function (e) { return { ok: false, error: String(e) }; });
     } catch (e) { return Promise.resolve({ ok: false, error: String(e) }); }
   },
@@ -1196,6 +1209,9 @@ window.CN = {
   setPlan: function () {},
   startBuild: function () {},
   retryFailed: function () {},
+  // Replaced by builder.js, which loads after this. Present so a workspace can
+  // be opened before it does without the caller having to know the load order.
+  restoreBuild: function () { return Promise.resolve(null); },
 };
 
 /**

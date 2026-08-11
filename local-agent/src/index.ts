@@ -511,6 +511,16 @@ interface StepRequest {
    *  with no file changes is reported as a failure - which is why asking
    *  "why did this fail?" used to display nothing at all. */
   allowNoChanges?: boolean;
+  /**
+   * Does the conversation still hold this build's plan and files?
+   *
+   * False when navigateToChat could not resume the thread. A step's prompt is
+   * short precisely because it relies on the thread; sending a short prompt to
+   * a conversation that has never seen the plan is the failure the
+   * one-conversation design exists to avoid. Undefined means "assume it does",
+   * which is what every caller before resuming existed did.
+   */
+  threadHasContext?: boolean;
 }
 
 interface StepOutcome {
@@ -571,7 +581,20 @@ async function runBuildStep(controller: PlaywrightController, config: ProviderCo
     }
   } catch {}
 
+  // "Is this step 0?" was standing in for "does the conversation know about
+  // this project?", and the two came apart the moment a build could be resumed.
+  // Press Build on a workspace that is seven steps in and step 8 is not the
+  // first step - so the prompt goes short, the tree is left out, and the delta
+  // assumes the thread has files it may never have seen. When the thread did
+  // resume that is exactly right and saves a great deal; when it did not, it
+  // sends "implement step 8" to a model that has seen nothing.
   const isFirstStep = stepIndex <= 0;
+  const coldThread = req.threadHasContext === false;
+  const needsFullContext = isFirstStep || coldThread;
+  if (coldThread && !isFirstStep) {
+    console.log("The conversation holding this build is gone - re-sending the plan and the " +
+      "current files into a new one (one-time cost).");
+  }
 
   const effectivePrompt = stepDetail
     ? "Overall project goal: " + (goalSummary || prompt) + "\n\n" + stepDetail
@@ -579,25 +602,27 @@ async function runBuildStep(controller: PlaywrightController, config: ProviderCo
 
   // The ledger is reached through the controller so there is exactly one
   // derivation of the sessions.json path; a second one would silently diverge.
-  const ledger = isFirstStep ? {} : controller.getLedger();
+  // Empty when the thread cannot be relied on: a delta computed against what a
+  // dead conversation was shown describes nothing that exists.
+  const ledger = needsFullContext ? {} : controller.getLedger();
   const delta = computeDelta(allFiles, ledger);
   const relevant = selectRelevantFiles({ files: delta.candidates, stepDetail: stepDetail, prompt: prompt });
   controller.saveLedger(nextLedger(ledger, allFiles, relevant.map((r) => r.path), stepIndex));
 
   const filtered = allFiles
     .map(function (f) { return f.path; })
-    .filter(function (f) { return isFirstStep || delta.newPaths.indexOf(f) !== -1; })
+    .filter(function (f) { return needsFullContext || delta.newPaths.indexOf(f) !== -1; })
     .slice(0, 40);
 
   console.log("Step " + (stepIndex + 1) + ": including " + relevant.length + " files (signatures)" +
-    (isFirstStep ? "" : ", skipped " + delta.unchangedCount + " the thread already has") +
+    (needsFullContext ? "" : ", skipped " + delta.unchangedCount + " the thread already has") +
     (relevant.length ? " (" + relevant.map(f => f.path + ":" + f.content.length + "c").join(", ") + ")" : ""));
 
   let prevCount = await controller.countMessages(config);
   let prevContent = await controller.getLastMessageText(config);
   // The thread has already been shown the project structure; re-sending it
   // every step duplicates what it holds. New paths arrive via `filtered`.
-  await controller.sendPrompt(buildPrompt(effectivePrompt, isFirstStep ? ctx.tree : "", relevant, filtered, isFirstStep), config);
+  await controller.sendPrompt(buildPrompt(effectivePrompt, needsFullContext ? ctx.tree : "", relevant, filtered, needsFullContext), config);
   let response = await controller.waitForResponse(config, prevCount, prevContent);
   let plan = parseMarkdownToEditPlan(response);
   let attempt = 0;
@@ -849,7 +874,13 @@ function sessionEvent(payload: any) {
  * browser launch.
  */
 async function buildSessionMode(workspace: string, providerId: string, autonomy: string) {
-  const { controller, config } = await openProviderForBuild(providerId, workspace, true);
+  // Resuming keeps the ledger. Clearing it belongs to starting a build, not to
+  // opening a browser: a build picked up at step 8 is rejoining a conversation
+  // that has already been shown these files, and wiping the record of that
+  // would re-send the entire project on the step it happens to resume at.
+  const resuming = process.env.AGENT_RESUMING === "1";
+  const { controller, config, resumed } = await openProviderForBuild(providerId, workspace, !resuming);
+  if (resuming) console.log("Resuming a build - keeping what this conversation has already been shown.");
 
   // One conversation means one composer, so steps run one at a time.
   //
@@ -902,6 +933,10 @@ async function buildSessionMode(workspace: string, providerId: string, autonomy:
               stepIndex: msg.index,
               stepDetail: msg.detail || "",
               goalSummary: msg.goal || "",
+              // Whether the conversation came back. A resumed build whose thread
+              // is gone must be told so before it sends a short prompt into a
+              // model that has never seen the plan.
+              threadHasContext: resumed,
             });
             sessionEvent(Object.assign({ type: "step-result", index: msg.index }, outcome));
           } catch (e: any) {

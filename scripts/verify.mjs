@@ -155,6 +155,24 @@ check('a session pins concurrency to one composer',
 check('a failed apply gets its own follow-up, not the test-failure one',
   /command === "apply patch"[\s\S]{0,120}buildApplyFollowUp/.test(agent));
 
+// Resuming a build. Every one of these is renderer wiring with a tested module
+// on either side of it - the shape of bug that killed dependsOn.
+const preload = read('desktop/preload.js');
+check('the build state is saved on every status change',
+  /function setStatusOf[\s\S]{0,300}saveBuildState\(\)/.test(builder));
+check('and restored when a workspace is opened',
+  /restoreBuild/.test(read('desktop/renderer.js')));
+check('the restored plan replaces the one in memory',
+  /restored\)\s*\{\s*currentPlan = restored/.test(read('desktop/renderer.js')));
+check('the build state is reachable from the renderer',
+  /readBuildState/.test(preload) && /writeBuildState/.test(preload));
+check('a resumed build keeps what the conversation has been shown',
+  /const resuming = steps\.some/.test(builder) && /AGENT_RESUMING/.test(read('desktop/main.js')));
+check('a step is told whether the conversation still has the plan',
+  /threadHasContext: resumed/.test(agent));
+check('full context is sent when the thread is cold, not only on step 0',
+  /needsFullContext = isFirstStep \|\| coldThread/.test(agent));
+
 // ------------------------------------------------------ 4. asset integrity ----
 
 group('Assets and references');

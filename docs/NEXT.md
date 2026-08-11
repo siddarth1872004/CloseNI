@@ -58,8 +58,13 @@ the reply is**, which removes the DOM from the read path entirely.
   became a chain, and a failure at step 4 of eighteen blocked fourteen steps that
   did not need it. The graph now comes from `CNSched.graphFor`, which validates it
   and falls back to the chain - the old behaviour - if it cannot be scheduled.
-- **Resume a build across app restarts.** The ledger already survives; the
-  builder does not use it on startup.
+- ~~**Resume a build across app restarts.**~~ **Done**, and the note here was
+  wrong: the ledger records which *files the conversation has seen*, not which
+  steps ran. Closing the app did not lose progress tracking, it lost **the plan**,
+  which lived only as `let currentPlan = null` in the renderer. It now lives in
+  `.closeni/build.json` in the workspace, beside `closeni.run.json` and for the
+  same reason. Opening the folder restores the plan and its statuses; nothing
+  runs until Build is pressed. Design: `docs/superpowers/specs/2026-08-11-resume-build-design.md`.
 - **Checkpoint and roll back a step.** Backups exist per apply; there is no
   "undo step 4" in the interface.
 
