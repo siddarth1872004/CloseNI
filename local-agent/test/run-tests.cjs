@@ -2336,6 +2336,133 @@ function testBuildState() {
   check("it is stored in the workspace", B.BUILD_STATE_DIR === ".closeni" && B.BUILD_STATE_NAME === "build.json");
 }
 
+function testCheckpoints() {
+  section("undoing a step");
+  const C = require(path.join(DIST, "checkpoint.js"));
+
+  // A step that created streaks.py and overwrote app.py.
+  let cp4 = C.mergeCheckpoint(null, 3, { "streaks.py": null, "app.py": "APP v3" }, { at: "T1" });
+  check("a created file records no prior", cp4.files["streaks.py"].prior === null);
+  check("an overwritten one records its contents", cp4.files["app.py"].prior === "APP v3");
+
+  // The repair loop applies again. The second apply sees app.py as the FIRST
+  // one left it - recording that would restore the middle of the step.
+  cp4 = C.mergeCheckpoint(cp4, 3, { "app.py": "APP v4-broken", "util.py": null });
+  check("the first prior wins within a step", cp4.files["app.py"].prior === "APP v3");
+  check("a file first seen in the retry is still recorded", cp4.files["util.py"].prior === null);
+  check("the step number is kept", cp4.step === 3);
+
+  const sealed4 = C.sealCheckpoint(cp4, { "app.py": "APP v4", "streaks.py": "S", "util.py": "U" });
+  check("sealing records what the step left", sealed4.files["app.py"].after === C.hash("APP v4"));
+  check("and keeps the prior", sealed4.files["app.py"].prior === "APP v3");
+
+  const sealed5 = C.sealCheckpoint(
+    C.mergeCheckpoint(null, 4, { "app.py": "APP v4", "routes.py": null }, { at: "T2" }),
+    { "app.py": "APP v5", "routes.py": "R" });
+
+  // Rolling back to before step 4 (index 3) undoes 4 and 5 together.
+  const plan = C.planRollback([sealed4, sealed5], 3,
+    { "app.py": "APP v5", "streaks.py": "S", "util.py": "U", "routes.py": "R" });
+
+  check("both steps are undone", JSON.stringify(plan.steps) === JSON.stringify([3, 4]));
+  // Step 5 also touched app.py, but step 4 saw it first - and step 4's prior is
+  // the state before the rollback target, which is the whole point.
+  check("a file touched twice restores to the earliest prior", plan.restore["app.py"] === "APP v3");
+  check("files created by the undone steps are removed",
+    JSON.stringify(plan.remove.sort()) === JSON.stringify(["routes.py", "streaks.py", "util.py"]));
+  check("nothing drifted when the files are as the build left them",
+    plan.drifted.length === 0, JSON.stringify(plan.drifted));
+
+  // A hand edit since the build wrote it must be named, not silently lost.
+  const edited = C.planRollback([sealed4, sealed5], 3,
+    { "app.py": "APP v5 + my fix", "streaks.py": "S", "util.py": "U", "routes.py": "R" });
+  check("an edit made since is reported as drift",
+    JSON.stringify(edited.drifted) === JSON.stringify(["app.py"]), JSON.stringify(edited.drifted));
+  check("drift is judged against the LAST step to write the file",
+    edited.restore["app.py"] === "APP v3");
+  const deleted = C.planRollback([sealed4, sealed5], 3,
+    { "app.py": "APP v5", "streaks.py": null, "util.py": "U", "routes.py": "R" });
+  check("a file deleted by hand also counts as drift",
+    deleted.drifted.indexOf("streaks.py") !== -1, JSON.stringify(deleted.drifted));
+  // Claiming drift over a file nobody looked at would block a good rollback.
+  const unknown = C.planRollback([sealed4, sealed5], 3, {});
+  check("a file the caller did not read is not called drifted", unknown.drifted.length === 0);
+
+  // Rolling back to a later step leaves the earlier ones alone.
+  const later = C.planRollback([sealed4, sealed5], 4, { "app.py": "APP v5", "routes.py": "R" });
+  check("only steps at or after the target are undone",
+    JSON.stringify(later.steps) === JSON.stringify([4]));
+  check("and the file goes back to what step 5 found", later.restore["app.py"] === "APP v4");
+  check("step 4's creations are untouched", later.remove.indexOf("streaks.py") === -1);
+
+  // A file too large to have been stored is admitted to, not half-restored.
+  const big = C.mergeCheckpoint(null, 0, { "data.bin": "x".repeat(C.MAX_PRIOR_BYTES + 1) });
+  check("an oversized prior is not stored", big.files["data.bin"].prior === null);
+  check("and is flagged", big.files["data.bin"].tooLarge === true);
+  const bigPlan = C.planRollback([C.sealCheckpoint(big, { "data.bin": "y" })], 0, { "data.bin": "y" });
+  check("it is reported as unrestorable",
+    JSON.stringify(bigPlan.unrestorable) === JSON.stringify(["data.bin"]));
+  check("and is neither restored nor removed",
+    !bigPlan.restore["data.bin"] && bigPlan.remove.indexOf("data.bin") === -1);
+
+  // Reading back.
+  const round = C.parseCheckpoint(JSON.stringify(sealed4));
+  check("a checkpoint round-trips", JSON.stringify(round.files) === JSON.stringify(sealed4.files));
+  check("garbage is no checkpoint", C.parseCheckpoint("{{") === null);
+  check("a wrong version is no checkpoint", C.parseCheckpoint('{"version":9,"step":0,"files":{}}') === null);
+  check("a missing step number is no checkpoint", C.parseCheckpoint('{"version":1,"files":{}}') === null);
+  check("a negative step is no checkpoint", C.parseCheckpoint('{"version":1,"step":-2,"files":{}}') === null);
+  check("no checkpoints means nothing to undo", C.planRollback([], 0, {}).steps.length === 0);
+  check("the file name sorts in step order",
+    C.checkpointName(0) === "step-001.json" && C.checkpointName(11) === "step-012.json");
+}
+
+function testRollbackOnDisk() {
+  section("a rollback returns a real workspace to where it was");
+  const C = require(path.join(DIST, "checkpoint.js"));
+  const { applyPatch } = require(path.join(DIST, "patch/patch-applier.js"));
+
+  const ws = fs.mkdtempSync(path.join(os.tmpdir(), "agentic-rollback-"));
+  fs.writeFileSync(path.join(ws, "app.py"), "print('v3')\n");
+
+  function priors(paths) {
+    const o = {};
+    paths.forEach(function (r) {
+      try { o[r] = fs.readFileSync(path.join(ws, r), "utf-8"); } catch (e) { o[r] = null; }
+    });
+    return o;
+  }
+  function afters(cp) { return priors(Object.keys(cp.files)); }
+
+  // Step 4 rewrites app.py and adds streaks.py.
+  const cp3 = C.mergeCheckpoint(null, 3, priors(["app.py", "streaks.py"]));
+  applyPatch(ws, { changes: [
+    { filePath: "app.py", mode: "overwrite", newContent: "print('v4')\n" },
+    { filePath: "streaks.py", mode: "create", newContent: "S=1\n" }] });
+  const s3 = C.sealCheckpoint(cp3, afters(cp3));
+
+  // Step 5 rewrites app.py again and adds routes.py.
+  const cp4 = C.mergeCheckpoint(null, 4, priors(["app.py", "routes.py"]));
+  applyPatch(ws, { changes: [
+    { filePath: "app.py", mode: "overwrite", newContent: "print('v5')\n" },
+    { filePath: "routes.py", mode: "create", newContent: "R=1\n" }] });
+  const s4 = C.sealCheckpoint(cp4, afters(cp4));
+
+  const plan = C.planRollback([s3, s4], 3, priors(["app.py", "streaks.py", "routes.py"]));
+  check("the plan sees no drift on an untouched workspace", plan.drifted.length === 0, JSON.stringify(plan.drifted));
+
+  Object.keys(plan.restore).forEach(function (r) { fs.writeFileSync(path.join(ws, r), plan.restore[r]); });
+  plan.remove.forEach(function (r) { fs.rmSync(path.join(ws, r), { force: true }); });
+
+  check("the overwritten file is back to before step 4",
+    fs.readFileSync(path.join(ws, "app.py"), "utf8") === "print('v3')\n",
+    fs.readFileSync(path.join(ws, "app.py"), "utf8"));
+  check("the file step 4 created is gone", !fs.existsSync(path.join(ws, "streaks.py")));
+  check("so is the one step 5 created", !fs.existsSync(path.join(ws, "routes.py")));
+
+  fs.rmSync(ws, { recursive: true, force: true });
+}
+
 (async () => {
   testEditPlanParsing();
   testPlanParsing();
@@ -2383,6 +2510,8 @@ function testBuildState() {
   testApplyFollowUp();
   testSchedulerGraph();
   testBuildState();
+  testCheckpoints();
+  testRollbackOnDisk();
 
   console.log("\n" + (fail === 0 ? "PASS" : "FAIL") + " — " + pass + " passed, " + fail + " failed");
   process.exit(fail === 0 ? 0 : 1);

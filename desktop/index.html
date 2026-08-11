@@ -131,6 +131,10 @@
             <div id="step-detail-head">
               <div class="micro" id="step-detail-label"></div>
               <div id="step-detail-status"></div>
+              <!-- Shown only for a step that actually wrote something; a step
+                   that never ran has nothing to undo. -->
+              <button id="step-rollback" class="btn ghost" style="display:none"
+                      title="Put the workspace back to how it was before this step, undoing this step and every step after it">Roll back to here</button>
             </div>
             <div id="step-detail-body">
               <div id="step-files"></div>

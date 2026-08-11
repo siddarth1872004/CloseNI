@@ -18,6 +18,8 @@ import { buildApplyFollowUp } from "./follow-up.js";
 import { planBehaviourChecks, judge as judgeBehaviour } from "./verification/behaviour-checker.js";
 import { resolveTool } from "./verification/toolchain.js";
 import { MANIFEST_NAME } from "./run-manifest.js";
+import { Checkpoint, mergeCheckpoint, sealCheckpoint, checkpointName, CHECKPOINT_DIR } from "./checkpoint.js";
+import { BUILD_STATE_DIR } from "./build-state.js";
 
 // Every extension the check planner knows about. A file the walker misses is a
 // file nothing ever verifies, and the run reports success on it regardless.
@@ -533,6 +535,48 @@ interface StepOutcome {
   raw?: string;
 }
 
+
+/**
+ * What these paths hold right now. null means the file is not there, which is
+ * how a checkpoint records that the step is about to create it.
+ */
+function capturePrior(workspace: string, paths: string[]): Record<string, string | null> {
+  const out: Record<string, string | null> = {};
+  for (const rel of paths || []) {
+    if (!rel || typeof rel !== "string") continue;
+    try {
+      out[rel] = fs.readFileSync(path.join(workspace, rel), "utf-8");
+    } catch {
+      out[rel] = null;
+    }
+  }
+  return out;
+}
+
+function checkpointDir(workspace: string): string {
+  return path.join(workspace, BUILD_STATE_DIR, CHECKPOINT_DIR);
+}
+
+/**
+ * Seal and save the step's checkpoint.
+ *
+ * Never fatal. A checkpoint that could not be written costs the ability to
+ * undo this step; a build that stopped because of it would cost the step.
+ */
+function writeCheckpoint(workspace: string, checkpoint: Checkpoint | null): void {
+  if (!checkpoint || !Object.keys(checkpoint.files).length) return;
+  try {
+    const afters: Record<string, string | null> = {};
+    for (const rel of Object.keys(checkpoint.files)) {
+      try { afters[rel] = fs.readFileSync(path.join(workspace, rel), "utf-8"); } catch { afters[rel] = null; }
+    }
+    const dir = checkpointDir(workspace);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, checkpointName(checkpoint.step)),
+      JSON.stringify(sealCheckpoint(checkpoint, afters), null, 2) + "\n");
+  } catch { /* see above */ }
+}
+
 /**
  * One build step against an already-open browser and thread. Returns its outcome
  * rather than emitting, so a long-lived session can call it repeatedly without
@@ -588,6 +632,10 @@ async function runBuildStep(controller: PlaywrightController, config: ProviderCo
   // assumes the thread has files it may never have seen. When the thread did
   // resume that is exactly right and saves a great deal; when it did not, it
   // sends "implement step 8" to a model that has seen nothing.
+  // Accumulated across the repair loop: one checkpoint per step, holding the
+  // workspace as it was before the step's first apply.
+  let checkpoint: Checkpoint | null = null;
+
   const isFirstStep = stepIndex <= 0;
   const coldThread = req.threadHasContext === false;
   const needsFullContext = isFirstStep || coldThread;
@@ -660,6 +708,13 @@ async function runBuildStep(controller: PlaywrightController, config: ProviderCo
       plan.changes = plan.changes.filter((c) => !isGeneratedFile(c.filePath));
     }
     console.log("PHASE:" + JSON.stringify({ phase: "applying", detail: plan.changes.length + " file(s)" }));
+    // Read what is there before changing it. Taken here rather than from
+    // applyPatch's backup directory because a backup only holds files that
+    // already existed - it cannot say which files this step created, and
+    // undoing a step means deleting exactly those.
+    checkpoint = mergeCheckpoint(checkpoint, stepIndex,
+      capturePrior(workspace, plan.changes.map((c) => c.filePath)),
+      { title: stepDetail.slice(0, 80) });
     const applyResult = applyPatch(workspace, plan);
     let failed: { command: string; output: string } | null = null;
 
@@ -736,11 +791,17 @@ async function runBuildStep(controller: PlaywrightController, config: ProviderCo
     const applyResult = locked.applyResult;
     const failed = locked.failed;
 
-    if (!failed) return { success: true, appliedFiles: applyResult.appliedFiles, backupDir: applyResult.backupDir };
+    if (!failed) {
+      writeCheckpoint(workspace, checkpoint);
+      return { success: true, appliedFiles: applyResult.appliedFiles, backupDir: applyResult.backupDir };
+    }
 
     attempt++;
     console.log("TEST_FAILED: " + failed.command);
     if (attempt > maxFollowUps) {
+      // A failed step still wrote files. Without this the one step most worth
+      // undoing would be the only one that could not be.
+      writeCheckpoint(workspace, checkpoint);
       return { success: false, error: "Still failing after " + maxFollowUps + " fix attempts.", lastError: failed.output };
     }
     console.log("FOLLOW_UP: sending error back to AI (attempt " + attempt + ")");

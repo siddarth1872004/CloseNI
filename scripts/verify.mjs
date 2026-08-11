@@ -173,6 +173,21 @@ check('a step is told whether the conversation still has the plan',
 check('full context is sent when the thread is cold, not only on step 0',
   /needsFullContext = isFirstStep \|\| coldThread/.test(agent));
 
+// Rolling a step back. The dangerous half is the write, so what is pinned here
+// is that nothing writes without a confirmed plan and a workspace check.
+check('a checkpoint is taken before every apply, not just the first',
+  /mergeCheckpoint\(checkpoint, stepIndex[\s\S]{0,200}applyPatch\(workspace, plan\)/.test(agent));
+check('a step that ran out of attempts still leaves one',
+  /attempt > maxFollowUps[\s\S]{0,240}writeCheckpoint\(workspace, checkpoint\)/.test(agent));
+check('the rollback is planned and applied as two steps',
+  /plan-rollback/.test(read('desktop/main.js')) && /apply-rollback/.test(read('desktop/main.js')));
+check('rollback refuses paths outside the workspace',
+  /function inside\(rel\)[\s\S]{0,260}startsWith\('\.\.'\)|function inside\(rel\)[\s\S]{0,260}startsWith\("\.\."\)/.test(read('desktop/main.js')));
+check('the user confirms before anything is written',
+  /if \(!confirm\(msg\)\) return;[\s\S]{0,120}applyRollback/.test(builder));
+check('drifted files are named in that confirmation',
+  /plan\.drifted\.join/.test(builder));
+
 // ------------------------------------------------------ 4. asset integrity ----
 
 group('Assets and references');

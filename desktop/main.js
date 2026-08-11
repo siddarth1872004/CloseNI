@@ -837,6 +837,126 @@ ipcMain.handle("write-build-state", function (event, payload) {
   }
 });
 
+const CHK = require(unpackedPath(path.join("local-agent", "dist", "checkpoint.js")));
+
+function checkpointDir(workspace) {
+  return path.join(workspace, BUILDSTATE.BUILD_STATE_DIR, CHK.CHECKPOINT_DIR);
+}
+
+/** Every checkpoint in this workspace, oldest step first. */
+function readCheckpoints(workspace) {
+  const dir = checkpointDir(workspace);
+  let names = [];
+  try { names = fs.readdirSync(dir).filter(function (n) { return n.endsWith(".json"); }); } catch (e) { return []; }
+  const out = [];
+  for (const n of names) {
+    try {
+      const cp = CHK.parseCheckpoint(fs.readFileSync(path.join(dir, n), "utf-8"));
+      if (cp) out.push(cp);
+    } catch (e) { /* a corrupt checkpoint is one step that cannot be undone */ }
+  }
+  return out.sort(function (a, b) { return a.step - b.step; });
+}
+
+/**
+ * What rolling back to before `toStep` would do, without doing any of it.
+ *
+ * Split from the apply deliberately: the renderer shows the drifted files and
+ * waits for an answer, and a plan computed twice could differ from the one the
+ * user agreed to. The plan it confirms is the plan that runs.
+ */
+ipcMain.handle("plan-rollback", function (event, payload) {
+  try {
+    if (!payload || !payload.workspace) return { ok: false, error: "no workspace" };
+    const checkpoints = readCheckpoints(payload.workspace);
+    if (!checkpoints.length) return { ok: false, error: "nothing recorded for this build yet" };
+
+    // Only the files the plan would touch are read, so a large workspace costs
+    // nothing here.
+    const touched = {};
+    for (const cp of checkpoints) {
+      if (cp.step < payload.toStep) continue;
+      for (const rel of Object.keys(cp.files)) touched[rel] = true;
+    }
+    const current = {};
+    for (const rel of Object.keys(touched)) {
+      try { current[rel] = fs.readFileSync(path.join(payload.workspace, rel), "utf-8"); }
+      catch (e) { current[rel] = null; }
+    }
+    return { ok: true, plan: CHK.planRollback(checkpoints, payload.toStep, current) };
+  } catch (e) {
+    return { ok: false, error: String(e) };
+  }
+});
+
+/**
+ * Put the workspace back to just before a step.
+ *
+ * Restores before removing, so a failure part-way leaves files present rather
+ * than a project with holes in it. Every path is resolved and checked against
+ * the workspace root: a checkpoint is a file on disk, and one that had been
+ * edited to say "../../.bashrc" must not be able to write there.
+ */
+ipcMain.handle("apply-rollback", function (event, payload) {
+  try {
+    const ws = payload && payload.workspace;
+    const plan = payload && payload.plan;
+    if (!ws || !plan) return { ok: false, error: "no plan" };
+    const root = path.resolve(ws);
+
+    function inside(rel) {
+      const abs = path.resolve(root, rel);
+      const r = path.relative(root, abs);
+      return abs !== root && r && !r.startsWith("..") && !path.isAbsolute(r) ? abs : null;
+    }
+
+    const restored = [];
+    const removed = [];
+    const refused = [];
+
+    for (const rel of Object.keys(plan.restore || {})) {
+      const abs = inside(rel);
+      if (!abs) { refused.push(rel); continue; }
+      fs.mkdirSync(path.dirname(abs), { recursive: true });
+      fs.writeFileSync(abs, plan.restore[rel]);
+      restored.push(rel);
+    }
+    for (const rel of plan.remove || []) {
+      const abs = inside(rel);
+      if (!abs) { refused.push(rel); continue; }
+      try { fs.rmSync(abs, { force: true }); removed.push(rel); } catch (e) {}
+    }
+
+    // The checkpoints for the undone steps go too: they describe a history that
+    // no longer happened, and keeping them would let a second rollback restore
+    // a state that was already rolled back.
+    for (const cp of readCheckpoints(ws)) {
+      if (cp.step < plan.toStep) continue;
+      try { fs.rmSync(path.join(checkpointDir(ws), CHK.checkpointName(cp.step)), { force: true }); } catch (e) {}
+    }
+
+    return { ok: true, restored: restored, removed: removed, refused: refused };
+  } catch (e) {
+    return { ok: false, error: String(e) };
+  }
+});
+
+/**
+ * Drop the checkpoints for a build that is being replaced.
+ *
+ * A checkpoint is addressed by step number. Keeping last week's alongside a new
+ * plan means "roll back to step 4" could restore a file from a build that has
+ * nothing to do with this one - and it would look like it worked.
+ */
+ipcMain.handle("clear-checkpoints", function (event, workspace) {
+  try {
+    if (workspace) fs.rmSync(checkpointDir(workspace), { recursive: true, force: true });
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: String(e) };
+  }
+});
+
 ipcMain.handle("clear-build-state", function (event, workspace) {
   try {
     if (workspace) fs.rmSync(buildStatePath(workspace), { force: true });

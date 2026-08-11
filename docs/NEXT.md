@@ -65,8 +65,16 @@ the reply is**, which removes the DOM from the read path entirely.
   `.closeni/build.json` in the workspace, beside `closeni.run.json` and for the
   same reason. Opening the folder restores the plan and its statuses; nothing
   runs until Build is pressed. Design: `docs/superpowers/specs/2026-08-11-resume-build-design.md`.
-- **Checkpoint and roll back a step.** Backups exist per apply; there is no
-  "undo step 4" in the interface.
+- ~~**Checkpoint and roll back a step.**~~ **Done**, and the per-apply backups
+  turned out not to be usable material: a backup only holds files that already
+  existed, so it cannot say which files a step *created*, and `applyPatch` runs
+  inside the repair loop while `StepOutcome` carried only the last of its two or
+  three backup directories - restoring from that would return the workspace to
+  the middle of a step's own repair. Checkpoints record the state *before* a
+  step instead, in `.closeni/checkpoints/`. "Roll back to here" undoes that step
+  and everything after it, naming any file edited by hand since before it
+  touches anything. Design:
+  `docs/superpowers/specs/2026-08-11-step-rollback-design.md`.
 
 ## 3 · Make a build cheaper to run
 

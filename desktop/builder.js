@@ -127,6 +127,65 @@
     };
   };
 
+  /**
+   * Put the workspace back to just before this step.
+   *
+   * Everything after it goes too. Step 6 was written against a step 4 that is
+   * about to stop existing, and leaving it done would describe a workspace no
+   * plan matches - which the next step would then be written against.
+   *
+   * The plan is computed first and shown before anything is touched. A file the
+   * user edited by hand since the build wrote it is named rather than quietly
+   * overwritten, because the backup that would recover it is the one about to
+   * be replaced.
+   */
+  CN.rollbackTo = async function (i) {
+    if (running) { CN.toast("Stop the build first", "err"); return; }
+    const ws = CN.getWorkspace();
+    if (!ws || !window.api.planRollback) return;
+
+    const res = await window.api.planRollback(ws, i);
+    if (!res || !res.ok) { CN.toast("Cannot roll back: " + ((res && res.error) || "unknown"), "err"); return; }
+    const plan = res.plan;
+
+    const undone = (plan.steps || []).length;
+    if (!undone) { CN.toast("Nothing recorded for step " + (i + 1) + " onwards"); return; }
+
+    let msg = "Roll back to before step " + (i + 1) + "?\n\n" +
+      "This undoes " + undone + " step" + (undone === 1 ? "" : "s") + ": " +
+      Object.keys(plan.restore || {}).length + " file(s) restored, " +
+      (plan.remove || []).length + " removed.";
+    if ((plan.drifted || []).length) {
+      msg += "\n\nThese have changed since the build wrote them, and those " +
+        "changes will be lost:\n  " + plan.drifted.join("\n  ");
+    }
+    if ((plan.unrestorable || []).length) {
+      msg += "\n\nToo large to have been saved, so these will be left as they are:\n  " +
+        plan.unrestorable.join("\n  ");
+    }
+    if (!confirm(msg)) return;
+
+    const applied = await window.api.applyRollback(ws, plan);
+    if (!applied || !applied.ok) { CN.toast("Rollback failed: " + ((applied && applied.error) || "unknown"), "err"); return; }
+
+    for (let s = i; s < steps.length; s++) {
+      steps[s].result = null;
+      setStatusOf(s, "pending");
+    }
+    selected = -1;
+    $("step-detail").classList.add("hidden");
+    const done = steps.filter(function (s) { return s.status === "done" || s.status === "skipped"; }).length;
+    progress(done / steps.length);
+    buttons("idle");
+    status("rolled back: " + done + "/" + steps.length + " done");
+    CN.log("rolled back to before step " + (i + 1) + ": " +
+      applied.restored.length + " restored, " + applied.removed.length + " removed", "ok");
+    if ((applied.refused || []).length) {
+      CN.log("refused to touch paths outside the workspace: " + applied.refused.join(", "), "err");
+    }
+    CN.toast("Rolled back to step " + (i + 1));
+  };
+
   function selectStep(i) {
     selected = i;
     renderList();
@@ -135,6 +194,17 @@
     $("step-detail").classList.remove("hidden");
     $("step-detail-label").textContent = "0" + (i + 1) + " " + (s.title || "");
     $("step-detail-status").textContent = s.status;
+
+    // Offered only where there is something to undo. A pending step never wrote
+    // anything, and a build in progress must not have the ground moved.
+    const rb = $("step-rollback");
+    if (rb) {
+      const ranAlready = steps.slice(i).some(function (st) {
+        return st.status === "done" || st.status === "failed";
+      });
+      rb.style.display = ranAlready && !running ? "inline-block" : "none";
+      rb.onclick = function () { CN.rollbackTo(i); };
+    }
 
     const body = $("step-files");
     body.innerHTML = "";
@@ -265,8 +335,13 @@
     buttons("idle");
     progress(0);
     status("ready: " + steps.length + " steps");
-    // A new plan starts a new build, so the old one's timestamp goes with it.
+    // A new plan starts a new build, so the old one's timestamp goes with it -
+    // and so do the previous build's checkpoints, which are addressed by step
+    // number and would otherwise let "roll back to step 4" restore a file from
+    // a build that has nothing to do with this one.
     buildStartedAt = null;
+    const ws = CN.getWorkspace();
+    if (ws && window.api.clearCheckpoints) window.api.clearCheckpoints(ws).catch(function () {});
     saveBuildState();
   };
 
