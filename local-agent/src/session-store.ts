@@ -26,6 +26,12 @@ export interface WorkspaceSession {
   activeBuildThread?: string | null;
   /** What that thread has already been shown. Reset when a build starts. */
   buildLedger?: BuildLedger;
+  /**
+   * How much has been said in this thread, so a long build can start a new one
+   * before it outgrows the window. Belongs with the ledger: both describe the
+   * current conversation, and both are meaningless the moment it changes.
+   */
+  conversationSize?: { chars: number; turns: number };
 }
 
 export type Sessions = Record<string, WorkspaceSession>;
@@ -99,6 +105,18 @@ export function setBuildLedger(file: string, workspace: string, ledger: BuildLed
   writeSessions(file, sessions);
 }
 
+export function getConversationSize(file: string, workspace: string): { chars: number; turns: number } {
+  if (!workspace) return { chars: 0, turns: 0 };
+  return readSessions(file)[workspace]?.conversationSize ?? { chars: 0, turns: 0 };
+}
+
+export function setConversationSize(file: string, workspace: string, size: { chars: number; turns: number }): void {
+  if (!workspace) return;
+  const sessions = readSessions(file);
+  ensureEntry(sessions, workspace).conversationSize = size;
+  writeSessions(file, sessions);
+}
+
 /**
  * Start a fresh build run. Thread and ledger belong to the same run, so they are
  * cleared together — clearing one without the other would show a new thread a
@@ -110,5 +128,6 @@ export function resetBuildRun(file: string, workspace: string): void {
   const entry = ensureEntry(sessions, workspace);
   entry.activeBuildThread = null;
   entry.buildLedger = {};
+  entry.conversationSize = { chars: 0, turns: 0 };
   writeSessions(file, sessions);
 }

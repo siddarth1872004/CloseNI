@@ -58,5 +58,7 @@
     "smartSearchText": "Search",
     "_note": "toggle keys off aria-pressed rather than a class: setFlagByText reads that attribute anyway, and .ds-toggle-button stopped matching after a DeepSeek redesign. Unconfirmed against the live site - if the toggles still report unavailable, the run log now prints the page's pressable controls to copy from."
   },
-  "profileDir": "local-agent/storage/browser-profiles/deepseek"
+  "profileDir": "local-agent/storage/browser-profiles/deepseek",
+  "contextBudgetChars": 150000,
+  "_contextBudgetNote": "Roughly how much conversation this provider will hold before a build should continue in a new thread, in characters. A deliberately conservative guess - nothing can read the real window, and being wrong in this direction costs one seeded prompt while being wrong the other way loses a step fifteen deep. Counted from what we send and the replies we receive, never from the page."
 }

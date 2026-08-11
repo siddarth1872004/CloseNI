@@ -188,6 +188,17 @@ check('the user confirms before anything is written',
 check('drifted files are named in that confirmation',
   /plan\.drifted\.join/.test(builder));
 
+// Conversation rollover. The dangerous ordering is doing it mid-step, so what
+// is pinned is that the decision happens before anything is sent.
+check('the rollover is decided before the prompt goes out',
+  agent.indexOf('shouldRollOver(') < agent.indexOf('await controller.sendPrompt(promptText'));
+check('a rolled-over thread is seeded as a cold one',
+  /startFreshConversation\(config\)[\s\S]{0,400}buildPrompt\(effectivePrompt, ctx\.tree/.test(agent));
+check('repairs count towards the conversation too',
+  /const followUp = buildFollowUp[\s\S]{0,500}addTurn\(controller\.getConversationSize\(\), followUp\.length/.test(agent));
+check('the size is stored with the ledger, so both reset together',
+  /entry\.buildLedger = \{\};[\s\S]{0,120}entry\.conversationSize/.test(read('local-agent/src/session-store.ts')));
+
 // ------------------------------------------------------ 4. asset integrity ----
 
 group('Assets and references');

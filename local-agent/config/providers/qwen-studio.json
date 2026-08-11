@@ -80,5 +80,7 @@
   },
   "profileDir": "local-agent/storage/browser-profiles/qwen-studio",
   "comingSoon": true,
-  "_comingSoonReason": "Page control works - input, clipboard paste, send and completion detection all verified against the live site. Gated because a build-sized prompt exceeds the 120s completion wait while the model is still thinking, so steps return no changes. Raising maxWaitMs is the likely fix; until that is tested, do not offer it as working."
+  "_comingSoonReason": "Page control works - input, clipboard paste, send and completion detection all verified against the live site. Gated because a build-sized prompt exceeds the 120s completion wait while the model is still thinking, so steps return no changes. Raising maxWaitMs is the likely fix; until that is tested, do not offer it as working.",
+  "contextBudgetChars": 150000,
+  "_contextBudgetNote": "Roughly how much conversation this provider will hold before a build should continue in a new thread, in characters. A deliberately conservative guess - nothing can read the real window, and being wrong in this direction costs one seeded prompt while being wrong the other way loses a step fifteen deep. Counted from what we send and the replies we receive, never from the page."
 }

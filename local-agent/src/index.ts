@@ -19,6 +19,7 @@ import { planBehaviourChecks, judge as judgeBehaviour } from "./verification/beh
 import { resolveTool } from "./verification/toolchain.js";
 import { MANIFEST_NAME } from "./run-manifest.js";
 import { Checkpoint, mergeCheckpoint, sealCheckpoint, checkpointName, CHECKPOINT_DIR } from "./checkpoint.js";
+import { addTurn, shouldRollOver, budgetFor, describeSize } from "./context-budget.js";
 import { BUILD_STATE_DIR } from "./build-state.js";
 
 // Every extension the check planner knows about. A file the walker misses is a
@@ -666,12 +667,39 @@ async function runBuildStep(controller: PlaywrightController, config: ProviderCo
     (needsFullContext ? "" : ", skipped " + delta.unchangedCount + " the thread already has") +
     (relevant.length ? " (" + relevant.map(f => f.path + ":" + f.content.length + "c").join(", ") + ")" : ""));
 
+  // Would this exchange outgrow the conversation?
+  //
+  // Asked here, before anything is sent, because a step already waiting on a
+  // reply has to finish in the thread it started in - rolling over underneath
+  // it would abandon the answer it is waiting for.
+  //
+  // A rolled-over thread is a thread that has never seen this project, which is
+  // a case that already exists and is already tested: the cold-thread path
+  // sends the plan, the tree and the files, and the reset ledger makes the
+  // delta describe the new conversation rather than the abandoned one.
+  const budget = budgetFor(config.contextBudgetChars);
+  let promptText = buildPrompt(effectivePrompt, needsFullContext ? ctx.tree : "", relevant, filtered, needsFullContext);
+  if (shouldRollOver(controller.getConversationSize(), budget, promptText.length)) {
+    console.log("This conversation is nearly full (" +
+      describeSize(controller.getConversationSize(), budget) +
+      ") - continuing in a new one, seeded with the plan and the current files.");
+    await controller.startFreshConversation(config);
+    // Rebuild against an empty ledger: the new thread has been shown nothing.
+    const freshDelta = computeDelta(allFiles, {});
+    const freshRelevant = selectRelevantFiles({ files: freshDelta.candidates, stepDetail: stepDetail, prompt: prompt });
+    controller.saveLedger(nextLedger({}, allFiles, freshRelevant.map((r) => r.path), stepIndex));
+    promptText = buildPrompt(effectivePrompt, ctx.tree,
+      freshRelevant, allFiles.map((f) => f.path).slice(0, 40), true);
+  }
+
   let prevCount = await controller.countMessages(config);
   let prevContent = await controller.getLastMessageText(config);
   // The thread has already been shown the project structure; re-sending it
   // every step duplicates what it holds. New paths arrive via `filtered`.
-  await controller.sendPrompt(buildPrompt(effectivePrompt, needsFullContext ? ctx.tree : "", relevant, filtered, needsFullContext), config);
+  await controller.sendPrompt(promptText, config);
   let response = await controller.waitForResponse(config, prevCount, prevContent);
+  controller.saveConversationSize(
+    addTurn(controller.getConversationSize(), promptText.length, (response || "").length));
   let plan = parseMarkdownToEditPlan(response);
   let attempt = 0;
   let reasked = false;
@@ -807,8 +835,13 @@ async function runBuildStep(controller: PlaywrightController, config: ProviderCo
     console.log("FOLLOW_UP: sending error back to AI (attempt " + attempt + ")");
     prevCount = await controller.countMessages(config);
     prevContent = await controller.getLastMessageText(config);
-    await controller.sendPrompt(buildFollowUp(failed.command, failed.output, filtered), config);
+    const followUp = buildFollowUp(failed.command, failed.output, filtered);
+    await controller.sendPrompt(followUp, config);
     response = await controller.waitForResponse(config, prevCount, prevContent);
+    // A repair is a turn too. A step that needed two of them added three
+    // exchanges to the thread, and counting only the first understates it.
+    controller.saveConversationSize(
+      addTurn(controller.getConversationSize(), followUp.length, (response || "").length));
     plan = parseMarkdownToEditPlan(response);
   }
 }

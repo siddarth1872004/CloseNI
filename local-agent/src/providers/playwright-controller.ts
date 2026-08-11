@@ -1,7 +1,7 @@
 import { chromium, BrowserContext, Page } from "playwright";
 import * as path from "path";
 import * as fs from "fs";
-import { readSessions, writeSessions, resetBuildRun, getBuildLedger, setBuildLedger, BuildLedger, describeThread } from "../session-store.js";
+import { readSessions, writeSessions, resetBuildRun, getBuildLedger, setBuildLedger, BuildLedger, describeThread, getConversationSize, setConversationSize } from "../session-store.js";
 import { isComplete } from "./completion.js";
 import { applyProviderControls } from "./controls/index.js";
 import { parseDesiredControls } from "./controls/decisions.js";
@@ -54,6 +54,16 @@ export interface ProviderConfig {
     waitForStopButtonDisappear: boolean;
     maxWaitMs: number;
   };
+  /**
+   * Optional. Roughly how much conversation this provider will hold, in
+   * characters, before a build should continue in a new thread.
+   *
+   * A guess, and marked as one in the config. Nothing can read a provider's
+   * real window, and getting it wrong in the safe direction costs one seeded
+   * prompt - so it is set well below whatever the true limit is likely to be.
+   * Absent falls back to DEFAULT_BUDGET_CHARS.
+   */
+  contextBudgetChars?: number;
   /** What this provider's UI offers. Read by the desktop settings panel; the
    *  agent only needs the selectors below. Absent means no controls. */
   controls?: Array<{
@@ -190,6 +200,27 @@ export class PlaywrightController {
 
   saveLedger(ledger: BuildLedger) {
     setBuildLedger(this.sessionStoreFile, this.workspace, ledger);
+  }
+
+  getConversationSize(): { chars: number; turns: number } {
+    return getConversationSize(this.sessionStoreFile, this.workspace);
+  }
+
+  saveConversationSize(size: { chars: number; turns: number }) {
+    setConversationSize(this.sessionStoreFile, this.workspace, size);
+  }
+
+  /**
+   * Abandon this conversation and open an empty one.
+   *
+   * For a build that has outgrown its thread. The ledger and the size counter
+   * go with it: both describe what the OLD conversation had been shown, and
+   * carrying either across would have the next step compute its delta against
+   * a thread that no longer exists.
+   */
+  async startFreshConversation(config: ProviderConfig): Promise<void> {
+    this.resetBuildRunForWorkspace();
+    await this.navigateFresh(config);
   }
 
   /**

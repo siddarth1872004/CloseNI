@@ -70,5 +70,7 @@
   },
   "profileDir": "local-agent/storage/browser-profiles/glm",
   "comingSoon": true,
-  "_comingSoonReason": "Gated: the live site declines the build prompts, and the model and thinking controls were not found on the page. Selectors here have never been confirmed."
+  "_comingSoonReason": "Gated: the live site declines the build prompts, and the model and thinking controls were not found on the page. Selectors here have never been confirmed.",
+  "contextBudgetChars": 150000,
+  "_contextBudgetNote": "Roughly how much conversation this provider will hold before a build should continue in a new thread, in characters. A deliberately conservative guess - nothing can read the real window, and being wrong in this direction costs one seeded prompt while being wrong the other way loses a step fifteen deep. Counted from what we send and the replies we receive, never from the page."
 }

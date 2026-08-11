@@ -76,14 +76,20 @@ the reply is**, which removes the DOM from the read path entirely.
   touches anything. Design:
   `docs/superpowers/specs/2026-08-11-step-rollback-design.md`.
 
-## 3 · Make a build cheaper to run
+## 3 · Make a build cheaper to run — **done**, and two of the three items were wrong
 
-- **Only send a file the thread has not seen** - the delta ledger exists but
-  still re-sends the tree on step 1 of every build.
-- **Summarise finished steps** instead of carrying them forever. A twenty-step
-  build ends with a conversation the provider re-reads on every turn.
-- **Detect the provider's context limit** and start a fresh thread with a
-  summary rather than failing at step fifteen.
+- ~~**Only send a file the thread has not seen.**~~ Already done. The delta
+  ledger skips what the conversation holds, and "re-sends the tree on step 1"
+  describes behaviour that is now correct: `needsFullContext` sends it on step 1
+  or when the thread is cold, which is exactly when the thread lacks it.
+- ~~**Summarise finished steps.**~~ **Impossible as written.** It assumes the
+  conversation can be edited. It cannot - it is the provider's, and every prompt
+  and every reply stays in it. There is no lever that shortens a thread.
+- ~~**Detect the provider's context limit.**~~ **Done**, as the only thing §3
+  really was: count what we send and receive against a per-provider budget, and
+  when the next exchange would not fit, continue in a new conversation seeded by
+  the cold-thread path built for resuming. Design:
+  `docs/superpowers/specs/2026-08-11-conversation-rollover-design.md`.
 
 ## 4 · Verification worth trusting
 

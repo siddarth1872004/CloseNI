@@ -2463,6 +2463,62 @@ function testRollbackOnDisk() {
   fs.rmSync(ws, { recursive: true, force: true });
 }
 
+function testContextBudget() {
+  section("a build moves to a new conversation before it outgrows one");
+  const B = require(path.join(DIST, "context-budget.js"));
+
+  check("a new thread starts empty", B.emptySize().chars === 0 && B.emptySize().turns === 0);
+
+  let size = B.addTurn(B.emptySize(), 1000, 4000);
+  check("a turn counts both directions", size.chars === 5000 && size.turns === 1);
+  size = B.addTurn(size, 500, 2500);
+  check("turns accumulate", size.chars === 8000 && size.turns === 2);
+  check("a reply that could not be read still counts its prompt",
+    B.addTurn(B.emptySize(), 900, 0).chars === 900);
+  check("negative and NaN inputs do not corrupt the count",
+    B.addTurn(B.emptySize(), -5, NaN).chars === 0);
+
+  const budget = 100000;
+  check("a half-full thread keeps going", !B.shouldRollOver({ chars: 50000, turns: 5 }, budget));
+  check("one at the threshold rolls over", B.shouldRollOver({ chars: 80000, turns: 9 }, budget));
+  check("and just under it does not", !B.shouldRollOver({ chars: 79999, turns: 9 }, budget));
+
+  // The decision is about whether the COMING exchange fits. A thread at 70%
+  // about to be sent a large prompt should move now, while it is free to.
+  check("a large next prompt brings the rollover forward",
+    B.shouldRollOver({ chars: 70000, turns: 8 }, budget, 15000));
+  check("a small one does not", !B.shouldRollOver({ chars: 70000, turns: 8 }, budget, 500));
+
+  // Rolling over a thread that has said nothing would loop: there is nowhere
+  // cheaper to send the prompt than the empty conversation it is already in.
+  check("a fresh thread never rolls over, however large the prompt",
+    !B.shouldRollOver({ chars: 0, turns: 0 }, budget, 10 * 1000 * 1000));
+
+  check("a missing budget falls back to the default",
+    B.budgetFor(undefined) === B.DEFAULT_BUDGET_CHARS && B.budgetFor(0) === B.DEFAULT_BUDGET_CHARS);
+  check("a configured budget is used", B.budgetFor(42000) === 42000);
+  check("a nonsense budget falls back", B.budgetFor("lots") === B.DEFAULT_BUDGET_CHARS);
+
+  // Storage round-trips through JSON, so anything can come back.
+  check("a malformed stored size reads as a new thread",
+    B.readSize(null).chars === 0 && B.readSize("x").turns === 0 &&
+    B.readSize({ chars: "many" }).chars === 0);
+  check("a valid stored size survives", B.readSize({ chars: 12, turns: 3 }).chars === 12);
+
+  check("the description is in percent, not raw characters",
+    /50% of the conversation budget/.test(B.describeSize({ chars: 50000, turns: 4 }, budget)),
+    B.describeSize({ chars: 50000, turns: 4 }, budget));
+  check("one turn is not pluralised", /^1 turn,/.test(B.describeSize({ chars: 1, turns: 1 }, budget)));
+
+  // Every provider config has to carry a budget, or the one that does not gets
+  // the default silently and nobody finds out until a build fifteen steps in.
+  const dir = path.join(__dirname, "..", "config", "providers");
+  fs.readdirSync(dir).filter(function (f) { return f.endsWith(".json"); }).forEach(function (f) {
+    const cfg = JSON.parse(fs.readFileSync(path.join(dir, f), "utf8"));
+    check(f + " declares a context budget", typeof cfg.contextBudgetChars === "number" && cfg.contextBudgetChars > 0);
+  });
+}
+
 (async () => {
   testEditPlanParsing();
   testPlanParsing();
@@ -2512,6 +2568,7 @@ function testRollbackOnDisk() {
   testBuildState();
   testCheckpoints();
   testRollbackOnDisk();
+  testContextBudget();
 
   console.log("\n" + (fail === 0 ? "PASS" : "FAIL") + " — " + pass + " passed, " + fail + " failed");
   process.exit(fail === 0 ? 0 : 1);
