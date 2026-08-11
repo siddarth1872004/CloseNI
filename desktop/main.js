@@ -146,12 +146,25 @@ function spawnAgent(args, extraEnv) {
   });
 }
 
+/*
+ * A phase is only true while the process that reported it is alive. Without
+ * this the rail keeps showing "writing" after a run has exited, which is the
+ * one thing a live status must never do.
+ */
+function clearPhase() {
+  try { win.webContents.send("agent-phase", { phase: "idle", detail: "" }); } catch (e) {}
+}
+
 function routeLine(line) {
   if (!line.trim()) return;
   if (line.indexOf("APPROVAL_REQUEST:") === 0) {
     try { win.webContents.send("approval-request", JSON.parse(line.substring(17))); } catch (e) {}
   } else if (line.indexOf("STEP_EVENT:") === 0) {
     try { win.webContents.send("step-event", JSON.parse(line.substring(11))); } catch (e) {}
+  } else if (line.indexOf("PHASE:") === 0) {
+    // Kept out of the log pane on purpose: this is a live status, and one line
+    // every two seconds would drown the narration it sits next to.
+    try { win.webContents.send("agent-phase", JSON.parse(line.substring(6))); } catch (e) {}
   } else if (line.indexOf("AGENT_OUTPUT_START") === 0 || line.indexOf("AGENT_OUTPUT_END") === 0) {
     return;
   } else if (line.indexOf('{"success"') === 0) {
@@ -209,6 +222,7 @@ ipcMain.handle("run-agent", function (event, payload) {
       if (done) return;
       done = true;
       agentProc = null;
+      clearPhase();
       const start = output.indexOf("AGENT_OUTPUT_START");
       const end = output.indexOf("AGENT_OUTPUT_END");
       let result = null;
@@ -386,6 +400,7 @@ ipcMain.handle("start-session", async function (event, payload) {
     // to the one that replaced it, or every step after it reports "no session".
     proc.on("close", function () {
       if (sessionProc === proc) sessionProc = null;
+      clearPhase();
       for (const done of pendingSteps.values()) done({ success: false, error: "session ended" });
       pendingSteps.clear();
       if (!settled) { settled = true; resolve({ ok: false, error: "session exited before ready" }); }

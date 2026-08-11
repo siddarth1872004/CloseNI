@@ -74,6 +74,27 @@ const THINKING_LOG_EVERY_TICKS = 5;
 /** Ceiling on the soft extension given to a model that is still writing. */
 const MAX_GRACE_MS = 180000;
 
+/**
+ * What the browser is doing right now, for the interface to show.
+ *
+ * Every one of these is emitted at the point the corresponding condition has
+ * actually been observed on the page - a composer that exists, a stop button
+ * that is visible, an assistant message whose text changed. None of them are
+ * inferred from "we sent a prompt, so it is probably generating": a status
+ * light that guesses is worse than none, because it keeps claiming progress
+ * while a run is wedged.
+ *
+ * Repeats are dropped so the poll loop does not emit the same phase every two
+ * seconds.
+ */
+let lastPhase = "";
+function phase(name: string, detail?: string): void {
+  const line = name + "|" + (detail || "");
+  if (line === lastPhase) return;
+  lastPhase = line;
+  console.log("PHASE:" + JSON.stringify({ phase: name, detail: detail || "" }));
+}
+
 export class PlaywrightController {
   private context: BrowserContext | null = null;
   private page: Page | null = null;
@@ -390,6 +411,7 @@ export class PlaywrightController {
 
   async navigateFresh(config: ProviderConfig): Promise<void> {
     if (!this.page) throw new Error("Browser not launched");
+    phase("opening", "new conversation");
     console.log("Starting fresh chat (no saved thread)...");
     await this.page.goto(config.baseUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
   }
@@ -399,6 +421,7 @@ export class PlaywrightController {
     // A login cannot happen in a window nobody can see, so a headless run gives
     // up quickly and names the fix instead of waiting out the full timeout.
     const effective = this.isHeaded ? timeoutMs : Math.min(timeoutMs, 15000);
+    phase("connecting", "waiting for the composer");
     console.log("Waiting for chat input (" + Math.round(effective / 1000) + "s)...");
     try {
       await this.page.waitForSelector('textarea, div[contenteditable="true"]', { timeout: effective, state: "visible" });
@@ -420,6 +443,7 @@ export class PlaywrightController {
     // "reply" it then waited for was the tail of the previous answer rather
     // than the JSON it had just asked for.
     await this.waitUntilIdle(config);
+    phase("sending", prompt.length + " chars");
     console.log("Typing prompt into chat (length: " + prompt.length + ")...");
     let input;
     try {
@@ -592,14 +616,18 @@ export class PlaywrightController {
 
       if (!started) {
         if (isNew) {
+          phase("writing", "reply started");
           console.log("Response started!");
           started = true;
           lastText = text;
           stableCount = 0;
         } else {
           waitingTicks++;
+          const elapsed = Math.round((Date.now() - start) / 1000);
+          // The provider's own stop button is the difference between a model
+          // that is composing and one that has not begun.
+          phase(stopSeen && !stopGone ? "generating" : "thinking", elapsed + "s");
           if (waitingTicks % THINKING_LOG_EVERY_TICKS === 0) {
-            const elapsed = Math.round((Date.now() - start) / 1000);
             console.log("AI is thinking... (" + elapsed + "s elapsed of " + Math.round(maxWait / 1000) + "s)");
           }
         }
@@ -608,6 +636,7 @@ export class PlaywrightController {
 
       if (text === lastText && isNew) stableCount++;
       else { stableCount = 0; lastText = text; }
+      phase("writing", text.length + " chars");
 
       if (isComplete({ started: started, stopSeen: stopSeen, stopGone: stopGone, stableTicks: stableCount }, useStopButton, STABLE_TICKS)) {
         console.log(useStopButton && stopSeen && stopGone
@@ -651,6 +680,7 @@ export class PlaywrightController {
   }
 
   private async extractWithRetry(config: ProviderConfig): Promise<string> {
+    phase("reading", "extracting the reply");
     let result = "";
     for (let i = 0; i < 5; i++) {
       result = await this.extractLatestResponse(config);

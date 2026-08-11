@@ -38,6 +38,7 @@ contextBridge.exposeInMainWorld("api", {
   ghClone: function (p) { return ipcRenderer.invoke("gh-clone", p); },
   readFile: function (p, opts) { return ipcRenderer.invoke("read-file", opts ? { path: p, full: !!opts.full } : p); },
   respondApproval: function (approved) { return ipcRenderer.send("approval-response", approved); },
+  onPhase: function (cb) { ipcRenderer.on("agent-phase", function (e, p) { cb(p); }); },
   onLog: function (cb) { ipcRenderer.on("agent-log", function (e, line) { cb(line); }); },
   onPLog: function (cb) { ipcRenderer.on("project-log", function (e, line) { cb(line); }); },
   onStepEvent: function (cb) { ipcRenderer.on("step-event", function (e, obj) { cb(obj); }); },

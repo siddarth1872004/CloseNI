@@ -267,6 +267,43 @@ function renderAllProviderControls() {
  */
 let acctThread = null;
 
+/*
+ * The live phase readout.
+ *
+ * Wording is the only thing decided here - which phase is true is decided by
+ * the agent, from what it saw on the page. "thinking" and "writing" are
+ * genuinely different states: the first means the prompt is in and no reply
+ * text has appeared, the second means the assistant message is actually
+ * growing. Anything not in this table is shown verbatim rather than dropped,
+ * so a phase added later still appears.
+ */
+const PHASE_WORDS = {
+  idle: ["idle", "idle"],
+  opening: ["opening browser", "busy"],
+  connecting: ["connecting", "busy"],
+  sending: ["sending prompt", "busy"],
+  thinking: ["thinking", "busy"],
+  generating: ["generating", "work"],
+  writing: ["writing reply", "work"],
+  reading: ["reading reply", "busy"],
+  applying: ["writing files", "work"],
+  checking: ["running checks", "work"],
+};
+
+function setPhase(p) {
+  const box = $("phase");
+  if (!box) return;
+  const name = (p && p.phase) || "idle";
+  const known = PHASE_WORDS[name];
+  const label = known ? known[0] : name;
+  const kind = known ? known[1] : "busy";
+  box.className = "phase " + kind;
+  $("phase-text").textContent = label;
+  $("phase-detail").textContent = (p && p.detail) || "";
+}
+
+window.api.onPhase(setPhase);
+
 function setAcct(state, text) {
   const dot = $("acct-dot");
   const label = $("acct-state");

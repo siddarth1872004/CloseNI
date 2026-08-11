@@ -460,6 +460,23 @@ select{width:100%;}
 .acct-state{grid-column:2;color:var(--mut);
   font-family:ui-monospace,Consolas,monospace;font-size:10px;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+/* Live phase. The only looping animation in the app, and it loops for exactly
+   as long as the browser is actually busy - it is the readout, not decoration.
+   steps(4) keeps it a sprite rather than a pulse. */
+.phase{display:flex;align-items:center;gap:var(--sp-2);padding:5px 8px;
+  border:1px solid var(--line);border-radius:var(--r-md);background:var(--surface-sunken);
+  font-family:ui-monospace,Consolas,monospace;font-size:10px;letter-spacing:.06em;
+  color:var(--dim);margin-bottom:var(--sp-2);text-transform:uppercase;}
+.phase-mark{width:6px;height:6px;flex:none;background:var(--mut);}
+.phase-detail{margin-left:auto;color:var(--mut);text-transform:none;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:60px;}
+@keyframes phase-blink{0%,100%{opacity:1;}50%{opacity:.15;}}
+.phase.busy .phase-mark{background:var(--warn);animation:phase-blink .8s steps(4) infinite;}
+.phase.busy{color:var(--txt);border-color:var(--line-strong);}
+.phase.work .phase-mark{background:var(--ok);animation:phase-blink .5s steps(4) infinite;}
+.phase.work{color:var(--txt);border-color:var(--ok-line);}
+.phase.idle .phase-mark{background:var(--mut);animation:none;}
+
 .acct-actions{display:flex;flex-wrap:wrap;gap:var(--sp-2);margin-bottom:var(--sp-3);}
 .acct-actions .btn{flex:1 1 0;min-width:0;padding:5px 4px;font-size:10px;letter-spacing:.04em;}
 #rail-controls{margin-bottom:var(--sp-3);}

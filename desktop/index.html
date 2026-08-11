@@ -44,6 +44,13 @@
         <span id="acct-name">DeepSeek</span>
         <span id="acct-state" class="acct-state">checking…</span>
       </div>
+      <!-- What the browser is doing right now. Every phase is reported at the
+           point the agent observed it on the page, never inferred. -->
+      <div id="phase" class="phase idle">
+        <span id="phase-mark" class="phase-mark"></span>
+        <span id="phase-text">idle</span>
+        <span id="phase-detail" class="phase-detail"></span>
+      </div>
       <div class="acct-actions">
         <button id="acct-recheck" class="btn btn-sm" title="Check again">Recheck</button>
         <button id="acct-signin" class="btn btn-sm is-hidden">Sign in</button>

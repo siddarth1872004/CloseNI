@@ -535,6 +535,7 @@ async function runBuildStep(controller: PlaywrightController, config: ProviderCo
       console.log("IGNORING_GENERATED: " + adopted.map((c) => c.filePath).join(", "));
       plan.changes = plan.changes.filter((c) => !isGeneratedFile(c.filePath));
     }
+    console.log("PHASE:" + JSON.stringify({ phase: "applying", detail: plan.changes.length + " file(s)" }));
     const applyResult = applyPatch(workspace, plan);
     let failed: { command: string; output: string } | null = null;
 
@@ -565,6 +566,7 @@ async function runBuildStep(controller: PlaywrightController, config: ProviderCo
     } else {
       const checks = planChecksForWorkspace(workspace, plan.changes.map((c) => c.filePath));
       for (const c of checks) {
+        console.log("PHASE:" + JSON.stringify({ phase: "checking", detail: c.language || "" }));
         console.log("RUNNING_CHECK: " + c.command);
         const r = await runCommand(c.command, workspace, c.timeoutMs, { timeoutIsFailure: true });
         console.log("CHECK_RESULT: " + (r.success ? "PASS" : "FAIL"));

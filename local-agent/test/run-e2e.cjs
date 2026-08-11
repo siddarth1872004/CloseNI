@@ -574,7 +574,7 @@ async function main() {
     const { result, out } = await runAgent(["browser", d1, ws, "mock", "auto", "1", d1, "goal"]);
 
     check("step 1 succeeds", !!result && result.success === true, JSON.stringify(result));
-    check("step 1 resumed rather than starting fresh", out.includes("Resuming build thread:"), (out.match(/Starting fresh chat.*/) || [""])[0]);
+    check("step 1 resumed rather than starting fresh", /Resuming build thread/.test(out), (out.match(/Starting fresh chat.*/) || [""])[0]);
     check("step 1 landed in the same thread", mock.threadCount() === 1, "threads: " + mock.threadCount());
     check("the thread holds both prompts", mock.promptsForThread("1").length === 2, "thread prompts: " + mock.promptsForThread("1").length);
 
@@ -737,7 +737,7 @@ async function main() {
 
     check("suggest succeeds", !!sug.result && sug.result.success === true, JSON.stringify(sug.result));
     check("suggest reuses the build thread", mock.threadCount() === 1, "threads: " + mock.threadCount());
-    check("suggest resumed rather than starting fresh", sug.out.includes("Resuming build thread:"), (sug.out.match(/Starting fresh chat.*/) || [""])[0]);
+    check("suggest resumed rather than starting fresh", /Resuming build thread/.test(sug.out), (sug.out.match(/Starting fresh chat.*/) || [""])[0]);
     check("the suggestion text reached the model", (mock.prompts()[0] || "").includes("make add() return the item"), (mock.prompts()[0] || "").slice(0, 200));
     check("the change was applied", fs.readFileSync(path.join(ws, "src/store.js"), "utf8").includes("return x"), fs.readFileSync(path.join(ws, "src/store.js"), "utf8"));
     check("an overwrite reports a backup", !!sug.result && !!sug.result.backupDir, JSON.stringify(sug.result));
