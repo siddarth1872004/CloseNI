@@ -7,7 +7,9 @@
     "chatInput": "textarea[placeholder], div[contenteditable=\"true\"], textarea",
     "sendButton": "button[type=\"submit\"], button[data-testid=\"send-button\"]",
     "stopButton": "button[data-testid=\"stop-button\"]",
-    "assistantMessage": "[data-testid=\"assistant-message\"], .markdown-body, [class*=\"message\"][class*=\"assistant\"]"
+    "assistantMessage": "[data-testid=\"assistant-message\"], .markdown-body, [class*=\"message\"][class*=\"assistant\"]",
+    "copyButton": "div[role=\"button\"]:has(span.code-info-button-text)",
+    "_copyButtonNote": "Matches the code-block toolbar buttons; the caller filters by the label so Download is not clicked. .code-info-button-text is the only unhashed class on that control - the rest (ds-button--capsule etc.) are design-system modifiers and the surrounding path is entirely build hashes."
   },
   "completionRules": {
     "waitForStopButtonDisappear": true,

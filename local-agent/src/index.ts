@@ -174,7 +174,9 @@ async function planMode(transcript: string, workspace: string, providerId: strin
     "a full application with a database, API and UI might be 20 or more. Never pad, never compress. " +
     "Each step must touch a different set of files. Wrap in \`\`\`json.\n" +
     "runCommand is the single command that starts the finished project, e.g. \"python3 src/app/server.py\".\n" +
-    "dependsOn lists the earlier steps whose files this step imports or builds on; a step that needs nothing lists []. " +
+    "dependsOn lists the earlier steps this one builds on, as ZERO-BASED positions in " +
+    "the steps array: the first step is 0, the second is 1. A step that needs nothing lists []. " +
+    "Do not use the step's printed number. " +
     "Be accurate: steps with no declared dependency between them may run at the same time.\n\n" +
     "Project:\n" + ctx.tree;
 
@@ -271,7 +273,8 @@ async function revisePlanMode(changes: string, workspace: string, providerId: st
   const prompt = "Update plan with: " + changes +
     "\n\nJSON format: {\"summary\":\"\",\"runCommand\":\"how to run the finished project\",\"steps\":[{\"title\":\"\",\"detail\":\"\",\"files\":[\"\"],\"dependsOn\":[]}]}\n" +
     "As many steps as the work needs - never pad, never compress. Different files per step.\n" +
-    "dependsOn lists earlier steps this one builds on; [] if it needs nothing.";
+    "dependsOn lists earlier steps this one builds on, as ZERO-BASED positions in the " +
+    "steps array (first step is 0); [] if it needs nothing. Not the printed step number.";
   // "Update plan with X" only means anything in the thread that holds the plan.
   // Sent to a fresh chat it asked the model to revise something it had never
   // seen, which is why revisions came back as unrelated plans.
@@ -1066,11 +1069,33 @@ async function researchGithub(query: string): Promise<any[]> {
   return results;
 }
 
+/**
+ * Gated, and refuses rather than trying.
+ *
+ * The web half scraped html.duckduckgo.com, which now answers every non-browser
+ * client with a 202 challenge page - confirmed with the full browser header
+ * set, including the Accept-Language the old comment called load-bearing. So the
+ * request cannot succeed, and it was still being made on every click: eight
+ * searches in one session produced eight failures and no results.
+ *
+ * Worse, it emitted { success: true } with an empty list, so a total failure
+ * looked like a search that found nothing.
+ *
+ * Refusing here matches the gate on the panel and stops the pointless traffic.
+ * The way back is to run the search in the browser this app already drives,
+ * rather than over plain HTTPS - that is the whole premise of the project, and
+ * it is why the panel is gated instead of the scraper being patched.
+ */
 async function researchMode(query: string) {
-  console.log("Researching: " + query);
-  const web = await researchDuckDuckGo(query);
-  const gh = await researchGithub(query);
-  emit({ success: true, web: web, github: gh });
+  console.log("Research is not available: DuckDuckGo answers scripted requests " +
+    "with a challenge page, so the web search cannot work over plain HTTPS.");
+  emit({
+    success: false,
+    web: [],
+    github: [],
+    error: "Research is not available yet. Ask in Chat instead - it reaches the same " +
+      "provider and the same conversation.",
+  });
 }
 
 // The desktop app spills oversized arguments to a temp file to stay under the

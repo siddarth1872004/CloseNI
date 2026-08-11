@@ -1192,6 +1192,57 @@ function testCommandPolicy() {
   check("no path is not protected", p.isGeneratedFile("") === false);
 }
 
+function testDependsOnNumbering() {
+  section("dependsOn numbering");
+  const { parsePlanRobust, normaliseDependsOn } = require(path.join(DIST, "parser/json-repair.js"));
+
+  // The real failure: a model numbers its steps 1..N and references them by
+  // those numbers, so step 3 saying dependsOn:[2] reads as depending on itself
+  // once treated as a zero-based index. An eighteen-step Flask plan was thrown
+  // away twice in one run for this, and the re-ask resent the same good plan.
+  const oneBased = {
+    summary: "s",
+    steps: [
+      { title: "1", files: ["a"], dependsOn: [] },
+      { title: "2", files: ["b"], dependsOn: [] },
+      { title: "3", files: ["c"], dependsOn: [2] },
+      { title: "4", files: ["d"], dependsOn: [3] },
+      { title: "5", files: ["e"], dependsOn: [3, 4] },
+    ],
+  };
+  const parsed = parsePlanRobust(JSON.stringify(oneBased));
+  check("a 1-based plan is accepted", !!parsed, "rejected");
+  // Step 3 -> step 2 is index 1; step 5 -> steps 3 and 4 are indices 2 and 3.
+  check("its references are shifted to indices",
+    parsed && JSON.stringify(parsed.steps.map((s) => s.dependsOn)) === "[[],[],[1],[2],[2,3]]",
+    parsed && JSON.stringify(parsed.steps.map((s) => s.dependsOn)));
+
+  // Zero-based is what the prompt asks for and must be left alone.
+  const zeroBased = [
+    { title: "a", files: ["a"], dependsOn: [] },
+    { title: "b", files: ["b"], dependsOn: [0] },
+    { title: "c", files: ["c"], dependsOn: [0, 1] },
+  ];
+  const kept = normaliseDependsOn(zeroBased);
+  check("a 0-based plan is untouched",
+    JSON.stringify(kept.map((s) => s.dependsOn)) === "[[],[0],[0,1]]",
+    JSON.stringify(kept && kept.map((s) => s.dependsOn)));
+
+  // A graph that is broken under both readings stays rejected: shifting must
+  // not turn one unschedulable plan into a different unschedulable plan.
+  check("a real cycle is still rejected",
+    normaliseDependsOn([
+      { title: "a", files: ["a"], dependsOn: [1] },
+      { title: "b", files: ["b"], dependsOn: [0] },
+    ]) === null);
+  check("a forward dependency is still rejected",
+    normaliseDependsOn([
+      { title: "a", files: ["a"], dependsOn: [] },
+      { title: "b", files: ["b"], dependsOn: [5] },
+    ]) === null);
+  check("an empty plan is rejected", normaliseDependsOn([]) === null);
+}
+
 function testRobustFileParsing() {
   section("robust file parsing");
   const { parseFilesRobust, salvageTruncatedJson } = require(path.join(DIST, "parser/json-repair.js"));
@@ -2077,6 +2128,7 @@ async function testBrowserExtraction() {
   testTheme();
   testLogo();
   testLanguageMark();
+  testDependsOnNumbering();
   testRobustFileParsing();
   testPackagedPaths();
   testPlaywrightCliResolution();

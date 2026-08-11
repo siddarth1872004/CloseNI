@@ -27,6 +27,14 @@ export interface ProviderConfig {
     /** Optional. With waitForStopButtonDisappear, ends a wait the moment the
      *  provider's own stop button vanishes instead of waiting out stability. */
     stopButton?: string;
+    /**
+     * Optional. The provider's own "Copy" control on a code block.
+     *
+     * When present, the code in a reply is read from the clipboard rather than
+     * scraped out of highlighted markup. Purely an upgrade: anything wrong with
+     * it falls back to reading the DOM.
+     */
+    copyButton?: string;
     assistantMessage: string;
   };
   completionRules: {
@@ -242,6 +250,13 @@ export class PlaywrightController {
       args: ["--disable-blink-features=AutomationControlled"],
     });
     this.page = this.context.pages()[0] || (await this.context.newPage());
+    // Needed to read back what a provider's own Copy button puts on the
+    // clipboard. Granted to the provider's origin only, and failure is
+    // survivable - extraction falls back to reading the DOM.
+    try {
+      await this.context.grantPermissions(["clipboard-read", "clipboard-write"],
+        { origin: new URL(config.baseUrl).origin });
+    } catch { /* older browser, or an origin that will not take it */ }
     this.launchedConfig = config;
   }
 
@@ -581,7 +596,18 @@ export class PlaywrightController {
         continue;
       }
 
-      if (text === lastText && isNew) stableCount++;
+      // Stability is judged on the text alone, deliberately not on `isNew`.
+      //
+      // isNew means "this differs from the message that was there before the
+      // prompt". Once a reply has started that is the wrong question, and it
+      // has one catastrophic answer: a re-ask usually makes the model resend
+      // almost exactly what it sent last time, and DeepSeek renders its
+      // messages in a ds-virtual-list, so countMessages does not reliably grow
+      // either. Both halves of isNew then read false, stableCount never
+      // increments, and a reply that finished in seconds is waited out for the
+      // full five minutes. Observed twice in one run, on the re-ask after a
+      // plan failed to parse.
+      if (text === lastText) stableCount++;
       else { stableCount = 0; lastText = text; }
       phase("writing", text.length + " chars");
 
@@ -637,6 +663,49 @@ export class PlaywrightController {
     return result;
   }
 
+  /**
+   * The code blocks as the provider itself would copy them.
+   *
+   * Reading <pre><code> out of the DOM is a guess about someone else's markup:
+   * syntax highlighting shreds a line into spans, toolbars put "Copy Download"
+   * inside the message, and a virtualised list can render only part of a long
+   * block. The site's own Copy button has none of those problems - it is the
+   * provider's answer to "what is the raw text of this block".
+   *
+   * Used to correct the DOM reading rather than replace it, because the
+   * clipboard only ever holds code: the prose between blocks is what tells us
+   * which file a block belongs to, and that still has to come from the page.
+   *
+   * Returns null whenever anything is off, so the caller keeps what it had.
+   */
+  private async copiedCodeBlocks(config: ProviderConfig): Promise<string[] | null> {
+    const sel = config.selectors.copyButton;
+    if (!this.page || !sel) return null;
+    try {
+      const assistant = await this.assistantSelector(config);
+      const message = this.page.locator(assistant).last();
+      // Text-filtered: the same markup renders Download beside Copy.
+      const buttons = message.locator(sel).filter({ hasText: /^\s*copy\s*$/i });
+      const n = await buttons.count();
+      if (!n) return null;
+
+      const out: string[] = [];
+      for (let i = 0; i < n; i++) {
+        const btn = buttons.nth(i);
+        try { await btn.scrollIntoViewIfNeeded({ timeout: 2000 }); } catch { /* fine */ }
+        await btn.click({ timeout: 3000 });
+        await sleep(120);
+        const text: string = await this.page.evaluate(
+          () => (globalThis as any).navigator.clipboard.readText());
+        if (typeof text !== "string" || !text.trim()) return null;
+        out.push(text.replace(/\n$/, ""));
+      }
+      return out;
+    } catch {
+      return null;
+    }
+  }
+
   async extractLatestResponse(config: ProviderConfig): Promise<string> {
     if (!this.page) throw new Error("Browser not launched");
     try {
@@ -685,6 +754,25 @@ export class PlaywrightController {
         walk(root);
         return out;
       });
+
+      // Upgrade the code with what the provider itself would copy, keeping the
+      // prose the DOM gave us. Only when the counts agree - a mismatch means
+      // the two views disagree about how many blocks there are, and guessing an
+      // alignment would put one file's code under another file's heading.
+      let blocks = parts.filter((t) => t.startsWith("\u0060\u0060\u0060"));
+      if (blocks.length) {
+        const copied = await this.copiedCodeBlocks(config);
+        if (copied && copied.length === blocks.length) {
+          let i = 0;
+          for (let k = 0; k < parts.length; k++) {
+            if (!parts[k].startsWith("\u0060\u0060\u0060")) continue;
+            const lang = (parts[k].match(/^\u0060\u0060\u0060([^\n]*)/) || ["", ""])[1];
+            parts[k] = "\u0060\u0060\u0060" + lang + "\n" + copied[i] + "\n\u0060\u0060\u0060";
+            i++;
+          }
+          console.log("Read " + copied.length + " code block(s) from the provider's own Copy button.");
+        }
+      }
 
       const joined = (parts || []).join("\n\n").trim();
       if (joined) return joined;

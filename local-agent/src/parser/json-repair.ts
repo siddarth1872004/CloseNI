@@ -186,14 +186,47 @@ export function extractStepsHeuristic(input: string): any {
   return { summary: sumMatch ? sumMatch[1] : "", steps: steps };
 }
 
+/**
+ * Read `dependsOn` the way the model meant it.
+ *
+ * The prompt asks for zero-based indices into the steps array. Models routinely
+ * send the step *numbers* they just wrote instead - 1-based - because that is
+ * what a numbered list means to anyone reading it. Interpreted as indices, every
+ * such reference points one step too far: step 3 saying `dependsOn: [2]` reads
+ * as depending on itself, the graph fails validation, and a perfectly good plan
+ * is thrown away. The re-ask then produces the same plan and fails the same way,
+ * which is exactly what an eighteen-step Flask plan did twice in one run.
+ *
+ * Zero-based is tried first because that is what was asked for. Only if that
+ * cannot be scheduled is the whole graph shifted and retried, and a plan that
+ * fails both readings is still rejected - a genuinely broken graph must not be
+ * massaged into a different broken graph.
+ */
+export function normaliseDependsOn(steps: any[]): any[] | null {
+  if (!Array.isArray(steps) || steps.length === 0) return null;
+  if (validateGraph(steps).ok) return steps;
+
+  const shifted = steps.map((s) => ({
+    ...s,
+    dependsOn: Array.isArray(s.dependsOn) ? s.dependsOn.map((n: any) => Number(n) - 1) : [],
+  }));
+  if (validateGraph(shifted).ok) return shifted;
+
+  return null;
+}
+
 export function parsePlanRobust(text: string): any {
   const plan = parsePlanShape(text);
   // Over the bound, treat the reply as unparseable so the caller re-asks.
   // Truncating to the bound would silently drop the end of the project.
   if (plan && plan.steps && plan.steps.length > MAX_PLAN_STEPS) return null;
-  // Same reasoning for a graph that cannot be scheduled: re-asking costs one
-  // round-trip, a deadlocked build costs the whole run.
-  if (plan && plan.steps && !validateGraph(plan.steps).ok) return null;
+  if (plan && plan.steps) {
+    const steps = normaliseDependsOn(plan.steps);
+    // A graph that cannot be scheduled under either reading is unusable:
+    // re-asking costs one round-trip, a deadlocked build costs the whole run.
+    if (!steps) return null;
+    plan.steps = steps;
+  }
   return plan;
 }
 

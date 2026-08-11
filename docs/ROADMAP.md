@@ -150,6 +150,25 @@ plan: `plans/2026-08-10-concurrency.md`
   second provider. It makes each step slower, which is the opposite of this
   sub-project's purpose, and deserves its own decision.
 
+## Gated, with the reason recorded
+
+Work that exists in the tree but is switched off, so nobody has to rediscover
+why.
+
+- **Research panel** — gated in the sidebar since 2026-08-11. Its web search
+  scraped `html.duckduckgo.com`, which now answers every scripted request with
+  a **202 challenge page**; confirmed with the complete browser header set. The
+  request cannot succeed over plain HTTPS, and it was being made on every click:
+  eight searches produced eight failures. It also reported `success: true` with
+  an empty result list, so total failure looked like a search that found nothing.
+  `researchMode` now refuses immediately and says why.
+
+  **The way back** is to run the search in the browser this app already drives
+  rather than over `https.get`. That is the project's whole premise, and it is
+  why the panel is gated rather than the scraper patched.
+
+- **Qwen Studio, GLM** — gated in Settings, each with its reason in its config.
+
 ## 5 · GitHub & external tools — 3 of 5
 
 Roadmap items 11-15. Spec: `specs/2026-08-10-github-design.md`,
