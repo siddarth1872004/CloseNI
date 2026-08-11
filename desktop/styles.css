@@ -8,7 +8,11 @@
   --bg:#0b0b0c; --panel:#101012; --surface:#0e0e10; --surface-raised:#17171a; --surface-sunken:#050506;
   --overlay:rgba(0,0,0,.7);
   --line:#232326; --line-strong:#2e2e33; --line-focus:#6f7ce0;
-  --txt:#e8e8ea; --dim:#9b9ba3; --mut:#5b5b63; --inverse:#0b0b0c;
+  /* --mut was #5b5b63, which put every micro label, hint and blocked step at
+     2.9:1 on --surface - the lowest contrast of any of the nine themes, in the
+     one that ships as the default. #66666e lands at 3.3:1, in line with Paper
+     and the Cassettes, and is still clearly the quietest text in the palette. */
+  --txt:#e8e8ea; --dim:#9b9ba3; --mut:#66666e; --inverse:#0b0b0c;
   --ok:#8fe0a8; --ok-bg:#0d2416; --ok-line:#2c4f39;
   --warn:#e0cf8f; --warn-bg:#211f13; --warn-line:#5c5327;
   --err:#eda1a6; --err-bg:#2a1214; --err-line:#5c2c2f;
@@ -434,6 +438,39 @@ select{width:100%;}
 
 /* The browser download bar advances in chunks, like the build progress bar. */
 #browser-progress{transition:opacity .12s steps(2);}
+
+/* Everything below is still event-driven: each one fires on a hover, a focus,
+   a click or an element arriving, and then stops. Nothing loops on an idle
+   screen. Ambient motion was built once, reviewed, and rejected. */
+
+/* Navigation and tabs settle in steps, so moving between panels reads as a
+   selector snapping across rather than a highlight sliding. */
+.nav-btn,.settings-tab{transition:background .1s steps(2),color .1s steps(2),
+  border-left-color .1s steps(2);}
+.btn{transition:border-color .1s steps(2),color .1s steps(2),background .1s steps(2);}
+
+/* A focus ring that appears in one frame. A fading ring reads as a web page;
+   this is meant to read as a terminal. */
+.btn:focus-visible,.nav-btn:focus-visible,.settings-tab:focus-visible,
+.theme-swatch:focus-visible{transition:box-shadow .06s steps(1);}
+
+/* Diff lines stamp in per line, so a patch lands as a burst of rows rather
+   than a block that simply exists. */
+.diff-line.add,.diff-line.remove{animation:pix-in .12s steps(2) 1;}
+
+/* A workflow conclusion arriving is worth one frame of attention. Step status
+   is deliberately absent here: builder.js already puts pix-stamp / pix-flicker
+   / pix-spin on .step-card-status per state, and a second animation on the
+   same element would fight it. */
+.gh-run .verdict{animation:pix-stamp .18s steps(3) 1;}
+
+/* Theme swatches: the selected one snaps, and hovering steps rather than
+   glides, so the picker feels like the rest of the app. */
+.theme-swatch{transition:transform .08s steps(2),border-color .08s steps(2);}
+.theme-swatch:hover{transform:translateY(-2px);}
+
+/* Inputs mark focus in one step too. */
+input:focus,textarea:focus,select:focus{transition:border-color .06s steps(1);}
 
 /* Both switches still turn everything off - the decoration toggle and the
    accessibility setting, each on its own. */

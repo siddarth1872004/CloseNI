@@ -104,7 +104,22 @@ First release.
 ### Distribution
 
 - Windows NSIS installer, Linux AppImage and `.deb`, built and published by a
-  tagged release workflow.
+  tagged release workflow. The workflow checks the tag against `package.json`,
+  runs the unit suite before packaging, serialises its two OS jobs so they
+  cannot race to create the same release, and publishes a draft.
+
+### Verification
+
+- `npm run verify` — 41 structural checks covering documentation claims against
+  the code, asset and anchor integrity, SVG safety, release configuration, and
+  an audit of the packaged artifact for leaked session data.
+- `npm run verify:visual` — renders the app in a real browser under all nine
+  themes and measures contrast on every element that carries meaning, plus the
+  Pages site at desktop and mobile widths.
+- Midnight's `--mut` moved from `#5b5b63` to `#66666e`. The default theme was
+  putting micro labels, hints and blocked steps at 2.9:1 — the lowest contrast
+  of any of the nine, in the one most people will use. Found by the contrast
+  pass, which the palette-completeness lint could not have caught.
 
 ### Known limitations
 

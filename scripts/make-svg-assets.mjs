@@ -102,6 +102,15 @@ function visible(t0, t1, cycle) {
 // --------------------------------------------------------------- sprites ----
 
 // The CloseNI mark: ] [ - arms facing outward, verticals inward.
+// A 5x4 mark for title bars. The full MARK is ten cells tall and overflows a
+// six-cell title bar straight into the first line of output.
+const MARK_SM = [
+  'aa.aa',
+  '.a.a.',
+  '.a.a.',
+  'aa.aa',
+];
+
 const MARK = [
   'aaaa...aaaa',
   '...a...a...',
@@ -266,10 +275,14 @@ function banner() {
 
   const H = top + rows.length * LH + 36;
 
-  // Pixel chrome: square lights and the mark, instead of the usual round dots.
-  const chrome =
-    sprite(MARK, 3, 2.2, { a: C.dim }) +
-    run(14.5, 2.4, 2, 2, C.edge) + run(17.5, 2.4, 2, 2, C.edge) + run(20.5, 2.4, 2, 2, C.edge);
+  // Pixel chrome: square lights and the small mark, all inside the title bar
+  // (rows 1-6). The three lights blink in sequence while the build runs.
+  let chrome = run(3, 3, 2, 2, C.edge) + run(6, 3, 2, 2, C.edge) + run(9, 3, 2, 2, C.edge);
+  for (let i = 0; i < 3; i++) {
+    chrome += `<g opacity="0">${run(3 + i * 3, 3, 2, 2, C.green)}` +
+      `<animate attributeName="opacity" dur="1.5s" repeatCount="indefinite" calcMode="discrete" keyTimes="${(i / 3).toFixed(4)};${(i / 3 + 0.22).toFixed(4)}" values="1;0"/></g>`;
+  }
+  chrome += sprite(MARK_SM, 14, 3, { a: C.text });
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" shape-rendering="crispEdges" aria-label="CloseNI planning and building a Flask todo API, one step at a time">
 <title>CloseNI — a build in progress</title>
@@ -280,7 +293,7 @@ ${run(1, 1, W / PX - 2, 6, C.panel)}
 ${run(1, 7, W / PX - 2, 1, C.edge)}
 ${chrome}
 <g font-family="${MONO}" font-size="12" letter-spacing="2.4" shape-rendering="auto">
-  <text x="150" y="30" fill="${C.dim}">CLOSENI</text>
+  <text x="130" y="29" fill="${C.dim}">CLOSENI</text>
   <text x="${W - 24}" y="30" fill="${C.dim}" text-anchor="end">NO API KEYS</text>
 </g>
 <g font-family="${MONO}" font-size="15" shape-rendering="auto">
@@ -521,11 +534,142 @@ function buildStrip() {
 `;
 }
 
+// ---------------------------------------------------------------- divider ----
+// A rule made of pixels, with a few brighter ones marching along it.
+
+function divider() {
+  const COLS = 200;
+  const ROWS = 3;
+  const W = COLS * PX;
+  const H = ROWS * PX;
+  const CYCLE = 5;
+
+  let g = '';
+  for (let cx = 0; cx < COLS; cx += 2) g += p(cx, 1, C.edge);
+
+  // Three lit pixels chasing each other, stepping cell by cell.
+  [C.green, C.blue, C.violet].forEach((col, i) => {
+    const keys = [];
+    const xs = [];
+    const n = COLS / 2;
+    for (let k = 0; k <= n; k++) { xs.push((k * 2 * PX).toString()); keys.push(k / n); }
+    g += `<rect x="0" y="${PX}" width="${PX}" height="${PX}" fill="${col}">` +
+      `<animate attributeName="x" dur="${CYCLE}s" begin="${(i * 0.18).toFixed(2)}s" repeatCount="indefinite" calcMode="discrete" keyTimes="${keys.map((k) => k.toFixed(5)).join(';')}" values="${xs.join(';')}"/>` +
+      `</rect>`;
+  });
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="presentation" shape-rendering="crispEdges" aria-hidden="true">
+<rect width="${W}" height="${H}" fill="none"/>${g}
+</svg>
+`;
+}
+
+// ---------------------------------------------------------- themes strip ----
+
+function themesStrip() {
+  const THEMES = [
+    ['Midnight', '#0b0b0c', '#e8e8ea'],
+    ['Paper', '#f7f7f5', '#1b1b1d'],
+    ['Phosphor', '#020a04', '#7bffa0'],
+    ['Amber', '#120b02', '#ffb638'],
+    ['Cas · Indigo', '#0d0a1c', '#f08cff'],
+    ['Cas · Miami', '#1a0715', '#ff7b9d'],
+    ['Cas · Grid', '#0c0c13', '#79c0ff'],
+    ['Blueprint', '#081a2e', '#8fc4ef'],
+    ['Contrast', '#000000', '#ffffff'],
+  ];
+  const CYCLE = 9;
+  const SWW = 20, SWH = 13, gap = 2;
+  const COLS = THEMES.length * (SWW + gap) + 6;
+  const ROWS = 26;
+  const W = COLS * PX, H = ROWS * PX;
+
+  let g = '';
+  THEMES.forEach(([name, bg, fg], i) => {
+    const x = 3 + i * (SWW + gap);
+    const y = 6;
+    g += run(x, y, SWW, SWH, bg);
+    g += frame(x, y, SWW, SWH, C.edge);
+    // A miniature of the app inside each swatch: title bar, mark, two rows.
+    g += run(x + 1, y + 1, SWW - 2, 3, fg + '22');
+    g += sprite(MARK_SM, x + 2, y + 2, { a: fg });
+    g += run(x + 2, y + 6, 10, 1, fg + 'cc');
+    g += run(x + 2, y + 8, 14, 1, fg + '77');
+    g += run(x + 2, y + 10, 7, 1, fg + '55');
+
+    // Selection bracket, one theme at a time.
+    const t0 = (i * CYCLE) / THEMES.length;
+    const t1 = ((i + 1) * CYCLE) / THEMES.length;
+    g += `<g opacity="0">${frame(x - 1, y - 1, SWW + 2, SWH + 2, C.text)}${visible(t0, t1, CYCLE)}</g>`;
+    g += `<g opacity="0"><text x="${(x + SWW / 2) * PX}" y="${(y + SWH + 4) * PX}" fill="${C.text}" font-size="11" text-anchor="middle" font-family="${MONO}">${esc(name)}</text>${visible(t0, t1, CYCLE)}</g>`;
+  });
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" shape-rendering="crispEdges" aria-label="Nine CloseNI themes, each shown as a miniature of the interface, cycling one at a time">
+<title>Nine themes</title>
+<rect width="${W}" height="${H}" fill="${C.bg}"/>
+<g font-family="${MONO}">
+  <text x="${3 * PX}" y="${4 * PX}" fill="${C.dim}" font-size="10.5" letter-spacing="2.2">APPEARANCE</text>
+  ${g}
+</g>
+</svg>
+`;
+}
+
+// ---------------------------------------------------------- verify strip ----
+
+function verifyStrip() {
+  const LANGS = ['rust', 'go', 'typescript', 'java', 'c#', 'c', 'c++', 'python', 'javascript', 'ruby', 'php', 'shell'];
+  const CYCLE = 8;
+  // Wide enough for "javascript" plus a check with clear space between them.
+  const CHW = 24, CHH = 8, gapX = 2, gapY = 3;
+  const perRow = 4;
+  const rows = Math.ceil(LANGS.length / perRow);
+  const COLS = perRow * (CHW + gapX) + 6;
+  const ROWS = 8 + rows * (CHH + gapY) + 6;
+  const W = COLS * PX, H = ROWS * PX;
+
+  let g = '';
+  LANGS.forEach((name, i) => {
+    const col = i % perRow, row = Math.floor(i / perRow);
+    const x = 3 + col * (CHW + gapX);
+    const y = 8 + row * (CHH + gapY);
+    g += frame(x, y, CHW, CHH, C.edge);
+
+    const t0 = 0.35 + i * 0.42;
+    // Lit state is a left accent bar, not a green outline. A one-cell frame is
+    // six pixels of solid colour and swamps a chip this size.
+    g += `<g opacity="0">` +
+      run(x, y, 1, CHH, C.green) +
+      run(x + 1, y + 1, CHW - 2, CHH - 2, '#57d38c12') +
+      sprite(CHECK, x + CHW - 8, y + 1, { c: C.green }) +
+      `<text x="${(x + 3) * PX}" y="${(y + CHH - 2.4) * PX}" fill="${C.green}" font-size="10.5" font-family="${MONO}">${esc(name)}</text>` +
+      visible(t0, CYCLE, CYCLE) + `</g>`;
+
+    g += `<text x="${(x + 3) * PX}" y="${(y + CHH - 2.4) * PX}" fill="${C.dim}" font-size="10.5" font-family="${MONO}">${esc(name)}</text>`;
+  });
+
+  const capY = 8 + rows * (CHH + gapY) + 3;
+  g += `<g opacity="0"><text x="${3 * PX}" y="${capY * PX}" fill="${C.green}" font-size="12" font-family="${MONO}" letter-spacing="1.2">12/12 CHECKED</text>${visible(0.35 + 12 * 0.42, CYCLE, CYCLE)}</g>`;
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" shape-rendering="crispEdges" aria-label="Twelve languages checking green one after another">
+<title>Twelve languages checked</title>
+<rect width="${W}" height="${H}" fill="${C.bg}"/>
+<g font-family="${MONO}">
+  <text x="${3 * PX}" y="${4 * PX}" fill="${C.dim}" font-size="10.5" letter-spacing="2.2">VERIFICATION</text>
+  ${g}
+</g>
+</svg>
+`;
+}
+
 const files = {
   'banner.svg': banner(),
   'pipeline.svg': pipeline(),
   'repair-loop.svg': repairLoop(),
   'build-strip.svg': buildStrip(),
+  'divider.svg': divider(),
+  'themes-strip.svg': themesStrip(),
+  'verify-strip.svg': verifyStrip(),
 };
 
 for (const [name, svg] of Object.entries(files)) {

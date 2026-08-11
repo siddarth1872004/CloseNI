@@ -11,7 +11,14 @@
     "type": "git",
     "url": "https://github.com/siddarth1872004/CloseNI.git"
   },
-  "keywords": ["ai", "agent", "electron", "playwright", "code-generation", "desktop"],
+  "keywords": [
+    "ai",
+    "agent",
+    "electron",
+    "playwright",
+    "code-generation",
+    "desktop"
+  ],
   "main": "desktop/main.js",
   "workspaces": [
     "shared",
@@ -23,7 +30,12 @@
     "build": "npm run build --workspaces --if-present",
     "start": "electron .",
     "pack": "electron-builder --dir",
-    "dist": "electron-builder"
+    "dist": "electron-builder",
+    "verify": "node scripts/verify.mjs",
+    "verify:visual": "node scripts/verify-visual.mjs",
+    "test": "node local-agent/test/run-tests.cjs",
+    "test:e2e": "node local-agent/test/run-e2e.cjs",
+    "assets": "node scripts/make-svg-assets.mjs && node scripts/make-screenshots.mjs"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

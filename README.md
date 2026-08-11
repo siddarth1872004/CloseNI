@@ -209,6 +209,12 @@ Environment failures are treated differently from code failures. A `python3 -m v
 
 A manifest claims its language. If the workspace has a `Cargo.toml`, Rust files are checked once with `cargo check` rather than one file at a time, because a file that imports its sibling cannot be validated alone. Where no manifest exists, each changed file is checked individually.
 
+<div align="center">
+
+<img src="docs/assets/verify-strip.svg" alt="Twelve languages checking green one after another" width="660">
+
+</div>
+
 | Language | Project check (manifest present) | Per-file check |
 |---|---|---|
 | **Rust** | `Cargo.toml` → `cargo check` | `rustc --emit=metadata` |
@@ -313,6 +319,12 @@ Remote URLs are parsed with an exact host match, so a lookalike domain is not ac
 ### Visual Themes
 
 Nine themes, switchable from Settings. Themes style CloseNI's own chrome; a project built with CloseNI is never touched, because its appearance belongs to the project rather than to a preference about this application.
+
+<div align="center">
+
+<img src="docs/assets/themes-strip.svg" alt="Nine CloseNI themes, each shown as a miniature of the interface, cycling one at a time" width="100%">
+
+</div>
 
 | Theme | Character |
 |---|---|
@@ -443,14 +455,21 @@ Sets up the display and library paths needed for Electron and Chromium under WSL
 ### Test Suites
 
 ```bash
-# Unit suite — 536 tests, no browser required
-node local-agent/test/run-tests.cjs
-
-# End-to-end browser integration suite, against a local mock provider
-node local-agent/test/run-e2e.cjs
+npm test              # unit suite — 536 tests, no browser required
+npm run test:e2e      # end-to-end, real Chromium against a local mock provider
+npm run verify        # 41 structural checks: claims vs code, release config, packaging
+npm run verify:visual # all nine themes rendered and contrast-checked, plus the site
 ```
 
 The end-to-end suite drives a real Chromium against a local HTTP server that imitates a chat site. Only the model's answers are faked; the page interaction, streaming detection, extraction, parsing, patch application, and verification are all the production paths. This is what caught the concurrency defects — blank worker pages, workers clobbering the active chat thread, and a session reporting itself ready before its output handler was attached.
+
+#### What the verification scripts cover
+
+[`scripts/verify.mjs`](scripts/verify.mjs) checks the things that rot silently: that the documentation still matches the code (language count, theme count, repair budget), that every referenced image and anchor resolves, that the SVGs carry no `<script>` and no external reference, that the release workflow still gates on tests and checks the tag against `package.json`, and that the packaged artifact contains what it must and nothing from `local-agent/storage/`.
+
+[`scripts/verify-visual.mjs`](scripts/verify-visual.mjs) renders the application in a real browser under **each of the nine themes** and measures the contrast of every element that carries meaning — status words, diff lines, muted labels, buttons — against its actual background. The CSS lint in the unit suite proves a theme *declares* the whole palette; it cannot prove the declared colours are legible together. This is what caught Midnight, the default theme, sitting at 2.9:1 on its micro labels — the lowest of all nine.
+
+Both are run with `npm run verify` and `npm run verify:visual`. Each prints, at the end, what it does **not** cover.
 
 ---
 
@@ -503,6 +522,12 @@ scripts/          Environment configuration, screenshot and asset generation
 ```
 
 ---
+
+<div align="center">
+
+<img src="docs/assets/divider.svg" alt="" width="100%">
+
+</div>
 
 ### Current Limitations
 

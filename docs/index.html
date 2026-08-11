@@ -370,6 +370,10 @@ footer p{color:var(--dim);font-size:13.5px;margin:0 auto var(--sp-2);}
       check. Without one, every file is checked individually. Rust and Java cannot be
       checked file by file — a <code>.rs</code> containing <code>mod utils;</code> fails
       alone even when the crate is perfect — so guessing would fail code that was correct.</p>
+    <figure class="pixfig">
+      <img src="assets/verify-strip.svg" alt="Twelve languages checking green one after another" loading="lazy" style="max-width:660px;margin:0 auto;">
+      <figcaption>Twelve languages. A missing toolchain skips its check rather than failing it.</figcaption>
+    </figure>
     <div class="scroller"><table>
       <tr><th>Language</th><th>With a manifest</th><th>Without one</th></tr>
       <tr><td>Rust</td><td><code>Cargo.toml</code> → <code>cargo check</code></td><td><code>rustc --emit=metadata</code></td></tr>
@@ -429,6 +433,10 @@ step 2/7: Database models                             <span class="ok">done</spa
     <p>Every colour in the app is a token, enforced by a lint that fails the build if a
       literal appears outside a theme block — otherwise a theme reaches half the interface
       and looks broken in the other half.</p>
+    <figure class="pixfig">
+      <img src="assets/themes-strip.svg" alt="Nine CloseNI themes, each shown as a miniature of the interface, cycling one at a time" loading="lazy">
+      <figcaption>All nine, as the app draws them. Themes style CloseNI only - never what it builds.</figcaption>
+    </figure>
     <div class="grid">
       <div class="shot"><img src="screenshots/theme-paper.png" alt="Paper theme, a failed build">
         <div class="shot-cap"><b>Paper</b> — light mode, showing a failed step and the blocked
