@@ -3,16 +3,18 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>CloseNI — an agent that drives the AI chats you already have</title>
-<meta name="description" content="A desktop agent that drives DeepSeek, Qwen and GLM through a real browser to plan, build and verify software projects. No API keys.">
+<title>CloseNI — turn the AI chats you already have into a build pipeline</title>
+<meta name="description" content="A desktop agent that drives DeepSeek, Qwen and GLM through a real browser to plan, build, verify and run software projects. No API keys.">
 <meta property="og:title" content="CloseNI">
 <meta property="og:description" content="Turns the AI chat sites you already use into a build pipeline. No API keys.">
+<meta property="og:image" content="screenshots/builder.png">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><path d='M7 6 H13 V26 H7' fill='none' stroke='%23e8e8ea' stroke-width='2.8'/><path d='M25 6 H19 V26 H25' fill='none' stroke='%23e8e8ea' stroke-width='2.8'/></svg>">
 <style>
-/* The site uses the application's own tokens. Switching a theme here switches
-   the same variables the app switches. */
+/* The site runs on the application's own tokens, so switching a theme here
+   switches exactly what the app switches. */
 :root{
-  --sp-1:4px; --sp-2:6px; --sp-3:8px; --sp-4:12px; --sp-5:14px; --sp-6:20px;
+  --sp-1:4px; --sp-2:6px; --sp-3:8px; --sp-4:12px; --sp-5:14px; --sp-6:20px; --sp-7:32px;
   --r-sm:2px; --r-md:3px; --r-lg:6px;
   --bg:#0b0b0c; --panel:#101012; --surface:#0e0e10; --surface-raised:#17171a; --surface-sunken:#050506;
   --line:#232326; --line-strong:#2e2e33; --line-focus:#6f7ce0;
@@ -30,7 +32,7 @@
   --ok:#2f6b45; --ok-bg:#eaf6ee; --ok-line:#a8d4b6;
   --warn:#7a6520; --warn-bg:#faf5e2; --warn-line:#d8c98a;
   --err:#9c2f38; --err-bg:#fbeced; --err-line:#e0b0b4;
-  --shadow-2:0 12px 40px rgba(40,40,38,.2); --texture:none; --glow:none;
+  --shadow-2:0 12px 40px rgba(40,40,38,.18); --texture:none; --glow:none;
 }
 [data-theme="phosphor"]{
   --bg:#020a04; --panel:#04140a; --surface:#04140a; --surface-raised:#0a2412; --surface-sunken:#010603;
@@ -43,7 +45,7 @@
   --texture:repeating-linear-gradient(0deg,rgba(0,255,120,.045) 0 1px,transparent 1px 3px);
   --glow:0 0 8px rgba(80,255,140,.55);
 }
-[data-theme="cassette"]{
+[data-theme="cassette-indigo"]{
   --bg:#07060f; --panel:#0d0a1c; --surface:#0d0a1c; --surface-raised:#171233; --surface-sunken:#040309;
   --line:#241c47; --line-strong:#5a2a6e; --line-focus:#f08cff;
   --txt:#e6e2ff; --dim:#a49ce0; --mut:#6a5fa8; --inverse:#07060f;
@@ -61,96 +63,154 @@
   --ok:#7fd8a8; --ok-bg:#0d2a1e; --ok-line:#3f7a5c;
   --warn:#e8cf8f; --warn-bg:#2a2410; --warn-line:#8a7a3f;
   --err:#f0a0a8; --err-bg:#2a1218; --err-line:#8a4550;
-  --shadow-2:0 12px 40px rgba(0,0,0,.65);
+  --shadow-2:0 12px 40px rgba(0,0,0,.6);
   --texture:linear-gradient(rgba(120,190,255,.07) 1px,transparent 1px),linear-gradient(90deg,rgba(120,190,255,.07) 1px,transparent 1px);
   --glow:none;
 }
 
 *{margin:0;padding:0;box-sizing:border-box;}
+html{scroll-behavior:smooth;}
 body{background:var(--bg);color:var(--txt);
-  font:15px/1.65 -apple-system,"Segoe UI",system-ui,sans-serif;
-  -webkit-font-smoothing:antialiased;transition:background .2s steps(3),color .2s steps(3);}
+  font:15.5px/1.7 -apple-system,"Segoe UI",system-ui,sans-serif;-webkit-font-smoothing:antialiased;
+  transition:background .25s steps(4),color .25s steps(4);overflow-x:hidden;}
 body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
   background-image:var(--texture);background-size:14px 14px;}
 .mono{font-family:ui-monospace,"Cascadia Mono",Consolas,monospace;}
-.wrap{max-width:1000px;margin:0 auto;padding:0 var(--sp-6);position:relative;z-index:1;}
-a{color:var(--txt);}
+.wrap{max-width:1120px;margin:0 auto;padding:0 var(--sp-6);position:relative;z-index:1;}
+a{color:var(--txt);text-underline-offset:3px;}
 .micro{font-family:ui-monospace,Consolas,monospace;font-size:10px;letter-spacing:.16em;
   color:var(--mut);text-transform:uppercase;}
 
-/* Header */
-header{border-bottom:1px solid var(--line);background:var(--panel);position:sticky;top:0;z-index:5;}
-.bar{display:flex;align-items:center;gap:var(--sp-4);padding:var(--sp-4) 0;}
+/* ---------- header ---------- */
+header{border-bottom:1px solid var(--line);background:var(--panel);position:sticky;top:0;z-index:20;}
+.bar{display:flex;align-items:center;gap:var(--sp-5);padding:var(--sp-4) 0;}
 .brand{display:flex;align-items:center;gap:10px;font-family:ui-monospace,Consolas,monospace;
-  font-size:16px;letter-spacing:.08em;text-decoration:none;}
+  font-size:16px;letter-spacing:.08em;text-decoration:none;flex:none;}
 .brand svg{width:19px;height:19px;color:var(--txt);}
-.brand .ni{color:var(--mut);}
+.ni{color:var(--mut);}
 .spacer{flex:1;}
+nav.links{display:flex;gap:var(--sp-5);}
+nav.links a{font-size:13px;color:var(--dim);text-decoration:none;}
+nav.links a:hover{color:var(--txt);}
 .swatches{display:flex;gap:var(--sp-2);}
 .sw{width:22px;height:22px;border-radius:var(--r-sm);border:1px solid var(--line-strong);
   cursor:pointer;padding:0;transition:transform .08s steps(2);}
 .sw:hover{transform:translateY(-2px);}
 .sw[aria-pressed="true"]{border-color:var(--txt);box-shadow:0 0 0 2px var(--bg),0 0 0 3px var(--txt);}
 .sw.t-midnight{background:#0b0b0c;} .sw.t-paper{background:#f7f7f5;}
-.sw.t-phosphor{background:#020a04;} .sw.t-cassette{background:linear-gradient(135deg,#0d0a1c,#220e2a);}
+.sw.t-phosphor{background:#020a04;} .sw.t-cassette-indigo{background:linear-gradient(135deg,#0d0a1c,#220e2a);}
 .sw.t-blueprint{background:#081a2e;}
 
-/* Hero */
-.hero{padding:96px 0 72px;text-align:center;}
-.hero .mark{width:86px;height:86px;color:var(--txt);margin-bottom:var(--sp-6);filter:drop-shadow(var(--glow));}
-h1{font-family:ui-monospace,Consolas,monospace;font-size:52px;letter-spacing:.06em;
+/* ---------- hero ---------- */
+.hero{padding:88px 0 56px;text-align:center;}
+.hero .mark{width:78px;height:78px;color:var(--txt);margin-bottom:var(--sp-6);filter:drop-shadow(var(--glow));}
+h1{font-family:ui-monospace,Consolas,monospace;font-size:clamp(34px,6vw,58px);letter-spacing:.06em;
   font-weight:400;margin-bottom:var(--sp-5);text-shadow:var(--glow);}
-h1 .ni{color:var(--mut);}
-.tagline{font-size:21px;color:var(--dim);max-width:680px;margin:0 auto var(--sp-6);line-height:1.5;}
-.stack{display:flex;gap:var(--sp-3);justify-content:center;flex-wrap:wrap;margin-bottom:32px;}
+.tagline{font-size:clamp(17px,2.4vw,22px);color:var(--dim);max-width:720px;margin:0 auto var(--sp-6);}
+.stack{display:flex;gap:var(--sp-3);justify-content:center;flex-wrap:wrap;margin-bottom:var(--sp-7);}
 .chip{font-family:ui-monospace,Consolas,monospace;font-size:11px;padding:4px 10px;
   border:1px solid var(--line-strong);border-radius:var(--r-md);color:var(--dim);}
 .cta{display:flex;gap:var(--sp-4);justify-content:center;flex-wrap:wrap;}
-.btn{display:inline-block;padding:12px 26px;border-radius:var(--r-md);text-decoration:none;
-  font-family:ui-monospace,Consolas,monospace;font-size:12px;letter-spacing:.1em;
-  text-transform:uppercase;border:1px solid var(--line-strong);color:var(--dim);
-  transition:transform .08s steps(2);}
+.btn{display:inline-block;padding:13px 28px;border-radius:var(--r-md);text-decoration:none;
+  font-family:ui-monospace,Consolas,monospace;font-size:12px;letter-spacing:.1em;text-transform:uppercase;
+  border:1px solid var(--line-strong);color:var(--dim);transition:transform .08s steps(2);}
 .btn:hover{color:var(--txt);border-color:var(--txt);}
 .btn:active{transform:translateY(1px);}
 .btn.primary{background:var(--txt);border-color:var(--txt);color:var(--inverse);font-weight:600;}
 
-/* Sections */
-section{padding:64px 0;border-top:1px solid var(--line);}
-h2{font-family:ui-monospace,Consolas,monospace;font-size:13px;letter-spacing:.18em;
-  text-transform:uppercase;color:var(--mut);margin-bottom:var(--sp-6);font-weight:400;}
-h3{font-size:17px;margin-bottom:var(--sp-3);}
-p{color:var(--dim);margin-bottom:var(--sp-4);}
+/* ---------- animated terminal ---------- */
+.term{max-width:760px;margin:var(--sp-7) auto 0;border:1px solid var(--line);border-radius:var(--r-lg);
+  background:var(--surface-sunken);text-align:left;overflow:hidden;box-shadow:var(--shadow-2);}
+.term-bar{display:flex;align-items:center;gap:var(--sp-2);padding:9px var(--sp-5);
+  border-bottom:1px solid var(--line);background:var(--panel);}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--line-strong);}
+.term-body{padding:var(--sp-5) var(--sp-6);font-family:ui-monospace,Consolas,monospace;
+  font-size:12.5px;line-height:1.85;min-height:238px;}
+.term-line{opacity:0;animation:line-in .01s steps(1) forwards;white-space:pre-wrap;}
+@keyframes line-in{to{opacity:1;}}
+.cursor::after{content:"_";animation:blink 1s steps(2) infinite;color:var(--txt);}
+@keyframes blink{50%{opacity:0;}}
+.ok{color:var(--ok);} .warn{color:var(--warn);} .err{color:var(--err);} .dimt{color:var(--mut);}
+
+/* ---------- sections ---------- */
+section{padding:72px 0;border-top:1px solid var(--line);}
+.eyebrow{font-family:ui-monospace,Consolas,monospace;font-size:10px;letter-spacing:.18em;
+  text-transform:uppercase;color:var(--mut);margin-bottom:var(--sp-4);}
+h2{font-size:clamp(24px,3.4vw,34px);font-weight:600;letter-spacing:-.01em;margin-bottom:var(--sp-5);}
+h3{font-size:18px;margin-bottom:var(--sp-3);}
+p{color:var(--dim);margin-bottom:var(--sp-4);max-width:74ch;}
 p strong,li strong{color:var(--txt);font-weight:600;}
+.lead{font-size:17px;}
+
+/* scroll reveal */
+.reveal{opacity:0;transform:translateY(14px);transition:opacity .4s steps(5),transform .4s steps(5);}
+.reveal.in{opacity:1;transform:none;}
+
+/* ---------- shots ---------- */
+.tabs{display:flex;gap:var(--sp-2);flex-wrap:wrap;margin-bottom:var(--sp-5);}
+.tab{font-family:ui-monospace,Consolas,monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;
+  padding:7px 14px;border:1px solid var(--line-strong);border-radius:var(--r-md);background:none;
+  color:var(--dim);cursor:pointer;transition:transform .08s steps(2);}
+.tab:hover{color:var(--txt);} .tab:active{transform:translateY(1px);}
+.tab[aria-selected="true"]{background:var(--txt);border-color:var(--txt);color:var(--inverse);font-weight:600;}
+.shot{border:1px solid var(--line);border-radius:var(--r-lg);overflow:hidden;background:var(--panel);
+  box-shadow:var(--shadow-2);}
+.shot img{display:block;width:100%;height:auto;}
+.shot-cap{padding:var(--sp-4) var(--sp-5);border-top:1px solid var(--line);font-size:13.5px;color:var(--dim);}
+.shot-cap b{color:var(--txt);font-weight:600;}
 
 pre{background:var(--surface-sunken);border:1px solid var(--line);border-radius:var(--r-lg);
   padding:var(--sp-6);overflow-x:auto;font-family:ui-monospace,Consolas,monospace;
-  font-size:12.5px;line-height:1.7;color:var(--dim);}
+  font-size:12.5px;line-height:1.75;color:var(--dim);}
 pre b{color:var(--txt);font-weight:400;}
-pre .ok{color:var(--ok);} pre .warn{color:var(--warn);} pre .err{color:var(--err);}
 
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:var(--sp-5);}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:var(--sp-5);}
 .card{border:1px solid var(--line);border-radius:var(--r-lg);background:var(--panel);padding:var(--sp-6);}
 .card .micro{display:block;margin-bottom:var(--sp-3);}
+.card h3{font-size:16px;}
 .card p{margin:0;font-size:14px;}
 
-table{width:100%;border-collapse:collapse;font-size:14px;}
-th,td{text-align:left;padding:10px var(--sp-4);border-bottom:1px solid var(--line);vertical-align:top;}
+.split{display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-7);align-items:center;}
+@media (max-width:820px){.split{grid-template-columns:1fr;}}
+
+/* A table of code snippets cannot always fit a phone. It scrolls inside its own
+   box rather than making the whole page scroll sideways. */
+.scroller{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+table{width:100%;border-collapse:collapse;font-size:14px;min-width:420px;}
+th,td{text-align:left;padding:11px var(--sp-4);border-bottom:1px solid var(--line);vertical-align:top;}
 th{color:var(--mut);font-family:ui-monospace,Consolas,monospace;font-size:10px;
   letter-spacing:.14em;text-transform:uppercase;font-weight:400;}
-td{color:var(--dim);} td:first-child{color:var(--txt);white-space:nowrap;}
+td{color:var(--dim);} td:first-child{color:var(--txt);}
+td code,p code,li code{font-family:ui-monospace,Consolas,monospace;font-size:12.5px;
+  background:var(--surface-raised);border:1px solid var(--line);border-radius:var(--r-sm);padding:1px 5px;}
+
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:var(--sp-5);}
+.stat{border:1px solid var(--line);border-radius:var(--r-lg);background:var(--panel);
+  padding:var(--sp-6);text-align:center;}
+.stat .n{font-family:ui-monospace,Consolas,monospace;font-size:32px;color:var(--txt);
+  text-shadow:var(--glow);display:block;}
+.stat .l{font-size:12px;color:var(--mut);}
 
 .note{border-left:2px solid var(--warn-line);background:var(--warn-bg);padding:var(--sp-4) var(--sp-5);
   border-radius:0 var(--r-md) var(--r-md) 0;margin:var(--sp-5) 0;}
 .note p{color:var(--txt);margin:0;font-size:14px;}
+.note.danger{border-left-color:var(--err-line);background:var(--err-bg);}
 
-footer{border-top:1px solid var(--line);padding:40px 0 64px;text-align:center;}
-footer p{font-size:13px;margin-bottom:var(--sp-2);}
+ul.plain{list-style:none;margin-bottom:var(--sp-4);}
+ul.plain li{color:var(--dim);padding-left:18px;position:relative;margin-bottom:var(--sp-2);}
+ul.plain li::before{content:"—";position:absolute;left:0;color:var(--mut);}
+
+footer{border-top:1px solid var(--line);padding:48px 0 72px;text-align:center;}
+footer p{color:var(--dim);font-size:13.5px;margin:0 auto var(--sp-2);}
 
 @media (max-width:640px){
-  h1{font-size:34px;} .tagline{font-size:17px;} .hero{padding:56px 0 44px;}
-  .bar{flex-wrap:wrap;} pre{font-size:11px;padding:var(--sp-4);}
+  .hero{padding:52px 0 40px;} nav.links{display:none;}
+  pre{font-size:11px;padding:var(--sp-4);} .term-body{font-size:11px;min-height:210px;}
 }
-@media (prefers-reduced-motion:reduce){*{transition:none!important;}}
+@media (prefers-reduced-motion:reduce){
+  *{transition:none!important;animation:none!important;}
+  .reveal{opacity:1;transform:none;}
+}
 </style>
 </head>
 <body>
@@ -164,12 +224,15 @@ footer p{font-size:13px;margin-bottom:var(--sp-2);}
       <span>Close<span class="ni">NI</span></span>
     </a>
     <span class="spacer"></span>
-    <span class="micro" style="margin-right:6px">Theme</span>
+    <nav class="links">
+      <a href="#how">How</a><a href="#see">Screens</a><a href="#build">Build</a>
+      <a href="#themes">Themes</a><a href="#install">Install</a>
+    </nav>
     <div class="swatches" role="group" aria-label="Theme">
-      <button class="sw t-midnight"  data-theme="midnight"  aria-pressed="true"  title="Midnight"></button>
-      <button class="sw t-paper"     data-theme="paper"     aria-pressed="false" title="Paper"></button>
-      <button class="sw t-phosphor"  data-theme="phosphor"  aria-pressed="false" title="Phosphor"></button>
-      <button class="sw t-cassette"  data-theme="cassette"  aria-pressed="false" title="Cassette"></button>
+      <button class="sw t-midnight" data-theme="midnight" aria-pressed="true" title="Midnight"></button>
+      <button class="sw t-paper" data-theme="paper" aria-pressed="false" title="Paper"></button>
+      <button class="sw t-phosphor" data-theme="phosphor" aria-pressed="false" title="Phosphor"></button>
+      <button class="sw t-cassette-indigo" data-theme="cassette-indigo" aria-pressed="false" title="Cassette"></button>
       <button class="sw t-blueprint" data-theme="blueprint" aria-pressed="false" title="Blueprint"></button>
     </div>
   </div>
@@ -181,139 +244,308 @@ footer p{font-size:13px;margin-bottom:var(--sp-2);}
     <path d="M7 6 H13 V26 H7"/><path d="M25 6 H19 V26 H25"/>
   </svg>
   <h1>Close<span class="ni">NI</span></h1>
-  <p class="tagline">A desktop agent that drives the AI chat sites you already use —
-    and turns them into a build pipeline.</p>
+  <p class="tagline">Every coding agent needs an API key. This one signs into the
+    chat sites you already use — and drives them like an API.</p>
   <div class="stack">
-    <span class="chip">no API keys</span>
-    <span class="chip">Electron</span>
-    <span class="chip">TypeScript</span>
-    <span class="chip">Playwright</span>
-    <span class="chip">Windows &amp; Linux</span>
+    <span class="chip">no API keys</span><span class="chip">Electron</span>
+    <span class="chip">TypeScript</span><span class="chip">Playwright</span>
+    <span class="chip">Windows &amp; Linux</span><span class="chip">MIT</span>
   </div>
   <div class="cta">
-    <a class="btn primary" href="https://github.com/siddarth1872004/CloseNI/releases">Download</a>
+    <a class="btn primary" href="#install">Download</a>
     <a class="btn" href="https://github.com/siddarth1872004/CloseNI">Source</a>
+  </div>
+
+  <div class="term">
+    <div class="term-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span>
+      <span class="micro" style="margin-left:8px">closeni — habit tracker</span></div>
+    <div class="term-body" id="term"></div>
   </div>
 </div>
 
-<section>
-  <div class="wrap">
-    <h2>The idea</h2>
-    <p>Every coding agent needs an API key. CloseNI doesn't. It opens a real browser, signs
-      into <strong>DeepSeek</strong>, <strong>Qwen</strong> or <strong>GLM</strong> the way you would, and then drives that
-      chat window as if it were an API — sending prompts, reading replies out of the page,
-      parsing them into file changes, applying them, and checking that the result compiles.</p>
+<section id="how">
+  <div class="wrap reveal">
+    <div class="eyebrow">How it works</div>
+    <h2>It uses a browser, not an API</h2>
+    <p class="lead">CloseNI opens a real Chromium window, signs into
+      <strong>DeepSeek</strong>, <strong>Qwen Studio</strong> or <strong>GLM</strong> as you,
+      and keeps that session in a persistent profile. From then on it types prompts into the
+      composer, waits for generation to finish, and reads the reply back out of the page.</p>
+    <p>What comes back is text. Turning that into a working project is the rest of the app:
+      repairing not-quite-valid JSON, applying file changes with backups and workspace
+      containment, choosing the right syntax check for each language, and feeding failures
+      back to the model until they pass.</p>
 <pre>   YOU                CloseNI                  A CHAT SITE              YOUR DISK
     │                    │                          │                       │
     │  "build me a       │                          │                       │
-    │   flask todo api"  │                          │                       │
+    │   habit tracker"   │                          │                       │
     ├───────────────────►│                          │                       │
     │                    │   plan this, as JSON     │                       │
     │                    ├─────────────────────────►│                       │
     │                    │◄─────────────────────────┤                       │
-    │   <b>review the plan</b> │   15 steps, a run command│                       │
-    ├───────────────────►│                          │                       │
-    │                    │   step 1 …               │                       │
+    │   <b>review the plan</b> │   7 steps, a dependency  │                       │
+    │◄───────────────────┤   graph, a run command   │                       │
+    │      approve       │                          │                       │
+    ├───────────────────►│   step 1 …               │                       │
     │                    ├─────────────────────────►│                       │
-    │                    │◄─────────────────────────┤                       │
+    │                    │◄─────────────────────────┤   {"files":[…]}       │
     │                    ├──────────────────────────┼──────────────────────►│
-    │                    │   apply, syntax check    │        <span class="ok">files written</span>  │
+    │                    │   apply · syntax check   │        <span class="ok">files written</span>  │
+    │                    │                          │                       │
     │                    │   steps 2 and 3 …        │                       │
-    │                    ├═════════════════════════►│   <b>(in parallel)</b>       │</pre>
+    │                    ├═════════════════════════►│   <b>(in parallel)</b>       │
+    │                    │   step 4 failed          │                       │
+    │                    ├──── error sent back ────►│                       │
+    │                    │◄─────────────────────────┤   <span class="ok">fixed, passes</span>       │</pre>
   </div>
 </section>
 
-<section>
-  <div class="wrap">
-    <h2>What it does</h2>
-    <div class="grid">
-      <div class="card"><span class="micro">No key required</span>
-        <p>Playwright drives a real signed-in session. Your provider account is the only credential.</p></div>
-      <div class="card"><span class="micro">Plans that fit the work</span>
-        <p>The model decides how many steps a project needs — two for a script, twenty or more for an application.</p></div>
-      <div class="card"><span class="micro">Parallel steps</span>
-        <p>Independent steps run at once in separate tabs. Conversations parallelise; file writes never do.</p></div>
+<section id="see">
+  <div class="wrap reveal">
+    <div class="eyebrow">The application</div>
+    <h2>Six panels, one job</h2>
+    <p>These are real screenshots, generated from the app's own markup and stylesheet —
+      not mock-ups. Switch the theme in the header and they follow.</p>
+
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" aria-selected="true" data-shot="chat">Chat</button>
+      <button class="tab" role="tab" aria-selected="false" data-shot="builder">Builder</button>
+      <button class="tab" role="tab" aria-selected="false" data-shot="test">Test</button>
+      <button class="tab" role="tab" aria-selected="false" data-shot="ship">Ship</button>
+      <button class="tab" role="tab" aria-selected="false" data-shot="settings">Settings</button>
+    </div>
+    <div class="shot">
+      <img id="shot-img" src="screenshots/chat.png" alt="The CloseNI interface">
+      <div class="shot-cap" id="shot-cap"></div>
+    </div>
+  </div>
+</section>
+
+<section id="build">
+  <div class="wrap reveal">
+    <div class="eyebrow">Inside a build</div>
+    <h2>Plans as long as the work needs</h2>
+    <p>The model decides how many steps a project takes — two for a script, twenty or more
+      for an application — and declares which steps depend on which. Steps with no
+      dependency between them run <strong>at the same time</strong>, in separate chat tabs.</p>
+<pre>   serial, no graph                    with a declared graph, limit 2
+
+   1 ──► 2 ──► 3 ──► 4 ──► 5 ──► 6     1 ──┬──► 2 ──┐
+                                           ├──► 3 ──┼──► 4 ──┬──► 6
+   ~11 min                                 └────────┘        └──► 5
+
+                                       ~7 min</pre>
+    <p><strong>Only the conversations parallelise.</strong> Applying files, running syntax
+      checks and asking for command approval all happen one at a time, behind a single lock.
+      Two steps can talk at once; only one may write. That removes every shared-state race
+      by construction rather than by careful locking — including the worst one, where two
+      permission prompts race and the answer meant for one command is given to the other.</p>
+
+    <div class="grid" style="margin-top:var(--sp-7)">
       <div class="card"><span class="micro">Self-healing</span>
-        <p>A failed syntax check goes back to the model with the error, and it tries again.</p></div>
-      <div class="card"><span class="micro">Six languages</span>
-        <p>Python, JavaScript, Rust, C, C++, Java. A manifest means one project check; no manifest means one per file.</p></div>
-      <div class="card"><span class="micro">Projects that run themselves</span>
-        <p>Every build writes a run manifest and scripts, so reopening a project next month still knows the command.</p></div>
-      <div class="card"><span class="micro">Ask about a failure</span>
-        <p>The Test chat carries the last command and its output with it. You never paste a traceback.</p></div>
-      <div class="card"><span class="micro">Nine themes</span>
-        <p>Including CRT variants and a high-contrast fallback. The swatches above are four of them.</p></div>
+        <p>A failed syntax check is sent back to the model with the compiler's own output.
+          It gets two attempts before the step is marked failed.</p></div>
+      <div class="card"><span class="micro">Blocked is not failed</span>
+        <p>If a step fails, everything depending on it is marked <em>blocked</em> — it never
+          ran, and saying it failed would claim something about code nobody executed.</p></div>
+      <div class="card"><span class="micro">Resumable</span>
+        <p>Fix the problem and press Retry. The build continues from what already
+          succeeded instead of starting over.</p></div>
+      <div class="card"><span class="micro">Delta context</span>
+        <p>Each step sends only what the conversation has not already seen, so prompt size
+          stays flat as a project grows instead of compounding.</p></div>
     </div>
   </div>
 </section>
 
 <section>
-  <div class="wrap">
-    <h2>A build, as it happens</h2>
-<pre>step 1/15: Project setup and configuration
-  Applied create to: requirements.txt
-  Applied create to: config.py
-  RUNNING_CHECK: python3 -m py_compile "config.py"
-  CHECK_RESULT: <span class="ok">PASS</span>
-  <span class="warn">COMMAND_NEEDS_REVIEW: sudo apt install -y python3-venv</span>
-  COMMAND_DENIED: sudo apt install -y python3-venv
-  <span class="warn">ENVIRONMENT_COMMAND_SKIPPED: python3 -m venv venv</span>
-step 2/15: Database models        <span class="ok">done</span>
-step 3/15: Application factory    <span class="ok">done</span>   <b>(parallel)</b>
-step 4/15: Todo routes            <span class="ok">done</span></pre>
-    <p>Commands that install system packages, run as root, or pipe a download into an
-      interpreter <strong>always ask</strong> — whatever the permission setting says. And an
-      environment that cannot build a virtualenv no longer fails code that already compiled.</p>
+  <div class="wrap reveal">
+    <div class="eyebrow">Verification</div>
+    <h2>It checks what it writes</h2>
+    <p>A manifest at the project root claims its language and produces one project-level
+      check. Without one, every file is checked individually. Rust and Java cannot be
+      checked file by file — a <code>.rs</code> containing <code>mod utils;</code> fails
+      alone even when the crate is perfect — so guessing would fail code that was correct.</p>
+    <div class="scroller"><table>
+      <tr><th>Language</th><th>With a manifest</th><th>Without one</th></tr>
+      <tr><td>Rust</td><td><code>Cargo.toml</code> → <code>cargo check</code></td><td><code>rustc --emit=metadata</code></td></tr>
+      <tr><td>C / C++</td><td><code>Makefile</code> → <code>make -n</code></td><td><code>gcc -fsyntax-only</code></td></tr>
+      <tr><td>Java</td><td><code>pom.xml</code> · <code>build.gradle</code></td><td><code>javac</code></td></tr>
+      <tr><td>Go</td><td><code>go.mod</code> → <code>go build ./...</code></td><td><code>gofmt -e</code></td></tr>
+      <tr><td>TypeScript</td><td><code>tsconfig.json</code> → <code>tsc --noEmit</code></td><td><code>tsc --noEmit</code></td></tr>
+      <tr><td>C#</td><td><code>*.csproj</code> → <code>dotnet build</code></td><td>—</td></tr>
+      <tr><td>Python</td><td>—</td><td><code>py_compile</code></td></tr>
+      <tr><td>JavaScript</td><td>—</td><td><code>node --check</code></td></tr>
+      <tr><td>Ruby · PHP · Shell</td><td>—</td><td><code>ruby -c</code> · <code>php -l</code> · <code>bash -n</code></td></tr>
+    </table></div>
+    <p style="margin-top:var(--sp-5)">A missing toolchain <strong>skips</strong> the check
+      rather than failing it. A machine with Python but no Rust should not fail a build for
+      a problem it cannot solve.</p>
   </div>
 </section>
 
 <section>
-  <div class="wrap">
-    <h2>Install</h2>
-    <table>
-      <tr><th>Platform</th><th>File</th><th>Notes</th></tr>
-      <tr><td>Windows</td><td class="mono">CloseNI-Setup-x.y.z.exe</td>
-          <td>Unsigned, so SmartScreen warns. Choose More info, then Run anyway.</td></tr>
-      <tr><td>Linux</td><td class="mono">CloseNI-x.y.z.AppImage</td>
-          <td><span class="mono">chmod +x</span> then run it. No installation.</td></tr>
-      <tr><td>Debian/Ubuntu</td><td class="mono">closeni_x.y.z_amd64.deb</td>
-          <td><span class="mono">sudo dpkg -i</span> the file.</td></tr>
-      <tr><td>From source</td><td class="mono">npm start</td>
-          <td>See the repository README.</td></tr>
-    </table>
-    <div class="note"><p><strong>First launch downloads a browser.</strong> CloseNI drives real
-      browsers, so it fetches its own Chromium — about 389MB, once, kept in your user data
-      directory. Bundling it would put half a gigabyte in every release.</p></div>
+  <div class="wrap reveal">
+    <div class="eyebrow">Safety</div>
+    <h2>It asks before doing anything serious</h2>
+    <p>Builds suggest shell commands, and a model will occasionally suggest installing a
+      system package or piping a downloaded script into an interpreter. Some commands
+      <strong>always</strong> prompt, whatever your permission setting says.</p>
+<pre><span class="warn">COMMAND_NEEDS_REVIEW:</span> sudo apt install -y python3-venv
+COMMAND_DENIED: sudo apt install -y python3-venv
+<span class="warn">ENVIRONMENT_COMMAND_SKIPPED:</span> python3 -m venv venv
+<span class="dimt">Environment setup did not work here, continuing.</span>
+step 2/7: Database models                             <span class="ok">done</span></pre>
+    <p>The list covers <code>sudo</code>, package managers, <code>rm -rf</code>,
+      <code>dd</code>, <code>chmod 777</code>, shutdown, and anything piping
+      <code>curl</code> or <code>wget</code> into a shell or interpreter — and it tests the
+      whole command, so hiding <code>sudo</code> behind <code>||</code> does not slip past.</p>
+    <p>Separately, <strong>a failed environment command no longer fails the build.</strong>
+      A virtualenv that cannot be created is a fact about your machine, not about code that
+      already compiled.</p>
+  </div>
+</section>
+
+<section id="themes">
+  <div class="wrap reveal">
+    <div class="eyebrow">Appearance</div>
+    <h2>Nine themes, including three CRTs</h2>
+    <p>Every colour in the app is a token, enforced by a lint that fails the build if a
+      literal appears outside a theme block — otherwise a theme reaches half the interface
+      and looks broken in the other half.</p>
+    <div class="grid">
+      <div class="shot"><img src="screenshots/theme-paper.png" alt="Paper theme, a failed build">
+        <div class="shot-cap"><b>Paper</b> — light mode, showing a failed step and the blocked
+          steps behind it.</div></div>
+      <div class="shot"><img src="screenshots/theme-phosphor.png" alt="Phosphor theme">
+        <div class="shot-cap"><b>Phosphor</b> — green CRT, with static scanlines and glow.</div></div>
+      <div class="shot"><img src="screenshots/theme-cassette.png" alt="Cassette theme">
+        <div class="shot-cap"><b>Cassette</b> — retro-futurist, planning a change.</div></div>
+    </div>
   </div>
 </section>
 
 <section>
-  <div class="wrap">
-    <h2>How it is built</h2>
-    <p>Two processes with one contract between them. The desktop app never touches a
-      browser; the agent never touches a window. The agent is a command-line program you can
-      run by hand, which is exactly how its end-to-end suite drives it — against a mock chat
-      server, with only the model's answers faked.</p>
-<pre>  desktop/          Electron — panels, plan review, diffs, settings
-    main.js         IPC, git, the GitHub token
-    builder.js      the step scheduler
-       │  spawn, JSON over stdio
-       ▼
-  local-agent/      TypeScript, one process per task
-    providers/      send · wait for the reply · read it out of the page
-    parser/         JSON repair for replies that are nearly valid
-    patch/          apply, with backups and workspace containment
-    verification/   syntax checks, command policy, run manifest
-       │
-       ▼
+  <div class="wrap reveal">
+    <div class="eyebrow">Architecture</div>
+    <h2>Two processes, one contract</h2>
+    <p>The desktop app never touches a browser. The agent never touches a window. They
+      speak JSON over stdio, which means the agent is a command-line program you can run by
+      hand — and that is exactly how its end-to-end suite drives it, against a mock chat
+      server with only the model's answers faked.</p>
+<pre>  desktop/            Electron
+    main.js           IPC · git · the GitHub token · spawns the agent
+    renderer.js       panels, plan review, diffs, settings
+    builder.js        the step scheduler
+        │
+        │  spawn, JSON over stdio
+        ▼
+  local-agent/        TypeScript, one process per task
+    providers/        send · wait for generation · read the reply out of the DOM
+                      + a control module per provider (each UI differs in kind)
+    parser/           JSON repair for replies that are nearly valid
+    patch/            apply, with backups and workspace containment
+    verification/     syntax checks · command policy · the run manifest
+        │
+        ▼
   a real browser, signed in as you</pre>
-    <table>
-      <tr><th>Suite</th><th>Checks</th><th>What it covers</th></tr>
-      <tr><td class="mono">unit</td><td>514</td>
-          <td>Parsing, JSON repair, patching, context ranking, scheduling, themes, redaction, command policy</td></tr>
-      <tr><td class="mono">end&#8209;to&#8209;end</td><td>155</td>
-          <td>The real agent against a mock chat server, driving a real browser</td></tr>
-    </table>
+    <div class="stats" style="margin-top:var(--sp-7)">
+      <div class="stat"><span class="n" data-count="536">0</span><span class="l">unit tests</span></div>
+      <div class="stat"><span class="n" data-count="155">0</span><span class="l">end-to-end tests</span></div>
+      <div class="stat"><span class="n" data-count="12">0</span><span class="l">languages checked</span></div>
+      <div class="stat"><span class="n" data-count="3">0</span><span class="l">providers</span></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap reveal">
+    <div class="eyebrow">Projects that describe themselves</div>
+    <h2>Every build leaves a run command behind</h2>
+    <div class="split">
+      <div>
+        <p>Entry-point detection used to guess from filenames, so a project at
+          <code>src/app/server.py</code> matched nothing and the panel said
+          <em>no entry point found</em> — despite the model having declared the command
+          while planning.</p>
+        <p>Now the answer is written into the project. Reopen it next month, on another
+          machine, and the Test panel already knows.</p>
+        <ul class="plain">
+          <li><code>closeni.run.json</code> — what the app reads</li>
+          <li><code>run.sh</code> and <code>run.bat</code> — so it runs without CloseNI</li>
+          <li>An edited command is never overwritten by a later build</li>
+        </ul>
+      </div>
+<pre>{
+  "version": 1,
+  "run": "python3 src/app/server.py",
+  "install": "pip install -r requirements.txt",
+  "userEdited": false
+}
+
+<span class="dimt">the Test panel shows where it came from:</span>
+  <span class="ok">SAVED</span>            from closeni.run.json
+  <span class="ok">FROM YOUR PLAN</span>   the model declared it
+  <span class="warn">DETECTED</span>         guessed from the files
+  <span class="err">NOT FOUND</span>        nothing to go on</pre>
+    </div>
+  </div>
+</section>
+
+<section id="install">
+  <div class="wrap reveal">
+    <div class="eyebrow">Install</div>
+    <h2>Download, or build it yourself</h2>
+    <div class="scroller"><table>
+      <tr><th>Platform</th><th>File</th><th>Notes</th></tr>
+      <tr><td>Windows</td><td><code>CloseNI-Setup-x.y.z.exe</code></td>
+        <td>Unsigned, so SmartScreen warns. <em>More info</em> → <em>Run anyway</em>.</td></tr>
+      <tr><td>Linux</td><td><code>CloseNI-x.y.z.AppImage</code></td>
+        <td><code>chmod +x</code>, then run. No installation.</td></tr>
+      <tr><td>Debian · Ubuntu</td><td><code>closeni_x.y.z_amd64.deb</code></td>
+        <td><code>sudo dpkg -i closeni_*.deb</code></td></tr>
+    </table></div>
+    <div style="margin-top:var(--sp-6)">
+      <a class="btn primary" href="https://github.com/siddarth1872004/CloseNI/releases">Go to Releases</a>
+    </div>
+
+    <h3 style="margin-top:var(--sp-7)">From source</h3>
+<pre>git clone https://github.com/siddarth1872004/CloseNI.git
+cd CloseNI
+npm install
+npm run build
+npx playwright install chromium
+cd desktop &amp;&amp; npm start</pre>
+
+    <div class="note"><p><strong>First launch downloads a browser.</strong> CloseNI drives
+      real browsers, so it fetches its own Chromium — about 389MB, once, kept in your user
+      data directory. Bundling it would put half a gigabyte in every release.</p></div>
+    <div class="note danger"><p><strong>Your provider session is a credential.</strong>
+      Signing in stores a browser profile in your user data directory. Treat it like a
+      password: it is git-ignored, and the packaging config uses an allow-list so it can
+      never reach a release build.</p></div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap reveal">
+    <div class="eyebrow">Honestly</div>
+    <h2>What is not proven yet</h2>
+    <p>The test suites prove the logic. They do not prove every path works on every
+      machine, and it is worth saying which is which.</p>
+    <ul class="plain">
+      <li><strong>DeepSeek</strong> is the provider driven end to end. Qwen's controls were
+        written from its live UI but not exercised; <strong>GLM's chat selectors have never
+        been checked against the live site</strong> — they are a text edit in a JSON file
+        if they are wrong.</li>
+      <li>The Go, TypeScript, Ruby, PHP, C# and shell checks are unit-tested but have not
+        run against a real project of that kind.</li>
+      <li>GitHub sign-in, push and Actions are unit-tested with an injected transport.
+        No live request has been made.</li>
+    </ul>
+    <p>The roadmap, every design spec and every implementation plan — including the
+      decisions that were rejected and why — are in the repository under
+      <code>docs/</code>.</p>
   </div>
 </section>
 
@@ -322,27 +554,135 @@ step 4/15: Todo routes            <span class="ok">done</span></pre>
     <p class="mono">Close<span class="ni">NI</span></p>
     <p><a href="https://github.com/siddarth1872004/CloseNI">Source</a> ·
        <a href="https://github.com/siddarth1872004/CloseNI/releases">Releases</a> ·
-       <a href="https://github.com/siddarth1872004/CloseNI/blob/main/docs/ROADMAP.md">Roadmap</a></p>
+       <a href="https://github.com/siddarth1872004/CloseNI/blob/main/docs/ROADMAP.md">Roadmap</a> ·
+       <a href="https://github.com/siddarth1872004/CloseNI/blob/main/LICENSE">MIT</a></p>
     <p class="micro" style="margin-top:16px">Not affiliated with DeepSeek, Alibaba, Zhipu AI or GitHub</p>
   </div>
 </footer>
 
 <script>
 (function () {
-  var saved = null;
-  try { saved = localStorage.getItem("closeni.site.theme"); } catch (e) {}
-  if (saved) apply(saved);
+  "use strict";
+  var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-  function apply(name) {
+  /* ---------- theme ---------- */
+  var SHOT_THEME = { paper: "theme-paper", phosphor: "theme-phosphor", "cassette-indigo": "theme-cassette" };
+  var current = "chat";
+
+  function applyTheme(name) {
     document.documentElement.setAttribute("data-theme", name);
     document.querySelectorAll(".sw").forEach(function (b) {
       b.setAttribute("aria-pressed", String(b.dataset.theme === name));
     });
     try { localStorage.setItem("closeni.site.theme", name); } catch (e) {}
+    paintShot();
   }
   document.querySelectorAll(".sw").forEach(function (b) {
-    b.addEventListener("click", function () { apply(b.dataset.theme); });
+    b.addEventListener("click", function () { applyTheme(b.dataset.theme); });
   });
+
+  /* ---------- screenshot tabs ----------
+     A themed screenshot exists only for a few panels, so the tab wins and the
+     theme is applied where one was captured. Better an accurate picture of the
+     wrong theme than a missing image. */
+  var CAPS = {
+    chat: "<b>Chat</b> — describe the project, then generate a plan. The sidebar shows the steps, the files they touch, and an estimated duration before you commit to anything.",
+    builder: "<b>Builder</b> — steps run, some in parallel. Each shows the files it wrote as a diff against the backup taken before the write.",
+    test: "<b>Test</b> — the run command is already there, with a badge saying where it came from. The chat beside it carries the last command and its output, so you never paste a traceback.",
+    ship: "<b>Ship</b> — sign in with a token, pick a repository, commit and push. The token is encrypted with your OS key and never enters .git/config, a command line, or a log.",
+    settings: "<b>Settings</b> — provider controls, permissions including how many steps run at once, and the theme picker."
+  };
+  function paintShot() {
+    var theme = document.documentElement.getAttribute("data-theme");
+    var themed = SHOT_THEME[theme];
+    var img = document.getElementById("shot-img");
+    var useThemed = themed && current !== "settings" && current !== "ship";
+    img.src = "screenshots/" + (useThemed ? themed : current) + ".png";
+    document.getElementById("shot-cap").innerHTML = CAPS[current] +
+      (useThemed ? ' <span class="micro">shown in the ' + theme.split("-")[0] + " theme</span>" : "");
+  }
+  document.querySelectorAll(".tab").forEach(function (t) {
+    t.addEventListener("click", function () {
+      document.querySelectorAll(".tab").forEach(function (o) { o.setAttribute("aria-selected", "false"); });
+      t.setAttribute("aria-selected", "true");
+      current = t.dataset.shot;
+      paintShot();
+    });
+  });
+
+  var saved = null;
+  try { saved = localStorage.getItem("closeni.site.theme"); } catch (e) {}
+  applyTheme(saved || "midnight");
+
+  /* ---------- hero terminal ---------- */
+  var SCRIPT = [
+    ['<span class="dimt">you</span>  build a habit tracker: FastAPI, SQLite, a static frontend', 260],
+    ['', 120],
+    ['<span class="dimt">plan</span>  7 steps · roughly 11 min', 420],
+    ['      <span class="ok">01</span> project setup      <span class="ok">02</span> models      <span class="ok">03</span> storage', 200],
+    ['      <span class="warn">04</span> api routes        <span class="warn">05</span> server      06 frontend', 200],
+    ['', 160],
+    ['<span class="dimt">step 1</span>  requirements.txt, src/app/config.py      <span class="ok">done</span>', 460],
+    ['<span class="dimt">step 2</span>  src/app/models.py                       <span class="ok">done</span>', 420],
+    ['<span class="dimt">step 3</span>  src/app/store.py         <b>parallel</b>      <span class="ok">done</span>', 420],
+    ['<span class="dimt">step 4</span>  src/app/routes.py                       <span class="err">failed</span>', 460],
+    ["        SyntaxError: line 41, closing brace does not match opening bracket", 200],
+    ['        <span class="dimt">error sent back to the model …</span>', 620],
+    ['<span class="dimt">step 4</span>  src/app/routes.py            <b>retry</b>      <span class="ok">done</span>', 460],
+    ['', 160],
+    ['<span class="ok">build finished: 7/7</span>   run command saved: python3 src/app/server.py', 0],
+  ];
+  var term = document.getElementById("term");
+  function typeLine(i) {
+    if (i >= SCRIPT.length) { term.lastChild.classList.add("cursor"); return; }
+    var d = document.createElement("div");
+    d.className = "term-line";
+    d.innerHTML = SCRIPT[i][0] || "&nbsp;";
+    d.style.animationDelay = "0s";
+    term.appendChild(d);
+    // Keep the box from growing without bound on small screens.
+    if (term.children.length > 13) term.removeChild(term.firstChild);
+    setTimeout(function () { typeLine(i + 1); }, reduced ? 0 : SCRIPT[i][1]);
+  }
+  if (reduced) { SCRIPT.forEach(function (l) {
+    var d = document.createElement("div"); d.className = "term-line";
+    d.style.opacity = 1; d.innerHTML = l[0] || "&nbsp;"; term.appendChild(d);
+  }); } else { typeLine(0); }
+
+  /* ---------- scroll reveal ---------- */
+  if ("IntersectionObserver" in window && !reduced) {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); } });
+    }, { rootMargin: "0px 0px -60px 0px" });
+    document.querySelectorAll(".reveal").forEach(function (r) { io.observe(r); });
+  } else {
+    document.querySelectorAll(".reveal").forEach(function (r) { r.classList.add("in"); });
+  }
+
+  /* ---------- counters ---------- */
+  function runCount(el) {
+    var target = parseInt(el.dataset.count, 10);
+    if (reduced) { el.textContent = target; return; }
+    var start = performance.now(), dur = 900;
+    function frame(now) {
+      var p = Math.min(1, (now - start) / dur);
+      el.textContent = Math.round(target * (1 - Math.pow(1 - p, 3)));
+      if (p < 1) requestAnimationFrame(frame); else el.textContent = target;
+    }
+    requestAnimationFrame(frame);
+    // requestAnimationFrame stops when the tab is not painting, which would
+    // leave the number a few short of the real one - and a stat that is quietly
+    // wrong is worse than one that never animated.
+    setTimeout(function () { el.textContent = target; }, dur + 120);
+  }
+  if ("IntersectionObserver" in window) {
+    var co = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) { if (e.isIntersecting) { runCount(e.target); co.unobserve(e.target); } });
+    });
+    document.querySelectorAll("[data-count]").forEach(function (n) { co.observe(n); });
+  } else {
+    document.querySelectorAll("[data-count]").forEach(function (n) { n.textContent = n.dataset.count; });
+  }
 })();
 </script>
 </body>
