@@ -466,7 +466,7 @@ cd desktop && npm start
 
 Prebuilt installers are published on the [Releases](https://github.com/siddarth1872004/CloseNI/releases) page.
 
-1. Download `CloseNI Setup <version>.exe`.
+1. Download `CloseNI-Setup-<version>.exe`.
 2. Windows SmartScreen will warn about an unrecognised publisher — the build is unsigned. Choose **More info** then **Run anyway**, or verify the checksum published with the release first.
 3. The installer is not one-click; you can choose the install directory.
 4. On first launch, open **Settings** and let CloseNI download Chromium.
@@ -519,7 +519,7 @@ Releases are driven by a tag. `npm version 1.0.1 -m "Release %s"` then `git push
 
 | Platform | Artifact |
 |---|---|
-| Windows | `CloseNI Setup <version>.exe` (NSIS, chooses its own install directory) |
+| Windows | `CloseNI-Setup-<version>.exe` (NSIS, chooses its own install directory) |
 | Linux | `CloseNI-<version>.AppImage` |
 | Linux | `closeni_<version>_amd64.deb` |
 

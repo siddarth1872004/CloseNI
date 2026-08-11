@@ -43,7 +43,7 @@ entry in as the release notes, and publish.
 
 | Platform | File | Built on |
 |---|---|---|
-| Windows | `CloseNI Setup <version>.exe` (NSIS) | `windows-latest` |
+| Windows | `CloseNI-Setup-<version>.exe` (NSIS) | `windows-latest` |
 | Linux | `CloseNI-<version>.AppImage` | `ubuntu-latest` |
 | Linux | `closeni_<version>_amd64.deb` | `ubuntu-latest` |
 
@@ -93,10 +93,12 @@ noise and not a failure.
 
 | Check | Linux | Windows |
 |---|---|---|
-| Installer builds | verified | not yet run |
-| No session data in the artifact | verified | not yet run |
-| Packaged app launches, renderer loads | verified | not yet run |
+| Installer builds | verified | verified — CI, v1.0.0 |
+| No session data in the artifact | verified | verified |
+| Packaged app launches, renderer loads | verified | verified — started on Windows 11 |
+| Installer actually installs | n/a (AppImage) | **not yet — nobody has run it** |
 
-Windows has no machine in the development environment, so it is verified the
-first time the workflow runs on a tag. Treat the first Windows installer as
-unverified until someone installs it.
+The Windows *application* has been packaged and started on a real machine. The
+NSIS *installer* that wraps it was first produced by CI for v1.0.0 and has not
+been installed by anyone. That is the one remaining unknown on Windows, and it
+stays listed until someone runs it.
