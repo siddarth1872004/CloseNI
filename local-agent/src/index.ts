@@ -863,7 +863,7 @@ async function researchGithub(query: string): Promise<any[]> {
   try {
     const url = "https://api.github.com/search/repositories?q=" + encodeURIComponent(query) + "&sort=stars&order=desc&per_page=5";
     const body = await httpGetText(url, {
-      "User-Agent": "agentic-web-coder",
+      "User-Agent": "CloseNI",
       Accept: "application/vnd.github.v3+json",
     });
     const data = JSON.parse(body);

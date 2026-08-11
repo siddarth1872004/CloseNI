@@ -1,8 +1,17 @@
 {
-  "name": "agentic-web-coder",
+  "name": "closeni",
   "productName": "CloseNI",
   "version": "1.0.0",
   "private": true,
+  "description": "A desktop agent that drives web-based AI chats through a real browser to plan, build and verify software projects. No API keys.",
+  "license": "MIT",
+  "author": "Siddarth S",
+  "homepage": "https://siddarth1872004.github.io/CloseNI/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/siddarth1872004/CloseNI.git"
+  },
+  "keywords": ["ai", "agent", "electron", "playwright", "code-generation", "desktop"],
   "main": "desktop/main.js",
   "workspaces": [
     "shared",
