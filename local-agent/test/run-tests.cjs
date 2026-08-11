@@ -2217,6 +2217,64 @@ function testApplyFollowUp() {
   check("a huge error dump is capped", flood.length < 2500, String(flood.length));
 }
 
+function testSchedulerGraph() {
+  section("a plan's declared dependencies reach the scheduler");
+  const sched = require(path.join(__dirname, "..", "..", "desktop", "scheduler.js"));
+
+  function withDeps(list) { return list.map(function (d) { return { dependsOn: d }; }); }
+
+  // The regression this exists for. The renderer built its step list without
+  // dependsOn, so every plan looked undeclared, became a chain, and one
+  // failure blocked everything behind it.
+  const declared = sched.graphFor(withDeps([[], [0], [], [1, 2]]));
+  check("declared dependencies are used", declared.declared === true);
+  check("and kept exactly", JSON.stringify(declared.graph) === JSON.stringify([[], [0], [], [1, 2]]));
+  check("no reason is reported for a good graph", !declared.reason);
+
+  const none = sched.graphFor([{}, {}, {}]);
+  check("an undeclared plan is still a chain",
+    JSON.stringify(none.graph) === JSON.stringify([[], [0], [1]]));
+  check("and says it was not declared", none.declared === false);
+  check("an empty plan yields an empty graph", JSON.stringify(sched.graphFor([]).graph) === "[]");
+  check("a null plan does not throw", JSON.stringify(sched.graphFor(null).graph) === "[]");
+
+  // An empty list is an answer, not a silence: step 1 declaring [] means it
+  // genuinely waits for nothing.
+  const empties = sched.graphFor(withDeps([[], []]));
+  check("an all-empty declaration is honoured, not treated as absent",
+    empties.declared === true && JSON.stringify(empties.graph) === JSON.stringify([[], []]));
+
+  // Anything unschedulable falls back to the chain rather than hanging the
+  // build with nothing running and nothing able to start.
+  const cyclic = sched.graphFor(withDeps([[1], [0]]));
+  check("a cycle falls back to the chain",
+    JSON.stringify(cyclic.graph) === JSON.stringify([[], [0]]) && cyclic.declared === false);
+  check("and says why", /later/.test(cyclic.reason || ""), cyclic.reason);
+  check("a self-reference falls back", sched.graphFor(withDeps([[], [1]])).declared === false);
+  check("an out-of-range index falls back", sched.graphFor(withDeps([[], [9]])).declared === false);
+  check("a negative index falls back", sched.graphFor(withDeps([[], [-1]])).declared === false);
+  check("a non-number falls back", sched.graphFor(withDeps([[], ["a"]])).declared === false);
+  check("a fractional index falls back", sched.graphFor(withDeps([[], [0.5]])).declared === false);
+  check("the reason names a human step number, not an index",
+    /step 2/.test(sched.graphFor(withDeps([[], [9]])).reason || ""),
+    sched.graphFor(withDeps([[], [9]])).reason);
+
+  // The point of all of it: an unrelated step must survive a failure.
+  const graph = sched.graphFor(withDeps([[], [0], [], [2]])).graph;
+  const blocked = sched.blockedBy(graph, [0]);
+  check("a failure blocks only what depended on it",
+    JSON.stringify(blocked) === JSON.stringify([1]), JSON.stringify(blocked));
+  const state = { completed: [], failed: [0], blocked: [1], skipped: [], running: [] };
+  check("an independent step is still runnable after that failure",
+    JSON.stringify(sched.runnableSteps(graph, state, 1)) === JSON.stringify([2]));
+
+  // And under the old chain it would not have been - the assertion that this
+  // change is doing something.
+  const chain = sched.graphFor([{}, {}, {}, {}]).graph;
+  check("under a chain that same failure blocks everything after it",
+    JSON.stringify(sched.blockedBy(chain, [0])) === JSON.stringify([1, 2, 3]));
+}
+
 (async () => {
   testEditPlanParsing();
   testPlanParsing();
@@ -2262,6 +2320,7 @@ function testApplyFollowUp() {
   testPatchApplier();
   await testBrowserExtraction();
   testApplyFollowUp();
+  testSchedulerGraph();
 
   console.log("\n" + (fail === 0 ? "PASS" : "FAIL") + " — " + pass + " passed, " + fail + " failed");
   process.exit(fail === 0 ? 0 : 1);

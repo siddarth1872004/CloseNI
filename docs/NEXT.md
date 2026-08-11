@@ -52,8 +52,12 @@ the reply is**, which removes the DOM from the read path entirely.
   of the three failure modes happened, and asks for whole-file overwrites,
   explicitly abandoning `search_replace`. That is what rescued the run on
   11 August by accident; it is now deliberate.
-- **Continue past a failed step** when nothing depends on it. Today one failure
-  blocks everything behind it even when the graph says otherwise.
+- ~~**Continue past a failed step** when nothing depends on it.~~ **Done.** The
+  scheduler could always do this; it never got the chance. The renderer built its
+  step list without carrying `dependsOn` across, so every plan looked undeclared,
+  became a chain, and a failure at step 4 of eighteen blocked fourteen steps that
+  did not need it. The graph now comes from `CNSched.graphFor`, which validates it
+  and falls back to the chain - the old behaviour - if it cannot be scheduled.
 - **Resume a build across app restarts.** The ledger already survives; the
   builder does not use it on startup.
 - **Checkpoint and roll back a step.** Backups exist per apply; there is no

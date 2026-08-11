@@ -140,6 +140,21 @@ const budget = agent.match(/const maxFollowUps = (\d+)/);
 check('repair budget is 2, as documented', budget && budget[1] === '2', budget ? budget[1] : 'not found');
 check('README quotes the same budget', /[Tt]wo attempts/.test(readme));
 
+// The scheduler can run independent steps and block only what truly depended
+// on a failure. It spent its whole life unable to, because the renderer built
+// its step list without carrying dependsOn across - so every plan looked
+// undeclared and became a chain. That line has no DOM to test it against, so
+// it is pinned here.
+const builder = read('desktop/builder.js');
+check('the step list carries dependsOn from the plan',
+  /steps = plan\.steps\.map\([\s\S]{0,400}?dependsOn:/.test(builder));
+check('the build graph comes from the scheduler, not an inline map',
+  /CNSched\.graphFor\(steps\)/.test(builder));
+check('a session pins concurrency to one composer',
+  /sessionOn \? 1 : CN\.getConcurrency\(\)/.test(builder));
+check('a failed apply gets its own follow-up, not the test-failure one',
+  /command === "apply patch"[\s\S]{0,120}buildApplyFollowUp/.test(agent));
+
 // ------------------------------------------------------ 4. asset integrity ----
 
 group('Assets and references');

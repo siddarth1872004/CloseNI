@@ -84,7 +84,53 @@
     return state;
   }
 
-  var api = { runnableSteps: runnableSteps, blockedBy: blockedBy, seedState: seedState };
+  /**
+   * The dependency graph for a plan, or a chain if it cannot be trusted.
+   *
+   * The scheduler has always been able to run independent steps and to block
+   * only what actually depended on a failure. It never got the chance: the
+   * renderer built its step list without carrying dependsOn across, so every
+   * plan looked undeclared and every plan became a chain. One failure at step 4
+   * of eighteen blocked fourteen steps that did not need it.
+   *
+   * Validation is repeated here rather than assumed. The agent rejects an
+   * unschedulable graph at parse time, but a plan also arrives from disk and
+   * from a plan a user has edited, and a cycle reaching the scheduler is a
+   * build that hangs with no step running and no step able to start. Falling
+   * back to the chain is always safe: it is the old behaviour.
+   */
+  function graphFor(steps) {
+    var list = steps || [];
+    var chain = [];
+    for (var i = 0; i < list.length; i++) chain.push(i === 0 ? [] : [i - 1]);
+
+    var anyDeclared = list.some(function (s) { return s && Array.isArray(s.dependsOn); });
+    if (!anyDeclared) return { graph: chain, declared: false };
+
+    var graph = list.map(function (s) {
+      return s && Array.isArray(s.dependsOn) ? s.dependsOn.slice() : [];
+    });
+
+    for (var a = 0; a < graph.length; a++) {
+      for (var b = 0; b < graph[a].length; b++) {
+        var d = graph[a][b];
+        if (typeof d !== "number" || !isFinite(d) || Math.floor(d) !== d) {
+          return { graph: chain, declared: false, reason: "step " + (a + 1) + " depends on something that is not a step number" };
+        }
+        // Backwards-only, which is also what makes a cycle impossible: a step
+        // may only wait for one that comes before it in the plan.
+        if (d < 0 || d >= graph.length) {
+          return { graph: chain, declared: false, reason: "step " + (a + 1) + " depends on step " + (d + 1) + ", which does not exist" };
+        }
+        if (d >= a) {
+          return { graph: chain, declared: false, reason: "step " + (a + 1) + " depends on step " + (d + 1) + ", which runs later" };
+        }
+      }
+    }
+    return { graph: graph, declared: true };
+  }
+
+  var api = { runnableSteps: runnableSteps, blockedBy: blockedBy, seedState: seedState, graphFor: graphFor };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.CNSched = api;
 })(typeof window !== "undefined" ? window : globalThis);

@@ -170,7 +170,17 @@
 
   CN.setPlan = function (plan) {
     if (!plan || !plan.steps) return;
-    steps = plan.steps.map(function (s) { return { title: s.title, detail: s.detail, files: s.files || [], status: "pending", result: null }; });
+    // dependsOn is carried across deliberately. Dropping it - which this line
+    // did - made every plan look like an undeclared one, so the scheduler built
+    // a chain and a single failure blocked every step behind it regardless of
+    // what the plan said.
+    steps = plan.steps.map(function (s) {
+      return {
+        title: s.title, detail: s.detail, files: s.files || [],
+        dependsOn: Array.isArray(s.dependsOn) ? s.dependsOn.slice() : undefined,
+        status: "pending", result: null,
+      };
+    });
     selected = -1;
     renderList();
     $("builder-empty").style.display = steps.length ? "none" : "block";
@@ -193,14 +203,21 @@
     else CN.log("build session ready - one browser for the whole build", "step");
 
     // The graph, declared or implied. A plan where nothing is declared is a
-    // chain, which reproduces the old serial loop exactly - and every plan that
-    // existed before this change is such a plan.
-    const anyDeclared = steps.some(function (s) { return Array.isArray(s.dependsOn); });
-    const graph = steps.map(function (s, i) {
-      if (anyDeclared) return Array.isArray(s.dependsOn) ? s.dependsOn.slice() : [];
-      return i === 0 ? [] : [i - 1];
-    });
-    const limit = CN.getConcurrency();
+    // chain, which reproduces the old serial loop exactly.
+    const built = window.CNSched.graphFor(steps);
+    const graph = built.graph;
+    if (built.reason) {
+      CN.log("plan dependencies unusable (" + built.reason + ") - running the steps in order", "err");
+    } else if (built.declared) {
+      const independent = graph.filter(function (d, i) { return i > 0 && d.length === 0; }).length;
+      CN.log("plan declares its own dependencies" +
+        (independent ? "; " + independent + " step(s) do not wait on anything" : ""), "step");
+    }
+    // A conversation has one composer, so a session runs one step at a time no
+    // matter what the graph permits. This mattered the moment dependsOn started
+    // being honoured: before, a chain made exactly one step runnable and the
+    // limit never had to hold anything back.
+    const limit = sessionOn ? 1 : CN.getConcurrency();
     // Seeded from what the step list already records, so pressing Build after a
     // partial run continues instead of redoing everything from step 0.
     const state = window.CNSched.seedState(steps);
