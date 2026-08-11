@@ -1760,8 +1760,12 @@ function testCheckPlanner() {
       'rustc --edition 2021 --crate-type lib --emit=metadata --out-dir "/tmp/checks" "scratch.rs"');
   check("a lone Java file compiles to a temp directory",
     commands(planChecks(["App.java"], [], all, TMP))[0] === 'javac -d "/tmp/checks" "App.java"');
-  check("Python and JS still work",
-    commands(planChecks(["a.py", "b.js"], [], all, TMP)).join(" ") ===
+  // The syntax pass is unchanged. Python now gets a mypy check on top of it,
+  // which is why this asserts the syntax commands rather than every command -
+  // see "type checking, not just parsing" for the addition itself.
+  check("Python and JS still get their syntax checks",
+    commands(planChecks(["a.py", "b.js"], [], all, TMP)
+      .filter(function (c) { return c.kind !== "types"; })).join(" ") ===
       'python -m py_compile "a.py" node --check "b.js"');
   check("an unrecognised extension yields nothing",
     planChecks(["README.md"], [], all, TMP).length === 0);
@@ -2582,6 +2586,76 @@ function testSelectorHealth() {
     H.judgeSelectors({ chatInput: -3 }, { conversationResumed: true }).ok === false);
 }
 
+function testTypeChecks() {
+  section("type checking, not just parsing");
+  const CP = require(path.join(DIST, "verification/check-planner.js"));
+
+  const all = function (t) { return t; };            // everything installed
+  const none = function () { return null; };          // nothing installed
+  const noMypy = function (t) { return t === "mypy" ? null : t; };
+
+  function plan(files, roots, resolve) {
+    return CP.planChecks(files, roots || [], resolve || all, "/tmp/checks");
+  }
+  function of(checks, kind) { return checks.filter(function (c) { return c.kind === kind; }); }
+
+  // Python got a syntax check and nothing else. That is the gap: py_compile
+  // proves a file parses and says nothing about whether it is right.
+  const py = plan(["app.py"], []);
+  check("python still gets its syntax check", of(py, "syntax").length === 1);
+  check("and now a type check as well", of(py, "types").length === 1);
+  check("the type check is mypy", /mypy/.test(of(py, "types")[0].command), of(py, "types")[0].command);
+
+  const cmd = of(py, "types")[0].command;
+  // Every flag here prevents a specific false failure. Without the first, a
+  // Flask project fails EVERY step on a missing type stub for flask.
+  check("third-party imports without stubs cannot fail a step",
+    /--ignore-missing-imports/.test(cmd), cmd);
+  check("errors in files this step did not write are not reported",
+    /--follow-imports=silent/.test(cmd), cmd);
+  check("the cache is kept out of the user's project",
+    /--cache-dir "\/tmp\/checks\/mypy"/.test(cmd), cmd);
+  check("the file being checked is quoted", /"app\.py"/.test(cmd), cmd);
+
+  // Absent means skipped, never failed: mypy is not installed on most machines.
+  const without = plan(["app.py"], [], noMypy);
+  check("no mypy means no type check", of(without, "types").length === 0);
+  check("but the syntax check still runs", of(without, "syntax").length === 1);
+  check("nothing installed means no checks at all", plan(["app.py"], [], none).length === 0);
+
+  // Syntax before types. A file that does not parse makes mypy complain about
+  // the parse, and reporting that as a type failure sends the model hunting a
+  // bug that is really a typo.
+  const order = plan(["app.py"], []);
+  check("the syntax check is ordered before the type check",
+    order.findIndex(function (c) { return c.kind === "syntax"; }) <
+    order.findIndex(function (c) { return c.kind === "types"; }));
+
+  // Languages that already have real type checking gain nothing here.
+  check("typescript adds no second check", of(plan(["a.ts"], []), "types").length === 0);
+  check("rust adds no second check", of(plan(["a.rs"], ["Cargo.toml"]), "types").length === 0);
+  check("javascript adds no second check", of(plan(["a.js"], []), "types").length === 0);
+  check("a rust crate is still one project check",
+    of(plan(["a.rs"], ["Cargo.toml"]), "syntax").length === 1);
+
+  // Every python file gets its own, and non-python files get nothing.
+  const many = plan(["a.py", "b.py", "README.md"], []);
+  check("each python file is type checked", of(many, "types").length === 2);
+  check("a markdown file is not", !/README/.test(JSON.stringify(many)));
+
+  // mypy is slower than py_compile and must not be cut off mid-run.
+  check("type checks get a longer timeout than syntax checks",
+    of(py, "types")[0].timeoutMs > of(py, "syntax")[0].timeoutMs,
+    of(py, "types")[0].timeoutMs + " vs " + of(py, "syntax")[0].timeoutMs);
+
+  // Resolution has to find mypy inside a virtualenv, where the console script
+  // is often not on PATH but the module is importable.
+  const TC = require(path.join(DIST, "verification/toolchain.js"));
+  check("mypy is resolvable as a module, not only as a script",
+    (TC.TOOL_CANDIDATES.mypy || []).some(function (c) { return /-m mypy/.test(c); }),
+    JSON.stringify(TC.TOOL_CANDIDATES.mypy));
+}
+
 (async () => {
   testEditPlanParsing();
   testPlanParsing();
@@ -2633,6 +2707,7 @@ function testSelectorHealth() {
   testRollbackOnDisk();
   testContextBudget();
   testSelectorHealth();
+  testTypeChecks();
 
   console.log("\n" + (fail === 0 ? "PASS" : "FAIL") + " — " + pass + " passed, " + fail + " failed");
   process.exit(fail === 0 ? 0 : 1);

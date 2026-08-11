@@ -774,7 +774,11 @@ async function runBuildStep(controller: PlaywrightController, config: ProviderCo
     } else {
       const checks = planChecksForWorkspace(workspace, plan.changes.map((c) => c.filePath));
       for (const c of checks) {
-        console.log("PHASE:" + JSON.stringify({ phase: "checking", detail: c.language || "" }));
+        // "types" and "syntax" read differently and should say so: a syntax
+        // failure is the model producing something that does not parse, a type
+        // failure is plausible code with a real bug in it.
+        const what = c.kind === "types" ? (c.language + " types") : (c.language || "");
+        console.log("PHASE:" + JSON.stringify({ phase: "checking", detail: what }));
         console.log("RUNNING_CHECK: " + c.command);
         const r = await runCommand(c.command, workspace, c.timeoutMs, { timeoutIsFailure: true });
         console.log("CHECK_RESULT: " + (r.success ? "PASS" : "FAIL"));

@@ -94,9 +94,18 @@ the reply is**, which removes the DOM from the read path entirely.
 ## 4 · Verification worth trusting
 
 - **Run the tests the model wrote**, not just the ones the project shipped with.
-  `Run tests` exists; nothing yet asks the model to write tests for its own step.
-- **Type checking beyond syntax**: `mypy`, `tsc --strict`, `cargo clippy`.
-  Compiling is a low bar and we currently stop there.
+  Further along than this read: `behaviour-checker.ts` already runs a project's
+  suite and a smoke check, but only **on demand** from the Test panel, never
+  during a build - and nothing asks the model to write tests in the first place.
+- ~~**Type checking beyond syntax**: `mypy`, `tsc --strict`, `cargo clippy`.~~
+  **Done**, and two of those three were wrong. `tsc --noEmit` already runs and
+  honours the project's own tsconfig, so forcing `--strict` would override the
+  author and fail correct code; `cargo check` already catches type errors and
+  clippy adds lint, not types. Python was the real gap - `py_compile` proves a
+  file parses and nothing more. mypy now runs per step, in default mode rather
+  than `--strict`, with the flags that stop it failing a Flask project on a
+  missing stub for flask. Design:
+  `docs/superpowers/specs/2026-08-11-type-checking-design.md`.
 - **A diff review step** - show what changed and let the user reject a step
   before the next one builds on it.
 

@@ -196,6 +196,19 @@ check('a rolled-over thread is seeded as a cold one',
   /startFreshConversation\(config\)[\s\S]{0,400}buildPrompt\(effectivePrompt, ctx\.tree/.test(agent));
 check('repairs count towards the conversation too',
   /const followUp = buildFollowUp[\s\S]{0,500}addTurn\(controller\.getConversationSize\(\), followUp\.length/.test(agent));
+// Type checking. The flags are the feature: without --ignore-missing-imports a
+// Flask project fails every single step on a missing stub for flask, which
+// would make this actively worse than not running it at all.
+const cp = read('local-agent/src/verification/check-planner.ts');
+check('python gets a type check, not only a syntax check', /tool: "mypy"/.test(cp));
+check('third-party stubs cannot fail a step', /--ignore-missing-imports/.test(cp));
+check('errors in untouched files are not reported', /--follow-imports=silent/.test(cp));
+check('the type cache stays out of the project', /--cache-dir/.test(cp));
+check('mypy resolves inside a virtualenv too',
+  /-m mypy/.test(read('local-agent/src/verification/toolchain.ts')));
+check('a type failure reads differently from a syntax one',
+  /c\.kind === "types"/.test(agent));
+
 // The selector health check. Its whole value rests on one distinction - a
 // selector matching nothing is only a fault when something should have matched
 // - so that is what is pinned, along with it never blocking a build.

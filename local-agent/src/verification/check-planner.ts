@@ -26,11 +26,22 @@ export interface Check {
   scope: "file" | "project";
   language: string;
   timeoutMs: number;
+  /**
+   * What kind of wrong this catches. "syntax" means it does not parse or does
+   * not compile; "types" means it does both and is still wrong.
+   *
+   * Reported separately because they read differently to a user: a syntax
+   * failure is the model producing nonsense, a type failure is the model
+   * producing plausible code with a real bug in it.
+   */
+  kind?: "syntax" | "types";
 }
 
 export const FILE_CHECK_TIMEOUT_MS = 15000;
 /** cargo check on a first run downloads and compiles the dependency tree. */
 export const PROJECT_CHECK_TIMEOUT_MS = 180000;
+/** mypy is slower than py_compile, and slowest on the first run of a project. */
+export const TYPE_CHECK_TIMEOUT_MS = 60000;
 
 interface ManifestRule {
   /** Root-level file that triggers this rule, or a suffix when `bySuffix`. */
@@ -96,6 +107,47 @@ const FILE_RULES: FileRule[] = [
   // relying on, so it is verified through its project file or not at all.
 ];
 
+/**
+ * Checks that run IN ADDITION to the syntax rule above, not instead of it.
+ *
+ * Only Python is here, and the list being one entry long is the finding rather
+ * than an omission. NEXT.md asked for "mypy, tsc --strict, cargo clippy"; two of
+ * those would be wrong:
+ *
+ *   - `tsc --noEmit` already runs, and it honours the project's OWN tsconfig.
+ *     Forcing --strict would override what the project's author configured and
+ *     fail code that is correct by its own rules.
+ *   - `cargo check` already catches type errors. Clippy adds lint, which is a
+ *     different thing and would have a step burning repair attempts on style.
+ *
+ * Python is the real gap: py_compile checks that a file parses and nothing
+ * else, so a whole class of error walks straight through the only language this
+ * app generates most often.
+ */
+const TYPE_RULES: FileRule[] = [
+  {
+    extensions: [".py"], tool: "mypy", language: "python",
+    // Every flag here is load-bearing:
+    //
+    //   --ignore-missing-imports  Without it, `import flask` fails with "Cannot
+    //     find implementation or library stub", so EVERY step of a Flask
+    //     project would fail on a missing type stub rather than on its code.
+    //     That one omission would make this feature actively harmful.
+    //   --follow-imports=silent   Resolve sibling modules for type information
+    //     but report nothing inside them. Otherwise step 6 fails over something
+    //     step 2 wrote, and the repair loop asks the model to fix a file it was
+    //     never shown.
+    //   --cache-dir               mypy drops a .mypy_cache directory into the
+    //     working directory otherwise, and a check must not leave things in the
+    //     project it is inspecting.
+    //   --no-error-summary        "Found 3 errors in 1 file" adds nothing to a
+    //     message that has just listed all three.
+    command: (t, f, tmp) =>
+      t + ' --ignore-missing-imports --follow-imports=silent --no-error-summary' +
+      ' --cache-dir "' + tmp + '/mypy" "' + f + '"',
+  },
+];
+
 function extensionOf(filePath: string): string {
   const name = filePath.replace(/\\/g, "/").split("/").pop() || "";
   const dot = name.lastIndexOf(".");
@@ -132,7 +184,7 @@ export function planChecks(
     if (!tool) continue;
     const command = rule.command(tool);
     if (checks.some((c) => c.command === command)) continue;
-    checks.push({ command: command, scope: "project", language: rule.language, timeoutMs: PROJECT_CHECK_TIMEOUT_MS });
+    checks.push({ command: command, scope: "project", language: rule.language, timeoutMs: PROJECT_CHECK_TIMEOUT_MS, kind: "syntax" });
   }
 
   for (const filePath of changed) {
@@ -147,6 +199,30 @@ export function planChecks(
       scope: "file",
       language: rule.language,
       timeoutMs: FILE_CHECK_TIMEOUT_MS,
+      kind: "syntax",
+    });
+  }
+
+  // Type checks run after, and in addition to, the syntax pass. Ordering is
+  // deliberate: a file that does not parse produces a type-checker error about
+  // the parse, and reporting that as a type failure would send the model
+  // looking for a bug that is really a typo.
+  for (const filePath of changed) {
+    const ext = extensionOf(filePath);
+    if (claimed.has(ext)) continue;
+    const rule = TYPE_RULES.find((r) => r.extensions.includes(ext));
+    if (!rule) continue;
+    const tool = resolve(rule.tool);
+    // Absent means skipped, not failed. mypy is not installed on most machines,
+    // and a build that refuses to run without it would be worse than one that
+    // checks a little less.
+    if (!tool) continue;
+    checks.push({
+      command: rule.command(tool, filePath, tmpDir),
+      scope: "file",
+      language: rule.language,
+      timeoutMs: TYPE_CHECK_TIMEOUT_MS,
+      kind: "types",
     });
   }
 

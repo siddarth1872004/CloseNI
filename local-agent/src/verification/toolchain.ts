@@ -35,6 +35,13 @@ export const TOOL_CANDIDATES: Record<string, string[]> = {
   php: ["php"],
   dotnet: ["dotnet"],
   bash: ["bash", "sh"],
+  // `python -m mypy` second: mypy is very often installed into a virtualenv
+  // without its console script on PATH, and a bare `mypy` misses it. Probing
+  // both means a project whose venv has mypy gets type-checked rather than
+  // silently skipped.
+  mypy: process.platform === "win32"
+    ? ["mypy", "python -m mypy", "py -3 -m mypy"]
+    : ["mypy", "python3 -m mypy", "python -m mypy"],
 };
 
 const cache = new Map<string, string | null>();
