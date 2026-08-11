@@ -3,51 +3,47 @@
 All notable changes to CloseNI are recorded here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.0.2] — 2026-08-11
-
-**Every agent run failed on an installed build** with
-`spawn C:\Program Files\CloseNI\CloseNI.exe ENOENT` — naming the one path
-that was certainly fine.
-
-The executable was never the problem. Packaged, `__dirname` is inside the
-archive, so `path.join(__dirname, "..")` resolves to `app.asar` — a *file*.
-Both spawns used that as their working directory, and a cwd that is not a
-directory fails ENOENT, which Node reports against the command. Children now
-run in `process.resourcesPath`, which is a real directory, and the agent and
-its config are reached through `app.asar.unpacked` where the real copies live.
-
-Verified in a packaged build rather than from the source: the app launches,
-`listProviders` reads its config, and `authStatus` spawns the agent, which
-runs and reports that no browser is downloaded yet — the correct answer for a
-fresh install, and the one that used to be an ENOENT.
-
-## [1.0.1] — 2026-08-11
-
-Fixes two things that only showed up once 1.0 was installed.
-
-- **The browser download reported "Playwright is missing from this build" on an
-  intact install.** `require.resolve("playwright/cli.js")` throws: Playwright
-  declares an `exports` map that does not list `./cli.js`, and Node refuses
-  deep imports outside it — the file being present makes no difference. Resolved
-  through `playwright/package.json`, whose directory *is* reachable. Without
-  this the app could never fetch the browser it needs, which is every feature.
-- **Playwright is now unpacked from the asar.** It resolves and spawns real
-  executables, and cannot do either from a virtual path inside an archive.
-- **The default Electron menu is gone.** File / Edit / View / Window / Help came
-  with a reload and a devtools item, duplicating navigation the app already has
-  in a bar styled like nothing else in it.
-
-## [1.0.0] — 2026-08-11
+## [0.1.0] — 2026-08-11
 
 First release.
 
+**Why 0.1 and not 1.0.** The version says what this is: one provider driven end
+to end, a Windows installer nobody has run yet, and a GitHub integration that
+has never made a live request. Calling that 1.0 would have claimed a stability
+nothing here has earned. Three 1.0.x builds were published and withdrawn on the
+day; the defects they carried are listed below because they are the reason the
+number changed.
+
 **What has actually been run.** The Linux AppImage and `.deb` build, contain no
-session data, and the packaged app launches with its renderer loading. The
-Windows application packs, audits clean, and has been started on a real Windows
-machine. The NSIS installer that wraps it is built by CI on `windows-latest`
-and has not been installed by anyone — treat the first one as unproven. GitHub
-sign-in, push, clone and Actions are unit-tested with an injected transport and
-have never made a live request. Qwen Studio and GLM ship gated.
+session data, and the packaged app launches with its renderer loading and its
+agent spawning. The Windows application packs, audits clean, and has been
+started on Windows 11. The NSIS installer is built by CI and has not been
+installed by anyone — treat it as unproven. GitHub sign-in, push, clone and
+Actions are unit-tested with an injected transport and have never made a live
+request. Qwen Studio and GLM ship gated, as does Research.
+
+### Fixed before release
+
+Three defects that only appeared once the app was installed, each found by
+running the packaged build rather than reading it:
+
+- **Every agent run failed** with `spawn …\CloseNI.exe ENOENT`, naming the one
+  path that was fine. Packaged, `__dirname` sits inside the archive, so the
+  spawn working directory resolved to `app.asar` — a file. Children now run in
+  a real directory, and the agent is read from where its unpacked copy lives.
+- **The browser download reported "Playwright is missing from this build"** on
+  an intact install: Playwright's `exports` map does not list `./cli.js`, so
+  Node refused the deep import. Resolved through its `package.json` instead,
+  and Playwright is unpacked from the archive so it can spawn real executables.
+- **The default File / Edit / View menu** carried a reload and a devtools item,
+  duplicating navigation the app already has.
+
+### Gated
+
+- **Research** — listed in the sidebar and not selectable. Chat reaches the same
+  provider and the same conversation, so nothing is lost by waiting.
+- **Qwen Studio** and **GLM** — listed in Settings, not selectable, each with
+  the reason recorded in its config.
 
 ### Providers
 

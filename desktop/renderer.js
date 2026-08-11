@@ -93,7 +93,12 @@ function switchTab(mode) {
   if (mode === "push" && typeof refreshGitHub === "function") refreshGitHub();
 }
 document.querySelectorAll(".nav-btn").forEach(function (btn) {
-  btn.onclick = function () { switchTab(btn.dataset.mode); };
+  btn.onclick = function () {
+    // A gated tab says so rather than doing nothing. Silent buttons read as
+    // broken, which is the whole reason gated providers announce themselves too.
+    if (btn.dataset.gated) { toast("Research is not ready yet - use Chat", "err"); return; }
+    switchTab(btn.dataset.mode);
+  };
 });
 
 $("browse-btn").onclick = async function () {

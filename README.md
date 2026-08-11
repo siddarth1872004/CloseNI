@@ -55,6 +55,7 @@ Also: [CHANGELOG](CHANGELOG.md) · [Release process](docs/RELEASING.md)
 * **One Conversation End To End** — Chat, planning and building all continue the same provider conversation, so a build step is a short instruction to a model that can already see the plan rather than a prompt that re-explains the project.
 * **Autonomous Error Recovery** — Captures compiler and linter output verbatim and feeds the real traceback back to the model, twice per step, then stops rather than looping.
 * **Multi-Toolchain Diagnostics** — Native syntax verification across twelve languages, project-wide where the toolchain demands it and per-file where it does not.
+* **Six panels, four live** — Chat, Builder, Test and Ship. Research is gated and says so.
 * **Behavioural Verification** — Runs the project's own test suite and smoke-starts its entry point, because compiling is not working.
 * **Portable Project Runner** — Generates `closeni.run.json` plus standalone `run.sh` / `run.bat`, so a finished project runs with or without CloseNI installed.
 * **Encrypted Credential Handling** — GitHub tokens are sealed with the operating system keystore and never touch `.git/config`, an argument list, or a log line.
@@ -167,9 +168,10 @@ The run command is resolved before you arrive, and the badge says where it came 
 
 This is what catches a module that compiles perfectly and returns the wrong answer. When something fails, the chat on the right already has the run in context, so *why did this fail?* gets an answer about your actual output rather than a general explanation of the error class.
 
-#### 04 · Research — ask without building
+#### 04 · Research — gated
 
-A one-shot question against the same signed-in session, answered with the workspace as context. For the things that come up mid-project — which library to use, how a protocol behaves — that do not deserve a build.
+Listed in the sidebar and not selectable. Chat reaches the same provider and the
+same conversation, so nothing is lost by waiting for it.
 
 #### 05 · Ship — commit, push, and watch CI
 

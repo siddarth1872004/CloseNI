@@ -439,6 +439,15 @@ select{width:100%;}
 /* The browser download bar advances in chunks, like the build progress bar. */
 #browser-progress{transition:opacity .12s steps(2);}
 
+/* A gated tab: visibly present, visibly not available. Dimmed rather than
+   hidden, so the numbered order does not jump and it is clear the feature is
+   planned rather than gone. */
+.nav-btn[data-gated]{opacity:.45;cursor:not-allowed;}
+.nav-btn[data-gated]:hover{background:none;color:var(--dim);}
+.gated-tag{font-size:9px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--mut);border:1px solid var(--line);border-radius:var(--r-sm);
+  padding:1px 4px;margin-left:auto;}
+
 /* ---------- account status ----------
    Every colour here is a token, because the css lint fails the build on a
    literal outside a theme block - and a status light that stayed dark green on
