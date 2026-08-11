@@ -33,7 +33,12 @@
 
     // A manifest describes the whole project; loose files describe one file.
     if (set["Cargo.toml"]) return "cargo run";
+    if (set["go.mod"]) return "go run .";
     if (set["Makefile"]) return /^run\s*:/m.test(files.makefile || "") ? "make run" : "make";
+    // A .csproj is named after the project, so it is matched by extension.
+    for (var key in set) {
+      if (/\.csproj$/i.test(key) && key.indexOf("/") === -1) return "dotnet run";
+    }
 
     // Maven and Gradle are deliberately absent: running one needs an exec
     // plugin and a main class that cannot be inferred from a file listing, and
@@ -51,10 +56,26 @@
       { file: "src/main.cpp", command: "g++ src/main.cpp -o main && " + run + "main" },
       { file: "Main.java", command: "javac Main.java && java Main" },
       { file: "App.java", command: "javac App.java && java App" },
+      { file: "main.go", command: "go run main.go" },
+      { file: "main.rb", command: "ruby main.rb" },
+      { file: "app.rb", command: "ruby app.rb" },
+      { file: "index.php", command: "php -S localhost:8000" },
     ];
     for (var i = 0; i < fileRules.length; i++) {
       if (set[fileRules[i].file]) return fileRules[i].command;
     }
+
+    // A static site has nothing to execute, so it gets served. Opening a file://
+    // page is not the same thing: relative fetches and modules fail there, so
+    // the page would appear broken for a reason that is not the project's
+    // fault. Checked last, because a project with a real entry point that also
+    // ships an index.html should run the program, not serve the page.
+    if (set["index.html"] || set["public/index.html"] || set["src/index.html"]) {
+      return py + " -m http.server 8000";
+    }
+
+    // Null is the honest answer for a library: it has no entry point, and
+    // inventing one would produce a Run button that fails confusingly.
     return null;
   }
 

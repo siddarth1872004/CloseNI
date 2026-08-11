@@ -1263,6 +1263,45 @@ function testCheckPlanner() {
   // --- duplicates
   check("the same file twice is checked once",
     planChecks(["main.c", "main.c"], [], all, TMP).length === 1);
+
+  // --- the wider language set. Without these a build in any of them reports
+  // success on code nobody compiled.
+  check("go is checked per file",
+    commands(planChecks(["main.go"], [], all, TMP))[0] === 'gofmt -e "main.go"');
+  check("a go module is one build",
+    commands(planChecks(["main.go", "util.go"], ["go.mod"], all, TMP)).join() === "go build ./...");
+  check("ruby is checked per file",
+    commands(planChecks(["app.rb"], [], all, TMP))[0] === 'ruby -c "app.rb"');
+  check("php is checked per file",
+    commands(planChecks(["index.php"], [], all, TMP))[0] === 'php -l "index.php"');
+  check("shell is checked per file",
+    commands(planChecks(["deploy.sh"], [], all, TMP))[0] === 'bash -n "deploy.sh"');
+
+  // TypeScript has Rust's problem: a file importing another fails alone, so a
+  // tsconfig claims the language and yields one project check.
+  check("a tsconfig collapses typescript into one check",
+    commands(planChecks(["src/a.ts", "src/b.ts"], ["tsconfig.json"], all, TMP)).join() === "tsc --noEmit");
+  check("standalone typescript is checked per file",
+    planChecks(["scratch.ts", "other.ts"], [], all, TMP).length === 2);
+  check("tsx counts as typescript",
+    commands(planChecks(["App.tsx"], ["tsconfig.json"], all, TMP)).join() === "tsc --noEmit");
+
+  // A .csproj is matched by suffix, not by an exact filename - the project file
+  // is named after the project.
+  check("a csproj is found whatever it is called",
+    commands(planChecks(["Program.cs"], ["MyApp.csproj"], all, TMP)).join() === "dotnet build");
+  check("c# without a project file is not guessed at",
+    planChecks(["Program.cs"], [], all, TMP).length === 0);
+
+  // A manifest for one language still must not silence another.
+  const polyglot = planChecks(["main.go", "app.rb"], ["go.mod"], all, TMP);
+  check("a go module does not suppress ruby", polyglot.length === 2);
+  check("and ruby is still per file",
+    commands(polyglot).indexOf('ruby -c "app.rb"') !== -1);
+
+  // Missing tools still skip rather than emit a command that cannot succeed.
+  check("no go toolchain means no go check",
+    planChecks(["main.go"], ["go.mod"], only(["python"]), TMP).length === 0);
 }
 
 async function testCommandTimeout() {
@@ -1338,6 +1377,25 @@ function testEntrypoint() {
   // from a file listing, and a Run button that fails confusingly is worse than
   // no Run button.
   check("a Maven project has no entry point", detectEntrypoint(["pom.xml"], null) === null);
+
+  // --- the wider language set
+  check("a go module runs with go run", detectEntrypoint(["go.mod", "main.go"], null) === "go run .");
+  check("a lone main.go runs too", detectEntrypoint(["main.go"], null) === "go run main.go");
+  check("a csproj uses dotnet run", detectEntrypoint(["MyApp.csproj"], null) === "dotnet run");
+  check("ruby runs main.rb", detectEntrypoint(["main.rb"], null) === "ruby main.rb");
+  check("ruby app.rb too", detectEntrypoint(["app.rb"], null) === "ruby app.rb");
+  check("php serves the directory", /php -S/.test(detectEntrypoint(["index.php"], null) || ""));
+
+  // A static frontend has nothing to execute, so it gets served rather than run
+  // - opening a file:// page is not the same as the site working.
+  check("a static site is served",
+    /http\.server|npx serve/.test(detectEntrypoint(["index.html", "style.css"], null) || ""),
+    String(detectEntrypoint(["index.html", "style.css"], null)));
+  check("but a real entry point beats a static page",
+    detectEntrypoint(["index.html", "main.py"], null) === "python3 main.py");
+
+  // A library genuinely has no entry point, and saying so is the honest answer.
+  check("a library yields null", detectEntrypoint(["src/mylib/__init__.py", "setup.py"], null) === null);
 
   // Returning null is a real answer: better than running something arbitrary.
   check("nothing recognisable yields null", detectEntrypoint(["README.md", "notes.txt"], null) === null);

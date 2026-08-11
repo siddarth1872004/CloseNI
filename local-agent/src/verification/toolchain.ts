@@ -28,6 +28,13 @@ export const TOOL_CANDIDATES: Record<string, string[]> = {
   make: ["make", "mingw32-make"],
   mvn: ["mvn"],
   gradle: ["gradle"],
+  go: ["go"],
+  gofmt: ["gofmt"],
+  tsc: ["tsc", "npx tsc"],
+  ruby: ["ruby"],
+  php: ["php"],
+  dotnet: ["dotnet"],
+  bash: ["bash", "sh"],
 };
 
 const cache = new Map<string, string | null>();

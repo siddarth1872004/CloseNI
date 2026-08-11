@@ -15,7 +15,9 @@ import { getProjectContext } from "./context/context-engine.js";
 import { selectRelevantFiles, WorkspaceFile } from "./context/relevance.js";
 import { computeDelta, nextLedger } from "./context/delta.js";
 
-const SOURCE_FILE = /\.(py|js|cjs|mjs|ts|tsx|jsx|rs|go|java|c|h|cpp|hpp|cc)$/;
+// Every extension the check planner knows about. A file the walker misses is a
+// file nothing ever verifies, and the run reports success on it regardless.
+const SOURCE_FILE = /\.(py|pyw|js|cjs|mjs|ts|tsx|jsx|rs|go|java|c|h|cpp|hpp|cc|cxx|rb|php|sh|bash|cs)$/;
 
 const rl = readline.createInterface({ input: process.stdin, terminal: false });
 const lineQueue: string[] = [];

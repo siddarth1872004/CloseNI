@@ -33,8 +33,11 @@ export const FILE_CHECK_TIMEOUT_MS = 15000;
 export const PROJECT_CHECK_TIMEOUT_MS = 180000;
 
 interface ManifestRule {
-  /** Root-level file that triggers this rule. */
+  /** Root-level file that triggers this rule, or a suffix when `bySuffix`. */
   file: string;
+  /** Match by file extension instead of exact name: a .csproj is named after
+   *  the project, so there is no fixed filename to look for. */
+  bySuffix?: boolean;
   tool: string;
   /** Built from the resolved tool name. */
   command: (tool: string) => string;
@@ -52,6 +55,11 @@ const MANIFESTS: ManifestRule[] = [
   // without building anything. A real make would drop object files and binaries
   // into the user's workspace, which is more than a check should do.
   { file: "Makefile", tool: "make", command: (t) => t + " -n", language: "c", extensions: [".c", ".h", ".cpp", ".hpp", ".cc"] },
+  { file: "go.mod", tool: "go", command: (t) => t + " build ./...", language: "go", extensions: [".go"] },
+  // TypeScript has Rust's problem: a file importing a sibling fails on its own,
+  // so a project with a tsconfig is checked once as a project.
+  { file: "tsconfig.json", tool: "tsc", command: (t) => t + " --noEmit", language: "typescript", extensions: [".ts", ".tsx"] },
+  { file: ".csproj", bySuffix: true, tool: "dotnet", command: (t) => t + " build", language: "csharp", extensions: [".cs"] },
 ];
 
 interface FileRule {
@@ -76,6 +84,16 @@ const FILE_RULES: FileRule[] = [
   // -d for the same reason: .class files beside the sources would mean the
   // check modified the project it was inspecting.
   { extensions: [".java"], tool: "javac", language: "java", command: (t, f, tmp) => t + ' -d "' + tmp + '" "' + f + '"' },
+  // gofmt -e reports syntax errors and writes nothing, which is what a check
+  // wants: `go vet` needs a package, and `go build` needs a module.
+  { extensions: [".go"], tool: "gofmt", language: "go", command: (t, f) => t + ' -e "' + f + '"' },
+  { extensions: [".ts", ".tsx"], tool: "tsc", language: "typescript",
+    command: (t, f) => t + ' --noEmit --skipLibCheck "' + f + '"' },
+  { extensions: [".rb"], tool: "ruby", language: "ruby", command: (t, f) => t + ' -c "' + f + '"' },
+  { extensions: [".php"], tool: "php", language: "php", command: (t, f) => t + ' -l "' + f + '"' },
+  { extensions: [".sh", ".bash"], tool: "bash", language: "shell", command: (t, f) => t + ' -n "' + f + '"' },
+  // No per-file rule for .cs: there is no single-file C# syntax checker worth
+  // relying on, so it is verified through its project file or not at all.
 ];
 
 function extensionOf(filePath: string): string {
@@ -100,7 +118,10 @@ export function planChecks(
   // check at all rather than a misleading one.
   const claimed = new Set<string>();
   for (const rule of MANIFESTS) {
-    if (!present.has(rule.file)) continue;
+    const found = rule.bySuffix
+      ? (rootEntries || []).some((e) => String(e).toLowerCase().endsWith(rule.file))
+      : present.has(rule.file);
+    if (!found) continue;
     for (const ext of rule.extensions) claimed.add(ext);
 
     // Running cargo check because a README changed is waste.

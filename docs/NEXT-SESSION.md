@@ -104,6 +104,54 @@ file) and a Java one. Neither compiled language has been built end to end.
 project needing a package that cannot be installed; a plan over 40 steps
 (should be rejected and re-asked, not truncated).
 
+### Scale, type and field — the matrix worth covering
+
+The app should not only survive a Flask API. Test across three axes, because
+each breaks something different.
+
+**By scale**
+
+| Size | Example | What it stresses |
+|---|---|---|
+| One file | a CLI that renames files | Does a 2-step plan feel like overkill? |
+| Small | a REST API with a database | The common case |
+| Medium | full stack, auth, migrations, tests | Prompt growth, delta, 15–25 steps |
+| Large | monorepo, several services | Context selection, whether the delta still fires late |
+
+**By type**
+
+- **CLI tool** — argument parsing, no server, exits cleanly
+- **Web API** — a long-running server; the Run button must not hang waiting for exit
+- **Frontend** — static HTML/CSS/JS, exercises the preview pane
+- **Full stack** — both, plus how they are wired
+- **Library** — no entry point at all; the run manifest should admit that rather than invent one
+- **Data / notebook** — pandas, plots, files written as output
+- **Game** — pygame or canvas; a graphical loop that never exits
+- **Script** — a scheduled job or one-shot automation
+
+**By field**
+
+Different domains fail differently — schema design, numeric correctness,
+async control flow, file I/O. Worth at least one of: web, data analysis,
+automation, a small game, a developer tool, something embedded or hardware-ish.
+
+**By language**
+
+Beyond the six already checked: Go, TypeScript, Ruby, PHP, C#, shell. Each
+needs a manifest rule and a per-file check, or the build silently skips
+verification and reports success on code nobody compiled.
+
+### What each axis is likely to expose
+
+- **A long-running server** finishing a build, because `runCommand` treats a
+  quiet timeout as "probably a server" — correct for the Run button, worth
+  confirming it still is under a 25-step build.
+- **A library** having no entry point, so the run manifest has nothing to write.
+  Currently it writes nothing and the badge says NOT FOUND. Is that right?
+- **A monorepo** breaking context selection: relevance ranking picks ~8 files by
+  recency, which may be the wrong 8 across several services.
+- **A graphical app** never exiting, so every check times out.
+
 ---
 
 ## 4 · Onboarding for first-time users
