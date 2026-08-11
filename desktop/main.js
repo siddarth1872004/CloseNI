@@ -1,6 +1,6 @@
 const os = require('os');
 const fs = require("fs");
-const { app, BrowserWindow, ipcMain, dialog, shell } = require("electron");
+const { app, BrowserWindow, ipcMain, dialog, shell, Menu } = require("electron");
 const path = require("path");
 const { spawn } = require("child_process");
 const { hasChromium } = require("./browser-check.js");
@@ -52,10 +52,22 @@ let win = null;
 let agentProc = null;
 
 function createWindow() {
+  // No File / Edit / View / Window / Help.
+  //
+  // Electron installs a default menu with reload, zoom and devtools on it. The
+  // app has its own chrome and its own navigation, so that bar is a second,
+  // conflicting one - and on Windows it sits inside the frame in a style
+  // nothing else here uses. Removed before the first window is created so it
+  // never flashes.
+  Menu.setApplicationMenu(null);
+
   win = new BrowserWindow({
     width: 1400, height: 900,
     backgroundColor: "#0b0b0c",
     title: "CloseNI",
+    // Belt and braces: setApplicationMenu(null) covers the menu itself, this
+    // covers the bar the window would still reserve space for.
+    autoHideMenuBar: true,
     // webviewTag is needed for the frontend preview. The <webview> itself
     // disables node integration and uses its own partition, so a generated page
     // cannot reach Electron APIs or the provider session cookies.
@@ -797,11 +809,25 @@ ipcMain.handle("browser-status", function () {
  */
 ipcMain.handle("install-browser", function () {
   return new Promise(function (resolve) {
+    // Resolved through package.json rather than directly.
+    //
+    // require.resolve("playwright/cli.js") throws even though the file is right
+    // there: Playwright declares an "exports" map that does not list ./cli.js,
+    // and Node refuses deep imports outside it. The old code read that throw as
+    // "Playwright is missing from this build", so the Download button reported
+    // a broken build on an install that was completely intact.
+    //
+    // ./package.json is in the map, so its directory is reachable, and the CLI
+    // sits beside it. Checked with existsSync so a genuinely missing file still
+    // reports honestly.
     let cli;
     try {
-      cli = require.resolve("playwright/cli.js");
+      cli = path.join(path.dirname(require.resolve("playwright/package.json")), "cli.js");
     } catch (e) {
-      resolve({ ok: false, error: "Playwright is missing from this build." });
+      cli = null;
+    }
+    if (!cli || !fs.existsSync(cli)) {
+      resolve({ ok: false, error: "Playwright's installer was not found in this build." });
       return;
     }
     const proc = spawn(process.execPath, [cli, "install", "chromium"], {

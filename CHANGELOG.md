@@ -3,6 +3,22 @@
 All notable changes to CloseNI are recorded here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] — 2026-08-11
+
+Fixes two things that only showed up once 1.0 was installed.
+
+- **The browser download reported "Playwright is missing from this build" on an
+  intact install.** `require.resolve("playwright/cli.js")` throws: Playwright
+  declares an `exports` map that does not list `./cli.js`, and Node refuses
+  deep imports outside it — the file being present makes no difference. Resolved
+  through `playwright/package.json`, whose directory *is* reachable. Without
+  this the app could never fetch the browser it needs, which is every feature.
+- **Playwright is now unpacked from the asar.** It resolves and spawns real
+  executables, and cannot do either from a virtual path inside an archive.
+- **The default Electron menu is gone.** File / Edit / View / Window / Help came
+  with a reload and a devtools item, duplicating navigation the app already has
+  in a bar styled like nothing else in it.
+
 ## [1.0.0] — 2026-08-11
 
 First release.

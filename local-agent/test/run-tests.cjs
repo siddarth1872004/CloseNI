@@ -589,7 +589,16 @@ function testBuildConfig() {
   const b = pkg.build || {};
 
   check("the app entry point is the desktop main", pkg.main === "desktop/main.js", String(pkg.main));
-  check("the version matches what the app calls itself", pkg.version === "1.0.0", String(pkg.version));
+  // Was pinned to the literal "1.0.0", so the first patch release failed a test
+  // that had nothing to do with the change. Nothing in the app hardcodes a
+  // version - it reads package.json - so what is worth asserting is that the
+  // version is well formed and that the release workflow will accept a tag for
+  // it, not what the digits happen to be.
+  check("the version is semver", /^\d+\.\d+\.\d+$/.test(pkg.version), String(pkg.version));
+  check("no source file hardcodes a version string", (() => {
+    const files = ["desktop/main.js", "desktop/renderer.js", "desktop/index.html"];
+    return files.every((f) => !/\b\d+\.\d+\.\d+\b/.test(fs.readFileSync(path.join(root, f), "utf8")));
+  })());
   check("desktop is a workspace", (pkg.workspaces || []).indexOf("desktop") !== -1);
   check("electron-builder is a dev dependency", !!(pkg.devDependencies || {})["electron-builder"]);
   check("electron is a dev dependency", !!(pkg.devDependencies || {}).electron);
@@ -1254,6 +1263,33 @@ function testRobustFileParsing() {
     parseFilesRobust("```\nsrc/x.py\n```") === null);
   check("a normal first line is not mistaken for a path",
     parseFilesRobust("```\nimport os\nprint(1)\n```") === null);
+}
+
+function testPlaywrightCliResolution() {
+  section("playwright installer is reachable");
+
+  // The Download button reported "Playwright is missing from this build" on a
+  // completely intact install. require.resolve("playwright/cli.js") throws
+  // because Playwright declares an "exports" map that does not list ./cli.js,
+  // and Node refuses deep imports outside it - the file being right there on
+  // disk makes no difference.
+  let deepThrew = false;
+  try { require.resolve("playwright/cli.js"); } catch (e) { deepThrew = true; }
+  check("the deep path is blocked by the exports map, as assumed", deepThrew);
+
+  // ./package.json is in the map, so its directory is reachable.
+  const dir = path.dirname(require.resolve("playwright/package.json"));
+  const cli = path.join(dir, "cli.js");
+  check("the installer resolves via package.json", fs.existsSync(cli), cli);
+
+  // And the packaging must hand Playwright to the app as real files: it
+  // resolves and spawns executables, which cannot be done from inside an asar.
+  const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "..", "package.json"), "utf-8"));
+  const unpack = (pkg.build && pkg.build.asarUnpack) || [];
+  check("playwright is unpacked from the asar",
+    unpack.some(function (p) { return /node_modules\/playwright\/\*\*/.test(p); }), JSON.stringify(unpack));
+  check("playwright-core is unpacked too",
+    unpack.some(function (p) { return /playwright-core/.test(p); }), JSON.stringify(unpack));
 }
 
 function testBehaviourChecker() {
@@ -2005,6 +2041,7 @@ async function testBrowserExtraction() {
   testLogo();
   testLanguageMark();
   testRobustFileParsing();
+  testPlaywrightCliResolution();
   testBehaviourChecker();
   testAbbreviationGuard();
   await testAgentQueue();
