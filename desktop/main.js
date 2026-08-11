@@ -192,8 +192,20 @@ function clearPhase() {
   try { win.webContents.send("agent-phase", { phase: "idle", detail: "" }); } catch (e) {}
 }
 
+/*
+ * Mirror the agent's narration to this process's stdout as well as the window.
+ *
+ * It only ever went to the log pane, so the terminal held nothing but IPC
+ * payloads. Every time a run misbehaved the only way to see why was to copy the
+ * pane by hand, and a run that was still going could not be diagnosed at all.
+ * PHASE lines are excluded because they arrive every two seconds and are a live
+ * status, not a record.
+ */
 function routeLine(line) {
   if (!line.trim()) return;
+  if (line.indexOf("PHASE:") !== 0) {
+    try { process.stdout.write("[agent] " + line + "\n"); } catch (e) {}
+  }
   if (line.indexOf("APPROVAL_REQUEST:") === 0) {
     try { win.webContents.send("approval-request", JSON.parse(line.substring(17))); } catch (e) {}
   } else if (line.indexOf("STEP_EVENT:") === 0) {

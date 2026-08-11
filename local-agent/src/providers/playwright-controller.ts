@@ -590,7 +590,18 @@ export class PlaywrightController {
           // that is composing and one that has not begun.
           phase(stopSeen && !stopGone ? "generating" : "thinking", elapsed + "s");
           if (waitingTicks % THINKING_LOG_EVERY_TICKS === 0) {
-            console.log("AI is thinking... (" + elapsed + "s elapsed of " + Math.round(maxWait / 1000) + "s)");
+            // Say what is being watched, not just that we are waiting.
+            //
+            // "AI is thinking" for five minutes is indistinguishable from
+            // detection that never fires, and the two need completely different
+            // fixes. The selector in use and what it currently sees separate
+            // them: a count that never moves and text that never changes means
+            // we are watching the wrong node, not a slow model.
+            const sel = await this.assistantSelector(config);
+            console.log("AI is thinking... (" + elapsed + "s elapsed of " + Math.round(maxWait / 1000) + "s)" +
+              " [watching " + JSON.stringify(sel.length > 60 ? sel.slice(0, 57) + "..." : sel) +
+              ", messages=" + count + " (was " + prevCount + ")" +
+              ", chars=" + text.length + (stopSeen ? ", stop button seen" : "") + "]");
           }
         }
         continue;
