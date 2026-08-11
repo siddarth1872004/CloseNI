@@ -44,11 +44,37 @@ export function writeSessions(file: string, sessions: Sessions): void {
   try {
     if (!file) return;
     const dir = path.dirname(file);
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(file, JSON.stringify(sessions, null, 2), "utf-8");
+    // 0700 / 0600: this file holds live conversation URLs. Anyone who can read
+    // one can open the conversation in a browser that carries the session
+    // cookie, so it should not be world-readable the way a config file is.
+    //
+    // Not encrypted, deliberately. Electron's safeStorage lives in the main
+    // process, and this file is written by the agent, which runs as plain Node.
+    // Encrypting here would mean shipping a key next to the ciphertext, which
+    // is worse than honest file permissions because it reads as protection
+    // without being any.
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    fs.writeFileSync(file, JSON.stringify(sessions, null, 2), { encoding: "utf-8", mode: 0o600 });
+    // writeFileSync only applies mode when creating, so an existing file keeps
+    // whatever it had - including 0644 from before this change.
+    try { fs.chmodSync(file, 0o600); } catch { /* not all filesystems support it */ }
   } catch {
     /* persistence is best-effort; a failed write must not fail a build */
   }
+}
+
+/**
+ * A conversation URL reduced to something safe to print.
+ *
+ * The full URL used to go to the run log on every resume, and the log is what
+ * people paste into issues and chats. The tail is enough to tell two threads
+ * apart without handing over one that is still logged in.
+ */
+export function describeThread(url: string | null | undefined): string | null {
+  const u = String(url || "").trim();
+  if (!u) return null;
+  const tail = u.split("/").filter(Boolean).pop() || "";
+  return tail.length > 8 ? "…" + tail.slice(-8) : tail || "thread";
 }
 
 function ensureEntry(sessions: Sessions, workspace: string): WorkspaceSession {

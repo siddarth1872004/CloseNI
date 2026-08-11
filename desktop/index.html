@@ -35,7 +35,26 @@
       <button class="nav-btn" data-mode="settings"><i>06</i>Settings</button>
     </nav>
     <div id="rail-bottom">
-      <div class="micro">Workspace</div>
+      <!-- Account. Whether the provider is signed in decides whether anything
+           else in the app can work, so it is on screen rather than behind a
+           settings tab. -->
+      <div class="micro">Account</div>
+      <div id="acct" class="acct" title="Provider sign-in status">
+        <span id="acct-dot" class="acct-dot unknown"></span>
+        <span id="acct-name">DeepSeek</span>
+        <span id="acct-state" class="acct-state">checking…</span>
+      </div>
+      <div class="acct-actions">
+        <button id="acct-recheck" class="btn btn-sm" title="Check again">Recheck</button>
+        <button id="acct-signin" class="btn btn-sm is-hidden">Sign in</button>
+        <button id="acct-signout" class="btn btn-sm is-hidden" title="Delete this provider's browser profile">Sign out</button>
+      </div>
+
+      <!-- Quick model switch. The same controls exist in Settings; this is the
+           one people change between prompts, so it is one click away. -->
+      <div id="rail-controls"></div>
+
+      <div class="micro mt-1">Workspace</div>
       <div id="workspace-label">none selected</div>
       <button id="browse-btn" class="btn">Browse</button>
       <div class="micro mt-1">Chat Session</div>
@@ -43,6 +62,10 @@
         <option value="new">+ New Chat</option>
       </select>
       <button id="new-chat-btn" class="btn btn-sm">New Chat</button>
+      <!-- The conversation the app is driving is a real one on the provider's
+           site. This opens that exact thread in the user's own browser. -->
+      <button id="open-thread-btn" class="btn btn-sm is-hidden" title="Open this conversation on the provider's site">Open chat in browser</button>
+      <div id="thread-label" class="thread-label"></div>
     </div>
   </aside>
   <main id="main">

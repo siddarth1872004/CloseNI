@@ -1,7 +1,7 @@
 import { chromium, BrowserContext, Page } from "playwright";
 import * as path from "path";
 import * as fs from "fs";
-import { readSessions, writeSessions, getBuildThread, setBuildThread, resetBuildRun, getBuildLedger, setBuildLedger, BuildLedger } from "../session-store.js";
+import { readSessions, writeSessions, getBuildThread, setBuildThread, resetBuildRun, getBuildLedger, setBuildLedger, BuildLedger, describeThread } from "../session-store.js";
 import { isComplete } from "./completion.js";
 import { applyProviderControls } from "./controls/index.js";
 import { parseDesiredControls } from "./controls/decisions.js";
@@ -170,6 +170,20 @@ export class PlaywrightController {
     return entry.activeChat;
   }
 
+  /**
+   * The saved conversation, described for the interface.
+   *
+   * Returns the full URL as well as a short label, because the panel needs the
+   * URL to offer "open this conversation in your browser" - the whole point of
+   * the thread being a real one on the provider's site. The label is what gets
+   * displayed and logged; the URL is only ever handed to the shell.
+   */
+  describeSavedThread(workspace: string): { label: string; url: string } | null {
+    const url = this.getChatUrlForWorkspace(workspace);
+    if (!url) return null;
+    return { label: describeThread(url) || "thread", url: url };
+  }
+
   setChatUrlForWorkspace(workspace: string, url: string, title?: string) {
     if (!workspace) return;
     // A worker's thread is transient by design: recording it would clobber the
@@ -326,7 +340,7 @@ export class PlaywrightController {
     if (!this.page) throw new Error("Browser not launched");
     const savedUrl = this.getChatUrlForWorkspace(this.workspace);
     if (savedUrl) {
-      console.log("Resuming session chat: " + savedUrl);
+      console.log("Resuming session chat " + describeThread(savedUrl) + " (same conversation as before).");
       await this.page.goto(savedUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
       try {
         // 5s was too tight for a cold profile: the thread had loaded but the
@@ -355,7 +369,7 @@ export class PlaywrightController {
       await this.navigateFresh(config);
       return false;
     }
-    console.log("Resuming build thread: " + saved);
+    console.log("Resuming build thread " + describeThread(saved) + ".");
     try {
       await this.page.goto(saved, { waitUntil: "domcontentloaded", timeout: 30000 });
       await this.page.waitForSelector(config.selectors.chatInput, { timeout: 5000, state: "visible" });

@@ -439,6 +439,36 @@ select{width:100%;}
 /* The browser download bar advances in chunks, like the build progress bar. */
 #browser-progress{transition:opacity .12s steps(2);}
 
+/* ---------- account status ----------
+   Every colour here is a token, because the css lint fails the build on a
+   literal outside a theme block - and a status light that stayed dark green on
+   Paper would be exactly the bug that lint exists to catch. */
+/* The rail is ~180px. Everything here has to survive that width: the name
+   truncates rather than wrapping to two lines, and the state sits underneath
+   instead of competing for the same row. */
+.acct{display:grid;grid-template-columns:8px 1fr;gap:var(--sp-1) var(--sp-2);
+  align-items:center;padding:6px 8px;
+  border:1px solid var(--line);border-radius:var(--r-md);background:var(--surface);
+  font-size:11px;margin-bottom:var(--sp-2);}
+.acct-dot{width:8px;height:8px;flex:none;border:1px solid var(--line-strong);}
+.acct-dot.on{background:var(--ok);border-color:var(--ok-line);}
+.acct-dot.off{background:var(--err);border-color:var(--err-line);}
+.acct-dot.unknown{background:var(--mut);}
+.acct-dot.busy{background:var(--warn);border-color:var(--warn-line);}
+#acct-name{color:var(--txt);font-weight:600;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.acct-state{grid-column:2;color:var(--mut);
+  font-family:ui-monospace,Consolas,monospace;font-size:10px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.acct-actions{display:flex;flex-wrap:wrap;gap:var(--sp-2);margin-bottom:var(--sp-3);}
+.acct-actions .btn{flex:1 1 0;min-width:0;padding:5px 4px;font-size:10px;letter-spacing:.04em;}
+#rail-controls{margin-bottom:var(--sp-3);}
+#rail-controls select{width:100%;margin-bottom:var(--sp-2);}
+#rail-controls .rail-toggle{display:flex;align-items:center;gap:var(--sp-2);
+  font-size:11px;color:var(--dim);margin-bottom:var(--sp-1);}
+.thread-label{font-family:ui-monospace,Consolas,monospace;font-size:10px;
+  color:var(--mut);margin-top:var(--sp-1);}
+
 /* Everything below is still event-driven: each one fires on a hover, a focus,
    a click or an element arriving, and then stops. Nothing loops on an idle
    screen. Ambient motion was built once, reviewed, and rejected. */

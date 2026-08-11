@@ -1159,6 +1159,67 @@ function testCommandPolicy() {
   check("no path is not protected", p.isGeneratedFile("") === false);
 }
 
+function testRobustFileParsing() {
+  section("robust file parsing");
+  const { parseFilesRobust, salvageTruncatedJson } = require(path.join(DIST, "parser/json-repair.js"));
+  const { extractFencedFiles, looksLikePath } = require(path.join(DIST, "parser/fenced-files.js"));
+
+  const paths = function (text) {
+    const r = parseFilesRobust(text);
+    return r ? r.changes.map(function (c) { return c.filePath; }).join(",") : null;
+  };
+
+  // The control: nothing below may break the format that already worked.
+  check("plain json still parses", paths('{"files":[{"path":"ok.py","content":"x=1"}]}') === "ok.py");
+  check("fenced json still parses",
+    paths('```json\n{"files":[{"path":"ok.py","content":"x=1"}]}\n```') === "ok.py");
+
+  // Truncation - what a completion timeout leaves behind.
+  check("a reply cut off mid-string keeps the files already written",
+    paths('```json\n{"files":[{"path":"a.py","content":"import os\\nprint(1)') === "a.py");
+  check("a reply cut off after a key keeps the complete entries",
+    paths('{"files":[{"path":"a.py","content":"x=1"},{"path":"b.py","content":') === "a.py");
+  check("salvage does nothing to already-balanced json",
+    salvageTruncatedJson('{"a":1}').length === 0);
+
+  // The model answered in code blocks instead of JSON.
+  check("path from a comment on the first line",
+    paths("Here:\n\n```python\n# src/app/config.py\nDEBUG = True\n```") === "src/app/config.py");
+  check("path from the fence info string",
+    paths("```python src/models.py\nclass A: pass\n```") === "src/models.py");
+  check("path from a heading above the fence",
+    paths("**src/routes.py**\n```python\nx = 1\n```") === "src/routes.py");
+  check("several files with prose between them",
+    paths("A:\n**src/a.py**\n```python\na=1\n```\nB:\n```python\n# src/b.py\nb=2\n```") === "src/a.py,src/b.py");
+
+  // The naming comment must not survive into the file it named.
+  const c = parseFilesRobust("```python\n# src/app.py\nDEBUG = True\n```");
+  check("the path comment is stripped from the content",
+    c.changes[0].newContent.indexOf("src/app.py") === -1 && /DEBUG/.test(c.changes[0].newContent));
+
+  // A file written twice is the model correcting itself.
+  const twice = parseFilesRobust("```python\n# a.py\nold\n```\nthen:\n```python\n# a.py\nnew\n```");
+  check("a file written twice keeps the later version",
+    twice.changes.length === 1 && /new/.test(twice.changes[0].newContent));
+
+  // Guards. A false positive writes a junk file, which is worse than a miss.
+  check("an illustrative block with no path is ignored",
+    parseFilesRobust("For example:\n```python\nprint('hi')\n```") === null);
+  check("prose is not mistaken for a path", !looksLikePath("Here is the file"));
+  check("an absolute path is refused", !looksLikePath("/etc/passwd"));
+  check("a traversing path is refused", !looksLikePath("../../etc/passwd"));
+  check("a url is refused", !looksLikePath("https://example.com/a.py"));
+  check("a real path is accepted", looksLikePath("src/app/config.py"));
+  check("a bare known filename is accepted", looksLikePath("Dockerfile"));
+
+  // Salvage can recover a path whose content never arrived; writing that would
+  // blank a real file.
+  check("a file with a path but no content is dropped",
+    parseFilesRobust('{"files":[{"path":"b.py"}]}') === null);
+
+  check("empty blocks are ignored", extractFencedFiles("```python x.py\n\n```").length === 0);
+}
+
 async function testAgentQueue() {
   section("agent run queue");
 
@@ -1731,6 +1792,7 @@ async function testBrowserExtraction() {
   testTheme();
   testLogo();
   testLanguageMark();
+  testRobustFileParsing();
   await testAgentQueue();
   testProviderGating();
   testToolchain();

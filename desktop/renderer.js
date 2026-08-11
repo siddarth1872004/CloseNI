@@ -130,24 +130,40 @@ function desiredControls() {
  * The user chooses and the agent applies. Deciding a model per task would be an
  * invisible decision - the kind you only discover by reading a log.
  */
-function renderProviderControls() {
-  const host = $("provider-controls");
+/**
+ * Draw the selected provider's controls.
+ *
+ * Rendered twice - once in Settings and once in the rail - because switching
+ * model or turning deep thinking off is something people do between prompts,
+ * and burying it two tabs deep meant it never got used. Both copies write to
+ * the same stored value and are redrawn together, so they cannot disagree.
+ */
+function renderProviderControls(hostId, compact) {
+  const host = $(hostId || "provider-controls");
   if (!host) return;
   host.innerHTML = "";
   const p = providerList.find(function (x) { return x.id === provider; });
   if (!p || !p.controls || !p.controls.length) return;
 
   const current = desiredControls();
-  const head = document.createElement("div");
-  head.className = "micro";
-  head.style.marginTop = "14px";
-  head.textContent = "Provider settings";
-  host.appendChild(head);
+  // Ids must be unique across both copies or the labels point at each other.
+  const idPrefix = "ctl-" + (compact ? "rail-" : "set-");
+  // No heading in the rail: every control already carries its own label, and
+  // "Model" sitting directly above "Mode" read as a mislabelled field.
+  if (!compact) {
+    const head = document.createElement("div");
+    head.className = "micro";
+    head.style.marginTop = "14px";
+    head.textContent = "Provider settings";
+    host.appendChild(head);
+  }
 
   function save(id, value) {
     const next = savedControls(provider);
     next[id] = value;
     try { localStorage.setItem(controlsKey(provider), JSON.stringify(next)); } catch (e) {}
+    // Redraw the other copy so the two never drift apart.
+    renderAllProviderControls();
   }
 
   p.controls.forEach(function (c) {
@@ -173,10 +189,11 @@ function renderProviderControls() {
 
     if (c.kind === "toggle") {
       const row = document.createElement("div");
-      row.style.cssText = "display:flex;align-items:center;gap:6px;margin-top:8px;";
+      row.className = compact ? "rail-toggle" : "";
+      if (!compact) row.style.cssText = "display:flex;align-items:center;gap:6px;margin-top:8px;";
       const box = document.createElement("input");
       box.type = "checkbox";
-      box.id = "ctl-" + c.id;
+      box.id = idPrefix + c.id;
       box.style.cssText = "width:auto;flex:none;accent-color:var(--txt);";
       box.checked = current[c.id] === true;
       box.onchange = function () { save(c.id, box.checked); };
@@ -188,6 +205,11 @@ function renderProviderControls() {
       host.appendChild(row);
     }
   });
+}
+
+function renderAllProviderControls() {
+  renderProviderControls("provider-controls", false);
+  renderProviderControls("rail-controls", true);
 }
 
 (async function () {
@@ -216,15 +238,102 @@ function renderProviderControls() {
   else if (usable.length) sel.value = usable[0].id;
   provider = sel.value;
   providerList = list;
-  renderProviderControls();
+  renderAllProviderControls();
+  setAcct("unknown", "not checked");
   sel.onchange = function (e) {
     provider = e.target.value;
     try { localStorage.setItem("closeni.provider", provider); } catch (e) {}
     // Each provider offers different controls, so the panel is rebuilt rather
     // than left showing the last provider's models.
-    renderProviderControls();
+    renderAllProviderControls();
+    // A different provider has a different session and a different thread; the
+    // previous one's status would be actively misleading.
+    setAcct("unknown", "not checked");
+    setThread(null);
+    refreshAccount(false);
   };
+  // One check at startup. It costs a headless browser launch, so it is not on a
+  // timer - the light says "not checked" rather than pretending to be live.
+  refreshAccount(false);
 })();
+
+/* ---------- account status ----------
+ *
+ * Whether the provider is still signed in decides whether anything else works,
+ * and until now the only way to find out was to start a build and watch it fail
+ * with "no chat input appeared". The check is a real headless visit, so it is
+ * never run automatically more than once per launch or per explicit request -
+ * it opens the browser profile and would otherwise fight whatever is running.
+ */
+let acctThread = null;
+
+function setAcct(state, text) {
+  const dot = $("acct-dot");
+  const label = $("acct-state");
+  if (dot) dot.className = "acct-dot " + state;
+  if (label) label.textContent = text;
+  const p = providerList.find(function (x) { return x.id === provider; });
+  const nameEl = $("acct-name");
+  if (nameEl) {
+    // "DeepSeek Chat (something)" is wider than the rail. Drop the parenthetical
+    // and the redundant trailing "Chat"; CSS truncates whatever is left.
+    const full = (p && p.name) ? p.name : provider;
+    nameEl.textContent = full.replace(/\s*\(.*\)$/, "").replace(/\s+Chat$/i, "");
+    nameEl.title = full;
+  }
+  const signedIn = state === "on";
+  const inBtn = $("acct-signin");
+  const outBtn = $("acct-signout");
+  if (inBtn) inBtn.classList.toggle("is-hidden", signedIn);
+  if (outBtn) outBtn.classList.toggle("is-hidden", !signedIn);
+}
+
+function setThread(thread) {
+  acctThread = thread && thread.url ? thread : null;
+  const btn = $("open-thread-btn");
+  const label = $("thread-label");
+  if (btn) btn.classList.toggle("is-hidden", !acctThread);
+  // The label is the tail of the URL, never the URL: this line is on screen
+  // during screen shares and lands in screenshots, and the full link carries a
+  // live session.
+  if (label) label.textContent = acctThread ? "thread " + acctThread.label : "";
+}
+
+async function refreshAccount(explicit) {
+  const p = providerList.find(function (x) { return x.id === provider; });
+  if (p && p.comingSoon) { setAcct("unknown", "coming soon"); setThread(null); return; }
+  setAcct("busy", "checking…");
+  const r = await window.api.authStatus(provider, workspace).catch(function () { return null; });
+  if (!r || !r.success) {
+    setAcct("unknown", "unknown");
+    if (explicit) toast("Could not check the account", "err");
+    return;
+  }
+  setAcct(r.signedIn ? "on" : "off", r.signedIn ? "signed in" : "signed out");
+  setThread(r.thread);
+  if (explicit) toast(r.signedIn ? "Signed in" : "Not signed in - use Sign in");
+}
+
+$("acct-recheck").onclick = function () { refreshAccount(true); };
+$("acct-signin").onclick = function () { $("provider-signin").click(); };
+
+$("acct-signout").onclick = async function () {
+  const r = await window.api.signOutProvider(provider);
+  if (r && r.success) {
+    log("signed out of " + provider + " (browser profile removed)", "ok");
+    toast("Signed out");
+    setAcct("off", "signed out");
+    setThread(null);
+  } else {
+    toast((r && r.error) || "Could not sign out", "err");
+  }
+};
+
+$("open-thread-btn").onclick = async function () {
+  if (!acctThread) return;
+  const r = await window.api.openThread(acctThread.url);
+  if (!r || !r.success) toast((r && r.error) || "Could not open the conversation", "err");
+};
 
 $("provider-signin").onclick = async function () {
   const btn = $("provider-signin");
@@ -234,8 +343,15 @@ $("provider-signin").onclick = async function () {
   const r = await window.api.signIn(provider);
   btn.disabled = false;
   btn.textContent = "Sign in";
-  if (r && r.success) { toast("Signed in to " + provider); log("signed in to " + provider, "ok"); }
-  else { toast("Sign-in did not complete", "err"); log("sign-in failed: " + ((r && r.error) || "no chat input appeared"), "err"); }
+  if (r && r.success) {
+    toast("Signed in to " + provider);
+    log("signed in to " + provider, "ok");
+    setAcct("on", "signed in");
+  } else {
+    toast("Sign-in did not complete", "err");
+    log("sign-in failed: " + ((r && r.error) || "no chat input appeared"), "err");
+    setAcct("off", "signed out");
+  }
 };
 
 function runAgent(args) {

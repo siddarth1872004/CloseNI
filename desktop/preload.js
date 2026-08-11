@@ -15,6 +15,11 @@ contextBridge.exposeInMainWorld("api", {
   installBrowser: function () { return ipcRenderer.invoke("install-browser"); },
   onBrowserProgress: function (cb) { ipcRenderer.on("browser-progress", function (e, line) { cb(line); }); },
   signIn: function (providerId) { return ipcRenderer.invoke("sign-in", providerId); },
+  authStatus: function (providerId, workspace) {
+    return ipcRenderer.invoke("auth-status", { provider: providerId, workspace: workspace });
+  },
+  signOutProvider: function (providerId) { return ipcRenderer.invoke("provider-sign-out", providerId); },
+  openThread: function (url) { return ipcRenderer.invoke("open-thread", url); },
   startSession: function (workspace, provider, autonomy, headed, controls, concurrency) {
     return ipcRenderer.invoke("start-session", { workspace: workspace, provider: provider, autonomy: autonomy, headed: headed, controls: controls, concurrency: concurrency });
   },

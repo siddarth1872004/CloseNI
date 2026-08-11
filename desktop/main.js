@@ -1,6 +1,6 @@
 const os = require('os');
 const fs = require("fs");
-const { app, BrowserWindow, ipcMain, dialog } = require("electron");
+const { app, BrowserWindow, ipcMain, dialog, shell } = require("electron");
 const path = require("path");
 const { spawn } = require("child_process");
 const { hasChromium } = require("./browser-check.js");
@@ -562,6 +562,79 @@ ipcMain.handle("git", function (event, payload) {
     proc.on("error", function (e) { resolve({ success: false, output: String(e) }); });
     proc.on("close", function (code) { resolve({ success: code === 0, output: out }); });
   });
+});
+
+/*
+ * Is the provider signed in, and which conversation is it on?
+ *
+ * Queued like every other agent run - it opens the same browser profile, so
+ * probing while a build is mid-answer would be the profile-contention bug all
+ * over again, this time triggered by a status light.
+ */
+ipcMain.handle("auth-status", function (event, payload) {
+  const providerId = (payload && payload.provider) || "deepseek";
+  const workspace = (payload && payload.workspace) || "";
+  return queueAgentRun("authcheck", function () {
+    return new Promise(function (resolve) {
+      let proc;
+      try { proc = spawnAgent(["authcheck", providerId, workspace], agentEnv("0", null)); }
+      catch (e) { resolve({ success: false, error: String(e) }); return; }
+      let out = "";
+      proc.stdout.on("data", function (d) { out += d.toString(); });
+      proc.on("close", function () {
+        const start = out.indexOf("AGENT_OUTPUT_START");
+        const end = out.indexOf("AGENT_OUTPUT_END");
+        let result = null;
+        if (start !== -1 && end !== -1) {
+          const lines = out.substring(start + 18, end).split(/\r?\n/)
+            .map(function (l) { return l.trim(); })
+            .filter(function (l) { return l.indexOf("{") === 0; });
+          if (lines.length) { try { result = JSON.parse(lines[lines.length - 1]); } catch (e) {} }
+        }
+        resolve(result || { success: false, signedIn: false, error: "no answer from the agent" });
+      });
+      proc.on("error", function (e) { resolve({ success: false, error: String(e) }); });
+    });
+  });
+});
+
+/*
+ * Sign out by deleting the provider's browser profile.
+ *
+ * The session lives in that directory as cookies; there is nothing else to
+ * revoke. Refused while an agent is running, because removing a profile
+ * Chromium currently has open corrupts it.
+ */
+ipcMain.handle("provider-sign-out", function (event, providerId) {
+  if (agentProc || sessionProc) {
+    return { success: false, error: "Something is still running. Let it finish first." };
+  }
+  try {
+    const dir = path.join(storageRoot(), "browser-profiles", String(providerId).replace(/[^a-z0-9-]/gi, ""));
+    if (fs.existsSync(dir)) fs.rmSync(dir, { recursive: true, force: true });
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: String(e && e.message ? e.message : e) };
+  }
+});
+
+/*
+ * Open the saved conversation in the user's own browser.
+ *
+ * Only http(s), and only after the URL parses - shell.openExternal will hand a
+ * file:// or a custom scheme straight to the OS handler.
+ */
+ipcMain.handle("open-thread", function (event, url) {
+  try {
+    const u = new URL(String(url));
+    if (u.protocol !== "https:" && u.protocol !== "http:") {
+      return { success: false, error: "Refusing to open a " + u.protocol + " link." };
+    }
+    shell.openExternal(u.toString());
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: "Not a URL." };
+  }
 });
 
 ipcMain.handle("sign-in", function (event, providerId) {

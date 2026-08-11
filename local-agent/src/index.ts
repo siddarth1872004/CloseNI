@@ -69,6 +69,20 @@ function capText(t: string, n: number): string {
 
 const REASK_PROMPT = "Your previous reply was not machine-readable. Reply again with ONLY the JSON object, wrapped in a \`\`\`json code block. No explanations, no extra text.";
 
+/**
+ * The re-ask after a step produced no readable files.
+ *
+ * Repeating "send JSON" to a model that just failed to send JSON tends to
+ * produce the same reply again. Offering the per-file code-block format gives
+ * it a way out that the parser reads natively, which is usually what breaks
+ * the loop.
+ */
+const REASK_FILES_PROMPT =
+  "That reply did not contain file changes I could read. Send the files again, " +
+  "either as one \`\`\`json block in the {\"files\":[{\"path\",\"mode\",\"content\"}]} format, " +
+  "or as one code block per file with the path on the fence line, like \`\`\`python src/app.py. " +
+  "Write each file completely - no ellipses and no '... rest unchanged'. No other text.";
+
 async function openProvider(providerId: string, fresh: boolean = false, workspace: string = "") {
     const registry = new ProviderRegistry();
     registry.loadProviders();
@@ -327,17 +341,33 @@ function buildPrompt(userPrompt: string, tree: string, relevantFiles: { path: st
     for (const f of priorFiles) contextStr += "- " + f + "\n";
   }
   return "You are an autonomous coding agent assistant.\n" +
-    "You must reply with a valid JSON object containing the file changes.\n" +
-    "Do not include any explanations outside the JSON.\n" +
-    "The JSON format must be exactly like this:\n" +
+    "Reply with the file changes. There are two accepted formats. Pick ONE.\n" +
+    "\n" +
+    "FORMAT A - JSON (preferred, and required if you need commands or search_replace):\n" +
     "{\n  \"files\": [\n    {\n      \"path\": \"src/hello.py\",\n      \"mode\": \"create\",\n      \"content\": \"def greet():\\n    return 'Hello'\\n\"\n    }\n  ],\n  \"commands\": [\"python src/hello.py\"]\n}\n" +
-    "The optional \"commands\" array may contain terminal commands to test your changes.\n" +
-    "CRITICAL JSON RULES FOR CODE CONTENT:\n" +
-    "1. Inside the \"content\" field, you MUST use the literal two characters \\n for newlines.\n" +
-    "2. You MUST preserve all exact whitespace and indentation.\n" +
-    "3. Use single quotes for strings in your code.\n" +
-    "4. You MUST wrap the whole JSON in a markdown code block that starts with \`\`\`json and ends with \`\`\`.\n" +
-    "5. The only allowed values for mode are: create, overwrite, search_replace.\n" +
+    "Wrap it in one \`\`\`json code block. No prose before or after it.\n" +
+    "Inside \"content\": literal \\n for newlines, exact whitespace preserved,\n" +
+    "and mode must be one of create, overwrite, search_replace.\n" +
+    "\n" +
+    // Escaping a few hundred lines of code into a JSON string is where these
+    // replies break, and a model that cannot manage it produces something
+    // unparseable rather than asking for another way. Naming the alternative
+    // is what stops that: this format is read natively, not as a rescue.
+    "FORMAT B - one code block per file, when the code is long enough that JSON\n" +
+    "escaping would be error-prone. Put the path on the fence line itself:\n" +
+    "\`\`\`python src/hello.py\n" +
+    "def greet():\n" +
+    "    return 'Hello'\n" +
+    "\`\`\`\n" +
+    "One block per file, the complete file in each, no JSON at all.\n" +
+    "\n" +
+    "RULES THAT APPLY TO BOTH:\n" +
+    "- Write every file COMPLETELY. Never abbreviate with '# ... rest unchanged',\n" +
+    "  '// existing code here', ellipses, or a comment standing in for real code.\n" +
+    "  A partial file overwrites the real one and destroys work.\n" +
+    "- Do not mix the two formats in one reply.\n" +
+    "- If the step is too large to write out fully, write fewer files completely\n" +
+    "  rather than all of them partially.\n" +
     "CRITICAL ARCHITECTURE RULE:\n" +
     "- Follow clean separation of concerns. Each file has a single responsibility.\n" +
     "- DO NOT collapse multiple modules into one file.\n" +
@@ -478,10 +508,10 @@ async function runBuildStep(controller: PlaywrightController, config: ProviderCo
     if (plan.changes.length === 0) {
       if (!reasked) {
         reasked = true;
-        console.log("No changes parsed; asking AI to resend strict JSON...");
+        console.log("No changes parsed; asking again, offering the per-file format...");
         prevCount = await controller.countMessages(config);
         prevContent = await controller.getLastMessageText(config);
-        await controller.sendPrompt(REASK_PROMPT, config);
+        await controller.sendPrompt(REASK_FILES_PROMPT, config);
         response = await controller.waitForResponse(config, prevCount, prevContent);
         plan = parseMarkdownToEditPlan(response);
         continue;
@@ -600,6 +630,45 @@ async function runBuildStep(controller: PlaywrightController, config: ProviderCo
  * Open a visible browser so the user can sign in. Headed regardless of
  * AGENT_HEADED: a login in a window nobody can see is the bug this fixes.
  */
+/**
+ * Is this provider signed in, and what conversation is it on?
+ *
+ * Headless and read-only: it opens the provider, looks for a composer, and
+ * closes. A composer means the saved profile still carries a live session; a
+ * login wall means it does not. Nothing is typed and nothing is sent.
+ */
+async function authCheckMode(providerId: string, workspace: string) {
+  const registry = new ProviderRegistry();
+  registry.loadProviders();
+  const config = registry.getProvider(providerId);
+  if (!config) { emit({ success: false, error: "Provider not found: " + providerId }); return; }
+  if (config.comingSoon) {
+    emit({ success: true, signedIn: false, comingSoon: true, provider: config.id, name: config.name });
+    return;
+  }
+
+  const controller = new PlaywrightController(config);
+  controller.setWorkspace(workspace);
+  // A status probe must never adopt or overwrite the conversation it reports on.
+  controller.setThreadKind("worker");
+  try {
+    await controller.launch(config);
+    await controller.navigateFresh(config);
+    const signedIn = await controller.waitForLogin(20000);
+    emit({
+      success: true,
+      signedIn: signedIn,
+      provider: config.id,
+      name: config.name,
+      thread: controller.describeSavedThread(workspace),
+    });
+  } catch (e: any) {
+    emit({ success: true, signedIn: false, provider: config.id, name: config.name, error: e.message });
+  } finally {
+    await controller.close();
+  }
+}
+
 async function signinMode(providerId: string) {
   const registry = new ProviderRegistry();
   registry.loadProviders();
@@ -964,6 +1033,8 @@ async function main() {
     else if (mode === "build-session") await buildSessionMode(args[1] || path.resolve(process.cwd()), args[2] || "deepseek", args[3] || "auto");
     // Positional layout: workspace, provider, step index, suggestion text.
     else if (mode === "signin") await signinMode(args[1] || "deepseek");
+    // Positional layout: provider, workspace.
+    else if (mode === "authcheck") await authCheckMode(args[1] || "deepseek", args[2] || "");
     else if (mode === "suggest") await suggestMode(args[1] || path.resolve(process.cwd()), args[2] || "deepseek", args[3] ? parseInt(args[3]) : 0, resolveArg(args[4]));
     else if (mode === "ask") await askMode(args[1] || path.resolve(process.cwd()), args[2] || "deepseek", resolveArg(args[3]), resolveArg(args[4]), resolveArg(args[5]));
     else await buildMode(prompt, workspace, providerId, autonomy, stepIndex, stepDetail, goalSummary);

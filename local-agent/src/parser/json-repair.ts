@@ -1,5 +1,6 @@
 import { MAX_PLAN_STEPS } from "../plan-scale.js";
 import { validateGraph } from "../plan-graph.js";
+import { extractFencedFiles } from "./fenced-files.js";
 
 export function extractBalanced(text: string): string | null {
   const start = text.indexOf("{");
@@ -58,10 +59,65 @@ export function fixStringControls(json: string): string {
   return out;
 }
 
+/**
+ * Rebuild a JSON object that stops in the middle.
+ *
+ * This is the shape a timeout leaves behind: the reply is cut off wherever
+ * generation was when the wait ended, so the braces never close and every
+ * variant above fails. Everything the model had already written is still good,
+ * and for a build step that is usually most of the files.
+ *
+ * Returns candidates rather than one answer because the right salvage depends
+ * on where the cut landed - mid-string, mid-key, or after a trailing comma -
+ * and letting JSON.parse decide is cheaper than guessing.
+ */
+export function salvageTruncatedJson(text: string): string[] {
+  const start = text.indexOf("{");
+  if (start === -1) return [];
+  const closers: string[] = [];
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') inString = true;
+    else if (ch === "{") closers.push("}");
+    else if (ch === "[") closers.push("]");
+    else if (ch === "}" || ch === "]") closers.pop();
+  }
+  // Balanced and closed: not truncated, nothing to salvage.
+  if (!inString && closers.length === 0) return [];
+
+  const body = text.substring(start);
+  const shut = (s: string) => s + closers.slice().reverse().join("");
+
+  const out: string[] = [];
+  // 1. Close the open string, then the open containers.
+  if (inString) out.push(shut(body + '"'));
+  else out.push(shut(body));
+  // 2. Same, minus a dangling "key": that never got a value.
+  const noDanglingKey = (inString ? body + '"' : body)
+    .replace(/,?\s*"(?:[^"\\]|\\.)*"\s*:\s*$/, "");
+  out.push(shut(noDanglingKey));
+  // 3. Same, minus the whole half-written last element.
+  const lastComma = noDanglingKey.lastIndexOf(",");
+  if (lastComma > 0) out.push(shut(noDanglingKey.substring(0, lastComma)));
+  return out;
+}
+
 export function robustParseJson(text: string): any {
   const candidates: string[] = [];
   const fenced = text.match(/\`\`\`(?:json)?\s*([\s\S]*?)\`\`\`/);
   if (fenced) candidates.push(fenced[1]);
+  // A fence that was opened and never closed - the other half of a truncated
+  // reply - leaves no closing marker for the pattern above to find.
+  const openFence = text.match(/\`\`\`(?:json)?\s*\n([\s\S]*)$/);
+  if (openFence) candidates.push(openFence[1]);
   candidates.push(text);
   for (const cand of candidates) {
     const balanced = extractBalanced(cand);
@@ -74,6 +130,12 @@ export function robustParseJson(text: string): any {
         fixStringControls(stripTrailingCommas(raw)),
       ];
       for (const v of variants) {
+        try { return JSON.parse(v); } catch (e) { /* try next variant */ }
+      }
+    }
+    // Only once the honest readings have failed: rebuild a truncated object.
+    for (const salvaged of salvageTruncatedJson(cand)) {
+      for (const v of [salvaged, stripTrailingCommas(salvaged), fixStringControls(stripTrailingCommas(salvaged))]) {
         try { return JSON.parse(v); } catch (e) { /* try next variant */ }
       }
     }
@@ -126,6 +188,30 @@ function parsePlanShape(text: string): any {
 }
 
 export function parseFilesRobust(text: string): { changes: any[]; commands: string[] } | null {
+  const viaJson = parseFilesFromJson(text);
+  if (viaJson) return viaJson;
+
+  // Last resort: the model answered in prose and code blocks rather than JSON.
+  // Those replies contain the files that were asked for, and refusing to read
+  // them fails a step over presentation.
+  const fenced = extractFencedFiles(text);
+  if (fenced.length) {
+    return {
+      changes: fenced.map((f) => ({
+        filePath: f.filePath,
+        mode: "create",
+        language: f.language,
+        newContent: f.content,
+        searchBlock: undefined,
+        replaceBlock: undefined,
+      })),
+      commands: [],
+    };
+  }
+  return null;
+}
+
+function parseFilesFromJson(text: string): { changes: any[]; commands: string[] } | null {
   const parsed = robustParseJson(text);
   if (!parsed) return null;
   const files = parsed.files || parsed.changes || null;
@@ -150,6 +236,14 @@ export function parseFilesRobust(text: string): { changes: any[]; commands: stri
   if (Array.isArray(parsed.commands)) {
     for (const c of parsed.commands) if (typeof c === "string") commands.push(c);
   }
-  if (changes.length === 0) return null;
-  return { changes: changes, commands: commands };
+  // Salvaging a truncated reply can recover the path of a file whose content
+  // was never written. A change with a path and nothing to put in it would
+  // create an empty file that overwrites a real one, so it is dropped - the
+  // step then reports the files it did get rather than silently blanking one.
+  const usable = changes.filter((c) =>
+    c.mode === "delete" ||
+    typeof c.newContent === "string" ||
+    (typeof c.searchBlock === "string" && typeof c.replaceBlock === "string"));
+  if (usable.length === 0) return null;
+  return { changes: usable, commands: commands };
 }
