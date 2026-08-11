@@ -2161,6 +2161,62 @@ async function testBrowserExtraction() {
   }
 }
 
+function testApplyFollowUp() {
+  section("a failed patch is retried with a different tactic");
+  const { buildApplyFollowUp } = require(path.join(DIST, "follow-up.js"));
+
+  // The case from the 11 August run: six of seven search blocks missed. The
+  // step recovered only because the generic follow-up happened to ask for
+  // whole files. This asks deliberately.
+  const missed = buildApplyFollowUp([
+    "Failed to apply src/storage.py: Search block not found in src/storage.py",
+    "Failed to apply src/cli/parser.py: Search block not found in src/cli/parser.py",
+  ].join("\n"), ["src/storage.py", "src/cli/parser.py", "main.py"]);
+
+  check("it names both failed files",
+    /src\/storage\.py/.test(missed) && /src\/cli\/parser\.py/.test(missed), missed);
+  check("it asks for a whole-file overwrite", /mode "overwrite"/.test(missed), missed);
+  check("it says not to retry search_replace",
+    /[Dd]o not use search_replace/.test(missed), missed);
+  check("it says the blocks did not match", /did not match/i.test(missed), missed);
+  check("it carries the raw errors through", /Search block not found/.test(missed), missed);
+  check("it lists the project's other files", /main\.py/.test(missed), missed);
+
+  // The generic verification follow-up tells the model its code failed under
+  // test and to fix the root cause. Nothing ran here, so that wording would
+  // send it rewriting working logic over an addressing mistake.
+  check("it does not claim a test failed", !/failed when tested|root cause/i.test(missed), missed);
+
+  const abbrev = buildApplyFollowUp(
+    "Failed to apply config.py: Refusing to overwrite config.py with an abbreviated file: it contains an \"unchanged\" placeholder", []);
+  check("an abbreviated file gets its own reason", /placeholder/i.test(abbrev), abbrev);
+  check("and is still asked for in full", /COMPLETE/.test(abbrev), abbrev);
+  check("with no file list when nothing is known", !/Existing files in this project/.test(abbrev), abbrev);
+
+  // An escape attempt is the one case where resending the same content is
+  // right - only the path was wrong, so asking for an overwrite would be
+  // answering the wrong question.
+  const outside = buildApplyFollowUp(
+    "Failed to apply /etc/passwd: Security Error: Attempted to write outside workspace: /etc/passwd", ["app.py"]);
+  check("a path escape is explained as a path problem",
+    /outside the project directory/.test(outside), outside);
+  check("and asks for relative paths", /relative to the project root/.test(outside), outside);
+  check("rather than for another overwrite", !/mode "overwrite"/.test(outside), outside);
+
+  // Unparseable errors must still produce a usable instruction rather than
+  // "these files: " with nothing after it.
+  const vague = buildApplyFollowUp("something went wrong", ["a.py"]);
+  check("an unrecognised error still asks for whole files",
+    /the files for this step/.test(vague) && /mode "overwrite"/.test(vague), vague);
+  check("empty input does not throw",
+    typeof buildApplyFollowUp("", []) === "string" && buildApplyFollowUp(null, []).length > 0);
+
+  // Long error dumps are truncated so the retry prompt stays smaller than the
+  // reply it is asking for.
+  const flood = buildApplyFollowUp("Failed to apply x.py: " + "e".repeat(9000), []);
+  check("a huge error dump is capped", flood.length < 2500, String(flood.length));
+}
+
 (async () => {
   testEditPlanParsing();
   testPlanParsing();
@@ -2205,6 +2261,7 @@ async function testBrowserExtraction() {
   testRelevance();
   testPatchApplier();
   await testBrowserExtraction();
+  testApplyFollowUp();
 
   console.log("\n" + (fail === 0 ? "PASS" : "FAIL") + " — " + pass + " passed, " + fail + " failed");
   process.exit(fail === 0 ? 0 : 1);

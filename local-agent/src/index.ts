@@ -14,6 +14,7 @@ import { decideApproval } from "./verification/approval-policy.js";
 import { getProjectContext } from "./context/context-engine.js";
 import { selectRelevantFiles, WorkspaceFile } from "./context/relevance.js";
 import { computeDelta, nextLedger } from "./context/delta.js";
+import { buildApplyFollowUp } from "./follow-up.js";
 import { planBehaviourChecks, judge as judgeBehaviour } from "./verification/behaviour-checker.js";
 import { resolveTool } from "./verification/toolchain.js";
 import { MANIFEST_NAME } from "./run-manifest.js";
@@ -481,6 +482,10 @@ function buildPrompt(userPrompt: string, tree: string, relevantFiles: { path: st
 }
 
 function buildFollowUp(command: string, output: string, priorFiles: string[]): string {
+  // A patch that would not apply is not a test that failed; it needs a
+  // different tactic rather than a louder version of the same request.
+  if (command === "apply patch") return buildApplyFollowUp(output, priorFiles);
+
   let priorNote = "";
   if (priorFiles.length > 0) {
     priorNote = "\nNote: existing files in this project are: " + priorFiles.join(", ") + ". Fix the bug in the appropriate file - do not collapse everything into one file.\n";
