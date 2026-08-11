@@ -77,10 +77,15 @@ async function openProvider(providerId: string, fresh: boolean = false, workspac
     const controller = new PlaywrightController(config);
     controller.setWorkspace(workspace);
     await controller.launch(config);
+    // `resumed` tells the caller whether the model can still see the earlier
+    // messages. Planning uses it to decide whether the transcript has to be
+    // repeated in the prompt, so a failed resume costs a longer prompt rather
+    // than a plan written with no idea what was discussed.
+    let resumed = false;
     if (fresh) await controller.navigateFresh(config);
-    else await controller.navigateToChat(config);
+    else resumed = await controller.navigateToChat(config);
     await controller.waitForLogin();
-  return { controller: controller, config: config };
+  return { controller: controller, config: config, resumed: resumed };
 }
 
 /** Build steps share one thread: step 0 starts it, later steps resume it. */
@@ -104,7 +109,11 @@ async function openProviderForBuild(providerId: string, workspace: string, isFir
 }
 
 async function chatMode(prompt: string, providerId: string, workspace: string = "") {
-  const { controller, config } = await openProvider(providerId, true, workspace);  // FRESH chat
+  // Resume, do not restart. This used to force a fresh thread on every single
+  // message, so the model never saw what was said a moment earlier and each
+  // turn had to be made self-contained. "New Chat" clears the saved thread,
+  // which is the supported way to start over.
+  const { controller, config } = await openProvider(providerId, false, workspace);
   try {
     const prevCount = await controller.countMessages(config);
     const prevContent = await controller.getLastMessageText(config);
@@ -123,7 +132,7 @@ async function chatMode(prompt: string, providerId: string, workspace: string = 
 async function planMode(transcript: string, workspace: string, providerId: string) {
   transcript = capText(transcript, 8000);
   const ctx = getProjectContext(workspace, transcript);
-  const prompt = "Create an implementation plan as JSON:\n" +
+  const instructions = "Create an implementation plan as JSON:\n" +
     "{\"summary\":\"goal\",\"runCommand\":\"how to run the finished project\",\"steps\":[{\"title\":\"\",\"detail\":\"\",\"files\":[\"path\"],\"dependsOn\":[]}]}" +
     "Rules: as many steps as the work genuinely needs - a one-file script might be 2, " +
     "a full application with a database, API and UI might be 20 or more. Never pad, never compress. " +
@@ -131,8 +140,19 @@ async function planMode(transcript: string, workspace: string, providerId: strin
     "runCommand is the single command that starts the finished project, e.g. \"python3 src/app/server.py\".\n" +
     "dependsOn lists the earlier steps whose files this step imports or builds on; a step that needs nothing lists []. " +
     "Be accurate: steps with no declared dependency between them may run at the same time.\n\n" +
-    "Project:\n" + ctx.tree + "\n\nChat:\n" + transcript;
-  const { controller, config } = await openProvider(providerId, true, workspace);  // FRESH chat
+    "Project:\n" + ctx.tree;
+
+  const { controller, config, resumed } = await openProvider(providerId, false, workspace);
+  // Replaying the transcript into a thread that already contains it doubled the
+  // prompt for no gain - and a prompt that size is what pushed generation past
+  // the completion wait, so the plan came back truncated and unparseable. Only
+  // send it when the thread could not be resumed and the model has no history.
+  const prompt = resumed
+    ? instructions + "\n\nPlan the project we have been discussing in this conversation."
+    : instructions + "\n\nChat:\n" + transcript;
+  console.log(resumed
+    ? "Planning in the existing conversation (prompt " + prompt.length + " chars)."
+    : "No thread to resume - replaying the transcript (prompt " + prompt.length + " chars).");
   try {
     let prevCount = await controller.countMessages(config);
     let prevContent = await controller.getLastMessageText(config);
@@ -216,7 +236,10 @@ async function revisePlanMode(changes: string, workspace: string, providerId: st
     "\n\nJSON format: {\"summary\":\"\",\"runCommand\":\"how to run the finished project\",\"steps\":[{\"title\":\"\",\"detail\":\"\",\"files\":[\"\"],\"dependsOn\":[]}]}\n" +
     "As many steps as the work needs - never pad, never compress. Different files per step.\n" +
     "dependsOn lists earlier steps this one builds on; [] if it needs nothing.";
-  const { controller, config } = await openProvider(providerId, true, workspace);  // FRESH chat
+  // "Update plan with X" only means anything in the thread that holds the plan.
+  // Sent to a fresh chat it asked the model to revise something it had never
+  // seen, which is why revisions came back as unrelated plans.
+  const { controller, config } = await openProvider(providerId, false, workspace);
   try {
     let prevCount = await controller.countMessages(config);
     let prevContent = await controller.getLastMessageText(config);

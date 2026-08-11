@@ -6,7 +6,8 @@
   "selectors": {},
   "completionRules": {
     "waitForStopButtonDisappear": false,
-    "maxWaitMs": 120000
+    "maxWaitMs": 300000,
+    "_maxWaitNote": "Raised from 120s. A reasoning model on a plan- or build-sized prompt was still thinking when the old wait expired, so a partial response got extracted and then failed to parse. The wait ends as soon as the reply is complete, so a longer ceiling costs nothing on fast answers."
   },
   "profileDir": ""
 }

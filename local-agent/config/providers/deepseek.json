@@ -11,7 +11,8 @@
   },
   "completionRules": {
     "waitForStopButtonDisappear": true,
-    "maxWaitMs": 120000
+    "maxWaitMs": 300000,
+    "_maxWaitNote": "Raised from 120s. A reasoning model on a plan- or build-sized prompt was still thinking when the old wait expired, so a partial response got extracted and then failed to parse. The wait ends as soon as the reply is complete, so a longer ceiling costs nothing on fast answers."
   },
   "_controlsNote": "DeepSeek has no model dropdown. Two modes and two inline toggles, all reporting their own state. Smart Search exists only under Instant.",
   "controls": [
@@ -21,18 +22,35 @@
       "kind": "select",
       "default": "default",
       "options": [
-        { "value": "default", "label": "Instant" },
-        { "value": "expert", "label": "Advanced" }
+        {
+          "value": "default",
+          "label": "Instant"
+        },
+        {
+          "value": "expert",
+          "label": "Advanced"
+        }
       ]
     },
-    { "id": "deep-thinking", "label": "Deep thinking", "kind": "toggle", "default": true },
-    { "id": "smart-search", "label": "Smart Search", "kind": "toggle", "default": false }
+    {
+      "id": "deep-thinking",
+      "label": "Deep thinking",
+      "kind": "toggle",
+      "default": true
+    },
+    {
+      "id": "smart-search",
+      "label": "Smart Search",
+      "kind": "toggle",
+      "default": false
+    }
   ],
   "controlSelectors": {
     "modeOption": "[role=\"radiogroup\"] [data-model-type=\"{value}\"]",
-    "toggle": ".ds-toggle-button",
-    "deepThinkingText": "Deep thinking",
-    "smartSearchText": "Smart Search"
+    "toggle": "[aria-pressed], [role=\"switch\"], button[aria-checked], .ds-toggle-button",
+    "deepThinkingText": "Think",
+    "smartSearchText": "Search",
+    "_note": "toggle keys off aria-pressed rather than a class: setFlagByText reads that attribute anyway, and .ds-toggle-button stopped matching after a DeepSeek redesign. Unconfirmed against the live site - if the toggles still report unavailable, the run log now prints the page's pressable controls to copy from."
   },
   "profileDir": "local-agent/storage/browser-profiles/deepseek"
 }

@@ -11,7 +11,8 @@
   },
   "completionRules": {
     "waitForStopButtonDisappear": true,
-    "maxWaitMs": 120000
+    "maxWaitMs": 300000,
+    "_maxWaitNote": "Raised from 120s. A reasoning model on a plan- or build-sized prompt was still thinking when the old wait expired, so a partial response got extracted and then failed to parse. The wait ends as soon as the reply is complete, so a longer ceiling costs nothing on fast answers."
   },
   "_controlsNote": "Radix UI. Options carry data-value and data-selected. The casing of data-value is inconsistent in GLM's own markup - copy these values verbatim, do not derive them from the labels. Search / Advanced Search is not wired: its trigger was not captured.",
   "controls": [

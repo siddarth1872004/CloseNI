@@ -11,7 +11,8 @@
   },
   "completionRules": {
     "waitForStopButtonDisappear": true,
-    "maxWaitMs": 120000
+    "maxWaitMs": 300000,
+    "_maxWaitNote": "Raised from 120s. A reasoning model on a plan- or build-sized prompt was still thinking when the old wait expired, so a partial response got extracted and then failed to parse. The wait ends as soon as the reply is complete, so a longer ceiling costs nothing on fast answers."
   },
   "_controlsNote": "Ant Design comboboxes. The trigger's visible text is the current value; options only exist once the menu is open. Only aria-label and qwen-* classes are stable - the index-module__* classes are CSS-module hashes that change every deploy.",
   "controls": [

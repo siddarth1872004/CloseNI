@@ -71,6 +71,9 @@ const STABLE_TICKS = 4;
 // keeps the "still waiting" line on a predictable cadence.
 const THINKING_LOG_EVERY_TICKS = 5;
 
+/** Ceiling on the soft extension given to a model that is still writing. */
+const MAX_GRACE_MS = 180000;
+
 export class PlaywrightController {
   private context: BrowserContext | null = null;
   private page: Page | null = null;
@@ -96,11 +99,15 @@ export class PlaywrightController {
   /** Workers share the launcher's context and must not close it. */
   private ownsContext: boolean = true;
 
+  /** Which provider this controller drives - a saved thread belongs to one. */
+  private providerId: string = "";
+
   constructor(config: ProviderConfig) {
     const paths = storagePaths(process.env.CLOSENI_STORAGE, config);
     if (!fs.existsSync(paths.root)) fs.mkdirSync(paths.root, { recursive: true });
     this.sessionStoreFile = paths.sessionsFile;
     this.profilePath = paths.profileDir;
+    this.providerId = config.id;
     this.isHeaded = process.env.AGENT_HEADED === "1";
   }
 
@@ -137,10 +144,30 @@ export class PlaywrightController {
     setBuildLedger(this.sessionStoreFile, this.workspace, ledger);
   }
 
+  /**
+   * The saved thread, but only if it belongs to the provider now running.
+   *
+   * Threads are stored per workspace, not per provider. While every mode forced
+   * a fresh chat that never mattered; now that they resume, handing a
+   * chat.deepseek.com URL to a different provider's browser would either waste
+   * a 30s navigation or - worse - quietly load DeepSeek inside the other
+   * provider's profile and send the prompt there.
+   *
+   * A thread saved before this field existed has no provider recorded. Those
+   * are treated as belonging to whoever asks, because the only provider that
+   * could have written one is the only one that has ever been usable.
+   */
   getChatUrlForWorkspace(workspace: string): string | null {
     if (!workspace) return null;
     const sessions = this.loadSessions();
-    return sessions[workspace]?.activeChat || null;
+    const entry = sessions[workspace];
+    if (!entry || !entry.activeChat) return null;
+    if (entry.activeChatProvider && this.providerId &&
+        entry.activeChatProvider !== this.providerId) {
+      console.log("Saved thread belongs to " + entry.activeChatProvider + "; starting a new one.");
+      return null;
+    }
+    return entry.activeChat;
   }
 
   setChatUrlForWorkspace(workspace: string, url: string, title?: string) {
@@ -155,6 +182,7 @@ export class PlaywrightController {
     const sessions = this.loadSessions();
     if (!sessions[workspace]) sessions[workspace] = { chats: [], activeChat: null };
     sessions[workspace].activeChat = url;
+    sessions[workspace].activeChatProvider = this.providerId;
     if (title && !sessions[workspace].chats.find((c: any) => c.url === url)) {
       sessions[workspace].chats.push({
         url: url,
@@ -238,25 +266,82 @@ export class PlaywrightController {
     if (missing.length) {
       console.log("Provider controls not found on this page: " +
         missing.map((r) => r.id).join(", ") + " (selectors may need re-capturing)");
+      await this.reportToggleCandidates();
     }
   }
 
-  async navigateToChat(config: ProviderConfig): Promise<void> {
+  /**
+   * List the pressable controls the page actually has, once, when one we wanted
+   * was missing.
+   *
+   * Re-capturing a selector otherwise means installing the app, signing in,
+   * opening devtools and hunting - and the person who has to do it is usually
+   * not the person who can read the run log. Printing the candidates turns the
+   * next ordinary run into the diagnostic. Labels and ARIA state only; no page
+   * text, no URLs.
+   */
+  private async reportToggleCandidates(): Promise<void> {
+    if (!this.page) return;
+    try {
+      // This body runs in the page, where DOM globals exist. The agent compiles
+      // without the "dom" lib, so it is written untyped rather than dragging
+      // browser typings into a Node build for one diagnostic.
+      const found: string[] = await this.page.evaluate(() => {
+        const doc: any = (globalThis as any).document;
+        const out: string[] = [];
+        const seen: Record<string, boolean> = {};
+        const nodes: any[] = Array.prototype.slice.call(doc.querySelectorAll(
+          '[aria-pressed],[role="switch"],[role="radio"],[role="checkbox"],button,[role="button"]'), 0, 400);
+        for (const el of nodes) {
+          const label = String(el.innerText || el.getAttribute("aria-label") || "")
+            .trim().replace(/\s+/g, " ");
+          if (!label || label.length > 40) continue;
+          const cls = String(el.getAttribute("class") || "").split(/\s+/).slice(0, 3).join(".");
+          const pressed = el.getAttribute("aria-pressed") || el.getAttribute("aria-checked");
+          const key = label + "|" + cls;
+          if (seen[key]) continue;
+          seen[key] = true;
+          out.push("      " + JSON.stringify(label) +
+            "  <" + String(el.tagName).toLowerCase() + (cls ? "." + cls : "") + ">" +
+            (pressed === null ? "" : "  aria-pressed/checked=" + pressed));
+          if (out.length >= 12) break;
+        }
+        return out;
+      });
+      if (found.length) {
+        console.log("    pressable controls on this page (for re-capturing):");
+        for (const line of found) console.log(line);
+      }
+    } catch {
+      /* diagnostics must never break a run */
+    }
+  }
+
+  /**
+   * Resume this workspace's conversation. Returns true when the saved thread
+   * actually loaded, so callers know whether the model still has the earlier
+   * messages in front of it.
+   */
+  async navigateToChat(config: ProviderConfig): Promise<boolean> {
     if (!this.page) throw new Error("Browser not launched");
     const savedUrl = this.getChatUrlForWorkspace(this.workspace);
     if (savedUrl) {
       console.log("Resuming session chat: " + savedUrl);
       await this.page.goto(savedUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
       try {
-        await this.page.waitForSelector(config.selectors.chatInput, { timeout: 5000, state: "visible" });
+        // 5s was too tight for a cold profile: the thread had loaded but the
+        // composer had not mounted yet, so a perfectly good conversation was
+        // abandoned and every message became a new one.
+        await this.page.waitForSelector(config.selectors.chatInput, { timeout: 15000, state: "visible" });
         console.log("Session chat loaded successfully");
-        return;
+        return true;
       } catch {
         console.log("Session chat URL invalid, starting new chat...");
       }
     }
     console.log("Starting new chat for workspace: " + this.workspace);
     await this.page.goto(config.baseUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
+    return false;
   }
 
   /**
@@ -309,6 +394,11 @@ export class PlaywrightController {
 
   async sendPrompt(prompt: string, config: ProviderConfig): Promise<void> {
     if (!this.page) throw new Error("Browser not launched");
+    // Never type into a composer the provider has disabled because it is still
+    // answering. The re-ask after a timeout used to fire immediately, so the
+    // "reply" it then waited for was the tail of the previous answer rather
+    // than the JSON it had just asked for.
+    await this.waitUntilIdle(config);
     console.log("Typing prompt into chat (length: " + prompt.length + ")...");
     let input;
     try {
@@ -363,6 +453,28 @@ export class PlaywrightController {
         this.setChatUrlForWorkspace(this.workspace, updatedUrl);
       }
     }
+  }
+
+  /**
+   * Block until the provider is not mid-answer, or the ceiling passes.
+   *
+   * Only meaningful for providers that expose a stop button; for the rest this
+   * returns immediately and behaviour is unchanged.
+   */
+  private async waitUntilIdle(config: ProviderConfig, ceilingMs: number = MAX_GRACE_MS): Promise<void> {
+    if (!this.page) return;
+    if (!config.completionRules?.waitForStopButtonDisappear || !config.selectors.stopButton) return;
+    if (!(await this.stopButtonVisible(config))) return;
+    console.log("Provider is still answering - waiting for it to finish before sending.");
+    const start = Date.now();
+    while (Date.now() - start < ceilingMs) {
+      await this.page.waitForTimeout(POLL_INTERVAL_MS);
+      if (!(await this.stopButtonVisible(config))) {
+        console.log("Provider idle after " + Math.round((Date.now() - start) / 1000) + "s - sending now.");
+        return;
+      }
+    }
+    console.log("Provider still busy after " + Math.round(ceilingMs / 1000) + "s - sending anyway.");
   }
 
   private async stopButtonVisible(config: ProviderConfig): Promise<boolean> {
@@ -484,7 +596,36 @@ export class PlaywrightController {
       }
     }
 
-    console.log("Timeout after " + Math.round(maxWait / 1000) + "s - extracting partial response.");
+    // Hitting the ceiling is not the same as the model having stalled. When the
+    // provider's own stop button is still on screen it is demonstrably still
+    // writing, and extracting there yields a half-finished answer that fails to
+    // parse - which then burns a retry re-asking for JSON the model was already
+    // in the middle of producing. A 15-step build died exactly that way: 300s of
+    // thinking, a partial extract, "No changes parsed", and every step blocked.
+    //
+    // So the ceiling becomes soft while the provider says it is busy, up to a
+    // bounded grace period. A model that has genuinely hung shows no stop button
+    // and still fails fast.
+    if (useStopButton && await this.stopButtonVisible(config)) {
+      const graceMs = Math.min(maxWait, MAX_GRACE_MS);
+      console.log("Reached " + Math.round(maxWait / 1000) + "s but the model is still writing" +
+        " - waiting up to " + Math.round(graceMs / 1000) + "s more.");
+      const graceStart = Date.now();
+      while (Date.now() - graceStart < graceMs) {
+        await this.page.waitForTimeout(POLL_INTERVAL_MS);
+        if (!(await this.stopButtonVisible(config))) {
+          console.log("Response complete (finished during grace period)!");
+          return await this.extractWithRetry(config);
+        }
+        const waited = Math.round((Date.now() - graceStart) / 1000);
+        if (waited % 30 < POLL_INTERVAL_MS / 1000) {
+          console.log("Still writing... (" + waited + "s into grace)");
+        }
+      }
+      console.log("Still writing after the grace period - extracting what there is.");
+    } else {
+      console.log("Timeout after " + Math.round(maxWait / 1000) + "s - extracting partial response.");
+    }
     return await this.extractWithRetry(config);
   }
 

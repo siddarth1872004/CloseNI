@@ -91,6 +91,29 @@ function browsersDir() { return path.join(storageRoot(), "browsers"); }
  * One helper for all four call sites, so a fix cannot reach three of them and
  * miss the fourth.
  */
+/*
+ * One browser profile, one agent at a time.
+ *
+ * Every agent run calls launchPersistentContext on the same profile directory,
+ * and Chromium locks that directory. Start a second run while the first is
+ * still generating and it lands on a profile it cannot own: the page comes up
+ * empty, the composer never appears, and the run dies with "Chat input not
+ * found" - which reads like a broken selector rather than two processes
+ * fighting. Observed exactly that way, with a plan launching while a chat was
+ * still thinking at 97 seconds.
+ *
+ * So agent runs queue instead of overlapping. The wait is visible in the log
+ * rather than silent, because a run that appears to do nothing for a minute
+ * needs to say why.
+ */
+let agentQueue = Promise.resolve();
+function queueAgentRun(label, task) {
+  const run = agentQueue.then(function () { return task(); }, function () { return task(); });
+  // The queue must survive a failed run, or one rejection stalls every run after it.
+  agentQueue = run.then(function () {}, function () {});
+  return run;
+}
+
 function spawnAgent(args, extraEnv) {
   const env = Object.assign({}, process.env, {
     ELECTRON_RUN_AS_NODE: "1",
@@ -145,7 +168,9 @@ ipcMain.handle("run-agent", function (event, payload) {
   console.log("run-agent called with payload:", JSON.stringify(payload).substring(0, 200));
   const args = payload.args || payload;
   const headed = payload.headed ? "1" : "0";
-  return new Promise(function (resolve) {
+  const label = Array.isArray(args) ? String(args[0]) : "agent";
+  if (agentProc) console.log("queued: " + label + " is waiting for the current run to finish");
+  return queueAgentRun(label, function () { return new Promise(function (resolve) {
     // Write long prompts to temp files to avoid Windows ENAMETOOLONG
     const finalArgs = args.map(function (arg, idx) {
       if (idx >= 1 && arg.length > 8000) {
@@ -193,7 +218,7 @@ ipcMain.handle("run-agent", function (event, payload) {
     proc.stderr.on("data", function (d) { win.webContents.send("agent-log", "[err] " + d.toString()); });
     proc.on("close", function () { finish(false); });
     proc.on("error", function () { finish(true); });
-  });
+  }); });
 });
 
 ipcMain.on("approval-response", function (event, approved) {

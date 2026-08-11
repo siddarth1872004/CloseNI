@@ -1159,6 +1159,56 @@ function testCommandPolicy() {
   check("no path is not protected", p.isGeneratedFile("") === false);
 }
 
+async function testAgentQueue() {
+  section("agent run queue");
+
+  // Mirrors queueAgentRun in desktop/main.js. Every agent run opens the same
+  // Chromium profile directory, and Chromium locks it - two runs at once means
+  // the second gets a profile it cannot own, an empty page, and a "Chat input
+  // not found" that looks like a broken selector. So runs must not overlap.
+  let agentQueue = Promise.resolve();
+  function queueAgentRun(task) {
+    const run = agentQueue.then(function () { return task(); }, function () { return task(); });
+    agentQueue = run.then(function () {}, function () {});
+    return run;
+  }
+
+  const events = [];
+  function job(name, ms, shouldFail) {
+    return function () {
+      return new Promise(function (resolve, reject) {
+        events.push(name + ":start");
+        setTimeout(function () {
+          events.push(name + ":end");
+          shouldFail ? reject(new Error(name)) : resolve(name);
+        }, ms);
+      });
+    };
+  }
+
+  // A slow run first, then a fast one: without a queue the fast one finishes
+  // inside the slow one, which is exactly the failure that was observed.
+  const runs = [
+    queueAgentRun(job("chat", 40)),
+    queueAgentRun(job("plan", 5)),
+    queueAgentRun(job("boom", 5, true)),
+    queueAgentRun(job("after", 5)),
+  ];
+  await Promise.all(runs.map(function (p) { return p.catch(function () {}); }));
+
+  let depth = 0;
+  let overlapped = false;
+  events.forEach(function (e) {
+    if (e.indexOf(":start") !== -1) { depth++; if (depth > 1) overlapped = true; } else depth--;
+  });
+
+  check("agent runs never overlap", !overlapped, events.join(" "));
+  check("runs execute in the order they were queued",
+    events.join(",") === "chat:start,chat:end,plan:start,plan:end,boom:start,boom:end,after:start,after:end");
+  // One rejected run must not wedge the queue for everything behind it.
+  check("a failed run does not stall the queue", events.indexOf("after:end") !== -1);
+}
+
 function testProviderGating() {
   section("provider gating");
   const { ProviderRegistry } = require(path.join(DIST, "providers/provider-registry.js"));
@@ -1681,6 +1731,7 @@ async function testBrowserExtraction() {
   testTheme();
   testLogo();
   testLanguageMark();
+  await testAgentQueue();
   testProviderGating();
   testToolchain();
   testCheckPlanner();
