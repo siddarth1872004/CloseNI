@@ -113,6 +113,10 @@ check('the build no longer spawns parallel workers',
   !/setThreadKind\("build"\)/.test(agentSrc) && !agentSrc.includes('attachTo('),
   'a worker path came back');
 check('Settings offers no parallelism control', !indexHtml.includes('concurrency-select'));
+// The changelog claimed parallel steps for a whole session after the code
+// stopped doing it, because the drift check only looked at README and the site.
+check('the changelog does not promise parallel steps',
+  !/execute in parallel|in its own chat tab/i.test(read('CHANGELOG.md')));
 check('README does not promise parallel steps',
   !/steps? .{0,20}(run|execute).{0,20}in parallel|Concurrent Step Execution/i.test(readme));
 check('the site does not promise parallel steps',

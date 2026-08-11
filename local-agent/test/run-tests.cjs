@@ -1256,6 +1256,77 @@ function testRobustFileParsing() {
     parseFilesRobust("```\nimport os\nprint(1)\n```") === null);
 }
 
+function testBehaviourChecker() {
+  section("behaviour checks");
+  const {
+    planBehaviourChecks, judge, looksLikeServer, TEST_TIMEOUT_MS, SMOKE_TIMEOUT_MS,
+  } = require(path.join(DIST, "verification/behaviour-checker.js"));
+
+  const have = (t) => t;            // every tool installed
+  const none = () => null;          // nothing installed
+  const noManifest = () => null;
+
+  // Nothing to check is reported as nothing, never as a pass.
+  check("an empty project plans no checks",
+    planBehaviourChecks([], noManifest, have, null).length === 0);
+  check("a run command alone gives a smoke check",
+    planBehaviourChecks([], noManifest, have, "python3 app.py")
+      .filter((c) => c.kind === "smoke").length === 1);
+
+  // package.json is only a suite if it declares one. "npm test" with no test
+  // script exits 1, which would read as a failing suite rather than none.
+  const withTest = () => ({ scripts: { test: "jest" } });
+  const withoutTest = () => ({ scripts: { build: "tsc" } });
+  check("package.json with a test script counts",
+    planBehaviourChecks(["package.json"], withTest, have, null).some((c) => c.kind === "test"));
+  check("package.json without one does not",
+    planBehaviourChecks(["package.json"], withoutTest, have, null).length === 0);
+  check("package.json with an empty test script does not",
+    planBehaviourChecks(["package.json"], () => ({ scripts: { test: "  " } }), have, null).length === 0);
+
+  // One suite, not every suite a polyglot repo could plausibly have.
+  const poly = planBehaviourChecks(["package.json", "Cargo.toml", "go.mod"], withTest, have, null);
+  check("a polyglot repo runs one suite", poly.filter((c) => c.kind === "test").length === 1,
+    JSON.stringify(poly.map((c) => c.command)));
+
+  // A tests/ directory with no manifest is still a suite.
+  check("a bare tests/ directory is detected",
+    planBehaviourChecks(["tests"], noManifest, have, null).some((c) => c.kind === "test"));
+
+  // A missing runner is reported, never silently dropped: a project with real
+  // tests and no pytest must not look like a project with no tests.
+  const missing = planBehaviourChecks(["tests"], noManifest, none, null);
+  check("a suite whose runner is absent is still reported", missing.length === 1, JSON.stringify(missing));
+  check("and is marked unavailable", missing[0].available === false);
+  check("and names the tool needed", missing[0].tool === "pytest");
+
+  // Servers and scripts have opposite success conditions.
+  check("flask run reads as a server", looksLikeServer("flask run --port 5000"));
+  check("npm start reads as a server", looksLikeServer("npm start"));
+  check("uvicorn reads as a server", looksLikeServer("uvicorn main:app"));
+  check("a plain script does not", !looksLikeServer("python3 tools/report.py"));
+  check("an empty command does not", !looksLikeServer(""));
+
+  const server = { kind: "smoke", command: "flask run", language: "run", timeoutMs: SMOKE_TIMEOUT_MS, survivesTimeout: true };
+  const script = { kind: "smoke", command: "python3 x.py", language: "run", timeoutMs: SMOKE_TIMEOUT_MS };
+  const suite = { kind: "test", command: "npm test", language: "javascript", timeoutMs: TEST_TIMEOUT_MS };
+
+  check("a server still running at the deadline passes",
+    judge(server, { success: false, timedOut: true }).passed);
+  check("a server that exited early fails",
+    !judge(server, { success: true, timedOut: false }).passed);
+  check("a script that exits 0 passes", judge(script, { success: true, timedOut: false }).passed);
+  check("a script that exits non-zero fails", !judge(script, { success: false, timedOut: false }).passed);
+  check("a script that hangs fails", !judge(script, { success: false, timedOut: true }).passed);
+  check("a passing suite passes", judge(suite, { success: true, timedOut: false }).passed);
+  check("a failing suite fails", !judge(suite, { success: false, timedOut: false }).passed);
+  check("a suite that times out fails", !judge(suite, { success: false, timedOut: true }).passed);
+
+  // A run command is not trusted for being ours.
+  check("the smoke check carries the project's own command",
+    planBehaviourChecks([], noManifest, have, "python3 app.py")[0].command === "python3 app.py");
+}
+
 function testAbbreviationGuard() {
   section("abbreviated files never overwrite real ones");
   const { isAbbreviated, applyPatch } = require(path.join(DIST, "patch/patch-applier.js"));
@@ -1934,6 +2005,7 @@ async function testBrowserExtraction() {
   testLogo();
   testLanguageMark();
   testRobustFileParsing();
+  testBehaviourChecker();
   testAbbreviationGuard();
   await testAgentQueue();
   testProviderGating();

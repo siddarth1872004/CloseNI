@@ -55,6 +55,7 @@ Also: [CHANGELOG](CHANGELOG.md) · [Release process](docs/RELEASING.md)
 * **One Conversation End To End** — Chat, planning and building all continue the same provider conversation, so a build step is a short instruction to a model that can already see the plan rather than a prompt that re-explains the project.
 * **Autonomous Error Recovery** — Captures compiler and linter output verbatim and feeds the real traceback back to the model, twice per step, then stops rather than looping.
 * **Multi-Toolchain Diagnostics** — Native syntax verification across twelve languages, project-wide where the toolchain demands it and per-file where it does not.
+* **Behavioural Verification** — Runs the project's own test suite and smoke-starts its entry point, because compiling is not working.
 * **Portable Project Runner** — Generates `closeni.run.json` plus standalone `run.sh` / `run.bat`, so a finished project runs with or without CloseNI installed.
 * **Encrypted Credential Handling** — GitHub tokens are sealed with the operating system keystore and never touch `.git/config`, an argument list, or a log line.
 * **Tailored Aesthetics** — Nine built-in themes covering light, high-contrast, CRT phosphor, and retro-terminal palettes. Themes style CloseNI only, never the projects it builds.
@@ -154,7 +155,17 @@ The header carries progress (`building 4/7`) and a **Preview** button that opens
 
 The run command is resolved before you arrive, and the badge says where it came from — `SAVED` (from `closeni.run.json`), `FROM YOUR PLAN`, `DETECTED` (guessed from the files in this workspace), or `NOT FOUND`. That distinction matters, because a command the model declared while planning deserves more trust than one inferred from a filename. Edit it and the edit sticks; later builds will not silently overwrite it.
 
-**Syntax-check all** sweeps the whole workspace and reports per file with a language tag. When something fails, the chat on the right already has the run in context, so *why did this fail?* gets an answer about your actual output rather than a general explanation of the error class.
+**Syntax-check all** sweeps the whole workspace and reports per file with a language tag.
+
+**Run tests** answers the question syntax checks cannot: does the project actually work. It runs the project's own suite and then starts its entry point.
+
+| | |
+|---|---|
+| **Suites** | Detected, never invented — npm (only when a test script is declared), cargo, go, maven, gradle, pytest, rspec, phpunit, or a bare `tests/` directory. One suite runs, not every suite a polyglot repo could plausibly have. |
+| **Smoke run** | Starts the entry point. A server still up when the window closes has passed; a script is judged by its exit code. Opposite success conditions, so they are judged apart. |
+| **Missing runner** | A suite whose runner is not installed is reported as **not run** — never as a pass. A green "0 failed" on a project whose tests never executed is the most misleading number this could produce. |
+
+This is what catches a module that compiles perfectly and returns the wrong answer. When something fails, the chat on the right already has the run in context, so *why did this fail?* gets an answer about your actual output rather than a general explanation of the error class.
 
 #### 04 · Research — ask without building
 

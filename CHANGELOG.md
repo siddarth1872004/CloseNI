@@ -7,6 +7,14 @@ All notable changes to CloseNI are recorded here. This project follows
 
 First release.
 
+**What has actually been run.** The Linux AppImage and `.deb` build, contain no
+session data, and the packaged app launches with its renderer loading. The
+Windows application packs, audits clean, and has been started on a real Windows
+machine. The NSIS installer that wraps it is built by CI on `windows-latest`
+and has not been installed by anyone — treat the first one as unproven. GitHub
+sign-in, push, clone and Actions are unit-tested with an injected transport and
+have never made a live request. Qwen Studio and GLM ship gated.
+
 ### Providers
 
 - Drives **DeepSeek** through a real Chromium session, with no API key and no
@@ -43,8 +51,11 @@ First release.
 
 ### Building
 
-- Steps run against a dependency graph — independent ones execute in parallel,
-  one to three at a time, each in its own chat tab.
+- **Chat, planning and building share one conversation** with the provider, so a
+  step prompt is an instruction to a model that already has the plan rather than
+  a re-explanation of the project. Steps run against a dependency graph, one at a
+  time: a conversation has one composer. Parallel steps needed a thread each,
+  which is what forced step prompts past the completion wait.
 - Live unified diffs per step, with the target path and whether the file is
   being created or edited.
 - A per-step suggestion box steers a single step without restarting the build.
@@ -53,6 +64,23 @@ First release.
 - A frontend preview opens from the Builder header when the project serves one.
 - Interrupted builds resume from the first unfinished step instead of starting
   over.
+
+### Verifying generated projects
+
+- **`Run tests` in the Test panel** runs the project's own test suite and then
+  starts its entry point. Syntax checks prove code parses; this is the only
+  thing that answers whether it behaves — a module whose every function returns
+  the wrong value compiles perfectly.
+- Suites are detected from the project rather than invented: npm (only when a
+  test script is declared), cargo, go, maven, gradle, pytest, rspec, phpunit,
+  and a bare `tests/` directory. One suite runs, not every suite a polyglot
+  repo could plausibly have.
+- A smoke run starts the entry point. A server that is still up when the window
+  closes has passed; a script is judged by its exit code. The two have opposite
+  success conditions, so they are judged apart.
+- A suite whose runner is not installed is reported as **not run**, never as a
+  pass. A green "0 failed" on a project whose tests never executed is the most
+  misleading number this could produce.
 
 ### Verification
 

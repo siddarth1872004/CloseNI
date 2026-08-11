@@ -167,6 +167,10 @@
           <span class="run-spacer"></span>
           <button id="test-run-project" class="btn btn-sm">Re-detect</button>
           <button id="test-check" class="btn btn-sm">Syntax-check all</button>
+          <!-- Syntax checks prove the code parses. This runs the project's own
+               test suite and starts its entry point, which is the only way to
+               find out whether it behaves. -->
+          <button id="test-behaviour" class="btn btn-sm" title="Run the project's tests and start it">Run tests</button>
         </div>
       </div>
 

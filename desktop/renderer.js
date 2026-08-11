@@ -778,6 +778,34 @@ $("test-check").onclick = async function () {
   lastRun = { command: "syntax check", output: JSON.stringify(res.results || []).slice(0, 4000) };
 };
 
+/*
+ * Behaviour, not syntax.
+ *
+ * "Syntax-check all" answers whether the code compiles. This answers whether it
+ * works: the project's own suite if it has one, then a smoke run of the entry
+ * point. A suite that exists but whose runner is missing is reported as skipped
+ * rather than counted either way - a green "0 failed" on a project whose tests
+ * never ran is the most misleading thing this panel could show.
+ */
+$("test-behaviour").onclick = async function () {
+  if (!workspace) { toast("Pick a workspace", "err"); return; }
+  setStatus("running tests");
+  renderTestResults([], "running the project's tests...");
+  const res = await runAgent(["behaviour", workspace, workspace, provider]);
+  setStatus("idle");
+  if (!res) { renderTestResults([], "could not run"); pushHistory("behaviour", false); return; }
+
+  const passed = res.passed || 0, failed = res.failed || 0, skipped = res.skipped || 0;
+  let summary = passed + " passed, " + failed + " failed";
+  if (skipped) summary += ", " + skipped + " not run";
+  if (!passed && !failed && !skipped) summary = res.note || "nothing to run";
+
+  renderTestResults(res.results || [], summary);
+  if (res.note) renderTestOutput(res.note);
+  pushHistory("tests · " + summary, !failed);
+  lastRun = { command: "behaviour checks", output: JSON.stringify(res.results || []).slice(0, 4000) };
+};
+
 $("test-run").onclick = async function () {
   const cmd = $("test-cmd").value.trim();
   if (!cmd) { toast("Nothing to run - type a command or build a project", "err"); return; }
