@@ -3,7 +3,6 @@
   "name": "GLM (Z.ai)",
   "baseUrl": "https://chat.z.ai/",
   "enabled": true,
-  "_selectorsUnverified": "These selectors have never been checked against the live site. If GLM hangs or sends nothing, correct chatInput and sendButton here first - it is a text edit, not a code change.",
   "selectors": {
     "chatInput": "textarea, div[contenteditable=\"true\"]",
     "sendButton": "button[type=\"submit\"], button[class*=\"send\"]",
@@ -22,11 +21,26 @@
       "kind": "select",
       "default": "glm-5.2",
       "options": [
-        { "value": "glm-5.2", "label": "GLM-5.2" },
-        { "value": "GLM-5.1", "label": "GLM-5.1" },
-        { "value": "GLM-5-Turbo", "label": "GLM-5-Turbo" },
-        { "value": "GLM-5v-Turbo", "label": "GLM-5V-Turbo" },
-        { "value": "glm-4.7", "label": "GLM-4.7" }
+        {
+          "value": "glm-5.2",
+          "label": "GLM-5.2"
+        },
+        {
+          "value": "GLM-5.1",
+          "label": "GLM-5.1"
+        },
+        {
+          "value": "GLM-5-Turbo",
+          "label": "GLM-5-Turbo"
+        },
+        {
+          "value": "GLM-5v-Turbo",
+          "label": "GLM-5V-Turbo"
+        },
+        {
+          "value": "glm-4.7",
+          "label": "GLM-4.7"
+        }
       ]
     },
     {
@@ -35,8 +49,14 @@
       "kind": "select",
       "default": "Max",
       "options": [
-        { "value": "High", "label": "High" },
-        { "value": "Max", "label": "Max" }
+        {
+          "value": "High",
+          "label": "High"
+        },
+        {
+          "value": "Max",
+          "label": "Max"
+        }
       ]
     }
   ],
@@ -47,5 +67,7 @@
     "thinkingTriggerText": "Deep Think",
     "thinkingOption": "[data-selected]"
   },
-  "profileDir": "local-agent/storage/browser-profiles/glm"
+  "profileDir": "local-agent/storage/browser-profiles/glm",
+  "comingSoon": true,
+  "_comingSoonReason": "Gated: the live site declines the build prompts, and the model and thinking controls were not found on the page. Selectors here have never been confirmed."
 }

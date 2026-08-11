@@ -82,6 +82,28 @@ check('every registered theme has a CSS block',
 check('every CSS theme block is registered',
   [...cssThemes].every((t) => jsThemes.includes(t)), [...cssThemes].filter((t) => !jsThemes.includes(t)).join(',') || 'all registered');
 
+// Providers: what ships as ready must match what the registry will actually
+// drive. This is the claim most likely to drift, because gating a provider is
+// a config edit and updating the prose is a separate act of will.
+const provDir = join(ROOT, 'local-agent/config/providers');
+const provs = readdirSync(provDir).filter((f) => f.endsWith('.json'))
+  .map((f) => JSON.parse(readFileSync(join(provDir, f), 'utf8')));
+const ready = provs.filter((p) => p.enabled && !p.comingSoon);
+const gated = provs.filter((p) => p.enabled && p.comingSoon);
+
+check('at least one provider is ready', ready.length >= 1, ready.map((p) => p.id).join(', '));
+check('every gated provider records why it is gated',
+  gated.every((p) => typeof p._comingSoonReason === 'string' && p._comingSoonReason.length > 40),
+  gated.map((p) => p.id).join(', ') || 'none gated');
+const counter = site.match(/data-count="(\d+)">[^<]*<\/span>\s*<span class="l">provider ready/);
+check('site "provider ready" counter matches the registry',
+  !!counter && Number(counter[1]) === ready.length,
+  counter ? `site says ${counter[1]}, registry has ${ready.length}` : 'counter not found');
+for (const p of gated) {
+  check(`README marks ${p.id} as coming soon`, /coming soon/i.test(readme) &&
+    readme.includes(p.name.split(' (')[0]), p.name);
+}
+
 // The retry budget the docs quote.
 const agent = read('local-agent/src/index.ts');
 const budget = agent.match(/const maxFollowUps = (\d+)/);
@@ -202,8 +224,10 @@ ${'-'.repeat(W)}
 
     · The Windows installer. No Windows machine here; the first .exe the
       release workflow builds is unverified until someone installs it.
-    · Qwen and GLM page control against their live sites. Only DeepSeek has
-      been driven end to end; the others are unit- and mock-tested.
+    · Qwen and GLM are gated as coming soon, not verified. Qwen's page control
+      works against the live site but a build-sized prompt outruns its 120s
+      completion wait; GLM's live site declines the build prompts. Only
+      DeepSeek has been driven end to end.
     · GitHub sign-in, push, clone and Actions against a real token. Tested
       with an injected transport, never over the network.
     · Whether generated projects are correct. The checks prove code parses

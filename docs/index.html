@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>CloseNI — turn the AI chats you already have into a build pipeline</title>
-<meta name="description" content="A desktop agent that drives DeepSeek, Qwen and GLM through a real browser to plan, build, verify and run software projects. No API keys.">
+<meta name="description" content="A desktop agent that drives DeepSeek through a real browser to plan, build, verify and run software projects. No API keys.">
 <meta property="og:title" content="CloseNI">
 <meta property="og:description" content="Turns the AI chat sites you already use into a build pipeline. No API keys.">
 <meta property="og:image" content="screenshots/builder.png">
@@ -290,7 +290,7 @@ footer p{color:var(--dim);font-size:13.5px;margin:0 auto var(--sp-2);}
     <div class="eyebrow">How it works</div>
     <h2>It uses a browser, not an API</h2>
     <p class="lead">CloseNI opens a real Chromium window, signs into
-      <strong>DeepSeek</strong>, <strong>Qwen Studio</strong> or <strong>GLM</strong> as you,
+      <strong>DeepSeek</strong> as you,
       and keeps that session in a persistent profile. From then on it types prompts into the
       composer, waits for generation to finish, and reads the reply back out of the page.</p>
     <p>What comes back is text. Turning that into a working project is the rest of the app:
@@ -477,7 +477,7 @@ step 2/7: Database models                             <span class="ok">done</spa
       <div class="stat"><span class="n" data-count="536">0</span><span class="l">unit tests</span></div>
       <div class="stat"><span class="n" data-count="155">0</span><span class="l">end-to-end tests</span></div>
       <div class="stat"><span class="n" data-count="12">0</span><span class="l">languages checked</span></div>
-      <div class="stat"><span class="n" data-count="3">0</span><span class="l">providers</span></div>
+      <div class="stat"><span class="n" data-count="1">0</span><span class="l">provider ready</span></div>
     </div>
   </div>
 </section>
@@ -558,10 +558,12 @@ cd desktop &amp;&amp; npm start</pre>
     <p>The test suites prove the logic. They do not prove every path works on every
       machine, and it is worth saying which is which.</p>
     <ul class="plain">
-      <li><strong>DeepSeek</strong> is the provider driven end to end. Qwen's controls were
-        written from its live UI but not exercised; <strong>GLM's chat selectors have never
-        been checked against the live site</strong> — they are a text edit in a JSON file
-        if they are wrong.</li>
+      <li><strong>DeepSeek is the only provider that is ready.</strong> Qwen Studio and GLM
+        ship <strong>gated as coming soon</strong> — listed in Settings so it is clear they
+        are planned, but not selectable, and refused by the agent if asked anyway.
+        Qwen's page control works; it is gated because a build-sized prompt outruns the
+        120s completion wait while the model is still thinking. GLM's live site declines the
+        build prompts and its controls were not found on the page.</li>
       <li>The Go, TypeScript, Ruby, PHP, C# and shell checks are unit-tested but have not
         run against a real project of that kind.</li>
       <li>GitHub sign-in, push and Actions are unit-tested with an injected transport.

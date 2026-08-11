@@ -9,11 +9,24 @@ First release.
 
 ### Providers
 
-- Drives DeepSeek, Qwen and GLM through a real Chromium session, with no API key
-  and no billing account. Each provider is a module of its own rather than a
-  shared schema, because the three sites disagree about almost everything —
-  where the composer is, when a reply has finished streaming, and what counts as
-  the last message.
+- Drives **DeepSeek** through a real Chromium session, with no API key and no
+  billing account. Plan, build, repair and verify have all been run end to end
+  against the live site.
+- **Qwen Studio and GLM ship gated as "coming soon."** They are listed in
+  Settings so it is clear they are planned rather than missing, but cannot be
+  selected, and the agent refuses them if one arrives from anywhere else — a
+  preference saved before the gate cannot start a session on one.
+  - Qwen's page control works: input located, long prompts pasted via the
+    clipboard, send and completion detection both confirmed live. It is gated
+    because a build-sized prompt outruns the 120s completion wait while the
+    model is still thinking, so the step returns no changes and blocks the rest
+    of the build. Raising `maxWaitMs` is the likely fix and is untested.
+  - GLM's live site declines the build prompts, and its model and thinking
+    controls were not found on the page.
+- Each provider is a config of its own rather than a shared schema, because the
+  sites disagree about almost everything — where the composer is, when a reply
+  has finished streaming, and what counts as the last message. Configs are read
+  at runtime, so correcting a selector is a text edit rather than a rebuild.
 - One persistent browser profile per provider. Sign in once; the session
   survives restarts.
 - Chromium is downloaded on demand from Settings, with progress reported.

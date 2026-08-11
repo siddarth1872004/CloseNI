@@ -197,15 +197,23 @@ function renderProviderControls() {
   try { list = await window.api.listProviders(); } catch (e) {}
   if (!list.length) list = [{ id: "deepseek", name: "DeepSeek Chat" }];
   sel.innerHTML = "";
+  // Coming-soon providers are shown rather than hidden, so it is clear they are
+  // planned rather than missing - but they cannot be picked, and the agent
+  // refuses them too in case one arrives from somewhere other than this menu.
   list.forEach(function (p) {
     const o = document.createElement("option");
     o.value = p.id;
-    o.textContent = p.name;
+    o.textContent = p.comingSoon ? p.name + " — coming soon" : p.name;
+    o.disabled = !!p.comingSoon;
     sel.appendChild(o);
   });
+  const usable = list.filter(function (p) { return !p.comingSoon; });
   let saved = null;
   try { saved = localStorage.getItem("closeni.provider"); } catch (e) {}
-  if (saved && list.some(function (p) { return p.id === saved; })) sel.value = saved;
+  // A preference saved before a provider was gated would otherwise select it
+  // and fail on the first build.
+  if (saved && usable.some(function (p) { return p.id === saved; })) sel.value = saved;
+  else if (usable.length) sel.value = usable[0].id;
   provider = sel.value;
   providerList = list;
   renderProviderControls();

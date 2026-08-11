@@ -72,7 +72,7 @@ const REASK_PROMPT = "Your previous reply was not machine-readable. Reply again 
 async function openProvider(providerId: string, fresh: boolean = false, workspace: string = "") {
     const registry = new ProviderRegistry();
     registry.loadProviders();
-    const config = registry.getProvider(providerId);
+    const config = registry.getUsableProvider(providerId);
     if (!config) throw new Error("Provider not found: " + providerId);
     const controller = new PlaywrightController(config);
     controller.setWorkspace(workspace);
@@ -87,7 +87,7 @@ async function openProvider(providerId: string, fresh: boolean = false, workspac
 async function openProviderForBuild(providerId: string, workspace: string, isFirstStep: boolean) {
   const registry = new ProviderRegistry();
   registry.loadProviders();
-  const config = registry.getProvider(providerId);
+  const config = registry.getUsableProvider(providerId);
   if (!config) throw new Error("Provider not found: " + providerId);
   const controller = new PlaywrightController(config);
   controller.setWorkspace(workspace);
@@ -163,7 +163,7 @@ async function planMode(transcript: string, workspace: string, providerId: strin
 async function askMode(workspace: string, providerId: string, question: string, command: string, output: string) {
   const registry = new ProviderRegistry();
   registry.loadProviders();
-  const config = registry.getProvider(providerId);
+  const config = registry.getUsableProvider(providerId);
   if (!config) { emit({ success: false, error: "Provider not found: " + providerId }); return; }
 
   const controller = new PlaywrightController(config);
@@ -580,7 +580,7 @@ async function runBuildStep(controller: PlaywrightController, config: ProviderCo
 async function signinMode(providerId: string) {
   const registry = new ProviderRegistry();
   registry.loadProviders();
-  const config = registry.getProvider(providerId);
+  const config = registry.getUsableProvider(providerId);
   if (!config) { emit({ success: false, error: "Provider not found: " + providerId }); return; }
 
   process.env.AGENT_HEADED = "1";
@@ -605,7 +605,7 @@ async function signinMode(providerId: string) {
 async function suggestMode(workspace: string, providerId: string, stepIndex: number, suggestion: string) {
   const registry = new ProviderRegistry();
   registry.loadProviders();
-  const config = registry.getProvider(providerId);
+  const config = registry.getUsableProvider(providerId);
   if (!config) { emit({ success: false, error: "Provider not found: " + providerId }); return; }
 
   const controller = new PlaywrightController(config);

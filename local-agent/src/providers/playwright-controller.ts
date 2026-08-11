@@ -13,6 +13,14 @@ export interface ProviderConfig {
   name: string;
   baseUrl: string;
   enabled: boolean;
+  /**
+   * Listed in the UI but not selectable, and refused if one is requested
+   * anyway. Distinct from `enabled: false`, which hides a provider outright -
+   * these are ones people should know are planned, shown as "coming soon"
+   * rather than quietly missing. The reason lives in _comingSoonReason in the
+   * JSON, next to the selectors someone will need in order to finish it.
+   */
+  comingSoon?: boolean;
   selectors: {
     chatInput: string;
     sendButton: string;

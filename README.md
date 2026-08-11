@@ -16,7 +16,7 @@
 
 ---
 
-> CloseNI drives real browser sessions with models like DeepSeek, Qwen, and GLM, turning standard web chat interfaces into a local development backend. It crafts execution plans, writes code patches, runs multi-language syntax diagnostics, and heals build errors — without requiring API credentials.
+> CloseNI drives a real browser session against **DeepSeek**, turning a standard web chat interface into a local development backend. Qwen Studio and GLM are wired and listed as **coming soon** — see [Providers](#providers). It crafts execution plans, writes code patches, runs multi-language syntax diagnostics, and heals build errors — without requiring API credentials.
 
 Every other coding agent bills per token through an API key. CloseNI does not have one. It opens a real Chromium window, uses the session you are already signed into, types the prompt into the page, waits for the answer to finish streaming, and reads it back out. From the model's side it is a person typing. From your side it is an agent that plans, writes files, compiles them, and repairs what it broke.
 
@@ -25,6 +25,7 @@ Every other coding agent bills per token through an API key. CloseNI does not ha
 ### Contents
 
 - [Key Capabilities](#key-capabilities)
+- [Providers](#providers)
 - [Pipeline Workflow](#pipeline-workflow)
 - [The Interface](#the-interface)
 - [Anatomy of a Build](#anatomy-of-a-build)
@@ -49,6 +50,7 @@ Also: [CHANGELOG](CHANGELOG.md) · [Release process](docs/RELEASING.md)
 ### Key Capabilities
 
 * **Zero-Credential Operations** — Playwright manages persistent browser profiles using existing web sign-ins. No key, no billing account, no quota dashboard.
+* **One verified provider** — DeepSeek is driven end to end. Qwen Studio and GLM are implemented but gated as coming soon rather than shipped as working.
 * **Adaptive Planning** — Deconstructs high-level prompts into granular, dependency-mapped task graphs. Step count scales with project size rather than being pinned to a fixed ceiling.
 * **Concurrent Step Execution** — Runs independent task steps in parallel across isolated chat sessions inside one browser context.
 * **Autonomous Error Recovery** — Captures compiler and linter output verbatim and feeds the real traceback back to the model, twice per step, then stops rather than looping.
@@ -62,6 +64,25 @@ Also: [CHANGELOG](CHANGELOG.md) · [Release process](docs/RELEASING.md)
 <img src="docs/screenshots/chat.png" alt="The Chat panel, where a plan is proposed and reviewed before any file is written" width="100%">
 
 </div>
+
+---
+
+### Providers
+
+CloseNI drives a chat site the way a person does, so each site needs its own page control. Where each one stands, honestly:
+
+| Provider | Status | What is known |
+|---|---|---|
+| **DeepSeek Chat** | Ready | Driven end to end — plan, build, repair, verify. |
+| **Qwen Studio** | Coming soon | Page control works: input found, long prompts pasted via the clipboard, send and completion detection both confirmed against the live site. Gated because a build-sized prompt (~9k characters) outruns the 120s completion wait while the model is still thinking, so the step returns no changes and blocks everything behind it. |
+| **GLM (Z.ai)** | Coming soon | The live site declines the build prompts, and the model and thinking controls were not found on the page. Selectors have never been confirmed. |
+| HuggingChat, Open WebUI | Not implemented | Config stubs only, `enabled: false`, no selectors. |
+
+Gated providers appear in Settings so it is clear they are planned rather than missing, but they cannot be selected — and `getUsableProvider` refuses them in the agent too, so a preference saved before the gate cannot start a session on one.
+
+Each provider is a JSON file in [`local-agent/config/providers/`](local-agent/config/providers/), read at runtime. Fixing a selector is a text edit and a re-run, not a rebuild. Each gated file carries a `_comingSoonReason` explaining what is left; a test enforces that the reason is there.
+
+**Qwen is the closest.** The next thing to try is raising `completionRules.maxWaitMs` past the point where a reasoning model finishes a full build step, then running a real multi-step build. That is untested, which is why it is gated rather than described as working.
 
 ---
 
@@ -384,8 +405,8 @@ flowchart TB
 
     subgraph web["Web Browser Drivers"]
         D["DeepSeek"]
-        Q["Qwen"]
-        G["GLM"]
+        Q["Qwen — coming soon"]
+        G["GLM — coming soon"]
     end
 
     M -->|"Spawn CLI"| C
@@ -533,7 +554,8 @@ scripts/          Environment configuration, screenshot and asset generation
 
 Stated plainly, because a README that only lists strengths is not useful.
 
-* **Chat sites change.** Provider control is per-site page automation. A redesign on DeepSeek, Qwen, or GLM can break extraction until the selectors are updated.
+* **One provider is ready.** DeepSeek is driven end to end. Qwen Studio and GLM ship gated as coming soon — they appear in Settings but cannot be selected, and the agent refuses them if asked anyway. See [Providers](#providers) for exactly where each one stands.
+* **Chat sites change.** Provider control is per-site page automation. A redesign can break extraction until the selectors are updated — which is a JSON edit, not a code change.
 * **Verification is syntax and compilation, not correctness.** A project can pass every check and still be wrong. `make -n` and `--noEmit` prove things parse and resolve; they do not prove behaviour.
 * **Installers are unsigned.** SmartScreen and Gatekeeper will say so, and that warning is accurate.
 * **Only the Linux artifacts have been verified.** The AppImage and `.deb` were built, audited for leaked session data, and launched with the renderer confirmed loading. There is no Windows machine in the development environment, so the first `.exe` the release workflow produces is unverified until someone installs it.

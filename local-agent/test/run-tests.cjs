@@ -1159,6 +1159,52 @@ function testCommandPolicy() {
   check("no path is not protected", p.isGeneratedFile("") === false);
 }
 
+function testProviderGating() {
+  section("provider gating");
+  const { ProviderRegistry } = require(path.join(DIST, "providers/provider-registry.js"));
+
+  const reg = new ProviderRegistry();
+  const quiet = console.log;
+  console.log = function () {};   // loadProviders narrates every file it reads
+  reg.loadProviders();
+  console.log = quiet;
+
+  const listed = reg.listProviders();
+  const gated = listed.filter(function (p) { return p.comingSoon; }).map(function (p) { return p.id; });
+
+  // Shown, not hidden: a provider people should know is planned rather than
+  // one that silently does not exist.
+  check("gated providers are still listed for the settings panel", gated.length >= 1, gated.join(","));
+  check("at least one provider is actually usable",
+    listed.some(function (p) { return !p.comingSoon; }));
+
+  // The part that matters: nothing gated can reach a browser, whatever asked.
+  for (const p of listed) {
+    if (!p.comingSoon) continue;
+    let refused = false;
+    try { reg.getUsableProvider(p.id); } catch (e) { refused = /coming soon/.test(e.message); }
+    check("a gated provider cannot be driven: " + p.id, refused);
+  }
+
+  const usable = listed.find(function (p) { return !p.comingSoon; });
+  check("an available provider still resolves",
+    reg.getUsableProvider(usable.id) && reg.getUsableProvider(usable.id).id === usable.id);
+
+  // Absent and gated are different answers, and callers distinguish them.
+  check("an unknown provider is undefined rather than a throw",
+    reg.getUsableProvider("no-such-provider-xyz") === undefined);
+
+  // Every gated provider must say why, next to the selectors someone will need
+  // in order to finish it. A bare flag becomes a mystery in a month.
+  const fs2 = require("fs");
+  const dir = path.join(__dirname, "..", "config", "providers");
+  for (const id of gated) {
+    const cfg = JSON.parse(fs2.readFileSync(path.join(dir, id + ".json"), "utf-8"));
+    check("gated provider records why: " + id,
+      typeof cfg._comingSoonReason === "string" && cfg._comingSoonReason.length > 40);
+  }
+}
+
 function testToolchain() {
   section("tool resolution");
   const { resolveTool, resetToolCache, TOOL_CANDIDATES } = require(path.join(DIST, "verification/toolchain.js"));
@@ -1635,6 +1681,7 @@ async function testBrowserExtraction() {
   testTheme();
   testLogo();
   testLanguageMark();
+  testProviderGating();
   testToolchain();
   testCheckPlanner();
   await testCommandTimeout();

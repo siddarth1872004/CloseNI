@@ -36,6 +36,24 @@ export class ProviderRegistry {
     return this.providers.get(id);
   }
 
+  /**
+   * Why this exists separately from getProvider: the settings panel has to
+   * list the coming-soon providers in order to show them as coming soon, so
+   * the lookup cannot refuse them. Everything that actually drives a browser
+   * goes through here instead, which means a stale saved preference or a
+   * direct CLI call cannot start a session on a provider we know is broken.
+   */
+  getUsableProvider(id: string): ProviderConfig | undefined {
+    const config = this.providers.get(id);
+    if (config && config.comingSoon) {
+      throw new Error(
+        config.name + " is not available yet - it is marked coming soon. " +
+        "Choose DeepSeek Chat in Settings.",
+      );
+    }
+    return config;
+  }
+
   listProviders(): ProviderConfig[] {
     return Array.from(this.providers.values()).filter(p => p.enabled);
   }
