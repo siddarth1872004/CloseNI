@@ -464,16 +464,12 @@ cd desktop && npm start
 
 **Requirements:** Node.js 18 or newer, and around 650 MB of disk for the Playwright Chromium download. Windows 10+, or a Linux desktop with a keyring available for encrypted token storage.
 
-#### Windows installer
+#### Downloads
 
-Prebuilt installers are published on the [Releases](https://github.com/siddarth1872004/CloseNI/releases) page.
-
-1. Download `CloseNI-Setup-<version>.exe`.
-2. Windows SmartScreen will warn about an unrecognised publisher — the build is unsigned. Choose **More info** then **Run anyway**, or verify the checksum published with the release first.
-3. The installer is not one-click; you can choose the install directory.
-4. On first launch, open **Settings** and let CloseNI download Chromium.
-
-Linux builds ship as `.AppImage` and `.deb` from the same page.
+**There are none yet.** Installers have been built and withdrawn while known problems
+are worked through — the Research panel is unfinished and plans do not always parse.
+Shipping a binary that fails on the first thing you try is worse than shipping nothing,
+so the releases page is deliberately empty. Build from source above.
 
 #### First run
 
@@ -584,6 +580,9 @@ Stated plainly, because a README that only lists strengths is not useful.
 * **One provider is ready.** DeepSeek is driven end to end. Qwen Studio and GLM ship gated as coming soon — they appear in Settings but cannot be selected, and the agent refuses them if asked anyway. See [Providers](#providers) for exactly where each one stands.
 * **Chat sites change.** Provider control is per-site page automation. A redesign can break extraction until the selectors are updated — which is a JSON edit, not a code change.
 * **Verification is syntax and compilation, not correctness.** A project can pass every check and still be wrong. `make -n` and `--noEmit` prove things parse and resolve; they do not prove behaviour.
+* **Nothing is published.** Installers build in CI and have been withdrawn; there is no download.
+* **The Research panel is gated** — unfinished, listed but not selectable.
+* **Plans do not always parse.** The reply is re-asked once and reported honestly if that fails, but it remains a live limitation.
 * **Installers are unsigned.** SmartScreen and Gatekeeper will say so, and that warning is accurate.
 * **Only the Linux artifacts have been verified.** The AppImage and `.deb` were built, audited for leaked session data, and launched with the renderer confirmed loading. There is no Windows machine in the development environment, so the first `.exe` the release workflow produces is unverified until someone installs it.
 * **Large projects are not yet proven at scale.** Builds in the range of a few dozen steps behave well. Beyond that is untested.

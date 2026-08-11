@@ -3,9 +3,11 @@
 All notable changes to CloseNI are recorded here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.0] — 2026-08-11
+## [0.1.0] — unreleased
 
-First release.
+**Not published.** Installers build in CI and have been withdrawn: the Research
+panel is unfinished and plans do not always parse. A binary that fails on the
+first thing someone tries is worse than no binary.
 
 **Why 0.1 and not 1.0.** The version says what this is: one provider driven end
 to end, a Windows installer nobody has run yet, and a GitHub integration that
