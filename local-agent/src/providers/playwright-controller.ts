@@ -28,6 +28,19 @@ export interface ProviderConfig {
      *  provider's own stop button vanishes instead of waiting out stability. */
     stopButton?: string;
     /**
+     * Optional. A pattern matching the request the page streams its reply over.
+     *
+     * Used only to know when a reply has ENDED - deliberately not to read the
+     * text. Knowing the stream closed needs no understanding of the provider's
+     * chunk format, so this works without reverse-engineering a wire protocol,
+     * and the reply still comes from the page where it is already read
+     * correctly. An explicit end beats "the text has not changed for 8 seconds"
+     * and is immune to the DOM problems entirely: a build step once sat at
+     * "messages=3, chars=9019" for a full 300s wait because the element being
+     * watched was the previous answer.
+     */
+    streamUrlPattern?: string;
+    /**
      * Optional. The provider's own "Copy" control on a code block.
      *
      * When present, the code in a reply is read from the clipboard rather than
@@ -135,6 +148,11 @@ export class PlaywrightController {
 
   /** The re-capture hint is printed once per process, not per conversation. */
   private static candidatesReported = false;
+
+  /** Streams seen since the last reset: how many opened, how many closed. */
+  private streamsOpened = 0;
+  private streamsClosed = 0;
+  private streamWatchInstalled = false;
 
   constructor(config: ProviderConfig) {
     const paths = storagePaths(process.env.CLOSENI_STORAGE, config);
@@ -380,6 +398,66 @@ export class PlaywrightController {
     await this.page.goto(config.baseUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
   }
 
+  /**
+   * Watch the request the page streams its reply over.
+   *
+   * The page's own fetch is wrapped and the body tee'd, so the site behaves
+   * exactly as before and we get told when the stream opens and closes. Only
+   * the open/close events are used; the bytes are counted and discarded.
+   *
+   * Everything here is best-effort. A provider with no pattern configured, a
+   * page that uses XHR instead, a binding that fails to install - all of it
+   * simply leaves the old text-stability path in charge.
+   */
+  private async watchReplyStream(config: ProviderConfig): Promise<void> {
+    const pattern = config.selectors.streamUrlPattern;
+    if (!this.page || !pattern) return;
+
+    // The wrapper, as source, so the identical code can be installed two ways.
+    const tap = (pat: string) => {
+      const w = globalThis as any;
+      if (!w.fetch || w.__closeniTapped) return;
+      w.__closeniTapped = true;
+      const re = new RegExp(pat);
+      const orig = w.fetch.bind(w);
+      w.fetch = async (...args: any[]) => {
+        const url = typeof args[0] === "string" ? args[0] : (args[0] && args[0].url) || "";
+        const res = await orig(...args);
+        try {
+          if (!re.test(String(url)) || !res.body) return res;
+          const [mine, theirs] = res.body.tee();
+          w.__closeniStream("open");
+          (async () => {
+            const rd = mine.getReader();
+            try { for (;;) { const r = await rd.read(); if (r.done) break; } }
+            finally { w.__closeniStream("close"); }
+          })();
+          return new (w.Response)(theirs, res);
+        } catch { return res; }
+      };
+    };
+
+    try {
+      if (!this.streamWatchInstalled) {
+        await this.page.exposeBinding("__closeniStream", (_src: any, ev: string) => {
+          if (ev === "open") this.streamsOpened++;
+          else if (ev === "close") this.streamsClosed++;
+        });
+        // For any page loaded from here on.
+        await this.page.addInitScript(tap, pattern);
+        this.streamWatchInstalled = true;
+      }
+      // And for the document already open: addInitScript only runs on documents
+      // loaded after it is added, so without this the tap is never installed on
+      // the conversation the app is currently sitting in - which is every
+      // conversation, because the watcher is armed when a prompt is sent. The
+      // wrapper no-ops if it is already in place.
+      await this.page.evaluate(tap, pattern);
+    } catch {
+      /* no stream watching; text stability still decides */
+    }
+  }
+
   async waitForLogin(timeoutMs: number = 120000): Promise<boolean> {
     if (!this.page) throw new Error("Browser not launched");
     // A login cannot happen in a window nobody can see, so a headless run gives
@@ -407,6 +485,11 @@ export class PlaywrightController {
     // "reply" it then waited for was the tail of the previous answer rather
     // than the JSON it had just asked for.
     await this.waitUntilIdle(config);
+    await this.watchReplyStream(config);
+    // Per exchange: the counts answer "did a reply stream open and close since
+    // this prompt", which is meaningless if earlier ones are still counted.
+    this.streamsOpened = 0;
+    this.streamsClosed = 0;
     phase("sending", prompt.length + " chars");
     console.log("Typing prompt into chat (length: " + prompt.length + ")...");
     let input;
@@ -637,6 +720,20 @@ export class PlaywrightController {
       if (text === lastText) stableCount++;
       else { stableCount = 0; lastText = text; }
       phase("writing", text.length + " chars");
+
+      // A closed stream means no more data is coming - but not necessarily that
+      // the page has finished painting it. A provider that fetches a whole
+      // reply and then renders it would be read mid-render, and truncating a
+      // reply is worse than waiting a little longer for it. So the stream is
+      // used to SHORTEN the stability window rather than to skip it: one quiet
+      // tick instead of four. When the DOM is unreadable the text never changes
+      // at all, so that tick passes immediately and the frozen-selector case
+      // still ends in seconds rather than at the timeout.
+      const streamDone = this.streamsOpened > 0 && this.streamsClosed >= this.streamsOpened;
+      if (streamDone && stableCount >= 1) {
+        console.log("Response complete (the page's reply stream closed)!");
+        return await this.extractWithRetry(config);
+      }
 
       if (isComplete({ started: started, stopSeen: stopSeen, stopGone: stopGone, stableTicks: stableCount }, useStopButton, STABLE_TICKS)) {
         console.log(useStopButton && stopSeen && stopGone
