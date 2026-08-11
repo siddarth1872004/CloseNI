@@ -720,6 +720,43 @@ ipcMain.handle("auth-status", function (event, payload) {
   });
 });
 
+/**
+ * Check a provider's selectors on demand.
+ *
+ * Same shape as auth-status, and queued for the same reason: it opens the
+ * browser profile, and Chromium locks that directory - a second run landing on
+ * a profile it cannot own comes up empty and reports "Chat input not found",
+ * which reads like the very breakage this is meant to detect.
+ */
+ipcMain.handle("provider-health", function (event, payload) {
+  const providerId = (payload && payload.provider) || "deepseek";
+  const workspace = (payload && payload.workspace) || "";
+  const busy = refuseWhileBuilding("The selector check");
+  if (busy) return Promise.resolve(busy);
+  return queueAgentRun("health", function () {
+    return new Promise(function (resolve) {
+      let proc;
+      try { proc = spawnAgent(["health", providerId, workspace], agentEnv("0", null)); }
+      catch (e) { resolve({ success: false, error: String(e) }); return; }
+      let out = "";
+      proc.stdout.on("data", function (d) { out += d.toString(); });
+      proc.on("close", function () {
+        const start = out.indexOf("AGENT_OUTPUT_START");
+        const end = out.indexOf("AGENT_OUTPUT_END");
+        let result = null;
+        if (start !== -1 && end !== -1) {
+          const lines = out.substring(start + 18, end).split(/\r?\n/)
+            .map(function (l) { return l.trim(); })
+            .filter(function (l) { return l.indexOf("{") === 0; });
+          if (lines.length) { try { result = JSON.parse(lines[lines.length - 1]); } catch (e) {} }
+        }
+        resolve(result || { success: false, error: "no answer from the agent" });
+      });
+      proc.on("error", function (e) { resolve({ success: false, error: String(e) }); });
+    });
+  });
+});
+
 /*
  * Sign out by deleting the provider's browser profile.
  *

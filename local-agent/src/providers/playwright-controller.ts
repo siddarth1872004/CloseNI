@@ -626,6 +626,41 @@ export class PlaywrightController {
     return config.selectors.assistantMessage;
   }
 
+  /**
+   * How many nodes each configured selector matches, right now.
+   *
+   * Counting only - what the numbers mean is judged in selector-health, which
+   * is a pure function and therefore testable without a browser.
+   *
+   * Every count is independently guarded. A selector with invalid CSS throws
+   * inside Playwright, and one bad selector must not stop the probe from
+   * reporting on the other six; a health check that dies on the first problem
+   * is the least useful moment for it to die.
+   */
+  async probeSelectors(config: ProviderConfig): Promise<Record<string, number>> {
+    const out: Record<string, number> = {};
+    if (!this.page) return out;
+    const sels: Record<string, string | undefined> = {
+      chatInput: config.selectors.chatInput,
+      sendButton: config.selectors.sendButton,
+      assistantMessage: await this.assistantSelector(config).catch(() => config.selectors.assistantMessage),
+      copyButton: config.selectors.copyButton,
+      stopButton: config.selectors.stopButton,
+    };
+    for (const key of Object.keys(sels)) {
+      const sel = sels[key];
+      if (!sel) continue;
+      try {
+        out[key] = await this.page.locator(sel).count();
+      } catch {
+        // An unmatched selector and an invalid one both mean "found nothing
+        // usable", which is what the caller acts on either way.
+        out[key] = 0;
+      }
+    }
+    return out;
+  }
+
   async countMessages(config: ProviderConfig): Promise<number> {
     if (!this.page) return 0;
     try {

@@ -20,6 +20,7 @@ import { resolveTool } from "./verification/toolchain.js";
 import { MANIFEST_NAME } from "./run-manifest.js";
 import { Checkpoint, mergeCheckpoint, sealCheckpoint, checkpointName, CHECKPOINT_DIR } from "./checkpoint.js";
 import { addTurn, shouldRollOver, budgetFor, describeSize } from "./context-budget.js";
+import { judgeSelectors } from "./health/selector-health.js";
 import { BUILD_STATE_DIR } from "./build-state.js";
 
 // Every extension the check planner knows about. A file the walker misses is a
@@ -857,6 +858,55 @@ async function runBuildStep(controller: PlaywrightController, config: ProviderCo
  * closes. A composer means the saved profile still carries a live session; a
  * login wall means it does not. Nothing is typed and nothing is sent.
  */
+/**
+ * Check a provider's selectors without running a build.
+ *
+ * Resumes this workspace's conversation when there is one, because that is the
+ * only place the read-path selectors have anything to match: an empty chat has
+ * no replies for assistantMessage and no code blocks for copyButton, so a probe
+ * of a fresh page cannot see the class of breakage that has actually cost
+ * builds here.
+ *
+ * Read-only. The thread kind is "worker" so reporting on a conversation can
+ * never adopt or overwrite it.
+ */
+async function healthMode(providerId: string, workspace: string) {
+  const registry = new ProviderRegistry();
+  registry.loadProviders();
+  const config = registry.getProvider(providerId);
+  if (!config) { emit({ success: false, error: "Provider not found: " + providerId }); return; }
+  if (config.comingSoon) {
+    emit({ success: false, error: config.name + " is not enabled yet, so there is nothing to check." });
+    return;
+  }
+
+  const controller = new PlaywrightController(config);
+  controller.setWorkspace(workspace);
+  controller.setThreadKind("worker");
+  try {
+    await controller.launch(config);
+    const resumed = await controller.navigateToChat(config);
+    const signedIn = await controller.waitForLogin(20000);
+    if (!signedIn) {
+      emit({ success: false, error: "Not signed in to " + config.name + " - sign in first, then check." });
+      return;
+    }
+    const report = judgeSelectors(await controller.probeSelectors(config), {
+      conversationResumed: resumed,
+      configured: {
+        assistantMessage: !!config.selectors.assistantMessage,
+        copyButton: !!config.selectors.copyButton,
+      },
+    });
+    emit({ success: true, provider: config.id, name: config.name, resumed: resumed,
+           ok: report.ok, summary: report.summary, findings: report.findings });
+  } catch (e: any) {
+    emit({ success: false, error: e && e.message ? e.message : String(e) });
+  } finally {
+    await controller.close();
+  }
+}
+
 async function authCheckMode(providerId: string, workspace: string) {
   const registry = new ProviderRegistry();
   registry.loadProviders();
@@ -988,6 +1038,31 @@ async function buildSessionMode(workspace: string, providerId: string, autonomy:
   if (requested > 1) {
     console.log("Steps run one at a time: chat, plan and build share a single conversation.");
   }
+  // Check the selectors before the first step, not after a step has hung.
+  //
+  // Free here: the session already owns the browser and the profile, so there
+  // is no second launch and no lock to contend for. Reported and continued past
+  // rather than blocking - a probe that is itself wrong must not be able to
+  // stop a build that would have worked.
+  try {
+    const report = judgeSelectors(await controller.probeSelectors(config), {
+      conversationResumed: resumed,
+      configured: {
+        assistantMessage: !!config.selectors.assistantMessage,
+        copyButton: !!config.selectors.copyButton,
+      },
+    });
+    console.log("Selector check: " + report.summary);
+    for (const f of report.findings) {
+      if (f.health === "critical" || f.health === "degraded") {
+        console.log("  " + f.health + ": " + f.selector + " matched " + f.matched + " - " + f.note);
+      }
+    }
+    sessionEvent({ type: "health", ok: report.ok, summary: report.summary, findings: report.findings });
+  } catch (e: any) {
+    console.log("Selector check could not run: " + (e && e.message ? e.message : e));
+  }
+
   const workers: PlaywrightController[] = [controller];
   console.log("Build session ready (one conversation).");
   const pool = createPool(workers);
@@ -1269,6 +1344,7 @@ async function main() {
     else if (mode === "research") await researchMode(prompt);
     // Positional layout differs from the other modes: workspace and provider
     // come straight after the mode, because there is no per-step prompt.
+    else if (mode === "health") await healthMode(args[1] || "deepseek", args[2] || "");
     else if (mode === "build-session") await buildSessionMode(args[1] || path.resolve(process.cwd()), args[2] || "deepseek", args[3] || "auto");
     // Positional layout: workspace, provider, step index, suggestion text.
     else if (mode === "signin") await signinMode(args[1] || "deepseek");

@@ -2519,6 +2519,69 @@ function testContextBudget() {
   });
 }
 
+function testSelectorHealth() {
+  section("checking a provider's selectors still match");
+  const H = require(path.join(DIST, "health/selector-health.js"));
+
+  const full = { chatInput: 1, sendButton: 1, assistantMessage: 14, copyButton: 6, stopButton: 0 };
+  const healthy = H.judgeSelectors(full, { conversationResumed: true });
+  check("a matching provider passes", healthy.ok === true, healthy.summary);
+  check("and says how many were checked", /selectors checked/.test(healthy.summary), healthy.summary);
+
+  function find(rep, sel) { return rep.findings.filter(function (f) { return f.selector === sel; })[0]; }
+
+  // The whole point. assistantMessage matching nothing in a conversation that
+  // HAS replies is the frozen-selector bug that made a build wait out 300s.
+  const frozen = H.judgeSelectors(Object.assign({}, full, { assistantMessage: 0 }), { conversationResumed: true });
+  check("a dead assistant selector is critical", find(frozen, "assistantMessage").health === "critical");
+  check("and fails the report", frozen.ok === false);
+  check("and the summary names it", /assistantMessage/.test(frozen.summary), frozen.summary);
+
+  // ...but the SAME zero on a fresh page proves nothing, because an empty chat
+  // has no replies. Calling that a failure is how a check gets ignored.
+  const fresh = H.judgeSelectors(Object.assign({}, full, { assistantMessage: 0, copyButton: 0 }), { conversationResumed: false });
+  check("the same zero on a fresh page is skipped, not failed",
+    find(fresh, "assistantMessage").health === "skipped");
+  check("a fresh page still passes overall", fresh.ok === true);
+  check("and the summary admits what it could not check",
+    /read path could not be checked/.test(fresh.summary), fresh.summary);
+
+  // The composer is the one thing nothing works without.
+  const noInput = H.judgeSelectors(Object.assign({}, full, { chatInput: 0 }), { conversationResumed: true });
+  check("a missing composer is critical", find(noInput, "chatInput").health === "critical");
+  check("and fails the report", noInput.ok === false);
+
+  // A missing send button is survivable - sendPrompt presses Enter instead.
+  const noSend = H.judgeSelectors(Object.assign({}, full, { sendButton: 0 }), { conversationResumed: true });
+  check("a missing send button is only degraded", find(noSend, "sendButton").health === "degraded");
+  check("so the report still passes", noSend.ok === true);
+  check("and the note says what happens instead", /Enter/.test(find(noSend, "sendButton").note));
+
+  // Copy is an optimisation over a working fallback.
+  const noCopy = H.judgeSelectors(Object.assign({}, full, { copyButton: 0 }), { conversationResumed: true });
+  check("a missing copy button is degraded, not critical", find(noCopy, "copyButton").health === "degraded");
+  check("and it passes", noCopy.ok === true);
+
+  // Never claimable from an idle page, and the report must say so rather than
+  // quietly omitting it - silence reads as "verified".
+  check("the stop button is always reported as unknowable when idle",
+    find(healthy, "stopButton").health === "skipped");
+  check("and explains why", /while a reply is generating/.test(find(healthy, "stopButton").note));
+
+  // A selector this provider does not configure is not its failure.
+  const unconfigured = H.judgeSelectors({ chatInput: 1, sendButton: 1 },
+    { conversationResumed: true, configured: { assistantMessage: false, copyButton: false } });
+  check("an unconfigured selector is skipped", find(unconfigured, "copyButton").health === "skipped");
+  check("and does not fail the provider", unconfigured.ok === true);
+
+  // Nothing at all must not throw, and must not read as healthy.
+  const empty = H.judgeSelectors({}, { conversationResumed: false });
+  check("empty counts do not throw and do not pass", empty.ok === false);
+  check("undefined context does not throw", typeof H.judgeSelectors({}, {}).summary === "string");
+  check("negative counts are treated as zero",
+    H.judgeSelectors({ chatInput: -3 }, { conversationResumed: true }).ok === false);
+}
+
 (async () => {
   testEditPlanParsing();
   testPlanParsing();
@@ -2569,6 +2632,7 @@ function testContextBudget() {
   testCheckpoints();
   testRollbackOnDisk();
   testContextBudget();
+  testSelectorHealth();
 
   console.log("\n" + (fail === 0 ? "PASS" : "FAIL") + " — " + pass + " passed, " + fail + " failed");
   process.exit(fail === 0 ? 0 : 1);

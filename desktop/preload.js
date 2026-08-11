@@ -24,6 +24,9 @@ contextBridge.exposeInMainWorld("api", {
   authStatus: function (providerId, workspace) {
     return ipcRenderer.invoke("auth-status", { provider: providerId, workspace: workspace });
   },
+  providerHealth: function (providerId, workspace) {
+    return ipcRenderer.invoke("provider-health", { provider: providerId, workspace: workspace });
+  },
   signOutProvider: function (providerId) { return ipcRenderer.invoke("provider-sign-out", providerId); },
   openThread: function (url) { return ipcRenderer.invoke("open-thread", url); },
   startSession: function (workspace, provider, autonomy, headed, controls, concurrency, resuming) {

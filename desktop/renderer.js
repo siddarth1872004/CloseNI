@@ -372,6 +372,42 @@ async function refreshAccount(explicit) {
 $("acct-recheck").onclick = function () { refreshAccount(true); };
 $("acct-signin").onclick = function () { $("provider-signin").click(); };
 
+/**
+ * Check the provider's selectors against a real page, on demand.
+ *
+ * Every finding is printed, including the skipped ones. A check that quietly
+ * omitted what it could not verify would read as "everything is fine" while
+ * saying nothing about the read path - which is the half that has actually
+ * broken builds.
+ */
+$("acct-health").onclick = async function () {
+  const btn = $("acct-health");
+  btn.disabled = true;
+  const was = btn.textContent;
+  btn.textContent = "Checking...";
+  try {
+    const r = await window.api.providerHealth(provider, workspace).catch(function () { return null; });
+    if (!r || !r.success) {
+      log("selector check failed: " + ((r && r.error) || "no answer"), "err");
+      toast((r && r.error) || "Could not check", "err");
+      return;
+    }
+    log("selector check - " + r.summary, r.ok ? "ok" : "err");
+    (r.findings || []).forEach(function (f) {
+      log("  " + f.selector + ": " + f.health + " (" + f.matched + " matched)" +
+        (f.note ? " - " + f.note : ""), f.health === "critical" ? "err" : "step");
+    });
+    if (!r.resumed) {
+      log("  no saved conversation here, so the read path was not checked - " +
+        "chat once in this workspace, then check again", "step");
+    }
+    toast(r.ok ? "Selectors look right" : "Selectors need attention", r.ok ? "" : "err");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = was;
+  }
+};
+
 $("acct-signout").onclick = async function () {
   const r = await window.api.signOutProvider(provider);
   if (r && r.success) {

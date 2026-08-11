@@ -196,6 +196,21 @@ check('a rolled-over thread is seeded as a cold one',
   /startFreshConversation\(config\)[\s\S]{0,400}buildPrompt\(effectivePrompt, ctx\.tree/.test(agent));
 check('repairs count towards the conversation too',
   /const followUp = buildFollowUp[\s\S]{0,500}addTurn\(controller\.getConversationSize\(\), followUp\.length/.test(agent));
+// The selector health check. Its whole value rests on one distinction - a
+// selector matching nothing is only a fault when something should have matched
+// - so that is what is pinned, along with it never blocking a build.
+check('the health check runs inside the build session, before step 1',
+  agent.indexOf('judgeSelectors(await controller.probeSelectors(config)') <
+  agent.indexOf('Build session ready (one conversation).'));
+check('a failed probe does not stop a build',
+  /Selector check could not run/.test(agent));
+check('the read path is judged against a resumed conversation',
+  /conversationResumed: resumed/.test(agent));
+check('there is an on-demand check too',
+  /provider-health/.test(read('desktop/main.js')) && /acct-health/.test(read('desktop/index.html')));
+check('the on-demand check is queued against the profile lock',
+  /refuseWhileBuilding\("The selector check"\)/.test(read('desktop/main.js')));
+
 check('the size is stored with the ledger, so both reset together',
   /entry\.buildLedger = \{\};[\s\S]{0,120}entry\.conversationSize/.test(read('local-agent/src/session-store.ts')));
 

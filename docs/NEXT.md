@@ -108,9 +108,17 @@ the reply is**, which removes the DOM from the read path entirely.
 - **Local models** (Ollama, LM Studio) - no browser, no scraping, no rate limit.
   The architecture already separates "provider" from "how you talk to it", and
   this would be the first provider that cannot break from a redesign.
-- **A provider health check** on startup: are the selectors still matching? A
-  five-second probe would have caught the frozen assistant selector before a
-  build did.
+- ~~**A provider health check** on startup.~~ **Done**, but not as described -
+  a fresh-page probe would *not* have caught the frozen assistant selector,
+  because an empty chat has no replies for `assistantMessage` to match, no code
+  blocks for `copyButton`, and no `stopButton` or reply stream while idle. It
+  probes **this workspace's saved conversation** instead, where those selectors
+  have real markup to match, and falls back to the fresh page while saying so.
+  The rule it encodes: zero matches is only a fault when something should have
+  matched. Runs inside the build session before step 1 - free, since the session
+  already holds the profile - plus a button. Reports and continues; a probe that
+  is itself wrong must not stop a build that would have worked. Design:
+  `docs/superpowers/specs/2026-08-11-selector-health-design.md`.
 
 ## 6 · The Research panel
 
