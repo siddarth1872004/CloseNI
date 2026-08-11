@@ -136,6 +136,52 @@ const problems = [];
   console.log(`\n    ${errors.length === 0 ? ' ok ' : 'FAIL'}  the app renderer raised no JS errors${errors.length ? ': ' + errors[0] : ''}`);
   if (errors.length) fail++; else pass++;
 
+  // ------------------------------------------------------- pixel-art SVGs ----
+  //
+  // A diagram whose resting frame is empty reads as a broken image, and gets
+  // reported as one. build-strip drew seven hollow boxes for the first second
+  // of every seven-second cycle, and looked exactly like a failed load. Every
+  // asset must have something on it the moment it appears.
+  console.log('\n  Pixel-art SVGs: the frame you see first\n');
+  {
+    const dir = join(ROOT, 'docs/assets');
+    const files = (await import('node:fs')).readdirSync(dir).filter((f) => f.endsWith('.svg'));
+    const p = await browser.newPage({ viewport: { width: 1400, height: 500 } });
+    await p.goto('about:blank');
+    const fsMod = await import('node:fs');
+    for (const f of files) {
+      // A data URI rather than file://: an image loaded from file:// into a
+      // page that is not itself file:// refuses to decode, and a canvas needs
+      // same-origin pixels to be readable at all.
+      const url = 'data:image/svg+xml;base64,' +
+        Buffer.from(fsMod.readFileSync(join(dir, f))).toString('base64');
+      // Drawn onto a canvas over a known background so "ink" can be counted.
+      const ink = await p.evaluate(async (src) => {
+        const img = new Image();
+        img.src = src;
+        await img.decode();
+        const c = document.createElement('canvas');
+        c.width = Math.min(img.naturalWidth, 1400);
+        c.height = Math.min(img.naturalHeight, 500);
+        const ctx = c.getContext('2d');
+        ctx.fillStyle = '#0b0d0f';
+        ctx.fillRect(0, 0, c.width, c.height);
+        ctx.drawImage(img, 0, 0);
+        const d = ctx.getImageData(0, 0, c.width, c.height).data;
+        let lit = 0;
+        for (let i = 0; i < d.length; i += 4) {
+          // Anything meaningfully brighter than the backdrop counts as drawn.
+          if (Math.abs(d[i] - 11) + Math.abs(d[i + 1] - 13) + Math.abs(d[i + 2] - 15) > 40) lit++;
+        }
+        return lit / (c.width * c.height);
+      }, url);
+      const ok = ink >= 0.02;
+      if (ok) pass++; else { fail++; problems.push(`${f}: first frame is ${(ink * 100).toFixed(1)}% drawn - reads as a broken image`); }
+      console.log(`    ${ok ? ' ok ' : 'FAIL'}  ${f.padEnd(20)} ${(ink * 100).toFixed(1)}% of the first frame is drawn`);
+    }
+    await p.close();
+  }
+
   // ---------------------------------------------------------------- site ----
   console.log('\n  Pages site\n');
   for (const [tag, w, h] of [['desktop', 1280, 900], ['mobile', 390, 760]]) {

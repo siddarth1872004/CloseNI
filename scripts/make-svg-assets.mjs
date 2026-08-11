@@ -497,7 +497,7 @@ ${frame(0, 0, COLS, ROWS, C.edge)}
 
 function buildStrip() {
   const CYCLE = 7;
-  const COLS = 132;
+  const COLS = 142;
   const ROWS = 22;
   const W = COLS * PX;
   const H = ROWS * PX;
@@ -511,7 +511,14 @@ function buildStrip() {
   for (let i = 0; i < n; i++) {
     const x = 4 + i * (bw + 3);
     g += frame(x, y, bw, 6, C.edge);
-    const t0 = 0.5 + i * 0.7;
+    // A resting fill, so no frame of the animation is blank.
+    //
+    // These boxes used to be empty outlines until their fill animated in, which
+    // meant the first second of every seven-second cycle showed seven hollow
+    // rectangles - indistinguishable from an image that failed to load, and
+    // reported as exactly that. A pending step now looks pending.
+    g += run(x + 1, y + 1, bw - 2, 4, C.edge2);
+    const t0 = 0.35 + i * 0.7;
     const col = outcome[i] === 'fail' ? C.red : C.green;
     g += `<g opacity="0">${run(x + 1, y + 1, bw - 2, 4, col)}${visible(t0, CYCLE, CYCLE)}</g>`;
     // the failing block flips to green when the repair lands
@@ -521,7 +528,7 @@ function buildStrip() {
     }
     g += `<text x="${(x + bw / 2) * PX}" y="${(y + 9) * PX}" fill="${C.dim}" font-size="10" text-anchor="middle">${i + 1}</text>`;
   }
-  g += `<g opacity="0">${sprite(CHECK, COLS - 12, y, { c: C.green })}${visible(6.0, CYCLE, CYCLE)}</g>`;
+  g += `<g opacity="0">${sprite(CHECK, COLS - 8, y + 1, { c: C.green })}${visible(6.0, CYCLE, CYCLE)}</g>`;
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" shape-rendering="crispEdges" aria-label="Seven build steps filling in, one failing and turning green after a repair">
 <title>Seven steps, one repair</title>
