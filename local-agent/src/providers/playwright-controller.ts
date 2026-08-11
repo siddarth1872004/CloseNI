@@ -102,6 +102,9 @@ export class PlaywrightController {
   /** Which provider this controller drives - a saved thread belongs to one. */
   private providerId: string = "";
 
+  /** The re-capture hint is printed once per process, not per conversation. */
+  private static candidatesReported = false;
+
   constructor(config: ProviderConfig) {
     const paths = storagePaths(process.env.CLOSENI_STORAGE, config);
     if (!fs.existsSync(paths.root)) fs.mkdirSync(paths.root, { recursive: true });
@@ -296,6 +299,10 @@ export class PlaywrightController {
    */
   private async reportToggleCandidates(): Promise<void> {
     if (!this.page) return;
+    // Once per run. A build opens a conversation per worker and the list is the
+    // same every time; repeating it buries the step log it is meant to help.
+    if (PlaywrightController.candidatesReported) return;
+    PlaywrightController.candidatesReported = true;
     try {
       // This body runs in the page, where DOM globals exist. The agent compiles
       // without the "dom" lib, so it is written untyped rather than dragging

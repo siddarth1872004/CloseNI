@@ -114,6 +114,23 @@ function queueAgentRun(label, task) {
   return run;
 }
 
+/*
+ * A build session holds the profile for as long as the build runs, and it is
+ * not in the queue above - it cannot be, because it stays open across many
+ * steps. So anything that would open the profile independently is refused
+ * while one is live, with a message that says what is happening.
+ *
+ * Refusing beats queueing here: a chat waiting silently behind a twenty-minute
+ * build looks identical to a chat that is broken.
+ */
+function refuseWhileBuilding(what) {
+  if (!profileBusy()) return null;
+  return {
+    success: false,
+    error: what + " cannot run while a build is using the browser. Stop the build, or wait for it to finish.",
+  };
+}
+
 function spawnAgent(args, extraEnv) {
   const env = Object.assign({}, process.env, {
     ELECTRON_RUN_AS_NODE: "1",
@@ -169,6 +186,8 @@ ipcMain.handle("run-agent", function (event, payload) {
   const args = payload.args || payload;
   const headed = payload.headed ? "1" : "0";
   const label = Array.isArray(args) ? String(args[0]) : "agent";
+  const busy = refuseWhileBuilding(label === "chat" ? "Chat" : label === "plan" ? "Planning" : "That");
+  if (busy) return Promise.resolve(busy);
   if (agentProc) console.log("queued: " + label + " is waiting for the current run to finish");
   return queueAgentRun(label, function () { return new Promise(function (resolve) {
     // Write long prompts to temp files to avoid Windows ENAMETOOLONG
@@ -310,9 +329,25 @@ ipcMain.handle("ask-run", function (event, payload) {
 });
 
 let sessionProc = null;
+/*
+ * Set while a previous session is shutting down.
+ *
+ * end-session used to null sessionProc and return immediately, so starting
+ * another build a moment later spawned a second agent onto a Chromium profile
+ * the first one still had open. Both then misbehaved: the dying session's
+ * in-flight step failed with "Target page, context or browser has been closed",
+ * and the new one reported "no session". Waiting for the old process to
+ * actually exit is what makes back-to-back builds safe.
+ */
+let sessionClosing = null;
 const pendingSteps = new Map();
 
-ipcMain.handle("start-session", function (event, payload) {
+/** True while the browser profile is held by a build session. */
+function profileBusy() { return !!(sessionProc || sessionClosing); }
+
+ipcMain.handle("start-session", async function (event, payload) {
+  // Let the previous session release the profile before opening it again.
+  if (sessionClosing) { try { await sessionClosing; } catch (e) {} }
   return new Promise(function (resolve) {
     if (sessionProc) { resolve({ ok: true }); return; }
     const headed = payload.headed ? "1" : "0";
@@ -347,14 +382,16 @@ ipcMain.handle("start-session", function (event, payload) {
       }
     });
     proc.stderr.on("data", function (d) { routeLine(d.toString()); });
+    // Guarded on identity: an old session closing must never clear the handle
+    // to the one that replaced it, or every step after it reports "no session".
     proc.on("close", function () {
-      sessionProc = null;
+      if (sessionProc === proc) sessionProc = null;
       for (const done of pendingSteps.values()) done({ success: false, error: "session ended" });
       pendingSteps.clear();
       if (!settled) { settled = true; resolve({ ok: false, error: "session exited before ready" }); }
     });
     proc.on("error", function (e) {
-      sessionProc = null;
+      if (sessionProc === proc) sessionProc = null;
       if (!settled) { settled = true; resolve({ ok: false, error: String(e) }); }
     });
   });
@@ -371,13 +408,28 @@ ipcMain.handle("send-step", function (event, payload) {
 });
 
 ipcMain.handle("end-session", function () {
-  if (!sessionProc) return Promise.resolve();
+  if (!sessionProc) return sessionClosing || Promise.resolve();
   const proc = sessionProc;
   sessionProc = null;
-  try { proc.stdin.write(JSON.stringify({ type: "close" }) + "\n"); } catch (e) {}
-  // The session closes its browser before exiting; kill only if it hangs.
-  setTimeout(function () { try { proc.kill(); } catch (e) {} }, 10000);
-  return Promise.resolve();
+  // Resolves only once the process is really gone, so the Chromium profile is
+  // free before anything else opens it.
+  sessionClosing = new Promise(function (resolve) {
+    let settled = false;
+    function finish() {
+      if (settled) return;
+      settled = true;
+      sessionClosing = null;
+      resolve();
+    }
+    proc.once("close", finish);
+    proc.once("exit", finish);
+    try { proc.stdin.write(JSON.stringify({ type: "close" }) + "\n"); } catch (e) {}
+    // The session closes its browser before exiting; kill only if it hangs.
+    setTimeout(function () { try { proc.kill(); } catch (e) {} }, 10000);
+    // And never leave the interface waiting on a process that will not die.
+    setTimeout(finish, 15000);
+  });
+  return sessionClosing;
 });
 
 ipcMain.handle("run-command", function (event, payload) {
@@ -574,6 +626,8 @@ ipcMain.handle("git", function (event, payload) {
 ipcMain.handle("auth-status", function (event, payload) {
   const providerId = (payload && payload.provider) || "deepseek";
   const workspace = (payload && payload.workspace) || "";
+  const busy = refuseWhileBuilding("The account check");
+  if (busy) return Promise.resolve(busy);
   return queueAgentRun("authcheck", function () {
     return new Promise(function (resolve) {
       let proc;

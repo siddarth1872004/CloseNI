@@ -267,7 +267,21 @@
 
     // Let anything still in flight finish before the session closes, or its
     // apply would be cut off midway.
-    while (state.running.length && !stopRequested) await sleep(250);
+    //
+    // This drains on stop too, which it did not before: ending the session
+    // pulls the browser out from under a step that is still waiting, and the
+    // step then fails with "Target page, context or browser has been closed" -
+    // an internal error where the honest answer is "you stopped it". Bounded,
+    // because a step waiting out a five-minute completion should not hold the
+    // interface hostage after the user has asked it to stop.
+    const drainUntil = Date.now() + (stopRequested ? 20000 : 10 * 60 * 1000);
+    if (stopRequested && state.running.length) {
+      CN.log("stopping: letting " + state.running.length + " running step(s) unwind", "step");
+    }
+    while (state.running.length && Date.now() < drainUntil) await sleep(250);
+    if (state.running.length) {
+      CN.log("step(s) still in flight when the session closed; they are reported as failed", "err");
+    }
 
     if (sessionOn) { await CN.endSession(); sessionOn = false; }
 

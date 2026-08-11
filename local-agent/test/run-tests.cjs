@@ -1268,6 +1268,65 @@ async function testAgentQueue() {
     events.join(",") === "chat:start,chat:end,plan:start,plan:end,boom:start,boom:end,after:start,after:end");
   // One rejected run must not wedge the queue for everything behind it.
   check("a failed run does not stall the queue", events.indexOf("after:end") !== -1);
+
+  // --- session handoff -----------------------------------------------------
+  // Mirrors end-session / start-session in desktop/main.js. end-session used to
+  // null the handle and return at once, so starting another build immediately
+  // spawned a second agent onto a Chromium profile the first still held. The
+  // dying session's in-flight step then failed with "Target page, context or
+  // browser has been closed" and the new one reported "no session".
+  function fakeProc(name, exitAfterMs, log) {
+    const handlers = {};
+    const proc = {
+      name: name,
+      once: function (e, f) { (handlers[e] = handlers[e] || []).push(f); },
+      stdin: {
+        writable: true,
+        write: function () {
+          setTimeout(function () {
+            log.push(name + ":exited");
+            (handlers.close || []).forEach(function (f) { f(); });
+          }, exitAfterMs);
+        },
+      },
+      kill: function () {},
+    };
+    return proc;
+  }
+
+  async function handoff() {
+    const log = [];
+    let sessionProc = fakeProc("A", 40, log);
+    let sessionClosing = null;
+
+    // end-session
+    const proc = sessionProc;
+    sessionProc = null;
+    sessionClosing = new Promise(function (resolve) {
+      let done = false;
+      const finish = function () { if (done) return; done = true; sessionClosing = null; resolve(); };
+      proc.once("close", finish);
+      try { proc.stdin.write("{}"); } catch (e) {}
+      setTimeout(finish, 15000);
+    });
+
+    // start-session, immediately after
+    if (sessionClosing) await sessionClosing;
+    log.push("B:spawns");
+    sessionProc = fakeProc("B", 10, log);
+    return log;
+  }
+
+  const order = await handoff();
+  check("a new session waits for the old one to exit",
+    order.join(",") === "A:exited,B:spawns", order.join(","));
+
+  // The old close handler nulled the handle unconditionally, so a late close
+  // from a replaced session wiped the live one.
+  let live = { id: "B" };
+  const stale = { id: "A" };
+  (function onCloseOfStale(p) { if (live === p) live = null; })(stale);
+  check("a stale session closing does not clear its replacement", live !== null);
 }
 
 function testProviderGating() {

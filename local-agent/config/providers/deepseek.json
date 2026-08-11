@@ -36,7 +36,8 @@
       "id": "deep-thinking",
       "label": "Deep thinking",
       "kind": "toggle",
-      "default": true
+      "default": false,
+      "_defaultNote": "Off by default. With DeepThink on, a build-sized prompt spent the whole 300s completion wait in its reasoning phase without starting to answer, so the step timed out and every step behind it blocked. Build steps want a fast structured answer, not a long deliberation. It is one click away in the rail for the cases that want it."
     },
     {
       "id": "smart-search",
