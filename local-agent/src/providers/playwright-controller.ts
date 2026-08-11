@@ -78,6 +78,8 @@ const STABLE_TICKS = 4;
 // Elapsed seconds drift off multiples of ten at a 2s poll, so counting ticks
 // keeps the "still waiting" line on a predictable cadence.
 const THINKING_LOG_EVERY_TICKS = 5;
+/** Ticks of total stillness before the assistant selector is re-resolved. */
+const FROZEN_TICKS = 15;
 
 /** Ceiling on the soft extension given to a model that is still writing. */
 const MAX_GRACE_MS = 180000;
@@ -586,6 +588,20 @@ export class PlaywrightController {
         } else {
           waitingTicks++;
           const elapsed = Math.round((Date.now() - start) / 1000);
+          // Nothing moving at all is a broken watch, not a slow model.
+          //
+          // The picker caches the first selector that matches anything, and a
+          // selector can match three real nodes while matching nothing that a
+          // new reply is rendered into. When that happens the count and the
+          // character total sit perfectly still - observed frozen at
+          // "messages=3, chars=9019" for the whole 300s wait. Re-resolving lets
+          // a later candidate take over instead of waiting out the clock.
+          if (waitingTicks === FROZEN_TICKS && count === prevCount && text.length === prevContent.length) {
+            console.log("Nothing has changed in " +
+              Math.round((FROZEN_TICKS * POLL_INTERVAL_MS) / 1000) +
+              "s - re-resolving which element holds the reply.");
+            this.pickedSelector = null;
+          }
           // The provider's own stop button is the difference between a model
           // that is composing and one that has not begun.
           phase(stopSeen && !stopGone ? "generating" : "thinking", elapsed + "s");

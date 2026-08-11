@@ -1451,6 +1451,67 @@ function testBehaviourChecker() {
     planBehaviourChecks([], noManifest, have, "python3 app.py")[0].command === "python3 app.py");
 }
 
+function testSearchBlockMatching() {
+  section("search_replace matching");
+  const { findSearchBlock, replaceLines, applyPatch } =
+    require(path.join(DIST, "patch/patch-applier.js"));
+
+  const file = "def add(a, b):\n    return a + b\n\ndef sub(a, b):\n    return a - b\n";
+  const found = (blk) => {
+    const r = findSearchBlock(file, blk);
+    return r && r !== "ambiguous" ? r.start + "-" + r.end : String(r);
+  };
+
+  // A real run missed six of seven blocks on an exact substring match. Models
+  // get the code right and the whitespace slightly wrong.
+  check("an exact block matches", found("def add(a, b):\n    return a + b") === "0-2");
+  check("trailing spaces are tolerated", found("def add(a, b):   \n    return a + b") === "0-2");
+  check("CRLF is tolerated", found("def add(a, b):\r\n    return a + b") === "0-2");
+  check("a trailing newline is tolerated", found("def add(a, b):\n    return a + b\n") === "0-2");
+
+  // Indentation is the meaning of the code in Python, so it is compared
+  // exactly: a matcher that shrugged at it could patch the wrong scope.
+  check("wrong indentation does NOT match", found("def add(a, b):\n        return a + b") === "null");
+  check("absent text does not match", found("def mul(a, b):\n    return a * b") === "null");
+  check("an empty block does not match everything", found("") === "null");
+  check("a whitespace-only block does not match", found("   \n  ") === "null");
+
+  // String.replace silently took the first hit, which can edit a place nobody
+  // looked at.
+  check("a repeated block is ambiguous, not the first hit",
+    findSearchBlock("x = 1\nx = 1\n", "x = 1") === "ambiguous");
+
+  check("replacement leaves the rest of the file alone",
+    replaceLines(file, 0, 2, "def add(a, b):\n    return a + b + 0") ===
+    "def add(a, b):\n    return a + b + 0\n\ndef sub(a, b):\n    return a - b\n");
+  check("a CRLF file stays CRLF",
+    replaceLines("a\r\nb\r\n", 0, 1, "z") === "z\r\nb\r\n");
+
+  // End to end through the applier, with the whitespace drift that failed live.
+  const ws = fs.mkdtempSync(path.join(os.tmpdir(), "agentic-sr-"));
+  fs.writeFileSync(path.join(ws, "m.py"), file);
+  const res = applyPatch(ws, {
+    changes: [{
+      filePath: "m.py", mode: "search_replace", language: "python",
+      searchBlock: "def add(a, b):   \n    return a + b",
+      replaceBlock: "def add(a, b):\n    return a + b + 0",
+    }],
+  });
+  check("the applier accepts a block with drifted whitespace",
+    res.appliedFiles.length === 1, JSON.stringify(res.errors));
+  check("and writes the change", fs.readFileSync(path.join(ws, "m.py"), "utf8").includes("a + b + 0"));
+
+  // A miss must say what to do instead.
+  const miss = applyPatch(ws, {
+    changes: [{ filePath: "m.py", mode: "search_replace", language: "python",
+      searchBlock: "nope", replaceBlock: "x" }],
+  });
+  check("a miss names the way out", (miss.errors || []).some((e) => /overwrite/.test(e)),
+    JSON.stringify(miss.errors));
+
+  fs.rmSync(ws, { recursive: true, force: true });
+}
+
 function testAbbreviationGuard() {
   section("abbreviated files never overwrite real ones");
   const { isAbbreviated, applyPatch } = require(path.join(DIST, "patch/patch-applier.js"));
@@ -2133,6 +2194,7 @@ async function testBrowserExtraction() {
   testPackagedPaths();
   testPlaywrightCliResolution();
   testBehaviourChecker();
+  testSearchBlockMatching();
   testAbbreviationGuard();
   await testAgentQueue();
   testProviderGating();
