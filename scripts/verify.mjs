@@ -196,6 +196,22 @@ check('a rolled-over thread is seeded as a cold one',
   /startFreshConversation\(config\)[\s\S]{0,400}buildPrompt\(effectivePrompt, ctx\.tree/.test(agent));
 check('repairs count towards the conversation too',
   /const followUp = buildFollowUp[\s\S]{0,500}addTurn\(controller\.getConversationSize\(\), followUp\.length/.test(agent));
+// Step review. All renderer code, and two of these are bugs that would only
+// show up at runtime: Electron has no window.prompt, and a build waiting on a
+// verdict nobody will give never ends.
+check('review is opt-in, not opt-out',
+  /localStorage\.getItem\("closeni\.review-steps"\) === "on"/.test(builder));
+check('a rejection asks for a reason and sends it on',
+  /A previous attempt at this step was rejected/.test(builder));
+check('a rejected step is undone before it is redone',
+  /rollbackQuietly\(i\)[\s\S]{0,200}rejection = verdict\.reason/.test(builder));
+check('window.prompt is never called - Electron does not implement it',
+  !/(^|[^.\w])prompt\(/m.test(builder.replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '')));
+check('Stop releases a step waiting on review',
+  /stopRequested = true;[\s\S]{0,600}settleReview\(\{ accept: true \}\)/.test(builder));
+check('a step that changed nothing does not pause',
+  /!reviewOn\(\) \|\| !filesArr\.length \|\| stopRequested/.test(builder));
+
 // Tests the model wrote. The plan declares which steps have behaviour worth
 // asserting, and that flag has to survive the same renderer journey dependsOn
 // did not - so every hop is pinned.

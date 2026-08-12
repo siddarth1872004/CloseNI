@@ -140,6 +140,56 @@
    * overwritten, because the backup that would recover it is the one about to
    * be replaced.
    */
+  /**
+   * Undo a step without asking, for the Reject path.
+   *
+   * The button confirms because the user is undoing work they may have
+   * forgotten writing. Reject does not, because the confirmation already
+   * happened - pressing Reject IS the decision, and asking "are you sure?"
+   * immediately after would be asking the same question twice.
+   */
+  async function rollbackQuietly(i) {
+    const ws = CN.getWorkspace();
+    if (!ws || !window.api.planRollback) return false;
+    const res = await window.api.planRollback(ws, i);
+    if (!res || !res.ok) { CN.log("could not undo step " + (i + 1) + ": " + ((res && res.error) || "unknown"), "err"); return false; }
+    const applied = await window.api.applyRollback(ws, res.plan);
+    if (!applied || !applied.ok) { CN.log("could not undo step " + (i + 1), "err"); return false; }
+    CN.log("step " + (i + 1) + " undone: " + applied.restored.length + " restored, " +
+      applied.removed.length + " removed", "step");
+    return true;
+  }
+
+  /**
+   * Wait for the user's verdict on a step that has just finished.
+   *
+   * A promise resolved by whichever button is pressed, so the build loop simply
+   * awaits it. Stop resolves it too - a build that will not end because it is
+   * waiting for a verdict nobody is going to give would be worse than one that
+   * did not pause at all.
+   */
+  let pendingReview = null;
+  function awaitReview(i) {
+    selectStep(i);
+    const bar = $("review-bar");
+    if (bar) bar.style.display = "inline-block";
+    const box = $("review-reason");
+    if (box) box.value = "";
+    status("step " + (i + 1) + " waiting for review");
+    CN.log("step " + (i + 1) + " finished - review the changes, then Accept or Reject", "step");
+    return new Promise(function (resolve) {
+      pendingReview = function (verdict) {
+        pendingReview = null;
+        if (bar) bar.style.display = "none";
+        resolve(verdict);
+      };
+    });
+  }
+
+  function settleReview(verdict) {
+    if (pendingReview) pendingReview(verdict);
+  }
+
   CN.rollbackTo = async function (i) {
     if (running) { CN.toast("Stop the build first", "err"); return; }
     const ws = CN.getWorkspace();
@@ -285,6 +335,11 @@
     const ws = CN.getWorkspace();
     const plan = CN.getPlan();
     const s = steps[i];
+    // Set by Reject and carried into the next attempt, so the model is told
+    // what was wrong rather than being asked to guess a second time.
+    let rejection = "";
+
+    while (true) {
     selectStep(i);
     setStatusOf(i, "running");
     status("building " + (i + 1) + "/" + steps.length);
@@ -293,7 +348,9 @@
 
     const stepDetail = "Overall: " + ((plan && plan.summary) || "") +
       "\n\nExecute ONLY this step: " + (s.title || "") + ". " + (s.detail || "") +
-      (s.files && s.files.length ? " Expected files: " + s.files.join(", ") : "");
+      (s.files && s.files.length ? " Expected files: " + s.files.join(", ") : "") +
+      (rejection ? "\n\nA previous attempt at this step was rejected. What was wrong: " +
+        rejection + "\nAddress that specifically." : "");
     const args = ["browser", stepDetail, ws, CN.getProvider(), CN.getAutonomy(), String(i), stepDetail, (plan && plan.summary) || ""];
     const res = sessionActive()
       ? await CN.sendStep(i, stepDetail, (plan && plan.summary) || "", !!s.testable)
@@ -305,7 +362,21 @@
       setStatusOf(i, "done");
       CN.log("step " + (i + 1) + " done: " + (res.appliedFiles || []).join(", "), "ok");
       CN.toast("Step " + (i + 1) + " complete");
-      return true;
+
+      // Nothing to review on a step that changed no files, and a stopping build
+      // must not stop to ask a question.
+      if (!reviewOn() || !filesArr.length || stopRequested) return true;
+
+      const verdict = await awaitReview(i);
+      if (!verdict || verdict.accept) return true;
+
+      // Rejected: put the workspace back before trying again, or the next
+      // attempt edits files the last one wrote and the diff stops describing
+      // one step's work.
+      await rollbackQuietly(i);
+      rejection = verdict.reason || "";
+      CN.log("step " + (i + 1) + " rejected" + (rejection ? ": " + rejection : "") + " - running it again", "step");
+      continue;
     } else {
       s.result = { error: (res && res.error) || "unknown" };
       setStatusOf(i, "failed");
@@ -313,6 +384,7 @@
       CN.toast("Step " + (i + 1) + " failed", "err");
       selectStep(i);
       return false;
+    }
     }
   }
 
@@ -465,6 +537,8 @@
 
     running = false;
     buttons("idle");
+    const rb = $("review-bar");
+    if (rb) rb.style.display = "none";
     const finished = steps.filter(function (s) { return s.status === "done" || s.status === "skipped"; }).length;
     status("finished: " + finished + "/" + steps.length);
     CN.log("build finished: " + finished + "/" + steps.length, "step");
@@ -551,11 +625,62 @@
     await CN.startBuild();
   };
 
+  /**
+   * Is step review switched on?
+   *
+   * Read at the moment a step finishes rather than captured when the build
+   * started, so turning it on mid-build takes effect at the next step - which
+   * is what someone reaching for it after a bad step wants.
+   */
+  function reviewOn() {
+    const cb = $("review-steps");
+    return !!(cb && cb.checked);
+  }
+
+  (function initReview() {
+    const cb = $("review-steps");
+    if (!cb) return;
+    try { cb.checked = localStorage.getItem("closeni.review-steps") === "on"; } catch (e) {}
+    cb.onchange = function () {
+      try { localStorage.setItem("closeni.review-steps", cb.checked ? "on" : "off"); } catch (e) {}
+    };
+  })();
+
+  $("review-accept").onclick = function () { settleReview({ accept: true }); };
+  $("review-reject").onclick = function () {
+    const box = $("review-reason");
+    const reason = box ? String(box.value || "").trim() : "";
+    // Required, not optional. A rejection with no reason gives the next attempt
+    // nothing to go on, and it will most likely produce the same thing again -
+    // costing a step and teaching the user that Reject does not work.
+    if (!reason) {
+      CN.toast("Say what was wrong first - the model is told your reason", "err");
+      if (box) box.focus();
+      return;
+    }
+    if (box) box.value = "";
+    settleReview({ accept: false, reason: reason });
+  };
+
+  $("review-reason").onkeydown = function (e) {
+    if (e.key === "Enter") { e.preventDefault(); $("review-reject").click(); }
+  };
+
   $("builder-start").onclick = function () { CN.startBuild(); };
   $("builder-pause").onclick = function () { paused = true; buttons("paused"); status("paused"); CN.toast("Paused"); };
   $("builder-resume").onclick = function () { paused = false; buttons("running"); status("resumed"); CN.toast("Resumed"); };
   $("builder-skip").onclick = function () { skipNext = true; CN.toast("Will skip next step"); };
-  $("builder-stop").onclick = function () { stopRequested = true; paused = false; status("stopping..."); CN.toast("Stopping", "err"); };
+  $("builder-stop").onclick = function () {
+    stopRequested = true;
+    paused = false;
+    // A step waiting for Accept or Reject would wait forever otherwise, and
+    // Stop would be the one button that does not stop anything. Accepting is
+    // the safe reading: the work is already on disk, and undoing it silently
+    // because someone pressed Stop would destroy a step they never rejected.
+    settleReview({ accept: true });
+    status("stopping...");
+    CN.toast("Stopping", "err");
+  };
   $("builder-retry").onclick = function () { CN.retryFailed(); };
 
   if (CN.getPlan()) CN.setPlan(CN.getPlan());

@@ -363,6 +363,14 @@ select{width:100%;}
 #suggest-bar{display:flex;gap:8px;padding:10px 12px;border-top:1px solid var(--line);background:var(--bg);}
 #suggest-input{flex:1;background:var(--surface-sunken);border:1px solid var(--line);color:var(--txt);padding:8px 10px;border-radius:3px;font-family:inherit;font-size:12px;}
 #suggest-input:disabled{opacity:.5;}
+
+/* Step review. Every colour here is a token: the theme lint rejects literals
+   outside a theme block, and nine themes have to keep working. */
+#review-toggle{display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--mut);cursor:pointer;user-select:none;}
+#review-toggle input{cursor:pointer;}
+#review-bar{display:inline-flex;align-items:center;gap:6px;margin-left:auto;}
+#review-reason{background:var(--surface-sunken);border:1px solid var(--line);color:var(--txt);padding:6px 9px;border-radius:3px;font-family:inherit;font-size:12px;min-width:240px;}
+#review-reason::placeholder{color:var(--mut);}
 .diff-line{display:block;white-space:pre-wrap;word-break:break-word;padding:0 4px;}
 .diff-line.add{background:var(--ok-bg);color:var(--ok);}
 .diff-line.remove{background:var(--err-bg);color:var(--err);}

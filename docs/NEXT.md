@@ -112,8 +112,14 @@ the reply is**, which removes the DOM from the read path entirely.
   than `--strict`, with the flags that stop it failing a Flask project on a
   missing stub for flask. Design:
   `docs/superpowers/specs/2026-08-11-type-checking-design.md`.
-- **A diff review step** - show what changed and let the user reject a step
-  before the next one builds on it.
+- ~~**A diff review step.**~~ **Done**, and mostly wiring: the step panel already
+  rendered diffs, the loop already paused, and checkpoints already made undoing
+  one step exact. The decision was what rejecting means - it rolls the step back,
+  asks what was wrong, and runs it again with that reason, rather than stopping
+  the build. Off by default. Design:
+  `docs/superpowers/specs/2026-08-11-step-review-design.md`.
+
+**Section 4 complete.**
 
 ## 5 · Providers
 

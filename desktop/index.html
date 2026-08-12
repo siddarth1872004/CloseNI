@@ -119,6 +119,11 @@
         <button id="builder-stop" class="btn is-hidden">Stop</button>
         <div id="builder-progress-wrap"><div id="builder-progress"></div></div>
         <span id="builder-status">idle</span>
+        <!-- Off by default: a build you can walk away from is much of the point
+             of one, so pausing on every step is opted into, not out of. -->
+        <label id="review-toggle" title="Pause after each step that changed files, and show what it changed before the next step builds on it">
+          <input type="checkbox" id="review-steps"> Review each step
+        </label>
         <button id="builder-preview" class="btn is-hidden">Preview</button>
       </div>
       <div id="builder-view">
@@ -136,6 +141,16 @@
                    that never ran has nothing to undo. -->
               <button id="step-rollback" class="btn ghost" style="display:none"
                       title="Put the workspace back to how it was before this step, undoing this step and every step after it">Roll back to here</button>
+              <!-- Only while a step is actually waiting on a verdict. Buttons
+                   that are visible but inert read as broken. -->
+              <span id="review-bar" style="display:none">
+                <!-- An inline field rather than window.prompt: Electron does not
+                     implement prompt() in the renderer and throws if it is
+                     called. -->
+                <input id="review-reason" placeholder="What was wrong? (needed to reject)" />
+                <button id="review-accept" class="btn invert" title="Keep this step and carry on">Accept</button>
+                <button id="review-reject" class="btn" title="Undo this step and do it again, telling the model what was wrong">Reject</button>
+              </span>
             </div>
             <div id="step-detail-body">
               <div id="step-files"></div>
