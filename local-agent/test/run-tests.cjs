@@ -2872,6 +2872,61 @@ async function testLocalModels() {
   check("and is marked chat-only", cfg.chatOnly === true);
 }
 
+function testResearch() {
+  section("research through the provider's own search");
+  const GH = require(path.join(__dirname, "..", "..", "desktop", "github-api.js"));
+
+  // Sources are how a research answer is checked rather than trusted.
+  // Its own module, because requiring index.js runs main().
+  const idx = require(path.join(DIST, "research.js"));
+  check("the helpers live outside the CLI entry point", typeof idx.extractSources === "function");
+  const answer = "Flask signs cookies.\n\nSOURCES:\nhttps://flask.palletsprojects.com/x\nhttps://owasp.org/y";
+  check("sources under the marker are found",
+    JSON.stringify(idx.extractSources(answer)) ===
+    JSON.stringify(["https://flask.palletsprojects.com/x", "https://owasp.org/y"]));
+  check("trailing punctuation is not part of a url",
+    idx.extractSources("SOURCES:\nhttps://a.example/x.")[0] === "https://a.example/x");
+  check("duplicates are collapsed",
+    idx.extractSources("SOURCES:\nhttps://a.example\nhttps://a.example").length === 1);
+  // Models cite inline about half the time, so no marker means fall back
+  // rather than report an answer with no sources.
+  check("inline urls are found when there is no marker",
+    idx.extractSources("See https://a.example/doc for more").length === 1);
+  check("an answer with no urls yields none", idx.extractSources("no links here").length === 0);
+  check("empty input does not throw", idx.extractSources(null).length === 0);
+
+  // A provider with no search control must say so rather than silently
+  // answering from memory and presenting it as research.
+  check("a provider offering smart-search is usable",
+    idx.hasSearchControl({ controls: [{ id: "smart-search" }] }) === true);
+  check("one without it is not",
+    idx.hasSearchControl({ controls: [{ id: "mode" }] }) === false);
+  check("no controls at all is not", idx.hasSearchControl({}) === false);
+
+  // GitHub search, authenticated, shaped down to what the panel shows.
+  const calls = [];
+  const api = GH.createGitHubApi(function (method, apiPath) {
+    calls.push(method + " " + apiPath);
+    return Promise.resolve({ status: 200, body: { items: [
+      { full_name: "pallets/flask", description: "d", stargazers_count: 68000,
+        language: "Python", html_url: "https://github.com/pallets/flask", pushed_at: "2026-08-01" },
+    ] } });
+  });
+  return api.searchRepos("flask session", 5).then(function (rows) {
+    check("the search hits the repositories endpoint", /\/search\/repositories/.test(calls[0]), calls[0]);
+    check("the query is encoded", /q=flask%20session/.test(calls[0]), calls[0]);
+    check("the limit is passed", /per_page=5/.test(calls[0]), calls[0]);
+    check("only the fields the panel shows come back",
+      JSON.stringify(Object.keys(rows[0]).sort()) ===
+      JSON.stringify(["description", "fullName", "language", "stars", "updatedAt", "url"]),
+      JSON.stringify(Object.keys(rows[0])));
+    check("stars survive", rows[0].stars === 68000);
+    return api.searchRepos("  ").then(function (empty) {
+      check("an empty query makes no request", empty.length === 0 && calls.length === 1);
+    });
+  });
+}
+
 (async () => {
   testEditPlanParsing();
   testPlanParsing();
@@ -2927,6 +2982,7 @@ async function testLocalModels() {
   testStepTests();
   testSmokeReport();
   await testLocalModels();
+  await testResearch();
 
   console.log("\n" + (fail === 0 ? "PASS" : "FAIL") + " — " + pass + " passed, " + fail + " failed");
   process.exit(fail === 0 ? 0 : 1);

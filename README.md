@@ -56,7 +56,7 @@ Also: [CHANGELOG](CHANGELOG.md) · [Release process](docs/RELEASING.md)
 * **One Conversation End To End** — Chat, planning and building all continue the same provider conversation, so a build step is a short instruction to a model that can already see the plan rather than a prompt that re-explains the project.
 * **Autonomous Error Recovery** — Captures compiler and linter output verbatim and feeds the real traceback back to the model, twice per step, then stops rather than looping.
 * **Multi-Toolchain Diagnostics** — Native syntax verification across twelve languages, project-wide where the toolchain demands it and per-file where it does not.
-* **Six panels, four live** — Chat, Builder, Test and Ship. Research is gated and says so.
+* **Six panels, five live** — Chat, Builder, Test, Research and Ship.
 * **Behavioural Verification** — Runs the project's own test suite and smoke-starts its entry point, because compiling is not working.
 * **Portable Project Runner** — Generates `closeni.run.json` plus standalone `run.sh` / `run.bat`, so a finished project runs with or without CloseNI installed.
 * **Encrypted Credential Handling** — GitHub tokens are sealed with the operating system keystore and never touch `.git/config`, an argument list, or a log line.
@@ -169,10 +169,21 @@ The run command is resolved before you arrive, and the badge says where it came 
 
 This is what catches a module that compiles perfectly and returns the wrong answer. When something fails, the chat on the right already has the run in context, so *why did this fail?* gets an answer about your actual output rather than a general explanation of the error class.
 
-#### 04 · Research — gated
+#### 04 · Research — the provider's own search, and GitHub
 
-Listed in the sidebar and not selectable. Chat reaches the same provider and the
-same conversation, so nothing is lost by waiting for it.
+Two halves, run together and reported separately. The web half turns on the
+provider's **own** web search — DeepSeek's Smart Search toggle, forced on for
+that run only — and asks the question, then lists the sources it cited. It does
+not scrape a results page: search-result markup rots faster than chat UIs, and
+scraping one would be the exact mistake this project keeps having.
+
+The GitHub half searches repositories through the token you are already signed
+in with, which raises the rate limit from ten searches a minute to thirty. Any
+result can be cloned, or used as a reference — its README and file list go into
+the next plan's context.
+
+Research runs in a conversation of its own, so it never disturbs the one your
+build is using.
 
 #### 05 · Ship — commit, push, and watch CI
 
@@ -582,7 +593,6 @@ Stated plainly, because a README that only lists strengths is not useful.
 * **Chat sites change.** Provider control is per-site page automation. A redesign can break extraction until the selectors are updated — which is a JSON edit, not a code change.
 * **Verification is syntax and compilation, not correctness.** A project can pass every check and still be wrong. `make -n` and `--noEmit` prove things parse and resolve; they do not prove behaviour.
 * **Nothing is published.** Installers build in CI and have been withdrawn; there is no download.
-* **The Research panel is gated** — unfinished, listed but not selectable.
 * **Plans do not always parse.** The reply is re-asked once and reported honestly if that fails, but it remains a live limitation.
 * **Installers are unsigned.** SmartScreen and Gatekeeper will say so, and that warning is accurate.
 * **Only the Linux artifacts have been verified.** The AppImage and `.deb` were built, audited for leaked session data, and launched with the renderer confirmed loading. There is no Windows machine in the development environment, so the first `.exe` the release workflow produces is unverified until someone installs it.

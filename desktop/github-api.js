@@ -50,6 +50,37 @@
           return { name: r.name, status: r.status, conclusion: r.conclusion, url: r.html_url };
         });
       },
+      /**
+       * Repository search, through the user's token.
+       *
+       * Authenticated deliberately. The Research panel used an unauthenticated
+       * call, which GitHub rate-limits to ten searches a minute across the
+       * whole machine - so a second question in the same minute returned an
+       * error that read as the feature being broken. The token is already held
+       * for push and clone; using it here costs nothing and raises the limit to
+       * thirty.
+       *
+       * Only the fields the panel shows are kept: a search response carries
+       * about eighty per repository, and passing all of it to the renderer
+       * would put a megabyte through IPC to display four lines.
+       */
+      searchRepos: async function (query, limit) {
+        var q = String(query || "").trim();
+        if (!q) return [];
+        var n = Math.min(Math.max(Number(limit) || 8, 1), 30);
+        var body = await call("GET", "/search/repositories?sort=stars&order=desc&per_page=" + n +
+          "&q=" + encodeURIComponent(q));
+        return (body.items || []).map(function (r) {
+          return {
+            fullName: r.full_name,
+            description: r.description || "",
+            stars: r.stargazers_count || 0,
+            language: r.language || "",
+            url: r.html_url,
+            updatedAt: r.pushed_at || r.updated_at || "",
+          };
+        });
+      },
       dispatchWorkflow: function (owner, repo, workflowId, ref) {
         return call("POST", "/repos/" + owner + "/" + repo + "/actions/workflows/" + workflowId + "/dispatches",
           { ref: ref || "main" });

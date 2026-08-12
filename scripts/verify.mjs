@@ -208,6 +208,24 @@ check('a rolled-over thread is seeded as a cold one',
   /startFreshConversation\(config\)[\s\S]{0,400}buildPrompt\(effectivePrompt, ctx\.tree/.test(agent));
 check('repairs count towards the conversation too',
   /const followUp = buildFollowUp[\s\S]{0,500}addTurn\(controller\.getConversationSize\(\), followUp\.length/.test(agent));
+// A gated tab and the prose describing it drifted apart for a whole session,
+// because gating is a markup edit and updating the docs is a separate act of
+// will - the same failure the provider counter check exists for.
+const researchGated = /data-mode="research"[^>]*data-gated/.test(indexHtml);
+check('the docs agree with whether Research is gated',
+  researchGated === /Research (panel )?is gated|Research — gated/.test(readme),
+  researchGated ? 'gated in markup' : 'live in markup');
+check('the site agrees too',
+  researchGated === /Research panel is unfinished/.test(site));
+// Research must not scrape a search engine. That is the trap the whole project
+// is written against, and it would be an easy thing to reach for later.
+const research = read('local-agent/src/index.ts');
+const researchCode = research.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+check('research uses the provider search, not a scraped results page',
+  /smart-search/.test(researchCode) && !/duckduckgo|google\.com\/search|bing\.com/i.test(researchCode));
+check('GitHub search is authenticated',
+  /searchRepos/.test(read('desktop/github-api.js')));
+
 // The live smoke test. Its value rests on watching the REAL wait loop and on
 // asserting a budget rather than reporting a number, so both are pinned.
 const smoke = read('local-agent/src/health/smoke-report.ts');

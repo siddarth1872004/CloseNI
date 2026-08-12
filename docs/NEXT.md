@@ -149,10 +149,21 @@ the reply is**, which removes the DOM from the read path entirely.
 
 ## 6 · The Research panel
 
-Gated because DuckDuckGo answers scripted requests with a challenge page. The
-fix is not a better scraper - it is to run the search **in the browser the app
-already drives**, which is the project's whole premise. Same for GitHub search,
-which currently uses an unauthenticated API and is rate-limited.
+**Done, and not the way this said.** Driving a browser to a search engine would
+mean new selectors for result titles, links and snippets against a page nobody
+controls - search markup rots faster than chat UIs, and that is the exact trap
+this document opens by warning about.
+
+Both halves were already solvable with things the app had. DeepSeek's **Smart
+Search** toggle was already wired as a provider control, so the web half turns
+on the provider's own search and asks it, then lists the sources it cited. The
+GitHub half uses the token already held for push, which raises the rate limit
+from ten searches a minute to thirty.
+
+Un-gating it exposed 147 lines of dead scraping code still sitting in
+`index.ts`, now deleted, and three stale "Research is gated" claims in the docs -
+so there are now drift checks that the markup and the prose agree. Design:
+`docs/superpowers/specs/2026-08-11-research-panel-design.md`.
 
 ## 7 · Things people will ask for
 

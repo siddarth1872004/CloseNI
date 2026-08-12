@@ -24,6 +24,7 @@ import { judgeSelectors } from "./health/selector-health.js";
 import { judgeSmoke, SmokeObservations } from "./health/smoke-report.js";
 import { ChatSession, BrowserChatSession, transportOf, isBrowserTransport } from "./providers/chat-session.js";
 import { OllamaSession } from "./providers/ollama-session.js";
+import { hasSearchControl, extractSources, RESEARCH_PROMPT_PREFIX } from "./research.js";
 import { BUILD_STATE_DIR } from "./build-state.js";
 
 // Every extension the check planner knows about. A file the walker misses is a
@@ -1388,162 +1389,66 @@ async function buildMode(prompt: string, workspace: string, providerId: string, 
   } finally { await controller.close(); }
 }
 
-const BROWSER_UA =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
-
-function decodeEntities(s: string): string {
-  return s
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#x27;|&#39;/g, "'")
-    .replace(/&nbsp;/g, " ");
-}
-
-// DuckDuckGo wraps every result in //duckduckgo.com/l/?uddg=<url-encoded target>.
-function unwrapDuckDuckGoUrl(href: string): string {
-  const decoded = decodeEntities(href);
-  const m = decoded.match(/[?&]uddg=([^&]+)/);
-  if (m) {
-    try { return decodeURIComponent(m[1]); } catch { /* fall through */ }
-  }
-  return decoded.startsWith("//") ? "https:" + decoded : decoded;
-}
-
-// DuckDuckGo answers bot-shaped requests with a 202 challenge page instead of results,
-// so the full browser header set (Accept-Language especially) is load-bearing here.
-async function httpGetText(url: string, headers: Record<string, string>): Promise<string> {
-  const https = await import("https");
-  const zlib = await import("zlib");
-  return new Promise<string>((resolve, reject) => {
-    https
-      .get(url, { headers: headers }, (res) => {
-        const status = res.statusCode || 0;
-        if (status !== 200) {
-          res.resume();
-          reject(new Error("HTTP " + status + " from " + new URL(url).host));
-          return;
-        }
-        const chunks: Buffer[] = [];
-        res.on("data", (ch: Buffer) => chunks.push(ch));
-        res.on("end", () => {
-          let buf = Buffer.concat(chunks);
-          const enc = res.headers["content-encoding"];
-          try {
-            if (enc === "gzip") buf = zlib.gunzipSync(buf);
-            else if (enc === "br") buf = zlib.brotliDecompressSync(buf);
-            else if (enc === "deflate") buf = zlib.inflateSync(buf);
-          } catch (e) {
-            reject(new Error("Could not decompress " + enc + " response"));
-            return;
-          }
-          resolve(buf.toString("utf8"));
-        });
-        res.on("error", reject);
-      })
-      .on("error", reject);
-  });
-}
-
-async function researchDuckDuckGo(query: string): Promise<any[]> {
-  const results: any[] = [];
-  try {
-    const url = "https://html.duckduckgo.com/html/?q=" + encodeURIComponent(query);
-    const body = await httpGetText(url, {
-      "User-Agent": BROWSER_UA,
-      Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-      "Accept-Language": "en-US,en;q=0.9",
-      "Accept-Encoding": "gzip, deflate",
-    });
-    const linkRe = /<a[^>]+class="result__a"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g;
-    const snippetRe = /<a[^>]+class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g;
-    let m: RegExpExecArray | null;
-    const links: { url: string; title: string }[] = [];
-    while ((m = linkRe.exec(body)) !== null) {
-      links.push({ url: unwrapDuckDuckGoUrl(m[1]), title: decodeEntities(m[2].replace(/<[^>]+>/g, "")).trim() });
-    }
-    const snippets: string[] = [];
-    while ((m = snippetRe.exec(body)) !== null) {
-      snippets.push(decodeEntities(m[1].replace(/<[^>]+>/g, "")).trim());
-    }
-    if (links.length === 0) {
-      console.log("DuckDuckGo returned no parseable results (markup may have changed).");
-    }
-    for (let i = 0; i < Math.min(links.length, 8); i++) {
-      results.push({ source: "web", title: links[i].title, url: links[i].url, snippet: snippets[i] || "" });
-    }
-  } catch (e) {
-    console.log("DuckDuckGo scrape failed: " + String(e));
-  }
-  return results;
-}
-
-async function researchGithub(query: string): Promise<any[]> {
-  const results: any[] = [];
-  try {
-    const url = "https://api.github.com/search/repositories?q=" + encodeURIComponent(query) + "&sort=stars&order=desc&per_page=5";
-    const body = await httpGetText(url, {
-      "User-Agent": "CloseNI",
-      Accept: "application/vnd.github.v3+json",
-    });
-    const data = JSON.parse(body);
-    if (data.message && !data.items) {
-      console.log("GitHub search rejected the query: " + data.message);
-    }
-    if (data.items && Array.isArray(data.items)) {
-      for (const r of data.items) {
-        // Repo descriptions are arbitrary remote text and spam repos stuff whole
-        // pages into them, which floods the results panel.
-        const description = (r.description || "").replace(/\s+/g, " ").trim();
-        const short = description.length > 200 ? description.slice(0, 200) + "..." : description;
-        // The licence is shown before a clone, so the user accepts it knowingly.
-        // Without forwarding it the confirmation could only say "an unknown
-        // licence" - true, but useless for the decision it is asking for.
-        const licence = r.license && (r.license.spdx_id || r.license.name);
-        results.push({
-          source: "github",
-          title: r.full_name,
-          url: r.html_url,
-          snippet: short + "  [" + (r.stargazers_count || 0) + " stars]",
-          stars: r.stargazers_count || 0,
-          license: licence && licence !== "NOASSERTION" ? licence : null,
-        });
-      }
-    }
-  } catch (e) {
-    console.log("GitHub search failed: " + String(e));
-  }
-  return results;
-}
-
 /**
- * Gated, and refuses rather than trying.
+ * Research, using the provider's own web search.
  *
- * The web half scraped html.duckduckgo.com, which now answers every non-browser
- * client with a 202 challenge page - confirmed with the full browser header
- * set, including the Accept-Language the old comment called load-bearing. So the
- * request cannot succeed, and it was still being made on every click: eight
- * searches in one session produced eight failures and no results.
+ * The panel was gated because it fetched DuckDuckGo over plain HTTPS and got a
+ * challenge page. NEXT.md proposed driving a browser to a search engine and
+ * reading the results instead - which would mean a new set of selectors against
+ * a page nobody controls, in a project whose every serious bug came from exactly
+ * that. Search-result markup rots faster than chat UIs do.
  *
- * Worse, it emitted { success: true } with an empty list, so a total failure
- * looked like a search that found nothing.
+ * DeepSeek already has a "Smart Search" toggle, already wired into this app as a
+ * provider control and already off by default. Turning it on and asking the
+ * question uses their product as intended: no scraping, no new selectors, and
+ * nothing that breaks when a results page is redesigned.
  *
- * Refusing here matches the gate on the panel and stops the pointless traffic.
- * The way back is to run the search in the browser this app already drives,
- * rather than over plain HTTPS - that is the whole premise of the project, and
- * it is why the panel is gated instead of the scraper being patched.
+ * Forced on for this run only, by overriding AGENT_CONTROLS in this process
+ * rather than writing to the user's saved settings - researching once must not
+ * silently change what every later chat does.
  */
-async function researchMode(query: string) {
-  console.log("Research is not available: DuckDuckGo answers scripted requests " +
-    "with a challenge page, so the web search cannot work over plain HTTPS.");
-  emit({
-    success: false,
-    web: [],
-    github: [],
-    error: "Research is not available yet. Ask in Chat instead - it reaches the same " +
-      "provider and the same conversation.",
-  });
+function forceSearchControl(): void {
+  let desired: Record<string, any> = {};
+  try { desired = JSON.parse(process.env.AGENT_CONTROLS || "{}") || {}; } catch { desired = {}; }
+  desired["smart-search"] = true;
+  process.env.AGENT_CONTROLS = JSON.stringify(desired);
+}
+
+async function researchMode(query: string, workspace: string, providerId: string) {
+  const registry = new ProviderRegistry();
+  registry.loadProviders();
+  const config = registry.getUsableProvider(providerId);
+  if (!config) { emit({ success: false, web: [], error: "Provider not found: " + providerId }); return; }
+
+  if (!isBrowserTransport(config as any)) {
+    emit({ success: false, web: [],
+      error: config.name + " has no web search. Switch to DeepSeek in Settings for research." });
+    return;
+  }
+  if (!hasSearchControl(config)) {
+    emit({ success: false, web: [],
+      error: config.name + " does not offer a web search control, so research cannot use it. " +
+        "Ask in Chat instead." });
+    return;
+  }
+
+  forceSearchControl();
+  let session: ChatSession | null = null;
+  try {
+    const opened = await openChatSession(providerId, workspace);
+    session = opened.session;
+    const answer = await session.ask(RESEARCH_PROMPT_PREFIX + query);
+    emit({
+      success: true,
+      answer: answer,
+      sources: extractSources(answer),
+      via: config.name + " with web search on",
+    });
+  } catch (e: any) {
+    emit({ success: false, web: [], error: e && e.message ? e.message : String(e) });
+  } finally {
+    if (session) await session.close();
+  }
 }
 
 // The desktop app spills oversized arguments to a temp file to stay under the
@@ -1580,7 +1485,7 @@ async function main() {
     else if (mode === "testall") await testAllMode(workspace);
     // Positional layout: workspace only.
     else if (mode === "behaviour") await behaviourMode(args[1] || workspace);
-    else if (mode === "research") await researchMode(prompt);
+    else if (mode === "research") await researchMode(prompt, workspace, providerId);
     // Positional layout differs from the other modes: workspace and provider
     // come straight after the mode, because there is no per-step prompt.
     else if (mode === "smoke") await smokeMode(args[1] || "deepseek");

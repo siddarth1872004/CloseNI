@@ -32,8 +32,7 @@
       <button class="nav-btn" data-mode="test"><i>03</i>Test</button>
       <!-- Listed but not selectable, the same way a gated provider is: it is
            planned, not missing. Hiding it would just make the numbering jump. -->
-      <button class="nav-btn" data-mode="research" disabled data-gated="1"
-              title="Research is not ready yet"><i>04</i>Research <span class="gated-tag">soon</span></button>
+      <button class="nav-btn" data-mode="research"><i>04</i>Research</button>
       <button class="nav-btn" data-mode="push"><i>05</i>Ship</button>
       <button class="nav-btn" data-mode="settings"><i>06</i>Settings</button>
     </nav>
@@ -218,16 +217,22 @@
 
     <section id="panel-research" class="panel">
       <div class="micro">Research</div>
-      <div class="hint">Not ready yet. Ask in <strong>Chat</strong> instead - it reaches
-        the same provider and the same conversation.</div>
-      <!-- The controls stay in the markup rather than being deleted: the work is
-           gated, not abandoned, and the handlers below still reference them. -->
-      <div class="row is-hidden">
+      <!-- The web half asks the provider with its own search turned on, rather
+           than scraping a results page: no selectors against a page nobody
+           controls. The GitHub half uses the token already held for push. -->
+      <div class="hint">Asks your provider with web search on, and searches GitHub
+        with your signed-in token. Research runs in a conversation of its own, so it
+        does not disturb the one your build is using.</div>
+      <div class="row">
         <input id="research-q" placeholder="e.g. Python Flask SQLite patterns">
         <button id="research-go" class="btn invert">Search</button>
       </div>
-      <div id="research-results" class="is-hidden">
-        <div class="research-col"><div class="micro">Web</div><div id="res-web"></div></div>
+      <div id="research-results">
+        <div class="research-col">
+          <div class="micro">Answer</div>
+          <div id="research-via" class="hint"></div>
+          <div id="res-web"></div>
+        </div>
         <div class="research-col"><div class="micro">GitHub repos</div><div id="res-gh"></div></div>
       </div>
     </section>

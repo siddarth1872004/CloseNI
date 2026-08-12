@@ -96,7 +96,7 @@ document.querySelectorAll(".nav-btn").forEach(function (btn) {
   btn.onclick = function () {
     // A gated tab says so rather than doing nothing. Silent buttons read as
     // broken, which is the whole reason gated providers announce themselves too.
-    if (btn.dataset.gated) { toast("Research is not ready yet - use Chat", "err"); return; }
+    if (btn.dataset.gated) { toast(btn.dataset.gatedMsg || "Not ready yet", "err"); return; }
     switchTab(btn.dataset.mode);
   };
 });
@@ -646,45 +646,93 @@ $("build-plan").onclick = function () {
   if (window.CN) { window.CN.setPlan(currentPlan); window.CN.startBuild(); }
 };
 
+/**
+ * Research: the provider's own web search, plus GitHub through our token.
+ *
+ * Two independent halves, run together and reported separately. GitHub failing
+ * because you are not signed in must not hide a perfectly good web answer, and
+ * a provider that is busy must not hide the repositories.
+ */
 $("research-go").onclick = async function () {
   const q = $("research-q").value.trim();
   if (!q) { toast("Type a query", "err"); return; }
   if (!workspace) { toast("Pick a workspace", "err"); return; }
-  setStatus("researching");
-  const res = await runAgent(["research", q, workspace, provider]);
-  setStatus("idle");
-  const webBox = $("res-web"); const ghBox = $("res-gh");
-  webBox.innerHTML = ""; ghBox.innerHTML = "";
-  if (!res || !res.success) { toast("Research failed", "err"); return; }
-  (res.web || []).forEach(function (r) {
-    const el = document.createElement("div");
-    el.className = "res-item";
-    el.innerHTML = '<a href="' + escapeHtml(r.url) + '" target="_blank">' + escapeHtml(r.title || "(no title)") + '</a>' +
-      '<div class="res-snippet">' + escapeHtml(r.snippet || "") + '</div>';
-    webBox.appendChild(el);
-  });
-  (res.github || []).forEach(function (r) {
-    const el = document.createElement("div");
-    el.className = "res-item";
-    el.innerHTML = '<a href="' + escapeHtml(r.url) + '" target="_blank">' + escapeHtml(r.title) + '</a>' +
-      '<div class="res-snippet">' + escapeHtml(r.snippet || "") + '</div>' +
-      '<div class="res-meta">' + (r.stars || 0) + " stars" +
-        (r.license ? " &middot; " + escapeHtml(r.license) : " &middot; no licence stated") + "</div>";
 
-    const actions = document.createElement("div");
-    actions.className = "res-actions";
-    const ref = document.createElement("button");
-    ref.className = "btn btn-sm";
-    ref.textContent = "Use as reference";
-    ref.onclick = function () { useAsReference(r); };
-    const clone = document.createElement("button");
-    clone.className = "btn btn-sm";
-    clone.textContent = "Clone";
-    clone.onclick = function () { cloneRepo(r); };
-    actions.appendChild(ref); actions.appendChild(clone);
-    el.appendChild(actions);
-    ghBox.appendChild(el);
-  });
+  const webBox = $("res-web"); const ghBox = $("res-gh"); const via = $("research-via");
+  webBox.innerHTML = '<div class="hint">searching...</div>';
+  ghBox.innerHTML = '<div class="hint">searching...</div>';
+  via.textContent = "";
+  setStatus("researching");
+
+  // Started together: the provider round trip takes seconds and the GitHub call
+  // takes hundreds of milliseconds, so running them in series would make the
+  // fast one wait for the slow one for no reason.
+  const webPromise = runAgent(["research", q, workspace, provider]);
+  const ghPromise = window.api.ghCall("searchRepos", [q, 8])
+    .catch(function (e) { return { ok: false, error: String(e) }; });
+
+  const res = await webPromise;
+  if (res && res.success) {
+    via.textContent = res.via || "";
+    webBox.innerHTML = "";
+    const answer = document.createElement("div");
+    answer.className = "res-answer";
+    answer.innerHTML = renderMarkdown(res.answer || "");
+    webBox.appendChild(answer);
+    (res.sources || []).forEach(function (u) {
+      const el = document.createElement("div");
+      el.className = "res-item";
+      el.innerHTML = '<a href="' + escapeHtml(u) + '" target="_blank">' + escapeHtml(u) + "</a>";
+      webBox.appendChild(el);
+    });
+    if (!(res.sources || []).length) {
+      webBox.appendChild(Object.assign(document.createElement("div"), {
+        className: "hint",
+        textContent: "The provider cited no sources for this answer.",
+      }));
+    }
+  } else {
+    webBox.innerHTML = '<div class="hint">' + escapeHtml((res && res.error) || "the search failed") + "</div>";
+  }
+
+  const gh = await ghPromise;
+  ghBox.innerHTML = "";
+  if (!gh || !gh.ok) {
+    ghBox.innerHTML = '<div class="hint">' +
+      escapeHtml((gh && gh.error) || "GitHub search unavailable - sign in on the Ship tab") + "</div>";
+  } else if (!(gh.result || []).length) {
+    ghBox.innerHTML = '<div class="hint">no repositories matched</div>';
+  } else {
+    gh.result.forEach(function (r) {
+      const el = document.createElement("div");
+      el.className = "res-item";
+      el.innerHTML = '<a href="' + escapeHtml(r.url) + '" target="_blank">' + escapeHtml(r.fullName) + "</a>" +
+        '<div class="res-snippet">' + escapeHtml(r.description || "") + "</div>" +
+        '<div class="res-meta">' + (r.stars || 0) + " stars" +
+          (r.language ? " &middot; " + escapeHtml(r.language) : "") + "</div>";
+      const actions = document.createElement("div");
+      actions.className = "res-actions";
+      // Kept from the old panel: it pulls the repo's README and file list into
+      // the next plan's context, which is the whole reason to search for a
+      // reference implementation rather than just read one.
+      const ref = document.createElement("button");
+      ref.className = "btn btn-sm";
+      ref.textContent = "Use as reference";
+      ref.onclick = function () { useAsReference({ url: r.url }); };
+      actions.appendChild(ref);
+      const clone = document.createElement("button");
+      clone.className = "btn btn-sm";
+      clone.textContent = "Clone";
+      // cloneRepo reads owner/repo off the URL, which is the one field a search
+      // result and a pasted link always agree on.
+      clone.onclick = function () { cloneRepo({ url: r.url, title: r.fullName }); };
+      actions.appendChild(clone);
+      el.appendChild(actions);
+      ghBox.appendChild(el);
+    });
+  }
+
+  setStatus("idle");
   toast("Research done");
 };
 
