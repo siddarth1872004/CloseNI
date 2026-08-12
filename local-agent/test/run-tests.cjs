@@ -3003,6 +3003,81 @@ function testExportBranch() {
   check("null input does not throw", E.planCommits(null, null).commits.length === 0);
 }
 
+function testPlanEdit() {
+  section("editing a plan without breaking its graph");
+  const P = require(path.join(__dirname, "..", "..", "desktop", "plan-edit.js"));
+  const sched = require(path.join(__dirname, "..", "..", "desktop", "scheduler.js"));
+
+  function mk(deps) { return deps.map(function (d, i) { return { title: "s" + (i + 1), dependsOn: d }; }); }
+  function depsOf(r) { return r.steps.map(function (s) { return s.dependsOn; }); }
+
+  // 1 <- 2 <- 3 <- 4, and 5 independent.
+  const plan = mk([[], [0], [1], [2], []]);
+
+  // Deleting a step hands its dependents what IT needed. Dropping the
+  // reference instead would lose an ordering the model stated.
+  const del = P.deleteStep(plan, 2);
+  check("the step is gone", del.steps.length === 4);
+  check("its dependents inherit its dependencies",
+    JSON.stringify(depsOf(del)) === JSON.stringify([[], [0], [1], []]), JSON.stringify(depsOf(del)));
+  check("and the change is explained", /now depends on step 2/.test(del.notes.join(" ")), JSON.stringify(del.notes));
+  check("the result still schedules", sched.graphFor(del.steps).declared === true);
+
+  // Deleting step 1, which nothing depended through.
+  const delFirst = P.deleteStep(plan, 0);
+  check("deleting the first step shifts everything down",
+    JSON.stringify(depsOf(delFirst)) === JSON.stringify([[], [0], [1], []]), JSON.stringify(depsOf(delFirst)));
+  check("a one-step plan refuses deletion", !!P.deleteStep(mk([[]]), 0).refused);
+  check("an out-of-range delete is refused", !!P.deleteStep(plan, 9).refused);
+
+  // undefined and [] mean different things to the scheduler, so an undeclared
+  // step must not become a declared one.
+  const undeclared = [{ title: "a" }, { title: "b" }, { title: "c" }];
+  check("an undeclared step stays undeclared",
+    P.deleteStep(undeclared, 1).steps.every(function (s) { return s.dependsOn === undefined; }));
+  check("and the plan still reads as a chain",
+    sched.graphFor(P.deleteStep(undeclared, 1).steps).declared === false);
+
+  // Moving is refused when it would invert a real dependency.
+  const bad = P.moveStep(plan, 3, 0);
+  check("moving a step above its dependency is refused", !!bad.refused, bad.refused);
+  check("the refusal names both steps", /step 4 depends on step 3/.test(bad.refused), bad.refused);
+  check("and the plan is untouched", bad.steps === bad.steps && JSON.stringify(depsOf(bad)) === JSON.stringify([[], [0], [1], [2], []]));
+
+  // The case a naive check misses: the step being dragged is fine, but moving
+  // it strands something that depended on it.
+  const stranded = P.moveStep(plan, 1, 4);
+  check("moving a step below its dependents is also refused", !!stranded.refused, stranded.refused);
+
+  // A legal move remaps every index.
+  const ok = P.moveStep(plan, 4, 0);
+  check("a legal move succeeds", !ok.refused, ok.refused);
+  check("every dependency index moves with the step it points at",
+    JSON.stringify(depsOf(ok)) === JSON.stringify([[], [], [1], [2], [3]]), JSON.stringify(depsOf(ok)));
+  check("the moved step is first", ok.steps[0].title === "s5");
+  check("the result still schedules", sched.graphFor(ok.steps).declared === true);
+  check("moving to the same place changes nothing", JSON.stringify(P.moveStep(plan, 2, 2).steps) === JSON.stringify(plan));
+
+  // Merging folds a step into the one above it.
+  const rich = [
+    { title: "Schema", detail: "tables", files: ["db.py"], dependsOn: [] },
+    { title: "Migrations", detail: "alembic", files: ["mig.py"], dependsOn: [0], testable: true },
+    { title: "Routes", detail: "crud", files: ["r.py"], dependsOn: [1] },
+  ];
+  const merged = P.mergeStepUp(rich, 1);
+  check("two steps become one", merged.steps.length === 2);
+  check("titles are joined", merged.steps[0].title === "Schema + Migrations");
+  check("details are kept", /tables[\s\S]*alembic/.test(merged.steps[0].detail));
+  check("files are unioned", JSON.stringify(merged.steps[0].files) === JSON.stringify(["db.py", "mig.py"]));
+  check("testable survives if either half had it", merged.steps[0].testable === true);
+  check("the merged step does not depend on itself",
+    JSON.stringify(merged.steps[0].dependsOn) === "[]", JSON.stringify(merged.steps[0].dependsOn));
+  check("what followed now depends on the merged step",
+    JSON.stringify(merged.steps[1].dependsOn) === "[0]", JSON.stringify(merged.steps[1].dependsOn));
+  check("merging the first step is refused", !!P.mergeStepUp(rich, 0).refused);
+  check("the result still schedules", sched.graphFor(merged.steps).declared === true);
+}
+
 (async () => {
   testEditPlanParsing();
   testPlanParsing();
@@ -3060,6 +3135,7 @@ function testExportBranch() {
   await testLocalModels();
   await testResearch();
   testExportBranch();
+  testPlanEdit();
 
   console.log("\n" + (fail === 0 ? "PASS" : "FAIL") + " — " + pass + " passed, " + fail + " failed");
   process.exit(fail === 0 ? 0 : 1);

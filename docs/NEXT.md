@@ -168,7 +168,14 @@ so there are now drift checks that the markup and the prose agree. Design:
 ## 7 · Things people will ask for
 
 - **Multiple workspaces open at once**, with one browser profile shared.
-- **A plan editor** - reorder, merge and delete steps before building.
+- ~~**A plan editor** - reorder, merge and delete steps before building.~~
+  **Done.** The UI was the easy half: `dependsOn` is index-based, so every edit
+  rewrites the graph, and getting it wrong does not throw - it produces a plan
+  that fails validation, falls back to the chain, and silently undoes §2. Deleting
+  a step hands its dependents its own dependencies; moving one above something it
+  depends on is refused, checked across the whole plan rather than just the step
+  being moved. Design:
+  `docs/superpowers/specs/2026-08-11-plan-editor-design.md`.
 - ~~**Export a build** as a git branch with one commit per step.~~ **Done.**
   §2's checkpoints made it cheap, and the content nobody stored is recoverable:
   a file's state after step N is the `prior` the next step that touched it

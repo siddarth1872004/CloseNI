@@ -481,6 +481,32 @@ function tryExtractPlan(text) {
   return null;
 }
 
+/**
+ * Apply one edit to the plan in memory, then redraw.
+ *
+ * Every operation goes through CNPlanEdit, which remaps dependsOn. Editing the
+ * array here directly would leave indices pointing at whatever moved into that
+ * slot - a graph that fails validation, falls back to the plain chain, and
+ * silently undoes the scheduler work that lets independent steps survive a
+ * failure.
+ */
+function editPlanStep(act, i) {
+  if (!currentPlan || !window.CNPlanEdit) return;
+  const steps = currentPlan.steps || [];
+  let res;
+  if (act === "up") res = window.CNPlanEdit.moveStep(steps, i, i - 1);
+  else if (act === "down") res = window.CNPlanEdit.moveStep(steps, i, i + 1);
+  else if (act === "merge") res = window.CNPlanEdit.mergeStepUp(steps, i);
+  else if (act === "del") res = window.CNPlanEdit.deleteStep(steps, i);
+  else return;
+
+  if (res.refused) { toast(res.refused, "err"); log("edit refused: " + res.refused, "err"); return; }
+  (res.notes || []).forEach(function (n) { log("plan: " + n, "step"); });
+
+  currentPlan = Object.assign({}, currentPlan, { steps: res.steps });
+  renderPlanDocument(currentPlan);
+}
+
 function renderPlanDocument(plan) {
   const content = $("plan-content");
   if (!content) return;
@@ -543,10 +569,25 @@ function renderPlanDocument(plan) {
     const files = (s.files || []).length ? '<div class="plan-step-files">' + escapeHtml(s.files.join("  ")) + '</div>' : "";
     step.innerHTML =
       '<div class="plan-step-head"><span class="plan-step-num">0' + (i + 1) + '</span>' +
-      '<span class="plan-step-title">' + escapeHtml(s.title || "Step") + '</span></div>' +
+      '<span class="plan-step-title">' + escapeHtml(s.title || "Step") + '</span>' +
+      // Editing is inline rather than a separate mode: the plan is read here,
+      // and the moment you want to change something is while reading it.
+      '<span class="plan-step-edit">' +
+        '<button class="btn btn-sm" data-act="up" data-i="' + i + '" title="Move earlier">^</button>' +
+        '<button class="btn btn-sm" data-act="down" data-i="' + i + '" title="Move later">v</button>' +
+        '<button class="btn btn-sm" data-act="merge" data-i="' + i + '" title="Merge into the step above">merge up</button>' +
+        '<button class="btn btn-sm" data-act="del" data-i="' + i + '" title="Delete this step">delete</button>' +
+      '</span></div>' +
       '<div class="plan-step-detail">' + escapeHtml(s.detail || "") + '</div>' + files;
     sec.appendChild(step);
   });
+  // One handler for the section rather than four per step: the list is redrawn
+  // after every edit, and per-button closures would be rebound each time.
+  sec.onclick = function (ev) {
+    const btn = ev.target.closest ? ev.target.closest("button[data-act]") : null;
+    if (!btn) return;
+    editPlanStep(btn.dataset.act, Number(btn.dataset.i));
+  };
   content.appendChild(sec);
 
   $("plan-sidebar").classList.remove("hidden");

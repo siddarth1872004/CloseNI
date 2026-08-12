@@ -208,6 +208,22 @@ check('a rolled-over thread is seeded as a cold one',
   /startFreshConversation\(config\)[\s\S]{0,400}buildPrompt\(effectivePrompt, ctx\.tree/.test(agent));
 check('repairs count towards the conversation too',
   /const followUp = buildFollowUp[\s\S]{0,500}addTurn\(controller\.getConversationSize\(\), followUp\.length/.test(agent));
+// The plan editor. dependsOn is index-based, so the danger is an edit that
+// silently produces an unschedulable graph - which falls back to the chain and
+// undoes the scheduler work rather than failing loudly.
+const planEdit = read('desktop/plan-edit.js');
+const rendererJs = read('desktop/renderer.js');
+check('plan edits go through the remapping module, never the array directly',
+  /window\.CNPlanEdit\.(moveStep|deleteStep|mergeStepUp)/.test(rendererJs) &&
+  !/currentPlan\.steps\.splice/.test(rendererJs));
+check('deleting a step hands on its dependencies', /inherited/.test(planEdit));
+check('an invalid move is refused rather than silently dropping a dependency',
+  /cannot run before it/.test(planEdit));
+check('an undeclared step is not turned into a declared one',
+  /if \(!declared\) return Object\.assign\(\{\}, step\)/.test(planEdit));
+check('the editor is loaded before the renderer that uses it',
+  indexHtml.indexOf('<script src="plan-edit.js">') < indexHtml.indexOf('<script src="renderer.js">'));
+
 // Exporting a build as git history. Two of these are bugs that only showed up
 // by running it against a real repository.
 const mainJs = read('desktop/main.js');

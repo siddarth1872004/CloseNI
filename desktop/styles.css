@@ -637,3 +637,10 @@ input:focus,textarea:focus,select:focus{transition:border-color .06s steps(1);}
 /* Initial state for controls that builder.js later shows with an inline
    style. Inline wins over a class, so show() keeps working untouched. */
 .is-hidden{display:none;}
+
+/* Plan editing, inline in the step list. Tokens only: the theme lint refuses
+   colour literals outside a theme block, and nine themes have to keep working. */
+.plan-step-edit{display:inline-flex;gap:4px;margin-left:auto;opacity:0;transition:opacity .12s;}
+.plan-step:hover .plan-step-edit,.plan-step-edit:focus-within{opacity:1;}
+.plan-step-head{display:flex;align-items:center;gap:8px;}
+.plan-step-edit .btn{padding:2px 6px;font-size:10px;}
