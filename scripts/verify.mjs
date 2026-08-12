@@ -208,6 +208,18 @@ check('a rolled-over thread is seeded as a cold one',
   /startFreshConversation\(config\)[\s\S]{0,400}buildPrompt\(effectivePrompt, ctx\.tree/.test(agent));
 check('repairs count towards the conversation too',
   /const followUp = buildFollowUp[\s\S]{0,500}addTurn\(controller\.getConversationSize\(\), followUp\.length/.test(agent));
+// Exporting a build as git history. Two of these are bugs that only showed up
+// by running it against a real repository.
+const mainJs = read('desktop/main.js');
+check('every step stages every build path, not only what it touched',
+  /const allPaths = Object\.keys\(touchedAt\)/.test(read('local-agent/src/export-branch.ts')));
+check('the working tree is restored whatever happens',
+  /\} finally \{[\s\S]{0,400}The project goes back to how it was found/.test(mainJs));
+check('the export refuses a dirty tree',
+  /You have uncommitted changes/.test(mainJs));
+check('git still runs without a shell',
+  /spawn\("git", safe, \{ cwd: cwd, shell: false/.test(mainJs));
+
 // A gated tab and the prose describing it drifted apart for a whole session,
 // because gating is a markup edit and updating the docs is a separate act of
 // will - the same failure the provider counter check exists for.

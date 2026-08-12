@@ -38,6 +38,7 @@ contextBridge.exposeInMainWorld("api", {
   endSession: function () { return ipcRenderer.invoke("end-session"); },
   runCommand: function (p) { return ipcRenderer.invoke("run-command", p); },
   git: function (p) { return ipcRenderer.invoke("git", p); },
+  exportBranch: function (p) { return ipcRenderer.invoke("export-branch", p); },
   // No token getter, deliberately. The renderer never holds the credential - it
   // asks the main process to make calls on its behalf.
   ghStatus: function () { return ipcRenderer.invoke("gh-status"); },

@@ -169,7 +169,13 @@ so there are now drift checks that the markup and the prose agree. Design:
 
 - **Multiple workspaces open at once**, with one browser profile shared.
 - **A plan editor** - reorder, merge and delete steps before building.
-- **Export a build** as a git branch with one commit per step.
+- ~~**Export a build** as a git branch with one commit per step.~~ **Done.**
+  §2's checkpoints made it cheap, and the content nobody stored is recoverable:
+  a file's state after step N is the `prior` the next step that touched it
+  recorded. Running it against a real repository found a bug the unit tests could
+  not - staging only each step's own paths left everything else at HEAD, so
+  early commits contained modules created later. Design:
+  `docs/superpowers/specs/2026-08-11-export-branch-design.md`.
 - **Cost/time reporting**: how long each step took, where the wait went.
 - **A headless CLI** - `closeni build ./project "add auth"` with no window, for
   people who want it in a script.

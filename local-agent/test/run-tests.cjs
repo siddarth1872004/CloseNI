@@ -2927,6 +2927,82 @@ function testResearch() {
   });
 }
 
+function testExportBranch() {
+  section("a build replayed as one commit per step");
+  const E = require(path.join(DIST, "export-branch.js"));
+  const C = require(path.join(DIST, "checkpoint.js"));
+
+  check("a branch name is slugged", E.branchName("Flask Habit Tracker!") === "closeni/flask-habit-tracker");
+  check("an empty summary still names a branch", E.branchName("") === "closeni/build");
+  check("punctuation only still names a branch", E.branchName("!!!") === "closeni/build");
+  check("a long summary is trimmed without a trailing dash",
+    !/-$/.test(E.branchName("a very long project summary that goes on and on and on and on")));
+  check("a commit subject is one line", E.commitMessage(5, "Streak\ncalculation") === "step 6: Streak calculation");
+  check("an untitled step still says something", E.commitMessage(0, "") === "step 1: changes");
+
+  // Step 4 creates streaks.py and rewrites app.py; step 5 rewrites app.py again
+  // and creates routes.py. The content after step 4 is nowhere stored - it is
+  // recovered from what step 5 recorded as its prior.
+  function cp(step, files, title) { return { version: 1, step: step, title: title, at: "", files: files }; }
+  const checkpoints = [
+    cp(3, { "app.py": { prior: "v3", after: "h4" }, "streaks.py": { prior: null, after: "hs" } }, "Streaks"),
+    cp(4, { "app.py": { prior: "v4", after: "h5" }, "routes.py": { prior: null, after: "hr" } }, "Routes"),
+  ];
+  const current = { "app.py": "v5", "streaks.py": "S", "routes.py": "R" };
+  const plan = E.planCommits(checkpoints, current);
+
+  check("one commit per step", plan.commits.length === 2);
+  check("commits are in step order", plan.commits[0].step === 3 && plan.commits[1].step === 4);
+  // The whole trick: step 5's prior IS step 4's result.
+  check("a file's after-state comes from the next step that touched it",
+    plan.commits[0].writes["app.py"] === "v4", JSON.stringify(plan.commits[0].writes));
+  check("a file nothing touched again takes its content from disk",
+    plan.commits[0].writes["streaks.py"] === "S");
+  check("the last step's file also comes from disk", plan.commits[1].writes["app.py"] === "v5");
+  check("a file created later is not in an earlier commit",
+    !("routes.py" in plan.commits[0].writes));
+  check("titles are carried", plan.commits[0].title === "Streaks");
+  check("titles can be overridden from the plan",
+    E.planCommits(checkpoints, current, { 3: "Better name" }).commits[0].title === "Better name");
+  check("a clean build warns about nothing", plan.warnings.length === 0, JSON.stringify(plan.warnings));
+
+  // The bug that only showed up by running it against a real repository.
+  //
+  // The export refuses on a dirty tree, so the user commits the finished build
+  // first - which means HEAD already holds every file. Staging only the paths a
+  // step touched leaves the rest at HEAD's version, so step 4's commit contained
+  // routes.py, which step 5 created. Every commit stages every build path at its
+  // state as of that step, so a file that does not exist yet is a deletion.
+  check("a file a later step creates is deleted in earlier commits",
+    plan.commits[0].deletes.indexOf("routes.py") !== -1, JSON.stringify(plan.commits[0].deletes));
+  check("and is written once its step arrives", plan.commits[1].writes["routes.py"] === "R");
+  check("a file an earlier step created stays written later",
+    plan.commits[1].writes["streaks.py"] === "S");
+
+
+  // A file deleted since the build must be represented as absent, not written.
+  const gone = E.planCommits(checkpoints, { "app.py": "v5", "streaks.py": null, "routes.py": "R" });
+  check("a file gone from disk becomes a delete",
+    gone.commits[0].deletes.indexOf("streaks.py") !== -1, JSON.stringify(gone.commits[0].deletes));
+  check("and is not also written", !("streaks.py" in gone.commits[0].writes));
+
+  // Unreadable is not the same as absent. Treating it as a delete would turn an
+  // export into data loss.
+  const unread = E.planCommits(checkpoints, { "app.py": "v5", "routes.py": "R" });
+  check("an unreadable file is neither written nor deleted",
+    !("streaks.py" in unread.commits[0].writes) &&
+    unread.commits[0].deletes.indexOf("streaks.py") === -1);
+  check("and it is warned about", /streaks\.py/.test(unread.warnings.join(" ")), JSON.stringify(unread.warnings));
+
+  // A prior we never stored means the history is approximate, and says so.
+  const big = E.planCommits(
+    [cp(0, { "data.bin": { prior: null, after: null, tooLarge: true } })], { "data.bin": "x" });
+  check("an unrecorded prior is warned about", /too large/.test(big.warnings.join(" ")), JSON.stringify(big.warnings));
+
+  check("no checkpoints means no commits", E.planCommits([], {}).commits.length === 0);
+  check("null input does not throw", E.planCommits(null, null).commits.length === 0);
+}
+
 (async () => {
   testEditPlanParsing();
   testPlanParsing();
@@ -2983,6 +3059,7 @@ function testResearch() {
   testSmokeReport();
   await testLocalModels();
   await testResearch();
+  testExportBranch();
 
   console.log("\n" + (fail === 0 ? "PASS" : "FAIL") + " — " + pass + " passed, " + fail + " failed");
   process.exit(fail === 0 ? 0 : 1);

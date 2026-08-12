@@ -736,6 +736,41 @@ $("research-go").onclick = async function () {
   toast("Research done");
 };
 
+/**
+ * Replay this workspace's build onto a branch of its own.
+ *
+ * Step titles come from the plan in memory when there is one, because a
+ * checkpoint stores the step's detail rather than its title and "step 6:
+ * Implement the streak calculation described in..." reads badly in git log.
+ */
+$("export-branch").onclick = async function () {
+  if (!workspace) { toast("Pick a workspace", "err"); return; }
+  const btn = $("export-branch");
+  btn.disabled = true;
+  const was = btn.textContent;
+  btn.textContent = "Exporting...";
+  try {
+    const plan = currentPlan;
+    const res = await window.api.exportBranch({
+      workspace: workspace,
+      summary: (plan && plan.summary) || "",
+      steps: ((plan && plan.steps) || []).map(function (s) { return s.title || ""; }),
+    }).catch(function (e) { return { ok: false, error: String(e) }; });
+
+    if (!res || !res.ok) {
+      log("export failed: " + ((res && res.error) || "unknown"), "err");
+      toast((res && res.error) || "Export failed", "err");
+      return;
+    }
+    log("exported " + res.commits + " commit(s) to " + res.branch, "ok");
+    (res.warnings || []).forEach(function (w) { log("  " + w, "step"); });
+    toast("Exported to " + res.branch);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = was;
+  }
+};
+
 function renderTestResults(rows, summary) {
   const sum = $("test-summary");
   if (sum) sum.textContent = summary || "";

@@ -273,6 +273,12 @@
       <div class="row"><input id="commit-msg" placeholder="commit message"><button id="git-commit" class="btn">commit all</button></div>
       <div class="row"><input id="remote-url" placeholder="https://github.com/you/repo.git"><button id="git-push" class="btn invert">push origin</button></div>
 
+      <div class="micro mt-2">This build</div>
+      <div class="hint">Replays the build onto a branch of its own, one commit per step,
+        so you can read it with git log, diff any step, and revert one without undoing
+        the rest. Your working tree is put back exactly as it is now.</div>
+      <div class="row"><button id="export-branch" class="btn">Export build to a branch</button></div>
+
       <div class="micro mt-2">Actions</div>
       <div class="row">
         <input id="gh-workflow" placeholder="workflow file, e.g. release.yml">
