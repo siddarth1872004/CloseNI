@@ -2656,6 +2656,47 @@ function testTypeChecks() {
     JSON.stringify(TC.TOOL_CANDIDATES.mypy));
 }
 
+function testStepTests() {
+  section("a step writes tests, and they are run");
+  const B = require(path.join(DIST, "verification/behaviour-checker.js"));
+  const F = require(path.join(DIST, "follow-up.js"));
+
+  // The gate that stops every early step failing. A project with a
+  // pyproject.toml matches the pytest rule from step one, and pytest with
+  // nothing to collect exits non-zero.
+  check("no tests yet means the suite is not run", B.hasTestFiles(["app.py", "config.py"]) === false);
+  check("a python test file counts", B.hasTestFiles(["app.py", "test_streaks.py"]) === true);
+  check("so does the _test suffix", B.hasTestFiles(["streaks_test.py"]) === true);
+  check("a tests/ directory counts", B.hasTestFiles(["tests/test_app.py"]) === true);
+  check("nested too", B.hasTestFiles(["src/tests/helpers.py"]) === true);
+  check("windows separators are handled", B.hasTestFiles(["src\\tests\\a.py"]) === true);
+  check("a jest spec counts", B.hasTestFiles(["src/streaks.test.ts"]) === true);
+  check("a go test counts", B.hasTestFiles(["streaks_test.go"]) === true);
+  check("a java test counts", B.hasTestFiles(["src/StreakTest.java"]) === true);
+  check("an rspec file counts", B.hasTestFiles(["spec/streak_spec.rb"]) === true);
+  check("a file merely named 'latest.py' does not", B.hasTestFiles(["latest.py"]) === false);
+  check("a directory called 'contest' does not", B.hasTestFiles(["contest/app.py"]) === false);
+  check("an empty list does not", B.hasTestFiles([]) === false);
+  check("nonsense does not throw", B.hasTestFiles([null, 7, ""]) === false);
+
+  // The follow-up is the whole risk of this feature. A model told "your code
+  // failed" will bend correct code to satisfy a wrong assertion, and that lands
+  // as a green step with the behaviour broken.
+  const fu = F.buildTestFollowUp("test_streak_resets: assert 0 == 1", ["streaks.py", "test_streaks.py"]);
+  check("the follow-up carries the failure", /assert 0 == 1/.test(fu), fu);
+  check("it says either could be wrong", /either could be at fault/i.test(fu), fu);
+  check("it offers fixing the code", /fix the code/i.test(fu));
+  check("and fixing the test", /fix the test/i.test(fu));
+  check("it forbids bending code to a wrong assertion",
+    /Do not change working code to satisfy a wrong assertion/i.test(fu), fu);
+  check("and forbids gutting the test", /do not weaken\s+or delete a test/i.test(fu), fu);
+  check("it does not assert the code is at fault",
+    !/Your previous code failed when tested/.test(fu), fu);
+  check("it lists the project's files", /streaks\.py/.test(fu));
+  check("empty input does not throw", typeof F.buildTestFollowUp(null, []) === "string");
+  check("a huge failure dump is capped", F.buildTestFollowUp("e".repeat(9000), []).length < 3000);
+}
+
 (async () => {
   testEditPlanParsing();
   testPlanParsing();
@@ -2708,6 +2749,7 @@ function testTypeChecks() {
   testContextBudget();
   testSelectorHealth();
   testTypeChecks();
+  testStepTests();
 
   console.log("\n" + (fail === 0 ? "PASS" : "FAIL") + " — " + pass + " passed, " + fail + " failed");
   process.exit(fail === 0 ? 0 : 1);

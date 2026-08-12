@@ -14,8 +14,8 @@ import { decideApproval } from "./verification/approval-policy.js";
 import { getProjectContext } from "./context/context-engine.js";
 import { selectRelevantFiles, WorkspaceFile } from "./context/relevance.js";
 import { computeDelta, nextLedger } from "./context/delta.js";
-import { buildApplyFollowUp } from "./follow-up.js";
-import { planBehaviourChecks, judge as judgeBehaviour } from "./verification/behaviour-checker.js";
+import { buildApplyFollowUp, buildTestFollowUp } from "./follow-up.js";
+import { planBehaviourChecks, judge as judgeBehaviour, hasTestFiles } from "./verification/behaviour-checker.js";
 import { resolveTool } from "./verification/toolchain.js";
 import { MANIFEST_NAME } from "./run-manifest.js";
 import { Checkpoint, mergeCheckpoint, sealCheckpoint, checkpointName, CHECKPOINT_DIR } from "./checkpoint.js";
@@ -174,7 +174,11 @@ async function planMode(transcript: string, workspace: string, providerId: strin
   transcript = capText(transcript, 8000);
   const ctx = getProjectContext(workspace, transcript);
   const instructions = "Create an implementation plan as JSON:\n" +
-    "{\"summary\":\"goal\",\"runCommand\":\"how to run the finished project\",\"steps\":[{\"title\":\"\",\"detail\":\"\",\"files\":[\"path\"],\"dependsOn\":[]}]}" +
+    "{\"summary\":\"goal\",\"runCommand\":\"how to run the finished project\",\"steps\":[{\"title\":\"\",\"detail\":\"\",\"files\":[\"path\"],\"dependsOn\":[],\"testable\":true}]}" +
+    "testable is true when the step produces behaviour worth asserting - a calculation, " +
+    "a parser, a route, a state change. It is false for scaffolding, configuration, " +
+    "dependency lists and static assets, where a test would only restate the file. " +
+    "A testable step will be asked to write tests alongside its code.\n" +
     "Rules: as many steps as the work genuinely needs - a one-file script might be 2, " +
     "a full application with a database, API and UI might be 20 or more. Never pad, never compress. " +
     "Each step must touch a different set of files. Wrap in \`\`\`json.\n" +
@@ -276,7 +280,9 @@ async function askMode(workspace: string, providerId: string, question: string, 
 
 async function revisePlanMode(changes: string, workspace: string, providerId: string) {
   const prompt = "Update plan with: " + changes +
-    "\n\nJSON format: {\"summary\":\"\",\"runCommand\":\"how to run the finished project\",\"steps\":[{\"title\":\"\",\"detail\":\"\",\"files\":[\"\"],\"dependsOn\":[]}]}\n" +
+    "\n\nJSON format: {\"summary\":\"\",\"runCommand\":\"how to run the finished project\",\"steps\":[{\"title\":\"\",\"detail\":\"\",\"files\":[\"\"],\"dependsOn\":[],\"testable\":true}]}\n" +
+    "testable is true when the step produces behaviour worth asserting, false for " +
+    "scaffolding, configuration and dependency lists.\n" +
     "As many steps as the work needs - never pad, never compress. Different files per step.\n" +
     "dependsOn lists earlier steps this one builds on, as ZERO-BASED positions in the " +
     "steps array (first step is 0); [] if it needs nothing. Not the printed step number.";
@@ -409,8 +415,19 @@ async function testAllMode(workspace: string) {
   emit({ success: fail === 0, passed: pass, failed: fail, results: results });
 }
 
-function buildPrompt(userPrompt: string, tree: string, relevantFiles: { path: string; content: string }[], priorFiles: string[], isFirstStep: boolean): string {
+function buildPrompt(userPrompt: string, tree: string, relevantFiles: { path: string; content: string }[], priorFiles: string[], isFirstStep: boolean, testable?: boolean): string {
   let contextStr = "";
+  // Asked for only where the plan said there is behaviour to assert. Requesting
+  // tests on a scaffolding step produces a test that the config file says what
+  // it says, which costs tokens and teaches everyone to skip the test output.
+  if (testable) {
+    contextStr += "\n\nThis step has behaviour worth testing, so include tests for it " +
+      "in the same reply, as ordinary files alongside the code. Use the project's own " +
+      "convention - test_<name>.py for Python, <name>.test.ts for TypeScript, and so on. " +
+      "Test what the step is supposed to DO, including the edge cases; do not write a " +
+      "test that only restates a constant. They will be run, and a failure will come " +
+      "back to you.";
+  }
   if (tree) contextStr += "\n\nProject Structure:\n" + tree;
   if (relevantFiles.length > 0) {
     contextStr += "\n\nRelevant Existing Files (use 'overwrite' mode with FULL content to modify them):\n";
@@ -489,6 +506,10 @@ function buildFollowUp(command: string, output: string, priorFiles: string[]): s
   // A patch that would not apply is not a test that failed; it needs a
   // different tactic rather than a louder version of the same request.
   if (command === "apply patch") return buildApplyFollowUp(output, priorFiles);
+  // Nor is a failing test the same as a failing compiler. The model wrote the
+  // assertion as well as the code, so which of the two is wrong is the question
+  // - and the generic wording below answers it for the model, incorrectly.
+  if (command === "run tests") return buildTestFollowUp(output, priorFiles);
 
   let priorNote = "";
   if (priorFiles.length > 0) {
@@ -525,6 +546,15 @@ interface StepRequest {
    * which is what every caller before resuming existed did.
    */
   threadHasContext?: boolean;
+  /**
+   * Did the plan say this step has behaviour worth asserting?
+   *
+   * Declared once while the model was designing the whole project, rather than
+   * decided eighteen times by a model already busy writing the code - which is
+   * how an optional instruction becomes "no tests, ever" without anyone
+   * noticing it did.
+   */
+  testable?: boolean;
 }
 
 interface StepOutcome {
@@ -679,7 +709,7 @@ async function runBuildStep(controller: PlaywrightController, config: ProviderCo
   // sends the plan, the tree and the files, and the reset ledger makes the
   // delta describe the new conversation rather than the abandoned one.
   const budget = budgetFor(config.contextBudgetChars);
-  let promptText = buildPrompt(effectivePrompt, needsFullContext ? ctx.tree : "", relevant, filtered, needsFullContext);
+  let promptText = buildPrompt(effectivePrompt, needsFullContext ? ctx.tree : "", relevant, filtered, needsFullContext, req.testable);
   if (shouldRollOver(controller.getConversationSize(), budget, promptText.length)) {
     console.log("This conversation is nearly full (" +
       describeSize(controller.getConversationSize(), budget) +
@@ -690,7 +720,7 @@ async function runBuildStep(controller: PlaywrightController, config: ProviderCo
     const freshRelevant = selectRelevantFiles({ files: freshDelta.candidates, stepDetail: stepDetail, prompt: prompt });
     controller.saveLedger(nextLedger({}, allFiles, freshRelevant.map((r) => r.path), stepIndex));
     promptText = buildPrompt(effectivePrompt, ctx.tree,
-      freshRelevant, allFiles.map((f) => f.path).slice(0, 40), true);
+      freshRelevant, allFiles.map((f) => f.path).slice(0, 40), true, req.testable);
   }
 
   let prevCount = await controller.countMessages(config);
@@ -784,6 +814,45 @@ async function runBuildStep(controller: PlaywrightController, config: ProviderCo
         console.log("CHECK_RESULT: " + (r.success ? "PASS" : "FAIL"));
         if (!r.success) { failed = { command: c.command, output: r.output }; break; }
       }
+
+      // Then the project's own tests, if it has any yet.
+      //
+      // Gated on tests actually existing, and that gate is load-bearing rather
+      // than tidy: a project with a pyproject.toml matches the pytest rule from
+      // step one, and `pytest -q` with nothing to collect exits non-zero. Every
+      // step before the first test was written would fail, and the repair loop
+      // would spend its attempts fixing a suite that does not exist.
+      //
+      // After the syntax and type checks, never before: a suite that cannot
+      // import the module it tests reports a confusing failure when the plain
+      // answer is that the file does not compile.
+      if (!failed) {
+        let workspaceNames: string[] = [];
+        try { workspaceNames = allFiles.map((f) => f.path).concat(applyResult.appliedFiles); } catch {}
+        if (hasTestFiles(workspaceNames)) {
+          let rootNames: string[] = [];
+          try { rootNames = fs.readdirSync(workspace); } catch {}
+          const suite = planBehaviourChecks(rootNames, (file: string) => {
+            try { return JSON.parse(fs.readFileSync(path.join(workspace, file), "utf-8")); } catch { return null; }
+          }, resolveTool, null).filter((b) => b.kind === "test" && b.available);
+
+          for (const t of suite) {
+            console.log("PHASE:" + JSON.stringify({ phase: "checking", detail: t.language + " tests" }));
+            console.log("RUNNING_CHECK: " + t.command);
+            const r = await runCommand(t.command, workspace, t.timeoutMs, { timeoutIsFailure: true });
+            console.log("CHECK_RESULT: " + (r.success ? "PASS" : "FAIL"));
+            if (!r.success) {
+              // "run tests" routes to buildTestFollowUp, which says the code or
+              // the assertion could be wrong. The generic wording would tell the
+              // model its code failed, and a wrong assertion then gets satisfied
+              // by bending correct code - a green step with broken behaviour.
+              failed = { command: "run tests", output: r.output };
+              break;
+            }
+          }
+        }
+      }
+
       if (!failed && plan.commands) {
         for (const suggested of plan.commands) {
           // Rewrite interpreter names that do not exist here before the user
@@ -1106,6 +1175,7 @@ async function buildSessionMode(workspace: string, providerId: string, autonomy:
               stepIndex: msg.index,
               stepDetail: msg.detail || "",
               goalSummary: msg.goal || "",
+              testable: !!msg.testable,
               // Whether the conversation came back. A resumed build whose thread
               // is gone must be told so before it sends a short prompt into a
               // model that has never seen the plan.

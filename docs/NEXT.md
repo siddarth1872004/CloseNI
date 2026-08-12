@@ -93,10 +93,16 @@ the reply is**, which removes the DOM from the read path entirely.
 
 ## 4 · Verification worth trusting
 
-- **Run the tests the model wrote**, not just the ones the project shipped with.
-  Further along than this read: `behaviour-checker.ts` already runs a project's
-  suite and a smoke check, but only **on demand** from the Test panel, never
-  during a build - and nothing asks the model to write tests in the first place.
+- ~~**Run the tests the model wrote.**~~ **Done.** `behaviour-checker.ts` already
+  discovered and ran a project's suite; what was missing was anyone asking the
+  model for tests, and the suite running during a build rather than on demand.
+  The plan now declares a `testable` flag per step, so scaffolding is not asked
+  for a test that restates a constant, and the suite runs after the syntax and
+  type checks - gated on tests existing, because `pytest -q` with nothing to
+  collect exits non-zero and would fail every early step. A failing test gets its
+  own follow-up: the model wrote the code AND the assertion, so telling it "your
+  code failed" makes it bend correct code to satisfy a wrong test. Design:
+  `docs/superpowers/specs/2026-08-11-step-tests-design.md`.
 - ~~**Type checking beyond syntax**: `mypy`, `tsc --strict`, `cargo clippy`.~~
   **Done**, and two of those three were wrong. `tsc --noEmit` already runs and
   honours the project's own tsconfig, so forcing `--strict` would override the

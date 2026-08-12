@@ -6,6 +6,40 @@
  */
 
 /**
+ * The retry for a step whose own tests failed.
+ *
+ * Distinct from every other check, and the distinction is the whole reason this
+ * exists. A compiler failing means the code is wrong; there is nothing else it
+ * could mean. A test failing means the code is wrong OR the assertion is - and
+ * the model wrote both, minutes apart.
+ *
+ * The generic follow-up says "your code failed when tested, fix the root cause".
+ * Given a wrong assertion, a model told that will bend correct code until the
+ * assertion passes, and that lands on disk as a green step with the behaviour
+ * quietly broken. Strictly worse than having written no test at all.
+ *
+ * So this names the ambiguity and makes deciding it the task.
+ */
+export function buildTestFollowUp(output: string, priorFiles: string[]): string {
+  const text = String(output || "");
+  return "The tests for this step did not pass.\n\n" +
+    text.slice(0, 2000) + "\n\n" +
+    "You wrote both the code and the test, so either could be at fault. Decide " +
+    "which one is actually wrong before changing anything:\n" +
+    "- If the code does not do what the step asked for, fix the code.\n" +
+    "- If the test asserts something the step never asked for, or asserts it " +
+    "incorrectly, fix the test.\n" +
+    "Do not change working code to satisfy a wrong assertion, and do not weaken " +
+    "or delete a test to make it pass - a test that no longer checks anything is " +
+    "worse than a failing one.\n" +
+    (priorFiles.length
+      ? "\nFiles in this project: " + priorFiles.join(", ") + "\n"
+      : "") +
+    "Send the complete file or files you are changing, in the same JSON format, " +
+    "wrapped in a ```json code block.";
+}
+
+/**
  * The retry for changes that could not be applied at all.
  *
  * Distinct from a test failure, and the distinction matters: nothing ran, so

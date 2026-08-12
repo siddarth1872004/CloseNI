@@ -22,6 +22,8 @@ export interface BuildStateStep {
   detail: string;
   files: string[];
   dependsOn?: number[];
+  /** Did the plan say this step has behaviour worth asserting? */
+  testable?: boolean;
   status: StepStatus;
 }
 
@@ -76,6 +78,7 @@ export function serialiseBuildState(
       // exactly what dropping it in setPlan did to every build: turn a declared
       // graph back into a chain, so one failure blocks everything behind it.
       dependsOn: Array.isArray(s && s.dependsOn) ? s.dependsOn.slice() : undefined,
+      testable: s && s.testable === true ? true : undefined,
       status: readStatus(s && s.status),
     })),
   };
@@ -106,6 +109,7 @@ export function parseBuildState(raw: any): BuildState | null {
       detail: str(s.detail),
       files: Array.isArray(s.files) ? s.files.filter((f: any) => typeof f === "string") : [],
       dependsOn: Array.isArray(s.dependsOn) ? s.dependsOn.slice() : undefined,
+      testable: s.testable === true ? true : undefined,
       status: readStatus(s.status),
     });
   }

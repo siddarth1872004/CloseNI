@@ -32,8 +32,8 @@ contextBridge.exposeInMainWorld("api", {
   startSession: function (workspace, provider, autonomy, headed, controls, concurrency, resuming) {
     return ipcRenderer.invoke("start-session", { workspace: workspace, provider: provider, autonomy: autonomy, headed: headed, controls: controls, concurrency: concurrency, resuming: resuming });
   },
-  sendStep: function (index, detail, goal) {
-    return ipcRenderer.invoke("send-step", { index: index, detail: detail, goal: goal });
+  sendStep: function (index, detail, goal, testable) {
+    return ipcRenderer.invoke("send-step", { index: index, detail: detail, goal: goal, testable: testable });
   },
   endSession: function () { return ipcRenderer.invoke("end-session"); },
   runCommand: function (p) { return ipcRenderer.invoke("run-command", p); },

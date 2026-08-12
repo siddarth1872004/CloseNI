@@ -1229,9 +1229,9 @@ window.CN = {
         .catch(function (e) { return { ok: false, error: String(e) }; });
     } catch (e) { return Promise.resolve({ ok: false, error: String(e) }); }
   },
-  sendStep: function (index, detail, goal) {
+  sendStep: function (index, detail, goal, testable) {
     try {
-      return window.api.sendStep(index, detail, goal)
+      return window.api.sendStep(index, detail, goal, testable)
         .catch(function (e) { return { success: false, error: String(e) }; });
     } catch (e) { return Promise.resolve({ success: false, error: String(e) }); }
   },

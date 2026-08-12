@@ -95,6 +95,37 @@ const TEST_RULES: TestRule[] = [
 const PYTHON_TEST_DIRS = ["tests", "test"];
 
 /**
+ * Does this project have any tests yet?
+ *
+ * Asked before running a suite during a build, and it is not a nicety. A
+ * project with a pyproject.toml matches the pytest rule from step one, but
+ * `pytest -q` with nothing to collect exits 5 - which reads as a failing suite.
+ * Without this, every step before the first test was written would fail its
+ * test check, and the repair loop would spend its attempts asking the model to
+ * fix a suite that does not exist.
+ *
+ * Names only, deliberately: reading files to find out whether they contain
+ * tests would be slower and no more certain. Every convention here is one the
+ * language's own runner uses for discovery.
+ */
+export function hasTestFiles(paths: string[]): boolean {
+  return (paths || []).some((raw) => {
+    const p = String(raw || "").replace(/\\/g, "/");
+    if (!p) return false;
+    const segments = p.split("/");
+    const name = segments[segments.length - 1] || "";
+    // A tests/ or test/ directory anywhere in the path.
+    if (segments.slice(0, -1).some((d) => PYTHON_TEST_DIRS.includes(d.toLowerCase()))) return true;
+    if (/^test_.+\.py$/i.test(name) || /_test\.py$/i.test(name)) return true;
+    if (/\.(test|spec)\.(js|jsx|ts|tsx|mjs|cjs)$/i.test(name)) return true;
+    if (/_test\.go$/i.test(name)) return true;
+    if (/Test\.java$/.test(name) || /Tests\.cs$/.test(name)) return true;
+    if (/_spec\.rb$/i.test(name) || /Test\.php$/.test(name)) return true;
+    return false;
+  });
+}
+
+/**
  * A command that starts a server rather than running to completion.
  *
  * Matters because the two have opposite success conditions: a script that is

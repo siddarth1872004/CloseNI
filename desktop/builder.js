@@ -99,6 +99,7 @@
       return {
         title: s.title, detail: s.detail, files: s.files || [],
         dependsOn: Array.isArray(s.dependsOn) ? s.dependsOn.slice() : undefined,
+        testable: s.testable === true,
         status: s.status || "pending", result: null,
       };
     });
@@ -122,7 +123,7 @@
       summary: state.summary || "",
       runCommand: state.runCommand || undefined,
       steps: steps.map(function (s) {
-        return { title: s.title, detail: s.detail, files: s.files, dependsOn: s.dependsOn };
+        return { title: s.title, detail: s.detail, files: s.files, dependsOn: s.dependsOn, testable: s.testable };
       }),
     };
   };
@@ -295,7 +296,7 @@
       (s.files && s.files.length ? " Expected files: " + s.files.join(", ") : "");
     const args = ["browser", stepDetail, ws, CN.getProvider(), CN.getAutonomy(), String(i), stepDetail, (plan && plan.summary) || ""];
     const res = sessionActive()
-      ? await CN.sendStep(i, stepDetail, (plan && plan.summary) || "")
+      ? await CN.sendStep(i, stepDetail, (plan && plan.summary) || "", !!s.testable)
       : await CN.runAgent(args);
 
     if (res && res.success) {
@@ -325,6 +326,7 @@
       return {
         title: s.title, detail: s.detail, files: s.files || [],
         dependsOn: Array.isArray(s.dependsOn) ? s.dependsOn.slice() : undefined,
+        testable: s.testable === true,
         status: "pending", result: null,
       };
     });

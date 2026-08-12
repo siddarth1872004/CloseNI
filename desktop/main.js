@@ -470,7 +470,11 @@ ipcMain.handle("send-step", function (event, payload) {
     if (!sessionProc || !sessionProc.stdin.writable) { resolve({ success: false, error: "no session" }); return; }
     pendingSteps.set(payload.index, resolve);
     sessionProc.stdin.write(JSON.stringify({
-      type: "step", index: payload.index, detail: payload.detail, goal: payload.goal, prompt: payload.detail
+      type: "step", index: payload.index, detail: payload.detail, goal: payload.goal, prompt: payload.detail,
+      // Whether the plan said this step has behaviour worth asserting. Dropped
+      // here and the step is never asked for tests, silently - which is exactly
+      // how dependsOn died between the plan and the scheduler.
+      testable: !!payload.testable
     }) + "\n");
   });
 });

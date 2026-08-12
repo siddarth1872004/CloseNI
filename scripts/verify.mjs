@@ -196,6 +196,20 @@ check('a rolled-over thread is seeded as a cold one',
   /startFreshConversation\(config\)[\s\S]{0,400}buildPrompt\(effectivePrompt, ctx\.tree/.test(agent));
 check('repairs count towards the conversation too',
   /const followUp = buildFollowUp[\s\S]{0,500}addTurn\(controller\.getConversationSize\(\), followUp\.length/.test(agent));
+// Tests the model wrote. The plan declares which steps have behaviour worth
+// asserting, and that flag has to survive the same renderer journey dependsOn
+// did not - so every hop is pinned.
+check('the plan is asked which steps are testable', /testable is true when/.test(agent));
+check('a testable step is asked for tests', /This step has behaviour worth testing/.test(agent));
+check('the suite only runs once tests exist', /hasTestFiles\(workspaceNames\)/.test(agent));
+check('a failing test gets its own follow-up',
+  /command === "run tests"[\s\S]{0,200}buildTestFollowUp/.test(agent));
+check('the follow-up does not decide which is wrong',
+  /either could be at fault/.test(read('local-agent/src/follow-up.ts')));
+check('testable survives the renderer', /testable: s\.testable === true/.test(builder));
+check('and the IPC to the session', /testable: !!payload\.testable/.test(read('desktop/main.js')));
+check('and a restart', /testable\?: boolean/.test(read('local-agent/src/build-state.ts')));
+
 // Type checking. The flags are the feature: without --ignore-missing-imports a
 // Flask project fails every single step on a missing stub for flask, which
 // would make this actively worse than not running it at all.
