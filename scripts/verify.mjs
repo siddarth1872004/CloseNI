@@ -196,6 +196,19 @@ check('a rolled-over thread is seeded as a cold one',
   /startFreshConversation\(config\)[\s\S]{0,400}buildPrompt\(effectivePrompt, ctx\.tree/.test(agent));
 check('repairs count towards the conversation too',
   /const followUp = buildFollowUp[\s\S]{0,500}addTurn\(controller\.getConversationSize\(\), followUp\.length/.test(agent));
+// The live smoke test. Its value rests on watching the REAL wait loop and on
+// asserting a budget rather than reporting a number, so both are pinned.
+const smoke = read('local-agent/src/health/smoke-report.ts');
+check('the smoke test observes the real wait, not a copy of it',
+  /waitForResponse\(config, prevCount, prevContent, \(tick\)/.test(agent));
+check('a slow completion fails rather than being reported',
+  /COMPLETION_BUDGET_MS[\s\S]{0,200}health: "critical"/.test(smoke));
+check('text that never changed is the frozen selector, and critical',
+  /never changed while a reply was being generated[\s\S]{0,200}|health: "critical",\s*\n\s*detail: "the assistant text never changed/.test(smoke));
+check('the reply is checked for content, not presence', /reply\.includes\(expect\)/.test(smoke));
+check('it uses a thread of its own', /setThreadKind\("worker"\)[\s\S]{0,400}navigateFresh/.test(agent));
+check('npm run smoke exists', !!JSON.parse(read('package.json')).scripts.smoke);
+
 // Step review. All renderer code, and two of these are bugs that would only
 // show up at runtime: Electron has no window.prompt, and a build waiting on a
 // verdict nobody will give never ends.

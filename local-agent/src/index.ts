@@ -21,6 +21,7 @@ import { MANIFEST_NAME } from "./run-manifest.js";
 import { Checkpoint, mergeCheckpoint, sealCheckpoint, checkpointName, CHECKPOINT_DIR } from "./checkpoint.js";
 import { addTurn, shouldRollOver, budgetFor, describeSize } from "./context-budget.js";
 import { judgeSelectors } from "./health/selector-health.js";
+import { judgeSmoke, SmokeObservations } from "./health/smoke-report.js";
 import { BUILD_STATE_DIR } from "./build-state.js";
 
 // Every extension the check planner knows about. A file the walker misses is a
@@ -932,6 +933,115 @@ async function runBuildStep(controller: PlaywrightController, config: ProviderCo
  * login wall means it does not. Nothing is typed and nothing is sent.
  */
 /**
+ * One real round trip against a live provider, judged strictly.
+ *
+ * The passive check cannot see four of the things that matter - the stop button
+ * only exists while a reply generates, the stream only fires during one,
+ * whether the assistant text GROWS needs a reply in flight, and how long
+ * completion takes needs a clock. Every expensive failure this project has had
+ * lived in those four.
+ *
+ * It sends one short message, so it costs a real request against the account.
+ * That is why it is a command you run rather than something that happens on
+ * startup, and why it uses a fresh conversation of its own: it must never write
+ * into a thread a build is relying on.
+ *
+ * The prompt asks for a deterministic answer inside a code block, which lets the
+ * reply be checked for CONTENT rather than mere presence - "some text was found"
+ * is satisfied by reading the wrong element - and gives the Copy control
+ * something real to be tested against.
+ */
+const SMOKE_TOKEN = "closeni-smoke-ok";
+const SMOKE_PROMPT =
+  "Reply with nothing but a single Python code block containing exactly this one line:\n" +
+  "print('" + SMOKE_TOKEN + "')\n" +
+  "No explanation before or after it.";
+
+async function smokeMode(providerId: string) {
+  const registry = new ProviderRegistry();
+  registry.loadProviders();
+  const config = registry.getProvider(providerId);
+  if (!config) { console.log("Provider not found: " + providerId); process.exitCode = 1; return; }
+  if (config.comingSoon) {
+    console.log(config.name + " is gated, so there is nothing to smoke test.");
+    process.exitCode = 1;
+    return;
+  }
+
+  const controller = new PlaywrightController(config);
+  // No workspace, and "worker" as the thread kind: this must not adopt, resume
+  // or overwrite any conversation a build might be using.
+  controller.setWorkspace("");
+  controller.setThreadKind("worker");
+
+  const obs: SmokeObservations = {
+    stopConfigured: !!config.selectors.stopButton,
+    streamConfigured: !!config.selectors.streamUrlPattern,
+    copyConfigured: !!config.selectors.copyButton,
+    expect: SMOKE_TOKEN,
+  };
+
+  try {
+    await controller.launch(config);
+    await controller.navigateFresh(config);
+    const signedIn = await controller.waitForLogin(30000);
+    if (!signedIn) {
+      console.log("Not signed in to " + config.name + " - sign in through the app first.");
+      process.exitCode = 1;
+      return;
+    }
+
+    const prevCount = await controller.countMessages(config);
+    const prevContent = await controller.getLastMessageText(config);
+
+    const started = Date.now();
+    await controller.sendPrompt(SMOKE_PROMPT, config);
+    obs.sent = true;
+
+    // Observing the REAL wait, not a copy of it. A reimplementation here would
+    // keep passing after the original broke, which is the one thing a smoke
+    // test must never do.
+    let growths = 0;
+    let lastChars = -1;
+    let stopSeen = false;
+    const reply = await controller.waitForResponse(config, prevCount, prevContent, (tick) => {
+      if (tick.stopVisible) stopSeen = true;
+      if (tick.chars !== lastChars) { if (lastChars !== -1) growths++; lastChars = tick.chars; }
+    });
+    obs.elapsedMs = Date.now() - started;
+    obs.textGrowths = growths;
+    obs.stopSeen = stopSeen;
+    obs.reply = reply || "";
+
+    const streams = controller.streamStats();
+    obs.streamsOpened = streams.opened;
+    obs.streamsClosed = streams.closed;
+
+    if (config.selectors.copyButton) {
+      const blocks = await controller.readCodeViaCopy(config);
+      obs.copied = blocks && blocks.length ? blocks.join("\n") : null;
+    }
+  } catch (e: any) {
+    console.log("Smoke test could not complete: " + (e && e.message ? e.message : e));
+  } finally {
+    await controller.close();
+  }
+
+  const report = judgeSmoke(obs);
+  console.log("");
+  console.log("  " + config.name + " - live smoke test");
+  console.log("  " + "-".repeat(62));
+  for (const f of report.findings) {
+    const mark = f.health === "ok" ? " ok " : f.health === "skipped" ? "  - " : f.health.slice(0, 4).toUpperCase();
+    console.log("  " + mark + "  " + f.step.padEnd(18) + f.detail);
+  }
+  console.log("  " + "-".repeat(62));
+  console.log("  " + (report.ok ? "PASS" : "FAIL") + " - " + report.summary);
+  console.log("");
+  if (!report.ok) process.exitCode = 1;
+}
+
+/**
  * Check a provider's selectors without running a build.
  *
  * Resumes this workspace's conversation when there is one, because that is the
@@ -1418,6 +1528,7 @@ async function main() {
     else if (mode === "research") await researchMode(prompt);
     // Positional layout differs from the other modes: workspace and provider
     // come straight after the mode, because there is no per-step prompt.
+    else if (mode === "smoke") await smokeMode(args[1] || "deepseek");
     else if (mode === "health") await healthMode(args[1] || "deepseek", args[2] || "");
     else if (mode === "build-session") await buildSessionMode(args[1] || path.resolve(process.cwd()), args[2] || "deepseek", args[3] || "auto");
     // Positional layout: workspace, provider, step index, suggestion text.

@@ -202,6 +202,11 @@ export class PlaywrightController {
     setBuildLedger(this.sessionStoreFile, this.workspace, ledger);
   }
 
+  /** Reply streams seen since the last send, for the smoke report. */
+  streamStats(): { opened: number; closed: number } {
+    return { opened: this.streamsOpened, closed: this.streamsClosed };
+  }
+
   getConversationSize(): { chars: number; turns: number } {
     return getConversationSize(this.sessionStoreFile, this.workspace);
   }
@@ -695,7 +700,20 @@ export class PlaywrightController {
     }
   }
 
-  async waitForResponse(config: ProviderConfig, prevCount: number, prevContent: string): Promise<string> {
+  /**
+   * What each poll of the wait loop saw.
+   *
+   * Optional, and used only by the smoke test. It exists so that test can watch
+   * the REAL wait rather than a reimplementation of it - a copy would keep
+   * passing after the original broke, which is the one thing a smoke test must
+   * not do.
+   */
+  async waitForResponse(
+    config: ProviderConfig,
+    prevCount: number,
+    prevContent: string,
+    observe?: (tick: { messages: number; chars: number; stopVisible: boolean }) => void,
+  ): Promise<string> {
     if (!this.page) throw new Error("Browser not launched");
     const maxWait = config.completionRules?.maxWaitMs || DEFAULT_MAX_WAIT_MS;
     console.log("Waiting for AI response (" + Math.round(maxWait / 1000) + "s timeout)...");
@@ -715,10 +733,17 @@ export class PlaywrightController {
       const count = await this.countMessages(config);
       const text = await this.getLastMessageText(config);
 
+      let stopVisibleNow = false;
       if (useStopButton) {
         const visible = await this.stopButtonVisible(config);
+        stopVisibleNow = visible;
         if (visible) { stopSeen = true; stopGone = false; }
         else if (stopSeen) stopGone = true;
+      }
+      // Never allowed to break the wait: an observer that throws would turn a
+      // diagnostic into the failure it was added to diagnose.
+      if (observe) {
+        try { observe({ messages: count, chars: (text || "").length, stopVisible: stopVisibleNow }); } catch {}
       }
 
       // A reply to a follow-up is usually SHORTER than the answer before it, so
@@ -868,6 +893,15 @@ export class PlaywrightController {
    *
    * Returns null whenever anything is off, so the caller keeps what it had.
    */
+  /**
+   * The code blocks of the last reply, read through the provider's own Copy
+   * control. Public only so the smoke test can check that path directly; the
+   * build path reaches it through extraction, where it corrects the DOM.
+   */
+  async readCodeViaCopy(config: ProviderConfig): Promise<string[] | null> {
+    return this.copiedCodeBlocks(config);
+  }
+
   private async copiedCodeBlocks(config: ProviderConfig): Promise<string[] | null> {
     const sel = config.selectors.copyButton;
     if (!this.page || !sel) return null;

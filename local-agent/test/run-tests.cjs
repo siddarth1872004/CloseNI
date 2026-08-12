@@ -2697,6 +2697,86 @@ function testStepTests() {
   check("a huge failure dump is capped", F.buildTestFollowUp("e".repeat(9000), []).length < 3000);
 }
 
+function testSmokeReport() {
+  section("one real round trip, judged strictly");
+  const S = require(path.join(DIST, "health/smoke-report.js"));
+
+  const good = {
+    sent: true, stopSeen: true, stopConfigured: true,
+    streamsOpened: 1, streamsClosed: 1, streamConfigured: true,
+    textGrowths: 6, elapsedMs: 6800,
+    reply: "```python\nprint('closeni-smoke-ok')\n```",
+    expect: "closeni-smoke-ok",
+    copied: "print('closeni-smoke-ok')", copyConfigured: true,
+  };
+  function find(rep, step) { return rep.findings.filter(function (f) { return f.step === step; })[0]; }
+
+  const healthy = S.judgeSmoke(good);
+  check("a working provider passes", healthy.ok === true, healthy.summary);
+  check("and every check is reported", healthy.findings.length === 7, String(healthy.findings.length));
+
+  // THE bug. The frozen assistant selector did not fail - it passed after 300s
+  // watching a node that was the previous answer. Both halves must be caught.
+  const frozen = S.judgeSmoke(Object.assign({}, good, { textGrowths: 0, elapsedMs: 301000 }));
+  check("text that never changed is critical", find(frozen, "assistantMessage").health === "critical");
+  check("and the report fails", frozen.ok === false);
+  check("300s for one line is also critical", find(frozen, "completion").health === "critical");
+  check("the completion note explains it is on the fallback",
+    /fallback/.test(find(frozen, "completion").detail), find(frozen, "completion").detail);
+
+  // A slow pass is still a failure - reporting it green is how it survived.
+  const slow = S.judgeSmoke(Object.assign({}, good, { elapsedMs: S.COMPLETION_BUDGET_MS + 1 }));
+  check("just over the budget fails", slow.ok === false);
+  const fast = S.judgeSmoke(Object.assign({}, good, { elapsedMs: S.COMPLETION_BUDGET_MS - 1 }));
+  check("just under it passes", fast.ok === true);
+  check("never completing is critical",
+    S.judgeSmoke(Object.assign({}, good, { elapsedMs: 0 })).ok === false);
+
+  // Content, not presence. Reading the wrong element yields text, just not ours.
+  const wrong = S.judgeSmoke(Object.assign({}, good, { reply: "Sure! Here is some Python for you." }));
+  check("a reply without the expected answer is critical", find(wrong, "replyContent").health === "critical");
+  check("and the report says what came back instead",
+    /Sure! Here is some Python/.test(find(wrong, "replyContent").detail));
+  check("an empty reply is critical",
+    find(S.judgeSmoke(Object.assign({}, good, { reply: "" })), "replyContent").health === "critical");
+
+  // Degraded: a fallback exists, so builds still work and are worse.
+  const noStop = S.judgeSmoke(Object.assign({}, good, { stopSeen: false }));
+  check("a stop button that never appeared is degraded", find(noStop, "stopButton").health === "degraded");
+  check("and does not fail the run", noStop.ok === true);
+  const noStream = S.judgeSmoke(Object.assign({}, good, { streamsOpened: 0, streamsClosed: 0 }));
+  check("a stream pattern that never matched is degraded", find(noStream, "replyStream").health === "degraded");
+  check("and the note says it is a guess until confirmed",
+    /Network tab/.test(find(noStream, "replyStream").detail));
+  const halfStream = S.judgeSmoke(Object.assign({}, good, { streamsOpened: 2, streamsClosed: 1 }));
+  check("a stream that opened and never closed is degraded", find(halfStream, "replyStream").health === "degraded");
+  const noCopy = S.judgeSmoke(Object.assign({}, good, { copied: null }));
+  check("a copy control returning nothing is degraded", find(noCopy, "copyButton").health === "degraded");
+  check("and does not fail the run", noCopy.ok === true);
+  const oddCopy = S.judgeSmoke(Object.assign({}, good, { copied: "print('something else')" }));
+  check("a copy control returning the wrong text is degraded", find(oddCopy, "copyButton").health === "degraded");
+
+  // Unconfigured is not a failure of this provider.
+  const bare = S.judgeSmoke(Object.assign({}, good, {
+    stopConfigured: false, streamConfigured: false, copyConfigured: false,
+    stopSeen: false, streamsOpened: 0, copied: null,
+  }));
+  check("unconfigured selectors are skipped, not failed", bare.ok === true, bare.summary);
+  check("the stop button reads as skipped", find(bare, "stopButton").health === "skipped");
+
+  // Nothing sent means nothing below it means anything.
+  const unsent = S.judgeSmoke({ sent: false });
+  check("a prompt that never sent is critical", find(unsent, "send").health === "critical");
+  check("and the report fails", unsent.ok === false);
+  check("empty observations do not throw", typeof S.judgeSmoke({}).summary === "string");
+  check("undefined does not throw", S.judgeSmoke(undefined).ok === false);
+
+  check("a passing summary says the read path works",
+    /whole read path is working/.test(healthy.summary), healthy.summary);
+  check("a degraded summary warns about the fallback",
+    /slower than they should be/.test(noStop.summary), noStop.summary);
+}
+
 (async () => {
   testEditPlanParsing();
   testPlanParsing();
@@ -2750,6 +2830,7 @@ function testStepTests() {
   testSelectorHealth();
   testTypeChecks();
   testStepTests();
+  testSmokeReport();
 
   console.log("\n" + (fail === 0 ? "PASS" : "FAIL") + " — " + pass + " passed, " + fail + " failed");
   process.exit(fail === 0 ? 0 : 1);

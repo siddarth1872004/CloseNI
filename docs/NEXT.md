@@ -162,10 +162,15 @@ which currently uses an unauthenticated API and is rate-limited.
 The verification work has repeatedly caught things reading could not. Worth
 extending:
 
-- **A live-provider smoke test** that runs one real chat and reports whether
-  each selector still matched. The single most valuable test this project could
-  have, and the only one that would have caught today's failures before a user
-  did.
+- ~~**A live-provider smoke test.**~~ **Built** - `npm run smoke [provider]`.
+  Sends one deterministic prompt and judges the whole read path: the stop button
+  appearing, the reply stream opening and closing, whether the assistant text
+  actually grows, how long completion took, whether the reply contains the exact
+  expected token, and what the Copy control returns. It asserts a 60s budget
+  rather than reporting a duration, because the frozen selector did not fail - it
+  passed after 300 seconds. **Not yet run against a live provider**, which is the
+  one thing left to make it worth anything. Design:
+  `docs/superpowers/specs/2026-08-11-live-smoke-test-design.md`.
 - **Record and replay**: capture a real session's network traffic once, then
   replay it in tests. Real provider behaviour, no network, no account.
 - **Keep every fix's evidence in the commit.** It has been the difference

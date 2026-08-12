@@ -38,7 +38,8 @@
     "assets": "node scripts/make-svg-assets.mjs && node scripts/make-screenshots.mjs",
     "trial": "node scripts/trial-build.mjs",
     "edge": "node scripts/edge-cases.mjs",
-    "verify:all": "npm run verify && npm run edge && npm test"
+    "verify:all": "npm run verify && npm run edge && npm test",
+    "smoke": "node local-agent/dist/index.js smoke"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
