@@ -208,6 +208,17 @@ check('a rolled-over thread is seeded as a cold one',
   /startFreshConversation\(config\)[\s\S]{0,400}buildPrompt\(effectivePrompt, ctx\.tree/.test(agent));
 check('repairs count towards the conversation too',
   /const followUp = buildFollowUp[\s\S]{0,500}addTurn\(controller\.getConversationSize\(\), followUp\.length/.test(agent));
+// Timing. The value is in separating "waiting on the model" from "running a
+// slow test suite", so what is pinned is that phases are measured rather than
+// step totals guessed at.
+const timing = read('desktop/step-timing.js');
+check('timing comes from observed phases, not inference',
+  /CN\.notePhase/.test(read('desktop/renderer.js')) && /markPhase\(stepTimer/.test(builder));
+check('time nobody accounted for is named, not folded into a neighbour',
+  /UNATTRIBUTED/.test(timing));
+check('timing survives a restart', /timing\?: \{ totalMs/.test(read('local-agent/src/build-state.ts')));
+check('stored timing is re-validated on read', /function readTiming/.test(read('local-agent/src/build-state.ts')));
+
 // The plan editor. dependsOn is index-based, so the danger is an edit that
 // silently produces an unschedulable graph - which falls back to the chain and
 // undoes the scheduler work rather than failing loudly.

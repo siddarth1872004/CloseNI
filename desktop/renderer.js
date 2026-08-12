@@ -318,6 +318,10 @@ function setPhase(p) {
   box.className = "phase " + kind;
   $("phase-text").textContent = label;
   $("phase-detail").textContent = (p && p.detail) || "";
+  // Every phase is reported at the moment it was observed on the page, so the
+  // clock here is measuring the real thing rather than an inference. The
+  // builder owns the per-step timer; this only forwards the transition.
+  if (window.CN && window.CN.notePhase) window.CN.notePhase(name);
 }
 
 window.api.onPhase(setPhase);
@@ -1372,6 +1376,7 @@ window.CN = {
   // Replaced by builder.js, which loads after this. Present so a workspace can
   // be opened before it does without the caller having to know the load order.
   restoreBuild: function () { return Promise.resolve(null); },
+  notePhase: function () {},
 };
 
 /**

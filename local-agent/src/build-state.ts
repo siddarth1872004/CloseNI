@@ -24,6 +24,14 @@ export interface BuildStateStep {
   dependsOn?: number[];
   /** Did the plan say this step has behaviour worth asserting? */
   testable?: boolean;
+  /**
+   * How long the step took, and where the time went.
+   *
+   * Phase names are whatever the agent reported, so this deliberately does not
+   * validate them against a list: a new phase should show up in the report the
+   * day it is added, not the day someone remembers to update a constant here.
+   */
+  timing?: { totalMs: number; phases: Record<string, number> };
   status: StepStatus;
 }
 
@@ -56,6 +64,26 @@ function readStatus(v: any): StepStatus {
   return STATUSES.indexOf(v) === -1 ? "pending" : v;
 }
 
+/**
+ * Timing as it should be stored, or absent.
+ *
+ * Every number is re-checked rather than trusted: this round-trips through JSON
+ * on disk that a person can edit, and a NaN reaching formatDuration would put
+ * "NaNms" in the report.
+ */
+function readTiming(v: any): { totalMs: number; phases: Record<string, number> } | undefined {
+  if (!v || typeof v !== "object") return undefined;
+  const total = Number(v.totalMs);
+  if (!Number.isFinite(total) || total < 0) return undefined;
+  const phases: Record<string, number> = {};
+  const src = v.phases && typeof v.phases === "object" ? v.phases : {};
+  for (const k of Object.keys(src)) {
+    const n = Number(src[k]);
+    if (Number.isFinite(n) && n > 0) phases[k] = Math.round(n);
+  }
+  return { totalMs: Math.round(total), phases: phases };
+}
+
 /** What to write for the builder's current step list. */
 export function serialiseBuildState(
   plan: { summary?: string; runCommand?: string } | null,
@@ -79,6 +107,7 @@ export function serialiseBuildState(
       // graph back into a chain, so one failure blocks everything behind it.
       dependsOn: Array.isArray(s && s.dependsOn) ? s.dependsOn.slice() : undefined,
       testable: s && s.testable === true ? true : undefined,
+      timing: readTiming(s && s.timing),
       status: readStatus(s && s.status),
     })),
   };
@@ -110,6 +139,7 @@ export function parseBuildState(raw: any): BuildState | null {
       files: Array.isArray(s.files) ? s.files.filter((f: any) => typeof f === "string") : [],
       dependsOn: Array.isArray(s.dependsOn) ? s.dependsOn.slice() : undefined,
       testable: s.testable === true ? true : undefined,
+      timing: readTiming(s.timing),
       status: readStatus(s.status),
     });
   }

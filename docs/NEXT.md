@@ -183,7 +183,14 @@ so there are now drift checks that the markup and the prose agree. Design:
   not - staging only each step's own paths left everything else at HEAD, so
   early commits contained modules created later. Design:
   `docs/superpowers/specs/2026-08-11-export-branch-design.md`.
-- **Cost/time reporting**: how long each step took, where the wait went.
+- ~~**Cost/time reporting**: how long each step took, where the wait went.~~
+  **Done**, and there is no cost - CloseNI drives free web chats, so time is all
+  there is to report. The seven phases the agent already emits are observed on
+  the page rather than inferred, which is what makes timing them worth anything:
+  a four-minute step was either waiting on the model or running a slow test
+  suite, and a step total cannot tell those apart. Time nobody can account for is
+  reported as `unaccounted` rather than folded into a neighbour. Design:
+  `docs/superpowers/specs/2026-08-11-step-timing-design.md`.
 - **A headless CLI** - `closeni build ./project "add auth"` with no window, for
   people who want it in a script.
 

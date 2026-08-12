@@ -2337,6 +2337,24 @@ function testBuildState() {
 
   // Where it goes. The workspace, beside closeni.run.json - so the answer
   // survives this install rather than living in app state.
+
+  // Timing round-trips with the rest of a build, and is re-validated on read:
+  // this is JSON on disk a person can edit, and a NaN reaching formatDuration
+  // would print "NaNms" in the report.
+  const timed = B.serialiseBuildState(plan,
+    [{ title: "a", status: "done", timing: { totalMs: 104100, phases: { writing: 78000, checking: 23400 } } }], {});
+  check("timing is stored", timed.steps[0].timing.totalMs === 104100);
+  check("and its phases", timed.steps[0].timing.phases.writing === 78000);
+  const readBack = B.parseBuildState(JSON.stringify(timed));
+  check("timing survives a restart", readBack.steps[0].timing.phases.checking === 23400);
+  check("a NaN total is dropped",
+    B.parseBuildState('{"version":1,"steps":[{"timing":{"totalMs":"soon"}}]}').steps[0].timing === undefined);
+  check("a negative phase is dropped",
+    JSON.stringify(B.parseBuildState('{"version":1,"steps":[{"timing":{"totalMs":5,"phases":{"a":-3,"b":7}}}]}')
+      .steps[0].timing.phases) === '{"b":7}');
+  check("a step with no timing stays without one",
+    B.parseBuildState('{"version":1,"steps":[{"title":"a"}]}').steps[0].timing === undefined);
+
   check("it is stored in the workspace", B.BUILD_STATE_DIR === ".closeni" && B.BUILD_STATE_NAME === "build.json");
 }
 
@@ -3078,6 +3096,66 @@ function testPlanEdit() {
   check("the result still schedules", sched.graphFor(merged.steps).declared === true);
 }
 
+function testStepTiming() {
+  section("where a build's time went");
+  const T = require(path.join(__dirname, "..", "..", "desktop", "step-timing.js"));
+
+  // A step: 2s before the first phase is reported, then sending, writing,
+  // applying, checking - and 1s after the last phase closes.
+  let t = T.newTimer(0);
+  T.markPhase(t, "sending", 2000);
+  T.markPhase(t, "writing", 2400);
+  T.markPhase(t, "applying", 80400);
+  T.markPhase(t, "checking", 80700);
+  T.finish(t, 104100);
+
+  check("the total is wall clock for the step", t.totalMs === 104100, String(t.totalMs));
+  check("the model wait is attributed to writing", t.phases.writing === 78000, String(t.phases.writing));
+  check("sending is its own line", t.phases.sending === 400);
+  check("applying is separated from checking", t.phases.applying === 300 && t.phases.checking === 23400);
+
+  // Time before any phase is reported belongs to nothing, and saying so beats
+  // folding it into a neighbour - a timing report that guesses starts lying.
+  check("time before the first phase is unattributed", t.phases[T.UNATTRIBUTED] === 2000, JSON.stringify(t.phases));
+  check("every millisecond is accounted for",
+    Object.keys(t.phases).reduce(function (a, k) { return a + t.phases[k]; }, 0) === t.totalMs);
+
+  const rows = T.phaseRows(t);
+  check("phases are listed longest first", rows[0].phase === "writing" && rows[1].phase === "checking");
+  check("zero-length phases are dropped", rows.every(function (r) { return r.ms > 0; }));
+
+  check("finishing twice does not double-count", T.finish(t, 999999).totalMs === 104100);
+
+  // A build rolls its steps together.
+  let u = T.newTimer(0);
+  T.markPhase(u, "writing", 0);
+  T.finish(u, 10000);
+  const sum = T.summarise([t, u]);
+  check("every step is counted", sum.steps === 2);
+  check("totals add up", sum.totalMs === 114100);
+  check("writing dominates", sum.phases[0].phase === "writing" && sum.phases[0].ms === 88000);
+  check("percentages are of counted time, not the clock",
+    sum.phases.reduce(function (a, r) { return a + r.percent; }, 0) >= 99);
+  check("an empty build does not throw", T.summarise([]).totalMs === 0);
+  check("nulls are ignored", T.summarise([null, undefined]).steps === 0);
+
+  // Durations someone can read at a glance.
+  check("sub-second is milliseconds", T.formatDuration(400) === "400ms");
+  check("seconds keep one decimal", T.formatDuration(23400) === "23.4s");
+  check("minutes drop it", T.formatDuration(102000) === "1m 42s");
+  check("seconds are zero-padded", T.formatDuration(64000) === "1m 04s");
+  // 59.6s rounds to 60 and would otherwise read as "3m 60s".
+  check("a rounding carry rolls the minute", T.formatDuration(239600) === "4m 00s");
+  check("zero is zero", T.formatDuration(0) === "0ms");
+  check("nonsense does not throw", T.formatDuration(NaN) === "0ms" && T.formatDuration(-5) === "0ms");
+
+  // Only the durable half is stored.
+  const rec = T.toRecord(t);
+  check("a record keeps the total and the phases", rec.totalMs === 104100 && rec.phases.writing === 78000);
+  check("and drops the live cursor", !("phaseAt" in rec) && !("phase" in rec));
+  check("no timer means no record", T.toRecord(null) === undefined);
+}
+
 (async () => {
   testEditPlanParsing();
   testPlanParsing();
@@ -3136,6 +3214,7 @@ function testPlanEdit() {
   await testResearch();
   testExportBranch();
   testPlanEdit();
+  testStepTiming();
 
   console.log("\n" + (fail === 0 ? "PASS" : "FAIL") + " — " + pass + " passed, " + fail + " failed");
   process.exit(fail === 0 ? 0 : 1);

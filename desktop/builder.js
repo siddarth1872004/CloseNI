@@ -44,6 +44,21 @@
     });
   }
 
+  /**
+   * The step currently on the clock.
+   *
+   * A session runs one step at a time, so "which step is this phase about" has
+   * exactly one answer - the same property that lets the review gate work. A
+   * phase arriving with nothing running belongs to a chat or a plan, not to a
+   * build, and is dropped.
+   */
+  let stepTimer = null;
+
+  CN.notePhase = function (name) {
+    if (!stepTimer || !window.CNTiming) return;
+    window.CNTiming.markPhase(stepTimer, name === "idle" ? null : name);
+  };
+
   function setStatusOf(i, st) {
     steps[i].status = st;
     renderList();
@@ -100,6 +115,7 @@
         title: s.title, detail: s.detail, files: s.files || [],
         dependsOn: Array.isArray(s.dependsOn) ? s.dependsOn.slice() : undefined,
         testable: s.testable === true,
+        timing: s.timing,
         status: s.status || "pending", result: null,
       };
     });
@@ -260,6 +276,19 @@
     const body = $("step-files");
     body.innerHTML = "";
 
+    if (s.timing && window.CNTiming) {
+      const rows = window.CNTiming.phaseRows({ phases: s.timing.phases });
+      const t = document.createElement("div");
+      t.className = "file-card";
+      t.innerHTML = '<div class="file-card-head"><span class="file-path">time</span>' +
+        '<span class="file-mode">' + window.CNTiming.formatDuration(s.timing.totalMs) + '</span></div>' +
+        '<div class="file-body open"><pre>' + CN.escapeHtml(
+          rows.map(function (r) {
+            return r.phase.padEnd(14) + window.CNTiming.formatDuration(r.ms);
+          }).join("\n") || "(no phases recorded)") + '</pre></div>';
+      body.appendChild(t);
+    }
+
     const detail = document.createElement("div");
     detail.className = "file-card";
     detail.innerHTML = '<div class="file-card-head"><span class="file-path">step detail</span><span class="file-mode">' + s.status + '</span></div>' +
@@ -341,6 +370,7 @@
 
     while (true) {
     selectStep(i);
+    stepTimer = window.CNTiming ? window.CNTiming.newTimer(Date.now()) : null;
     setStatusOf(i, "running");
     status("building " + (i + 1) + "/" + steps.length);
     CN.log("step " + (i + 1) + "/" + steps.length + ": " + (s.title || ""), "step");
@@ -356,10 +386,23 @@
       ? await CN.sendStep(i, stepDetail, (plan && plan.summary) || "", !!s.testable)
       : await CN.runAgent(args);
 
+    if (stepTimer && window.CNTiming) {
+      window.CNTiming.finish(stepTimer, Date.now());
+      s.timing = window.CNTiming.toRecord(stepTimer);
+      stepTimer = null;
+    }
+
     if (res && res.success) {
       const filesArr = await loadFileDiffs(ws, res);
       s.result = { files: filesArr };
       setStatusOf(i, "done");
+      if (s.timing) {
+        CN.log("step " + (i + 1) + " took " + window.CNTiming.formatDuration(s.timing.totalMs) +
+          " (" + window.CNTiming.phaseRows({ phases: s.timing.phases })
+            .slice(0, 3)
+            .map(function (r) { return r.phase + " " + window.CNTiming.formatDuration(r.ms); })
+            .join(", ") + ")", "step");
+      }
       CN.log("step " + (i + 1) + " done: " + (res.appliedFiles || []).join(", "), "ok");
       CN.toast("Step " + (i + 1) + " complete");
 
@@ -540,6 +583,18 @@
     const rb = $("review-bar");
     if (rb) rb.style.display = "none";
     const finished = steps.filter(function (s) { return s.status === "done" || s.status === "skipped"; }).length;
+    if (window.CNTiming) {
+      const roll = window.CNTiming.summarise(steps.map(function (st) {
+        return st.timing ? { totalMs: st.timing.totalMs, phases: st.timing.phases } : null;
+      }));
+      if (roll.steps) {
+        CN.log("build time " + window.CNTiming.formatDuration(roll.totalMs) +
+          " across " + roll.steps + " step(s)", "step");
+        roll.phases.forEach(function (r) {
+          CN.log("  " + r.phase + " " + window.CNTiming.formatDuration(r.ms) + " (" + r.percent + "%)", "step");
+        });
+      }
+    }
     status("finished: " + finished + "/" + steps.length);
     CN.log("build finished: " + finished + "/" + steps.length, "step");
     CN.toast("Build finished: " + finished + "/" + steps.length);
