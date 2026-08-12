@@ -3156,6 +3156,102 @@ function testStepTiming() {
   check("no timer means no record", T.toRecord(null) === undefined);
 }
 
+async function testHeadlessCli() {
+  section("a build with no window");
+  const cp = require("child_process");
+  const B = require(path.join(DIST, "build-state.js"));
+  const ROOT = path.join(__dirname, "..", "..");
+  const fake = "node " + JSON.stringify(path.join(__dirname, "fixtures", "fake-agent.js"));
+
+  function makeWorkspace(steps) {
+    const ws = fs.mkdtempSync(path.join(os.tmpdir(), "agentic-cli-"));
+    fs.mkdirSync(path.join(ws, ".closeni"), { recursive: true });
+    fs.writeFileSync(path.join(ws, ".closeni", "build.json"),
+      JSON.stringify(B.serialiseBuildState({ summary: "Demo" }, steps, {}), null, 2));
+    return ws;
+  }
+  function run(ws, env) {
+    return cp.spawnSync("node", [path.join(ROOT, "bin", "closeni.js"), "build", ws, "--json"], {
+      encoding: "utf8", timeout: 60000,
+      env: Object.assign({}, process.env, { CLOSENI_AGENT_CMD: fake }, env || {}),
+    });
+  }
+  function events(out) {
+    return String(out || "").split("\n").filter(Boolean).map(function (l) {
+      try { return JSON.parse(l); } catch (e) { return null; }
+    }).filter(Boolean);
+  }
+  function readState(ws) {
+    return B.parseBuildState(fs.readFileSync(path.join(ws, ".closeni", "build.json"), "utf8"));
+  }
+
+  // 1 <- 2 <- 3, and 4 depending on nothing. Step 2 fails.
+  const plan = [
+    { title: "Scaffold", detail: "d", files: [], dependsOn: [], status: "pending" },
+    { title: "Schema", detail: "d", files: [], dependsOn: [0], status: "pending" },
+    { title: "Routes", detail: "d", files: [], dependsOn: [1], status: "pending" },
+    { title: "Docs", detail: "d", files: [], dependsOn: [], status: "pending" },
+  ];
+
+  let ws = makeWorkspace(plan);
+  let r = run(ws, { FAKE_FAIL_STEPS: "1" });
+  let ev = events(r.stdout);
+  function has(type, index) {
+    return ev.some(function (e) { return e.type === type && (index === undefined || e.index === index); });
+  }
+
+  check("the declared graph is used", has("graph") && ev[0].declared === true, JSON.stringify(ev[0]));
+  check("step 1 runs and finishes", has("step-done", 0));
+  check("step 2 fails", has("step-failed", 1));
+  check("step 3 is blocked, not failed", has("step-blocked", 2) && !has("step-failed", 2));
+  // §2's whole point, executing for real rather than in a unit test: step 4
+  // depends on nothing, so a failure at step 2 must not stop it.
+  check("step 4 still runs, because nothing it needed failed", has("step-done", 3));
+  check("a build with a failed step exits non-zero", r.status === 1, String(r.status));
+
+  let st = readState(ws);
+  check("the statuses are written to disk",
+    st.steps.map(function (s) { return s.status; }).join(",") === "done,failed,blocked,done",
+    st.steps.map(function (s) { return s.status; }).join(","));
+  check("timing is recorded per step", st.steps[0].timing.totalMs >= 0 && st.steps[0].timing.phases.writing > 0,
+    JSON.stringify(st.steps[0].timing));
+
+  // Running again resumes: what succeeded is kept, what failed is retried.
+  r = run(ws);
+  ev = events(r.stdout);
+  check("a second run resumes rather than restarting", ev.some(function (e) { return e.type === "resume" && e.done === 2; }),
+    JSON.stringify(ev.filter(function (e) { return e.type === "resume"; })));
+  check("the completed steps are not run again", !has("step-start", 0) && !has("step-start", 3));
+  check("the failed step is retried", has("step-start", 1));
+  check("and what it blocked runs too", has("step-done", 2));
+  check("a completed build exits zero", r.status === 0, String(r.status));
+  check("every step ends done", readState(ws).steps.every(function (s) { return s.status === "done"; }));
+
+  fs.rmSync(ws, { recursive: true, force: true });
+
+  // A plan whose graph cannot be scheduled falls back to the chain rather than
+  // refusing, exactly as the app does.
+  ws = makeWorkspace([
+    { title: "a", detail: "d", files: [], dependsOn: [1], status: "pending" },
+    { title: "b", detail: "d", files: [], dependsOn: [], status: "pending" },
+  ]);
+  ev = events(run(ws).stdout);
+  check("an unschedulable graph falls back to the chain",
+    ev[0].type === "graph" && ev[0].declared === false && /later/.test(ev[0].reason || ""),
+    JSON.stringify(ev[0]));
+  fs.rmSync(ws, { recursive: true, force: true });
+
+  // Refusals, which are the paths a script hits first.
+  const noPlan = cp.spawnSync("node", [path.join(ROOT, "bin", "closeni.js"), "build", os.tmpdir()],
+    { encoding: "utf8", timeout: 20000 });
+  check("no plan exits 2 and says where it looked", noPlan.status === 2 && /build\.json/.test(noPlan.stderr));
+  const badAuto = cp.spawnSync("node", [path.join(ROOT, "bin", "closeni.js"), "build", os.tmpdir(), "--autonomy", "yolo"],
+    { encoding: "utf8", timeout: 20000 });
+  check("an unknown autonomy is refused", badAuto.status === 2, String(badAuto.status));
+  const help = cp.spawnSync("node", [path.join(ROOT, "bin", "closeni.js")], { encoding: "utf8", timeout: 20000 });
+  check("no arguments prints usage", /closeni build/.test(help.stdout));
+}
+
 (async () => {
   testEditPlanParsing();
   testPlanParsing();
@@ -3215,6 +3311,7 @@ function testStepTiming() {
   testExportBranch();
   testPlanEdit();
   testStepTiming();
+  await testHeadlessCli();
 
   console.log("\n" + (fail === 0 ? "PASS" : "FAIL") + " — " + pass + " passed, " + fail + " failed");
   process.exit(fail === 0 ? 0 : 1);

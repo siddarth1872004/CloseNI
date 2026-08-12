@@ -191,8 +191,15 @@ so there are now drift checks that the markup and the prose agree. Design:
   suite, and a step total cannot tell those apart. Time nobody can account for is
   reported as `unaccounted` rather than folded into a neighbour. Design:
   `docs/superpowers/specs/2026-08-11-step-timing-design.md`.
-- **A headless CLI** - `closeni build ./project "add auth"` with no window, for
-  people who want it in a script.
+- ~~**A headless CLI**~~ **Done** as `closeni build ./project`, and the refactor
+  this seemed to need was unnecessary: `desktop/scheduler.js` was already pure and
+  already require()d from Node by the unit suite. Only the DOM-bound half of
+  `builder.js` was stuck in the renderer. It builds an existing plan and does not
+  plan - that is the one thing worth a human eye - and defaults to running no
+  commands, since nobody is watching. It also makes the build path runnable
+  outside Electron for the first time, so scheduling, blocking, resume and
+  timing now have end-to-end coverage against a stub agent. Design:
+  `docs/superpowers/specs/2026-08-11-headless-cli-design.md`.
 
 ## 8 · Keeping the project honest
 

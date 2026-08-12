@@ -208,6 +208,21 @@ check('a rolled-over thread is seeded as a cold one',
   /startFreshConversation\(config\)[\s\S]{0,400}buildPrompt\(effectivePrompt, ctx\.tree/.test(agent));
 check('repairs count towards the conversation too',
   /const followUp = buildFollowUp[\s\S]{0,500}addTurn\(controller\.getConversationSize\(\), followUp\.length/.test(agent));
+// The headless CLI. Its value is that it runs the build path outside Electron,
+// so what is pinned is that it reuses the app's modules rather than
+// reimplementing them - a copy would drift and keep passing.
+const cli = read('bin/closeni.js');
+check('the CLI reuses the app scheduler rather than its own',
+  /require\(path\.join\(ROOT, "desktop", "scheduler\.js"\)\)/.test(cli) &&
+  !/function runnableSteps/.test(cli));
+check('and the app timing module', /require\(path\.join\(ROOT, "desktop", "step-timing\.js"\)\)/.test(cli));
+check('it builds an existing plan and does not plan', !/"plan"/.test(cli) && /only builds an existing plan/.test(cli));
+check('a headless run defaults to running no commands',
+  /autonomy: "never"/.test(cli));
+check('the CLI is shipped and installable',
+  !!JSON.parse(read('package.json')).bin.closeni &&
+  JSON.parse(read('package.json')).build.files.includes('bin/**/*'));
+
 // Timing. The value is in separating "waiting on the model" from "running a
 // slow test suite", so what is pinned is that phases are measured rather than
 // step totals guessed at.

@@ -39,7 +39,8 @@
     "trial": "node scripts/trial-build.mjs",
     "edge": "node scripts/edge-cases.mjs",
     "verify:all": "npm run verify && npm run edge && npm test",
-    "smoke": "node local-agent/dist/index.js smoke"
+    "smoke": "node local-agent/dist/index.js smoke",
+    "headless": "node bin/closeni.js"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
@@ -59,7 +60,8 @@
       "desktop/**/*",
       "local-agent/dist/**/*",
       "local-agent/config/**/*",
-      "build/icon.png"
+      "build/icon.png",
+      "bin/**/*"
     ],
     "asarUnpack": [
       "local-agent/**",
@@ -91,5 +93,8 @@
       "provider": "github",
       "releaseType": "draft"
     }
+  },
+  "bin": {
+    "closeni": "bin/closeni.js"
   }
 }
