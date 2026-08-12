@@ -2777,6 +2777,101 @@ function testSmokeReport() {
     /slower than they should be/.test(noStop.summary), noStop.summary);
 }
 
+async function testLocalModels() {
+  section("a provider that is not a web page");
+  const CS = require(path.join(DIST, "providers/chat-session.js"));
+  const O = require(path.join(DIST, "providers/ollama-session.js"));
+
+  // Every existing config predates transports and must keep working untouched.
+  check("no transport means browser", CS.transportOf({}) === "browser");
+  check("null does not throw", CS.transportOf(null) === "browser");
+  check("an unknown transport falls back to browser", CS.transportOf({ transport: "carrier-pigeon" }) === "browser");
+  check("ollama is recognised", CS.transportOf({ transport: "ollama" }) === "ollama");
+  check("isBrowserTransport agrees", CS.isBrowserTransport({}) === true && CS.isBrowserTransport({ transport: "ollama" }) === false);
+
+  // ollama list shows versioned tags; people write the bare name, and
+  // `ollama run` matches the same way.
+  check("an exact model name matches", O.hasModel(["llama3.2:latest"], "llama3.2:latest"));
+  check("a bare name finds a versioned tag", O.hasModel(["qwen2.5-coder:7b"], "qwen2.5-coder"));
+  check("a versioned request does not match a different version",
+    O.hasModel(["qwen2.5-coder:7b"], "qwen2.5-coder:14b") === false);
+  check("case does not matter", O.hasModel(["Qwen2.5-Coder:7b"], "qwen2.5-coder"));
+  check("an absent model is absent", O.hasModel(["llama3.2:latest"], "qwen2.5-coder") === false);
+  check("an empty request matches nothing", O.hasModel(["a:1"], "") === false);
+
+  check("model names are parsed", JSON.stringify(O.modelNames('{"models":[{"name":"a:1"},{"name":"b:2"}]}')) === '["a:1","b:2"]');
+  check("garbage yields no models", JSON.stringify(O.modelNames("{{")) === "[]");
+  check("a missing models array yields none", JSON.stringify(O.modelNames('{"x":1}')) === "[]");
+
+  check("a chat reply is read", O.replyText('{"message":{"content":"hi"}}') === "hi");
+  check("a generate reply is read too", O.replyText('{"response":"hi"}') === "hi");
+  check("an unreadable reply is empty", O.replyText("{{") === "");
+
+  // The message is what the user acts on, so it says what to do.
+  check("a refused connection says how to start the server",
+    /ollama serve/.test(O.describeFailure({ code: "ECONNREFUSED" }, "http://127.0.0.1:11434", "m")));
+  check("a timeout says a CPU model is slow, not broken",
+    /very slow/.test(O.describeFailure({ code: "ETIMEDOUT" }, "e", "m")));
+
+  // Against a real HTTP server, so the request path itself is exercised.
+  const http = require("http");
+  let lastBody = null;
+  const server = http.createServer(function (req, res) {
+    let body = "";
+    req.on("data", function (c) { body += c; });
+    req.on("end", function () {
+      if (req.url === "/api/tags") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ models: [{ name: "qwen2.5-coder:7b" }] }));
+        return;
+      }
+      lastBody = JSON.parse(body || "{}");
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ message: { content: "reply " + lastBody.messages.length } }));
+    });
+  });
+  await new Promise(function (r) { server.listen(0, "127.0.0.1", r); });
+  const endpoint = "http://127.0.0.1:" + server.address().port;
+
+  const good = new O.OllamaSession({ endpoint: endpoint, model: "qwen2.5-coder" });
+  const ready = await good.ready();
+  check("a reachable server holding the model is ready", ready.ok === true, ready.detail);
+
+  const missing = new O.OllamaSession({ endpoint: endpoint, model: "nothing-here" });
+  const notReady = await missing.ready();
+  check("a missing model is not ready", notReady.ok === false);
+  check("and the message says how to get it", /ollama pull nothing-here/.test(notReady.detail), notReady.detail);
+
+  check("no model configured is not ready",
+    (await new O.OllamaSession({ endpoint: endpoint }).ready()).ok === false);
+
+  // The conversation is ours: history accumulates and reset empties it.
+  check("a reply comes back", (await good.ask("one")) === "reply 1");
+  check("the history grows", good.turns() === 2);
+  check("the next turn carries it", (await good.ask("two")) === "reply 3");
+  check("the server saw the whole conversation", lastBody.messages.length === 3, JSON.stringify(lastBody.messages.length));
+  check("stream is off - the caller wants the whole answer", lastBody.stream === false);
+  check("the model is named in the request", lastBody.model === "qwen2.5-coder");
+  await good.reset();
+  check("reset empties the conversation", good.turns() === 0);
+
+  await new Promise(function (r) { server.close(r); });
+
+  // A failed turn must not leave its question in the history, or every later
+  // request re-sends a question that was never answered.
+  const dead = new O.OllamaSession({ endpoint: endpoint, model: "qwen2.5-coder", timeoutMs: 1500 });
+  let threw = false;
+  try { await dead.ask("hello"); } catch (e) { threw = /Nothing is listening|Could not reach/.test(e.message); }
+  check("a dead server throws a message that says what to do", threw);
+  check("and the failed turn is not left in the history", dead.turns() === 0);
+
+  // The shipped config has to actually be usable.
+  const cfg = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "config", "providers", "ollama.json"), "utf8"));
+  check("the shipped config declares the ollama transport", cfg.transport === "ollama");
+  check("and names a model", typeof cfg.model === "string" && cfg.model.length > 0);
+  check("and is marked chat-only", cfg.chatOnly === true);
+}
+
 (async () => {
   testEditPlanParsing();
   testPlanParsing();
@@ -2831,6 +2926,7 @@ function testSmokeReport() {
   testTypeChecks();
   testStepTests();
   testSmokeReport();
+  await testLocalModels();
 
   console.log("\n" + (fail === 0 ? "PASS" : "FAIL") + " — " + pass + " passed, " + fail + " failed");
   process.exit(fail === 0 ? 0 : 1);

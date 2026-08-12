@@ -126,9 +126,15 @@ the reply is**, which removes the DOM from the read path entirely.
 - **Un-gate Qwen** - page control already works; it needs a completion wait that
   survives a reasoning model, which the stream signal may simply solve.
 - **Un-gate GLM** - needs its selectors confirmed against the live site.
-- **Local models** (Ollama, LM Studio) - no browser, no scraping, no rate limit.
-  The architecture already separates "provider" from "how you talk to it", and
-  this would be the first provider that cannot break from a redesign.
+- ~~**Local models** (Ollama, LM Studio).~~ **Done for Chat**, and the claim here
+  was false: nothing separated "provider" from "how you talk to it".
+  `PlaywrightController` was a concrete class with a twenty-three method surface
+  that `index.ts` used directly, most of it meaningless off a web page. The seam
+  is now four methods - `start`, `ready`, `ask`, `reset` - with the browser behind
+  a thin adapter and Ollama as a second implementation in the same change, because
+  an abstraction with one implementor is a rename. Plan and build stay
+  browser-only and refuse a local provider with a sentence. Design:
+  `docs/superpowers/specs/2026-08-11-local-models-design.md`.
 - ~~**A provider health check** on startup.~~ **Done**, but not as described -
   a fresh-page probe would *not* have caught the frozen assistant selector,
   because an empty chat has no replies for `assistantMessage` to match, no code

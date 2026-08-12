@@ -51,6 +51,7 @@ Also: [CHANGELOG](CHANGELOG.md) · [Release process](docs/RELEASING.md)
 
 * **Zero-Credential Operations** — Playwright manages persistent browser profiles using existing web sign-ins. No key, no billing account, no quota dashboard.
 * **One verified provider** — DeepSeek is driven end to end. Qwen Studio and GLM are implemented but gated as coming soon rather than shipped as working.
+* **Ollama (local) — chat-only.** The first provider that is not a web page: no selectors, no login, no rate limit, and a conversation nobody else can redesign. Chat works; plan and build still need a browser provider and say so if you try. Point it at whatever `ollama list` shows.
 * **Adaptive Planning** — Deconstructs high-level prompts into granular, dependency-mapped task graphs. Step count scales with project size rather than being pinned to a fixed ceiling.
 * **One Conversation End To End** — Chat, planning and building all continue the same provider conversation, so a build step is a short instruction to a model that can already see the plan rather than a prompt that re-explains the project.
 * **Autonomous Error Recovery** — Captures compiler and linter output verbatim and feeds the real traceback back to the model, twice per step, then stops rather than looping.

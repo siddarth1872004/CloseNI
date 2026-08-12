@@ -1,0 +1,27 @@
+{
+  "id": "ollama",
+  "name": "Ollama (local)",
+  "baseUrl": "http://127.0.0.1:11434",
+  "enabled": true,
+  "transport": "ollama",
+  "_transportNote": "The first provider that is not a web page. No selectors, no completion heuristics, no login, no rate limit - and the conversation is ours, so nothing can virtualise or redesign it. Chat only for now: plan and build refuse this transport, because a small local model failing the strict JSON format would read as CloseNI being broken rather than the model being too small.",
+  "endpoint": "http://127.0.0.1:11434",
+  "model": "qwen2.5-coder",
+  "_modelNote": "Matched on the part before the colon, so this finds qwen2.5-coder:7b - the same way `ollama run` does. Change it to whatever `ollama list` shows.",
+  "timeoutMs": 300000,
+  "_timeoutNote": "Generous on purpose. A 7B model on a CPU takes minutes for a long answer, and cutting it off would report a working setup as broken.",
+  "chatOnly": true,
+  "selectors": {
+    "chatInput": "",
+    "sendButton": "",
+    "assistantMessage": ""
+  },
+  "_selectorsNote": "Empty and unused - this provider never opens a page. Present only because ProviderConfig requires the shape; the selector health check skips a provider whose transport is not a browser.",
+  "completionRules": {
+    "waitForStopButtonDisappear": false,
+    "maxWaitMs": 300000
+  },
+  "contextBudgetChars": 150000,
+  "_contextBudgetNote": "Roughly how much conversation this provider will hold before a build should continue in a new thread, in characters. A deliberately conservative guess - nothing can read the real window, and being wrong in this direction costs one seeded prompt while being wrong the other way loses a step fifteen deep. Counted from what we send and the replies we receive, never from the page.",
+  "profileDir": "ollama"
+}

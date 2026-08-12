@@ -22,6 +22,8 @@ import { Checkpoint, mergeCheckpoint, sealCheckpoint, checkpointName, CHECKPOINT
 import { addTurn, shouldRollOver, budgetFor, describeSize } from "./context-budget.js";
 import { judgeSelectors } from "./health/selector-health.js";
 import { judgeSmoke, SmokeObservations } from "./health/smoke-report.js";
+import { ChatSession, BrowserChatSession, transportOf, isBrowserTransport } from "./providers/chat-session.js";
+import { OllamaSession } from "./providers/ollama-session.js";
 import { BUILD_STATE_DIR } from "./build-state.js";
 
 // Every extension the check planner knows about. A file the walker misses is a
@@ -92,11 +94,28 @@ const REASK_FILES_PROMPT =
   "or as one code block per file with the path on the fence line, like \`\`\`python src/app.py. " +
   "Write each file completely - no ellipses and no '... rest unchanged'. No other text.";
 
+/**
+ * Refuse a provider that has no browser, in the paths that need one.
+ *
+ * Plan and build are browser-only for now. Saying so here costs one sentence;
+ * letting it through means failing somewhere inside a page interaction that
+ * will never happen, with an error about a selector on a provider that has no
+ * page at all.
+ */
+function requireBrowser(config: any, what: string): void {
+  if (isBrowserTransport(config)) return;
+  throw new Error(
+    config.name + " runs locally and is chat-only for now - " + what +
+    " still needs a browser provider. Switch to DeepSeek in Settings for this, " +
+    "and use " + config.name + " for Chat.");
+}
+
 async function openProvider(providerId: string, fresh: boolean = false, workspace: string = "") {
     const registry = new ProviderRegistry();
     registry.loadProviders();
     const config = registry.getUsableProvider(providerId);
     if (!config) throw new Error("Provider not found: " + providerId);
+    requireBrowser(config, "this");
     const controller = new PlaywrightController(config);
     controller.setWorkspace(workspace);
     await controller.launch(config);
@@ -136,6 +155,7 @@ async function openProviderForBuild(providerId: string, workspace: string, isFir
   registry.loadProviders();
   const config = registry.getUsableProvider(providerId);
   if (!config) throw new Error("Provider not found: " + providerId);
+  requireBrowser(config, "building");
   const controller = new PlaywrightController(config);
   controller.setWorkspace(workspace);
   // "chat", not "build": one conversation, tracked in one place.
@@ -150,25 +170,53 @@ async function openProviderForBuild(providerId: string, workspace: string, isFir
   return { controller: controller, config: config, resumed: resumed };
 }
 
+/**
+ * A session for whatever this provider is, browser or not.
+ *
+ * The only place that knows both transports exist. Everything above it works
+ * against four methods and never asks which kind it got.
+ */
+async function openChatSession(providerId: string, workspace: string): Promise<{ session: ChatSession; config: any }> {
+  const registry = new ProviderRegistry();
+  registry.loadProviders();
+  const config = registry.getUsableProvider(providerId);
+  if (!config) throw new Error("Provider not found: " + providerId);
+
+  if (transportOf(config as any) === "ollama") {
+    const session = new OllamaSession({
+      endpoint: (config as any).endpoint,
+      model: (config as any).model,
+      timeoutMs: (config as any).timeoutMs,
+    });
+    await session.start();
+    // Checked before a prompt is sent, because "nothing is listening on
+    // 127.0.0.1:11434" is a sentence someone can act on and a failure five
+    // layers down is not.
+    const state = await session.ready();
+    if (!state.ok) throw new Error(state.detail);
+    console.log(state.detail);
+    return { session: session, config: config };
+  }
+
+  const controller = new PlaywrightController(config);
+  const session = new BrowserChatSession(controller, config, { workspace: workspace, sleep: sleep });
+  await session.start();
+  return { session: session, config: config };
+}
+
 async function chatMode(prompt: string, providerId: string, workspace: string = "") {
   // Resume, do not restart. This used to force a fresh thread on every single
   // message, so the model never saw what was said a moment earlier and each
   // turn had to be made self-contained. "New Chat" clears the saved thread,
   // which is the supported way to start over.
-  const { controller, config } = await openProvider(providerId, false, workspace);
+  const { session } = await openChatSession(providerId, workspace);
   try {
-    const prevCount = await controller.countMessages(config);
-    const prevContent = await controller.getLastMessageText(config);
-    await controller.sendPrompt("You are in normal conversation mode. Answer with brief descriptions and high-level architecture. Do NOT include full code implementations unless explicitly asked. Use markdown for formatting.\n\nUser message:\n" + prompt, config);
-    await controller.waitForResponse(config, prevCount, prevContent);
-    let answer = "";
-    for (let i = 0; i < 4 && answer.trim().length < 2; i++) {
-      if (i > 0) await sleep(1500);
-      answer = await controller.getLastMessageStructured(config);
-      if (answer.trim().length < 2) answer = await controller.getLastMessageInnerText(config);
-    }
+    const answer = await session.ask(
+      "You are in normal conversation mode. Answer with brief descriptions and high-level " +
+      "architecture. Do NOT include full code implementations unless explicitly asked. " +
+      "Use markdown for formatting.\n\nUser message:\n" + prompt);
     emit({ success: true, answer: answer });
-  } finally { await controller.close(); }
+  } finally { await session.close(); }
 }
 
 async function planMode(transcript: string, workspace: string, providerId: string) {
@@ -1063,6 +1111,13 @@ async function healthMode(providerId: string, workspace: string) {
     return;
   }
 
+  if (!isBrowserTransport(config as any)) {
+    emit({ success: true, provider: config.id, name: config.name, resumed: false, ok: true,
+           summary: config.name + " does not use a browser, so it has no selectors to check. " +
+             "Its health is whether the local server is reachable and holding the model.",
+           findings: [] });
+    return;
+  }
   const controller = new PlaywrightController(config);
   controller.setWorkspace(workspace);
   controller.setThreadKind("worker");

@@ -88,10 +88,22 @@ check('every CSS theme block is registered',
 const provDir = join(ROOT, 'local-agent/config/providers');
 const provs = readdirSync(provDir).filter((f) => f.endsWith('.json'))
   .map((f) => JSON.parse(readFileSync(join(provDir, f), 'utf8')));
-const ready = provs.filter((p) => p.enabled && !p.comingSoon);
+// "Ready" means a provider that can do everything - chat, plan and build.
+// A chat-only provider is real and usable and must not be counted as one, or
+// the site would claim two providers can build a project when one of them
+// refuses the moment you press Build.
+const ready = provs.filter((p) => p.enabled && !p.comingSoon && !p.chatOnly);
+const chatOnly = provs.filter((p) => p.enabled && !p.comingSoon && p.chatOnly);
 const gated = provs.filter((p) => p.enabled && p.comingSoon);
 
 check('at least one provider is ready', ready.length >= 1, ready.map((p) => p.id).join(', '));
+check('every chat-only provider says so in its config',
+  chatOnly.every((p) => typeof p._transportNote === 'string' && p._transportNote.length > 40),
+  chatOnly.map((p) => p.id).join(', ') || 'none');
+for (const p of chatOnly) {
+  check(`README describes ${p.id} as chat-only`,
+    /chat[- ]only/i.test(readme) && readme.includes(p.name.split(' (')[0]), p.name);
+}
 check('every gated provider records why it is gated',
   gated.every((p) => typeof p._comingSoonReason === 'string' && p._comingSoonReason.length > 40),
   gated.map((p) => p.id).join(', ') || 'none gated');
