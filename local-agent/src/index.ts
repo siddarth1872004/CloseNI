@@ -18,6 +18,7 @@ import { buildApplyFollowUp, buildTestFollowUp } from "./follow-up.js";
 import { planBehaviourChecks, judge as judgeBehaviour, hasTestFiles } from "./verification/behaviour-checker.js";
 import { resolveTool } from "./verification/toolchain.js";
 import { MANIFEST_NAME } from "./run-manifest.js";
+import { defaultStorageRoot } from "./storage-paths.js";
 import { Checkpoint, mergeCheckpoint, sealCheckpoint, checkpointName, CHECKPOINT_DIR } from "./checkpoint.js";
 import { addTurn, shouldRollOver, budgetFor, describeSize } from "./context-budget.js";
 import { judgeSelectors } from "./health/selector-health.js";
@@ -1468,6 +1469,21 @@ function resolveArg(arg: string | undefined): string {
 }
 
 async function main() {
+  // Point a CLI run at the same storage the desktop app uses.
+  //
+  // Without this, storagePaths falls back to the shipped relative profileDir
+  // and a CLI looks at a browser profile nobody has ever signed in to - which
+  // is exactly what made the first live smoke run report "not signed in" while
+  // the app reported the opposite, minutes apart, on the same machine.
+  //
+  // Skipped when AGENT_PROVIDER_DIR is set: that means fixture providers, and a
+  // run pointed at fixture providers must keep fixture storage. The end-to-end
+  // suite depends on it.
+  if (!process.env.CLOSENI_STORAGE && !process.env.AGENT_PROVIDER_DIR) {
+    const root = defaultStorageRoot();
+    if (root) process.env.CLOSENI_STORAGE = root;
+  }
+
   const args = process.argv.slice(2);
   const mode = args[0] || "browser";
   const prompt = resolveArg(args[1]);

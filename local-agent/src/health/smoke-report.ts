@@ -75,6 +75,11 @@ export function judgeSmoke(obs: SmokeObservations): SmokeReport {
   const o = obs || {};
   const findings: SmokeFinding[] = [];
 
+  // Read up front: the assistant-selector verdict depends on whether the
+  // expected answer came back, not only on whether the text was seen changing.
+  const expect = String(o.expect || "");
+  const reply = String(o.reply || "");
+
   findings.push(o.sent
     ? { step: "send", health: "ok", detail: "the prompt reached the composer and went" }
     : { step: "send", health: "critical", detail: "the prompt could not be sent - nothing else below means anything" });
@@ -103,14 +108,30 @@ export function judgeSmoke(obs: SmokeObservations): SmokeReport {
       detail: n(o.streamsOpened) + " stream(s) opened and closed" });
   }
 
-  // The frozen selector, caught directly. Text that never changed means the
-  // element being watched is not the one receiving the reply.
-  if (n(o.textGrowths) === 0) {
-    findings.push({ step: "assistantMessage", health: "critical",
-      detail: "the assistant text never changed while a reply was being generated - the selector is watching something that is not the live answer, which is the failure that makes a build wait out its whole timeout and then report a slow model" });
-  } else {
+  // The frozen selector, caught directly - but only where zero really is
+  // evidence of one.
+  //
+  // waitForResponse waits three seconds before it starts polling, so a short
+  // reply is already finished by the first tick and its length never changes
+  // again. The first live run against DeepSeek hit exactly that: 43 characters,
+  // textGrowths 0, and the reply nonetheless read back perfectly - the exact
+  // token present and the Copy button returning the exact code. Calling that a
+  // frozen selector is the same mistake the passive check exists to avoid.
+  //
+  // Correct content proves the selector read the live answer. Zero growth then
+  // means the reply beat us to it, which is a fast provider, not a fault. Zero
+  // growth with content that is NOT ours is the real thing: a selector watching
+  // somebody else's answer, which is what made a build wait out 300 seconds.
+  const sawContent = !!expect && reply.includes(expect);
+  if (n(o.textGrowths) > 0) {
     findings.push({ step: "assistantMessage", health: "ok",
       detail: "the text changed " + n(o.textGrowths) + " time(s) while the reply arrived" });
+  } else if (sawContent) {
+    findings.push({ step: "assistantMessage", health: "ok",
+      detail: "the reply was already complete before polling started, so no change was observed - the expected answer was read back, so the selector is on the live message" });
+  } else {
+    findings.push({ step: "assistantMessage", health: "critical",
+      detail: "the assistant text never changed while a reply was being generated, and the expected answer was not read back - the selector is watching something that is not the live answer, which is the failure that makes a build wait out its whole timeout and then report a slow model" });
   }
 
   const elapsed = n(o.elapsedMs);
@@ -126,8 +147,6 @@ export function judgeSmoke(obs: SmokeObservations): SmokeReport {
 
   // Content, not merely presence. "Some text was found" is satisfied by reading
   // the wrong element; only the expected answer proves the read path.
-  const expect = String(o.expect || "");
-  const reply = String(o.reply || "");
   if (!expect) {
     findings.push({ step: "replyContent", health: "skipped", detail: "no expected content given" });
   } else if (!reply.trim()) {

@@ -35,9 +35,13 @@ the reply is**, which removes the DOM from the read path entirely.
   the single highest-value item left: no highlighting to un-parse, no toolbar
   text to filter, no virtualisation, and long replies stop being truncated by a
   list that only renders what is on screen.
-- **Confirm DeepSeek's endpoint.** `streamUrlPattern` is currently a guess
-  (`/api/.*(completion|chat_session|chat)`). One look at the Network tab
-  replaces the guess with a fact.
+- **Confirm DeepSeek's endpoint.** ~~Currently a guess.~~ **Measured wrong.**
+  `npm run smoke` against the live site on 11 August reported `replyStream`
+  degraded: `/api/.*(completion|chat_session|chat)` matched **no request** during
+  a real reply. So completion is running entirely on text stability today, and
+  the stream work in this section has never actually been exercised. Replacing
+  the pattern still needs one look at the Network tab - but it is now a known
+  defect rather than an unknown.
 - **Detect a refusal or a rate limit from the stream** rather than from prose.
   A provider saying "you have hit your limit" currently reads as a normal reply
   that happens not to contain JSON, and the build fails on a re-ask instead of
@@ -122,6 +126,12 @@ the reply is**, which removes the DOM from the read path entirely.
 **Section 4 complete.**
 
 ## 5 · Providers
+
+- **Fix DeepSeek's stop button.** New, and found the same way: the smoke test
+  reported `stopButton` never appearing during a real reply, so
+  `waitForStopButtonDisappear` never fires. Completion waits out text stability
+  instead - measured at 14.9s for a 43-character answer. A working selector here
+  would cut most of that from every step of every build.
 
 - **Un-gate Qwen** - page control already works; it needs a completion wait that
   survives a reasoning model, which the stream signal may simply solve.

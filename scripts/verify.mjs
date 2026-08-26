@@ -479,6 +479,10 @@ ${'-'.repeat(W)}
       with an injected transport, never over the network.
     · Whether generated projects are correct. The checks prove code parses
       and compiles, not that it behaves.
+    · Whether a full BUILD works against a live provider. The read path IS
+      verified - 'npm run smoke' passed against DeepSeek on 11 August - but no
+      plan has been built end to end since the checkpoint, rollover, review and
+      test work landed.
 ${'-'.repeat(W)}
 `);
 

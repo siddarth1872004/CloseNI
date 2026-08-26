@@ -12,7 +12,8 @@
     "_copyButtonNote": "Matches the code-block toolbar buttons; the caller filters by the label so Download is not clicked. .code-info-button-text is the only unhashed class on that control - the rest (ds-button--capsule etc.) are design-system modifiers and the surrounding path is entirely build hashes.",
     "_assistantNote": "ds-markdown first: it is the container DeepSeek renders assistant content into. The previous value led with [data-testid] and [class*=message][class*=assistant], which matched three nodes that never update while a reply streams - a build step sat at messages=3, chars=9019 for the full 300s wait because the node being watched was the PREVIOUS answer.",
     "streamUrlPattern": "/api/.*(completion|chat_session|chat)",
-    "_streamNote": "Used only to detect that a reply stream opened and closed - never to read the text, so the chunk format does not matter. A guess at the path until someone confirms it from the Network tab; if it never matches, nothing changes and text stability still decides."
+    "_streamNote": "MEASURED WRONG on 11 August 2026 by `npm run smoke` against the live site: this pattern matched no request during a real reply, so completion falls back to text stability. Kept rather than deleted so the next person knows it was tried and what it was. Replacing it needs one look at the Network tab during a reply - see docs/NEXT.md section 1.",
+    "_stopButtonNote": "MEASURED NOT MATCHING on 11 August 2026: the stop button never appeared during a real reply, so waitForStopButtonDisappear never fires and completion waits out text stability instead. A working selector here would cut roughly 8s off every step."
   },
   "completionRules": {
     "waitForStopButtonDisappear": true,

@@ -495,7 +495,7 @@ select{width:100%;}
 .phase.idle .phase-mark{background:var(--mut);animation:none;}
 
 .acct-actions{display:flex;flex-wrap:wrap;gap:var(--sp-2);margin-bottom:var(--sp-3);}
-.acct-actions .btn{flex:1 1 0;min-width:0;padding:5px 4px;font-size:10px;letter-spacing:.04em;}
+.acct-actions .btn{flex:1 1 auto;min-width:72px;padding:5px 4px;font-size:10px;letter-spacing:.04em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 #rail-controls{margin-bottom:var(--sp-3);}
 #rail-controls select{width:100%;margin-bottom:var(--sp-2);}
 #rail-controls .rail-toggle{display:flex;align-items:center;gap:var(--sp-2);

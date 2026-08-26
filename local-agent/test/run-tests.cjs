@@ -2734,11 +2734,42 @@ function testSmokeReport() {
   check("and every check is reported", healthy.findings.length === 7, String(healthy.findings.length));
 
   // THE bug. The frozen assistant selector did not fail - it passed after 300s
-  // watching a node that was the previous answer. Both halves must be caught.
-  const frozen = S.judgeSmoke(Object.assign({}, good, { textGrowths: 0, elapsedMs: 301000 }));
+  // watching a node that was the previous answer, so what it read back was that
+  // older answer rather than ours. Both halves must be caught.
+  const frozen = S.judgeSmoke(Object.assign({}, good, {
+    textGrowths: 0, elapsedMs: 301000, reply: "a previous answer, still on screen",
+  }));
   check("text that never changed is critical", find(frozen, "assistantMessage").health === "critical");
   check("and the report fails", frozen.ok === false);
   check("300s for one line is also critical", find(frozen, "completion").health === "critical");
+
+  // Found by the first live run against DeepSeek. waitForResponse waits 3s
+  // before it starts polling, so a short reply is already complete by the first
+  // tick: the length never changes and textGrowths is 0. The reply had been
+  // read correctly - the exact token was there and the Copy button returned the
+  // exact code - and the report still called the selector critical.
+  //
+  // Same rule as the passive check: zero is only evidence when something should
+  // have happened. Correct content proves the selector read the live answer,
+  // however few ticks saw it change.
+  const fastReply = S.judgeSmoke(Object.assign({}, good, { textGrowths: 0 }));
+  check("a reply that arrived before polling started is not a frozen selector",
+    find(fastReply, "assistantMessage").health === "ok", find(fastReply, "assistantMessage").detail);
+  check("and the run passes", fastReply.ok === true, fastReply.summary);
+  check("the note says why it saw no change",
+    /before[\s\S]{0,40}watching|already complete/i.test(find(fastReply, "assistantMessage").detail),
+    find(fastReply, "assistantMessage").detail);
+
+  // The real frozen selector is still caught: no change AND the content is not
+  // ours, because it is reading somebody else's answer.
+  const reallyFrozen = S.judgeSmoke(Object.assign({}, good, { textGrowths: 0, reply: "an older answer" }));
+  check("no change plus wrong content is still critical",
+    find(reallyFrozen, "assistantMessage").health === "critical");
+  check("and still fails the run", reallyFrozen.ok === false);
+  const emptyFrozen = S.judgeSmoke(Object.assign({}, good, { textGrowths: 0, reply: "" }));
+  check("no change plus an empty reply is critical",
+    find(emptyFrozen, "assistantMessage").health === "critical");
+
   check("the completion note explains it is on the fallback",
     /fallback/.test(find(frozen, "completion").detail), find(frozen, "completion").detail);
 
@@ -3252,6 +3283,44 @@ async function testHeadlessCli() {
   check("no arguments prints usage", /closeni build/.test(help.stdout));
 }
 
+function testStorageRoot() {
+  section("the CLI and the app share one browser profile");
+  const S = require(path.join(DIST, "storage-paths.js"));
+
+  // The bug this exists for, found by the first live smoke run: the desktop app
+  // sets CLOSENI_STORAGE to Electron's userData and every agent it spawns
+  // inherits it, but a CLI entry point sets nothing - so storagePaths fell back
+  // to the repo-local profileDir. The app was signed in and `npm run smoke`
+  // reported "not signed in", against a different directory entirely.
+  check("defaultStorageRoot is exported", typeof S.defaultStorageRoot === "function");
+
+  const linux = S.defaultStorageRoot("linux", { XDG_CONFIG_HOME: "/x/cfg", HOME: "/home/u" });
+  check("linux follows XDG_CONFIG_HOME", linux === path.join("/x/cfg", "CloseNI"), linux);
+  const linuxNoXdg = S.defaultStorageRoot("linux", { HOME: "/home/u" });
+  check("and falls back to ~/.config", linuxNoXdg === path.join("/home/u", ".config", "CloseNI"), linuxNoXdg);
+  const mac = S.defaultStorageRoot("darwin", { HOME: "/Users/u" });
+  check("macOS uses Application Support",
+    mac === path.join("/Users/u", "Library", "Application Support", "CloseNI"), mac);
+  const win = S.defaultStorageRoot("win32", { APPDATA: "C:\\Users\\u\\AppData\\Roaming" });
+  check("windows uses APPDATA", win === path.join("C:\\Users\\u\\AppData\\Roaming", "CloseNI"), win);
+  check("no home anywhere yields nothing rather than a guess",
+    S.defaultStorageRoot("linux", {}) === "");
+
+  // The name has to match what Electron actually created, or the CLI points at
+  // a directory that has never been signed in to.
+  check("the app name matches package.json productName",
+    require(path.join(__dirname, "..", "..", "package.json")).productName === "CloseNI");
+
+  // storagePaths itself is untouched: the e2e suite depends on the no-root
+  // branch resolving profileDir relative to its fixture directory.
+  const fixture = S.storagePaths("", { id: "deepseek", profileDir: "/tmp/fx/storage/browser-profiles/deepseek" });
+  check("an unset root still resolves the configured profileDir",
+    fixture.profileDir === path.resolve("/tmp/fx/storage/browser-profiles/deepseek"), fixture.profileDir);
+  const rooted = S.storagePaths("/root", { id: "deepseek", profileDir: "ignored" });
+  check("a root keys the profile by provider id",
+    rooted.profileDir === path.join("/root", "browser-profiles", "deepseek"), rooted.profileDir);
+}
+
 (async () => {
   testEditPlanParsing();
   testPlanParsing();
@@ -3312,6 +3381,7 @@ async function testHeadlessCli() {
   testPlanEdit();
   testStepTiming();
   await testHeadlessCli();
+  testStorageRoot();
 
   console.log("\n" + (fail === 0 ? "PASS" : "FAIL") + " — " + pass + " passed, " + fail + " failed");
   process.exit(fail === 0 ? 0 : 1);
