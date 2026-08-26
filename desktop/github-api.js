@@ -38,6 +38,18 @@
         // The API returns base64; anything putting this in a prompt needs text.
         return Buffer.from(String(body.content || ""), "base64").toString("utf-8");
       },
+      /**
+       * Any file in a repository, decoded.
+       *
+       * Importing a skill needs a path; getReadme only ever reaches one file.
+       * Each path segment is encoded separately so a directory separator stays
+       * a separator rather than becoming %2F.
+       */
+      getFile: async function (owner, repo, filePath) {
+        var body = await call("GET", "/repos/" + owner + "/" + repo + "/contents/" +
+          String(filePath).split("/").map(encodeURIComponent).join("/"));
+        return Buffer.from(String(body.content || ""), "base64").toString("utf-8");
+      },
       getTree: async function (owner, repo) {
         var body = await call("GET", "/repos/" + owner + "/" + repo + "/git/trees/HEAD?recursive=1");
         return (body.tree || [])

@@ -208,6 +208,30 @@ check('a rolled-over thread is seeded as a cold one',
   /startFreshConversation\(config\)[\s\S]{0,400}buildPrompt\(effectivePrompt, ctx\.tree/.test(agent));
 check('repairs count towards the conversation too',
   /const followUp = buildFollowUp[\s\S]{0,500}addTurn\(controller\.getConversationSize\(\), followUp\.length/.test(agent));
+// A skill name arrives from the renderer and becomes a path, so the refusal is
+// the security-relevant part. An MCP server is an arbitrary subprocess the user
+// configured, which is a new category of thing this app runs.
+check('a skill name is refused rather than sanitised',
+  /isSafeName/.test(read('desktop/main.js')) &&
+  /[Rr]efused rather than sanitised/.test(read('local-agent/src/skill-store.ts')));
+check('MCP context is gathered once per build, not per step',
+  /gather-mcp-context/.test(read('desktop/main.js')) &&
+  !/gatherMcpContext/.test(read('desktop/builder.js')));
+check('the preamble travels as an environment variable, like provider controls',
+  /AGENT_PREAMBLE = JSON\.stringify/.test(read('desktop/main.js')));
+check('a status probe sends no preamble',
+  /agentEnv\("0", null\)/.test(read('desktop/main.js')));
+
+// Skills, personas and MCP context all arrive as one preamble. The risk is the
+// same one that kept the code-quality block to four lines: text in front of the
+// JSON instruction is parse risk, and this project has lost builds to it.
+check('the preamble is composed under a budget, not concatenated',
+  /composePrompt\(/.test(agent) && /withPreamble\(/.test(agent));
+check('base is never truncated',
+  /base` is never truncated|base is never truncated/.test(read('local-agent/src/prompt-compose.ts')));
+check('what was dropped is reported', /Preamble over budget/.test(agent));
+check('a malformed preamble is not fatal', /AGENT_PREAMBLE[\s\S]{0,300}catch/.test(agent));
+
 // The headless CLI. Its value is that it runs the build path outside Electron,
 // so what is pinned is that it reuses the app's modules rather than
 // reimplementing them - a copy would drift and keep passing.
@@ -479,6 +503,9 @@ ${'-'.repeat(W)}
       with an injected transport, never over the network.
     · Whether generated projects are correct. The checks prove code parses
       and compiles, not that it behaves.
+    · Interoperability with any real MCP server. The client is tested against
+      a scripted fake, which proves the framing and the failure handling. It
+      does not prove that this client and, say, mcp-server-fetch agree.
     · Whether a full BUILD works against a live provider. The read path IS
       verified - 'npm run smoke' passed against DeepSeek on 11 August - but no
       plan has been built end to end since the checkpoint, rollover, review and

@@ -293,6 +293,7 @@
         <div id="settings-nav">
           <button class="settings-tab active" data-section="provider">Provider</button>
           <button class="settings-tab" data-section="permissions">Permissions</button>
+          <button class="settings-tab" data-section="skills">Skills</button>
           <button class="settings-tab" data-section="appearance">Appearance</button>
           <button class="settings-tab" data-section="about">About</button>
         </div>
@@ -325,6 +326,42 @@
             <div class="hint mt-2">Chat, planning and building share one conversation
               with your provider, so build steps run one at a time. That keeps each
               step prompt small, because the model can already see the plan.</div>
+          </div>
+
+          <!-- Personas, skills and MCP. All three change what the model is told
+               before the task, and all three share one budget - see
+               local-agent/src/prompt-compose.ts for why that budget exists. -->
+          <div class="settings-section" data-section="skills">
+            <div class="micro">Persona</div>
+            <div class="hint">A stance the model takes. One at a time, or none.</div>
+            <select id="persona-select"><option value="">(none)</option></select>
+
+            <div class="micro mt-2">Skills</div>
+            <div class="hint">Practices to follow. Any number. Plain markdown files -
+              the filename is the name. Click a name to edit it.</div>
+            <div id="skill-list"></div>
+
+            <div class="row mt-1">
+              <input id="skill-new-name" placeholder="new skill name">
+              <button id="skill-new" class="btn btn-sm">Create</button>
+            </div>
+            <textarea id="skill-editor" rows="8" placeholder="Select a skill to edit it..."></textarea>
+            <div class="row">
+              <button id="skill-save" class="btn btn-sm">Save</button>
+              <button id="skill-delete" class="btn btn-sm">Delete</button>
+            </div>
+
+            <div class="micro mt-2">Import from GitHub</div>
+            <div class="row">
+              <input id="skill-import" placeholder="owner/repo/path/to/skill.md">
+              <button id="skill-import-go" class="btn btn-sm">Import</button>
+            </div>
+
+            <div class="micro mt-2">MCP servers and calls</div>
+            <div class="hint">Tools run once before a build and their text is folded
+              into every step. An MCP server is a program this app will run.</div>
+            <textarea id="mcp-config" rows="8" placeholder='{"servers":{},"calls":[]}'></textarea>
+            <div class="row"><button id="mcp-save" class="btn btn-sm">Save</button></div>
           </div>
 
           <div class="settings-section" data-section="appearance">

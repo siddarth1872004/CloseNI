@@ -3321,6 +3321,245 @@ function testStorageRoot() {
     rooted.profileDir === path.join("/root", "browser-profiles", "deepseek"), rooted.profileDir);
 }
 
+function testPromptCompose() {
+  section("what gets prepended, and what gets dropped");
+  const C = require(path.join(DIST, "prompt-compose.js"));
+
+  const parts = {
+    persona: "You are terse.",
+    skills: ["Write pytest tests.", "Prefer the standard library."],
+    mcpContext: ["Flask docs: use app.route."],
+    base: "TASK: build a thing. Reply with ```json.",
+  };
+  const out = C.composePrompt(parts);
+
+  // Order is the design decision: who you are, how to work, what is true, what
+  // to do. The task is last so it is what the model is still reading when it
+  // starts generating.
+  const iPersona = out.text.indexOf("You are terse.");
+  const iSkill = out.text.indexOf("Write pytest tests.");
+  const iMcp = out.text.indexOf("Flask docs");
+  const iBase = out.text.indexOf("TASK: build a thing.");
+  check("persona comes first", iPersona >= 0 && iPersona < iSkill);
+  check("skills come before context", iSkill < iMcp);
+  check("context comes before the task", iMcp < iBase);
+  check("nothing was dropped under budget", out.truncated.length === 0, JSON.stringify(out.truncated));
+  check("every skill is present", out.text.includes("Prefer the standard library."));
+
+  const bare = C.composePrompt({ base: "ONLY" });
+  check("an empty parts object yields exactly base", bare.text === "ONLY", JSON.stringify(bare.text));
+  check("and reports nothing dropped", bare.truncated.length === 0);
+  const noPersona = C.composePrompt({ skills: ["S"], base: "B" });
+  check("no persona leaves no blank lead-in", !/^\s/.test(noPersona.text), JSON.stringify(noPersona.text.slice(0, 12)));
+  const emptyStrings = C.composePrompt({ persona: "   ", skills: ["", "  "], mcpContext: [""], base: "B" });
+  check("blank parts are treated as absent", emptyStrings.text === "B", JSON.stringify(emptyStrings.text));
+
+  const big = function (n) { return "x".repeat(n); };
+  const over = C.composePrompt(
+    { persona: big(400), skills: [big(400)], mcpContext: [big(400)], base: "BASE" }, 900);
+  check("mcp context is dropped first", over.truncated.indexOf("mcp context") !== -1, JSON.stringify(over.truncated));
+  const tighter = C.composePrompt(
+    { persona: big(400), skills: [big(400)], mcpContext: [big(400)], base: "BASE" }, 500);
+  check("then skills", tighter.truncated.indexOf("skills") !== -1, JSON.stringify(tighter.truncated));
+  const tightest = C.composePrompt(
+    { persona: big(400), skills: [big(400)], mcpContext: [big(400)], base: "BASE" }, 50);
+  check("then persona", tightest.truncated.indexOf("persona") !== -1, JSON.stringify(tightest.truncated));
+
+  // THE check. base carries the JSON instruction, and this project has lost
+  // whole builds to replies the parser could not read.
+  check("base survives a budget smaller than itself",
+    tightest.text.indexOf("BASE") !== -1, JSON.stringify(tightest.text));
+  const microBudget = C.composePrompt({ persona: big(9000), base: "BASE" }, 1);
+  check("base survives a budget of 1", microBudget.text === "BASE", JSON.stringify(microBudget.text));
+  check("base alone over budget is still returned whole",
+    C.composePrompt({ base: big(9000) }, 10).text.length === 9000);
+
+  check("the default budget is 6000", C.PREAMBLE_BUDGET_CHARS === 6000);
+  check("nonsense budget falls back to the default",
+    C.composePrompt(parts, NaN).text === out.text);
+  check("null parts do not throw", typeof C.composePrompt(null).text === "string");
+
+  // The agent has to read the preamble from the environment, the way provider
+  // controls already travel, rather than as a new positional argument threaded
+  // through every mode and every caller for something only buildPrompt uses.
+  const agentSrc = fs.readFileSync(path.join(__dirname, "..", "src", "index.ts"), "utf8");
+  check("the agent reads AGENT_PREAMBLE", /AGENT_PREAMBLE/.test(agentSrc));
+  check("and composes rather than concatenating", /composePrompt\(/.test(agentSrc));
+  check("a malformed preamble is ignored rather than fatal",
+    /try \{[\s\S]{0,240}AGENT_PREAMBLE[\s\S]{0,240}catch/.test(agentSrc));
+  check("what was dropped is reported", /Preamble over budget/.test(agentSrc));
+}
+
+function testSkillStore() {
+  section("personas and skills are just files");
+  const S = require(path.join(DIST, "skill-store.js"));
+
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "agentic-skills-"));
+  const sd = S.skillsDir(root);
+  fs.mkdirSync(sd, { recursive: true });
+  fs.writeFileSync(path.join(sd, "pytest.md"), "Always write pytest tests.");
+  fs.writeFileSync(path.join(sd, "stdlib.md"), "Prefer the standard library.");
+  fs.writeFileSync(path.join(sd, "notes.txt"), "not a skill");
+  fs.mkdirSync(path.join(sd, "adir.md"), { recursive: true });
+
+  check("skills live under the storage root",
+    sd === path.join(root, "skills") && S.personasDir(root) === path.join(root, "personas"));
+  const names = S.listMarkdown(sd);
+  check("the filename is the display name",
+    JSON.stringify(names) === JSON.stringify(["pytest", "stdlib"]), JSON.stringify(names));
+  check("a non-markdown file is ignored", names.indexOf("notes") === -1);
+  check("a directory named .md is ignored", names.indexOf("adir") === -1);
+  check("an unreadable directory yields an empty list rather than throwing",
+    JSON.stringify(S.listMarkdown(path.join(root, "nope"))) === "[]");
+
+  const read = S.readSelected(sd, ["pytest", "missing", "stdlib"]);
+  check("only the selected files are read", read.length === 2, JSON.stringify(read));
+  check("contents come back", read[0] === "Always write pytest tests.");
+  check("a selected file that is gone is skipped, not fatal", read.join(" ").indexOf("missing") === -1);
+  check("selection order is preserved", read[1] === "Prefer the standard library.");
+
+  // A name comes from the renderer and is used to build a path. Anything that
+  // could leave the directory is refused rather than sanitised, because a
+  // sanitised name silently reads a different file than the one asked for.
+  check("a plain name is safe", S.isSafeName("pytest") === true);
+  check("a dotted name is safe", S.isSafeName("py.test-1_x") === true);
+  check("traversal is refused", S.isSafeName("../../etc/passwd") === false);
+  check("a separator is refused", S.isSafeName("a/b") === false && S.isSafeName("a\\b") === false);
+  check("an absolute path is refused", S.isSafeName("/etc/passwd") === false);
+  check("empty is refused", S.isSafeName("") === false && S.isSafeName("   ") === false);
+  check("a leading dot is refused", S.isSafeName(".hidden") === false);
+  check("an unsafe name reads nothing",
+    JSON.stringify(S.readSelected(sd, ["../../etc/passwd"])) === "[]");
+
+  fs.rmSync(root, { recursive: true, force: true });
+}
+
+async function testMcpClient() {
+  section("MCP, spoken by hand over stdio");
+  const M = require(path.join(DIST, "mcp/mcp-client.js"));
+  const fixture = path.join(__dirname, "fixtures", "fake-mcp-server.js");
+  const spec = function (mode) {
+    return { command: process.execPath, args: [fixture], env: { FAKE_MCP_MODE: mode } };
+  };
+
+  // The result shape is MCP's, and pulling text out of it is pure.
+  check("text content is extracted",
+    M.textFromResult({ content: [{ type: "text", text: "hello" }] }) === "hello");
+  check("several text blocks are joined",
+    M.textFromResult({ content: [{ type: "text", text: "a" }, { type: "text", text: "b" }] }) === "a\nb");
+  check("non-text content is ignored",
+    M.textFromResult({ content: [{ type: "image", data: "..." }, { type: "text", text: "t" }] }) === "t");
+  check("an unrecognised shape yields empty", M.textFromResult({ nope: 1 }) === "");
+  check("null does not throw", M.textFromResult(null) === "");
+
+  const good = await M.callTool(spec("ok"), "fetch", { url: "https://x.test" });
+  check("a handshake and a call return text", good.ok === true, JSON.stringify(good));
+  check("the arguments reached the tool", good.text.indexOf('"url":"https://x.test"') !== -1, good.text);
+
+  const errored = await M.callTool(spec("error"), "fetch", {});
+  check("a JSON-RPC error is reported, not thrown", errored.ok === false);
+  check("and carries the server's message", /tool exploded/.test(errored.error || ""), errored.error);
+
+  const dead = await M.callTool(spec("exit"), "fetch", {});
+  check("a server that exits immediately fails cleanly", dead.ok === false);
+  check("and says so", !!dead.error);
+
+  const silent = await M.callTool(spec("silent"), "fetch", {}, 1200);
+  check("a server that never answers times out", silent.ok === false);
+  check("and names the timeout", /timed out/i.test(silent.error || ""), silent.error);
+
+  const junk = await M.callTool(spec("garbage"), "fetch", {}, 1200);
+  check("malformed output does not crash the caller", junk.ok === false);
+
+  const missing = await M.callTool({ command: "definitely-not-a-real-command-xyz" }, "fetch", {}, 2000);
+  check("a command that does not exist fails cleanly", missing.ok === false);
+  check("the default timeout is 20s", M.MCP_TIMEOUT_MS === 20000);
+
+  // The third method. Not needed to make a configured call - that names its
+  // tool - but the Settings panel shows what a server offers.
+  const listed = await M.listTools(spec("ok"));
+  check("tools/list returns the server's tools",
+    listed.ok === true && listed.tools.indexOf("fetch") !== -1, JSON.stringify(listed));
+  check("every tool is listed", listed.tools.length === 2, JSON.stringify(listed.tools));
+  const listFailed = await M.listTools(spec("exit"));
+  check("listing a dead server fails cleanly",
+    listFailed.ok === false && Array.isArray(listFailed.tools));
+}
+
+async function testMcpContext() {
+  section("MCP context, gathered once before a build");
+  const X = require(path.join(DIST, "mcp/mcp-context.js"));
+
+  const raw = {
+    servers: { fetch: { command: "uvx", args: ["mcp-server-fetch"] } },
+    calls: [{ server: "fetch", tool: "fetch", args: { url: "https://x.test" } }],
+  };
+  const cfg = X.parseMcpConfig(raw);
+  check("servers survive parsing", cfg.servers.fetch.command === "uvx");
+  check("calls survive parsing", cfg.calls.length === 1 && cfg.calls[0].tool === "fetch");
+  check("garbage yields an empty config", Object.keys(X.parseMcpConfig("{{").servers).length === 0);
+  check("null yields an empty config", X.parseMcpConfig(null).calls.length === 0);
+  check("a server with no command is dropped",
+    Object.keys(X.parseMcpConfig({ servers: { a: {} } }).servers).length === 0);
+  check("a call naming an unknown server is dropped by the planner",
+    X.planCalls(X.parseMcpConfig({ servers: {}, calls: [{ server: "gone", tool: "t" }] })).length === 0);
+
+  const planned = X.planCalls(cfg);
+  check("a planned call carries its server spec", planned[0].spec.command === "uvx");
+
+  // The whole point: a failure is context we did not get, never a failed build.
+  const okRun = async function () { return { ok: true, text: "DOCS" }; };
+  const gathered = await X.gatherContext(cfg, okRun);
+  check("successful calls return their text", gathered.texts.join("") === "DOCS", JSON.stringify(gathered.texts));
+  check("and nothing is reported", gathered.notes.length === 0);
+
+  const failRun = async function () { return { ok: false, text: "", error: "server exploded" }; };
+  const failed = await X.gatherContext(cfg, failRun);
+  check("a failed call contributes no text", failed.texts.length === 0);
+  check("but is reported rather than hidden", /server exploded/.test(failed.notes.join(" ")), JSON.stringify(failed.notes));
+  check("a build is not failed by it", Array.isArray(failed.texts));
+
+  const throwRun = async function () { throw new Error("boom"); };
+  const threw = await X.gatherContext(cfg, throwRun);
+  check("a client that throws is caught",
+    threw.texts.length === 0 && threw.notes.length === 1, JSON.stringify(threw.notes));
+
+  const empty = await X.gatherContext(X.parseMcpConfig(null), okRun);
+  check("no configuration means no calls and no noise",
+    empty.texts.length === 0 && empty.notes.length === 0);
+}
+
+function testSkillsWiring() {
+  section("skills reach the agent from the app");
+  const GH = require(path.join(__dirname, "..", "..", "desktop", "github-api.js"));
+  const D = path.join(__dirname, "..", "..", "desktop");
+  const main = fs.readFileSync(path.join(D, "main.js"), "utf8");
+  const preload = fs.readFileSync(path.join(D, "preload.js"), "utf8");
+  const renderer = fs.readFileSync(path.join(D, "renderer.js"), "utf8");
+  const html = fs.readFileSync(path.join(D, "index.html"), "utf8");
+
+  // Import needs a file fetch. getReadme existed; a general one did not.
+  const calls = [];
+  const api = GH.createGitHubApi(function (m, p2) {
+    calls.push(p2);
+    return Promise.resolve({ status: 200, body: { content: Buffer.from("SKILL TEXT").toString("base64") } });
+  });
+  return api.getFile("o", "r", "docs/skill.md").then(function (text) {
+    check("a file is fetched by path", /\/repos\/o\/r\/contents\/docs\/skill\.md/.test(calls[0]), calls[0]);
+    check("and decoded from base64", text === "SKILL TEXT", text);
+
+    check("the app exposes skill management",
+      /listSkills/.test(preload) && /writeSkill/.test(preload) && /deleteSkill/.test(preload));
+    check("and MCP configuration", /readMcpConfig/.test(preload) && /writeMcpConfig/.test(preload));
+    check("the main process refuses an unsafe skill name", /isSafeName/.test(main));
+    check("there is a Skills settings section", /data-section="skills"/.test(html));
+    check("the renderer sends the preamble as AGENT_PREAMBLE", /AGENT_PREAMBLE/.test(main));
+    check("the renderer builds one", /buildPreamble/.test(renderer));
+    check("MCP context is gathered before the build, not per step",
+      /gather-mcp-context/.test(main) && !/gatherMcpContext/.test(fs.readFileSync(path.join(D, "builder.js"), "utf8")));
+  });
+}
+
 (async () => {
   testEditPlanParsing();
   testPlanParsing();
@@ -3382,6 +3621,11 @@ function testStorageRoot() {
   testStepTiming();
   await testHeadlessCli();
   testStorageRoot();
+  testPromptCompose();
+  testSkillStore();
+  await testMcpClient();
+  await testMcpContext();
+  await testSkillsWiring();
 
   console.log("\n" + (fail === 0 ? "PASS" : "FAIL") + " — " + pass + " passed, " + fail + " failed");
   process.exit(fail === 0 ? 0 : 1);

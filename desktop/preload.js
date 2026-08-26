@@ -15,6 +15,14 @@ contextBridge.exposeInMainWorld("api", {
   writeBuildState: function (p) { return ipcRenderer.invoke("write-build-state", p); },
   clearBuildState: function (workspace) { return ipcRenderer.invoke("clear-build-state", workspace); },
   clearCheckpoints: function (workspace) { return ipcRenderer.invoke("clear-checkpoints", workspace); },
+  listSkills: function () { return ipcRenderer.invoke("list-skills"); },
+  readSkill: function (kind, name) { return ipcRenderer.invoke("read-skill", { kind: kind, name: name }); },
+  writeSkill: function (kind, name, text) { return ipcRenderer.invoke("write-skill", { kind: kind, name: name, text: text }); },
+  deleteSkill: function (kind, name) { return ipcRenderer.invoke("delete-skill", { kind: kind, name: name }); },
+  importSkill: function (p) { return ipcRenderer.invoke("import-skill", p); },
+  readMcpConfig: function () { return ipcRenderer.invoke("read-mcp-config"); },
+  writeMcpConfig: function (text) { return ipcRenderer.invoke("write-mcp-config", text); },
+  gatherMcpContext: function () { return ipcRenderer.invoke("gather-mcp-context"); },
   planRollback: function (workspace, toStep) { return ipcRenderer.invoke("plan-rollback", { workspace: workspace, toStep: toStep }); },
   applyRollback: function (workspace, plan) { return ipcRenderer.invoke("apply-rollback", { workspace: workspace, plan: plan }); },
   browserStatus: function () { return ipcRenderer.invoke("browser-status"); },
@@ -29,8 +37,8 @@ contextBridge.exposeInMainWorld("api", {
   },
   signOutProvider: function (providerId) { return ipcRenderer.invoke("provider-sign-out", providerId); },
   openThread: function (url) { return ipcRenderer.invoke("open-thread", url); },
-  startSession: function (workspace, provider, autonomy, headed, controls, concurrency, resuming) {
-    return ipcRenderer.invoke("start-session", { workspace: workspace, provider: provider, autonomy: autonomy, headed: headed, controls: controls, concurrency: concurrency, resuming: resuming });
+  startSession: function (workspace, provider, autonomy, headed, controls, concurrency, resuming, preamble) {
+    return ipcRenderer.invoke("start-session", { workspace: workspace, provider: provider, autonomy: autonomy, headed: headed, controls: controls, concurrency: concurrency, resuming: resuming, preamble: preamble });
   },
   sendStep: function (index, detail, goal, testable) {
     return ipcRenderer.invoke("send-step", { index: index, detail: detail, goal: goal, testable: testable });
