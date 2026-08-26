@@ -31,12 +31,25 @@ Three layers, most reliable first:
 The stream currently tells us **when a reply ends**. It can also tell us **what
 the reply is**, which removes the DOM from the read path entirely.
 
-- **Read the text from the stream.** No longer blocked on finding the endpoint -
-  it is `/api/v0/chat/completion` over XHR, and the tap already sees it. What is
-  left is the chunk format, which can now be captured from `responseText` on the
-  request we are already watching. This is no highlighting to un-parse, no toolbar
-  text to filter, no virtualisation, and long replies stop being truncated by a
-  list that only renders what is on screen.
+- ~~**Read the text from the stream.**~~ **Investigated and declined**, with the
+  format in hand. DeepSeek sends SSE carrying a delta protocol: an initial
+  `fragments[].content`, then
+  `{"p":"response/fragments/-1/content","o":"APPEND","v":" one"}`, then bare
+  `{"v":"\n"}` values that **inherit the previous path and op**. Reconstructing
+  the text is about sixty lines.
+
+  Not built, for two reasons that only reading the format showed. Implicit
+  inheritance is a correctness trap: a bare value follows whatever path was last
+  set, so an unrecognised `p` would silently append unrelated text *inside* the
+  reply - worse than the DOM bugs it would replace. And it is a private,
+  unversioned, DeepSeek-only protocol that nothing warns you about when it
+  changes: the same rot this project keeps being bitten by, moved from CSS to
+  JSON.
+
+  The DOM-plus-Copy-button path is verified working end to end, and completion is
+  already exact from the stream's open and close. The one hazard this would have
+  fixed - virtualisation truncating a long reply - has not recurred since the
+  Copy work. Revisit if it does.
 - ~~**Confirm DeepSeek's endpoint.**~~ **Done, and the pattern was never the
   problem.** Instrumenting a real reply showed DeepSeek streams over
   `POST /api/v0/chat/completion` (`text/event-stream`) - which the old pattern
@@ -47,9 +60,12 @@ the reply is**, which removes the DOM from the read path entirely.
   the exact measured endpoint rather than a loose guess that also matched
   `chat_session/create`. **Measured effect: completion 15.1s to 8.7s.**
 - **Detect a refusal or a rate limit from the stream** rather than from prose.
-  A provider saying "you have hit your limit" currently reads as a normal reply
-  that happens not to contain JSON, and the build fails on a re-ask instead of
-  telling the user to wait.
+  Still open, and **still blocked on evidence** - corrected from an earlier claim
+  that this had become cheap. A healthy reply carries `status: "WIP"` and
+  `quasi_status: "FINISHED"`; what a refusal or a throttled account carries is
+  unknown, and cannot be learned without provoking one. Building it from the two
+  states seen in a healthy reply would be guessing at a payload exactly the way
+  the old code guessed at a selector.
 
 ## 2 · Stop losing work to one bad step
 
