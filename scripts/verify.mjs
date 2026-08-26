@@ -208,6 +208,20 @@ check('a rolled-over thread is seeded as a cold one',
   /startFreshConversation\(config\)[\s\S]{0,400}buildPrompt\(effectivePrompt, ctx\.tree/.test(agent));
 check('repairs count towards the conversation too',
   /const followUp = buildFollowUp[\s\S]{0,500}addTurn\(controller\.getConversationSize\(\), followUp\.length/.test(agent));
+// A skill name arrives from the renderer and becomes a path, so the refusal is
+// the security-relevant part. An MCP server is an arbitrary subprocess the user
+// configured, which is a new category of thing this app runs.
+check('a skill name is refused rather than sanitised',
+  /isSafeName/.test(read('desktop/main.js')) &&
+  /[Rr]efused rather than sanitised/.test(read('local-agent/src/skill-store.ts')));
+check('MCP context is gathered once per build, not per step',
+  /gather-mcp-context/.test(read('desktop/main.js')) &&
+  !/gatherMcpContext/.test(read('desktop/builder.js')));
+check('the preamble travels as an environment variable, like provider controls',
+  /AGENT_PREAMBLE = JSON\.stringify/.test(read('desktop/main.js')));
+check('a status probe sends no preamble',
+  /agentEnv\("0", null\)/.test(read('desktop/main.js')));
+
 // Skills, personas and MCP context all arrive as one preamble. The risk is the
 // same one that kept the code-quality block to four lines: text in front of the
 // JSON instruction is parse risk, and this project has lost builds to it.

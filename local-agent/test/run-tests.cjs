@@ -3529,6 +3529,37 @@ async function testMcpContext() {
     empty.texts.length === 0 && empty.notes.length === 0);
 }
 
+function testSkillsWiring() {
+  section("skills reach the agent from the app");
+  const GH = require(path.join(__dirname, "..", "..", "desktop", "github-api.js"));
+  const D = path.join(__dirname, "..", "..", "desktop");
+  const main = fs.readFileSync(path.join(D, "main.js"), "utf8");
+  const preload = fs.readFileSync(path.join(D, "preload.js"), "utf8");
+  const renderer = fs.readFileSync(path.join(D, "renderer.js"), "utf8");
+  const html = fs.readFileSync(path.join(D, "index.html"), "utf8");
+
+  // Import needs a file fetch. getReadme existed; a general one did not.
+  const calls = [];
+  const api = GH.createGitHubApi(function (m, p2) {
+    calls.push(p2);
+    return Promise.resolve({ status: 200, body: { content: Buffer.from("SKILL TEXT").toString("base64") } });
+  });
+  return api.getFile("o", "r", "docs/skill.md").then(function (text) {
+    check("a file is fetched by path", /\/repos\/o\/r\/contents\/docs\/skill\.md/.test(calls[0]), calls[0]);
+    check("and decoded from base64", text === "SKILL TEXT", text);
+
+    check("the app exposes skill management",
+      /listSkills/.test(preload) && /writeSkill/.test(preload) && /deleteSkill/.test(preload));
+    check("and MCP configuration", /readMcpConfig/.test(preload) && /writeMcpConfig/.test(preload));
+    check("the main process refuses an unsafe skill name", /isSafeName/.test(main));
+    check("there is a Skills settings section", /data-section="skills"/.test(html));
+    check("the renderer sends the preamble as AGENT_PREAMBLE", /AGENT_PREAMBLE/.test(main));
+    check("the renderer builds one", /buildPreamble/.test(renderer));
+    check("MCP context is gathered before the build, not per step",
+      /gather-mcp-context/.test(main) && !/gatherMcpContext/.test(fs.readFileSync(path.join(D, "builder.js"), "utf8")));
+  });
+}
+
 (async () => {
   testEditPlanParsing();
   testPlanParsing();
@@ -3594,6 +3625,7 @@ async function testMcpContext() {
   testSkillStore();
   await testMcpClient();
   await testMcpContext();
+  await testSkillsWiring();
 
   console.log("\n" + (fail === 0 ? "PASS" : "FAIL") + " — " + pass + " passed, " + fail + " failed");
   process.exit(fail === 0 ? 0 : 1);
