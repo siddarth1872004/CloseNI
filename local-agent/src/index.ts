@@ -19,6 +19,7 @@ import { planBehaviourChecks, judge as judgeBehaviour, hasTestFiles } from "./ve
 import { resolveTool } from "./verification/toolchain.js";
 import { MANIFEST_NAME } from "./run-manifest.js";
 import { defaultStorageRoot } from "./storage-paths.js";
+import { composePrompt } from "./prompt-compose.js";
 import { Checkpoint, mergeCheckpoint, sealCheckpoint, checkpointName, CHECKPOINT_DIR } from "./checkpoint.js";
 import { addTurn, shouldRollOver, budgetFor, describeSize } from "./context-budget.js";
 import { judgeSelectors } from "./health/selector-health.js";
@@ -466,6 +467,54 @@ async function testAllMode(workspace: string) {
   emit({ success: fail === 0, passed: pass, failed: fail, results: results });
 }
 
+/**
+ * The persona, skills and MCP context for this run.
+ *
+ * Read once from the environment, the way provider controls already travel. A
+ * new positional argument would have to be threaded through every mode and
+ * every caller for something only buildPrompt uses.
+ *
+ * A malformed value is ignored rather than fatal: it means the user gets the
+ * behaviour they had before configuring anything, which is a working build.
+ */
+let preambleParts: { persona?: string; skills?: string[]; mcpContext?: string[] } | null = null;
+function readPreamble(): { persona?: string; skills?: string[]; mcpContext?: string[] } {
+  if (preambleParts) return preambleParts;
+  let parts: { persona?: string; skills?: string[]; mcpContext?: string[] } = {};
+  try {
+    const parsed = JSON.parse(process.env.AGENT_PREAMBLE || "{}");
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) parts = parsed;
+  } catch {
+    // A malformed preamble means the behaviour the user had before configuring
+    // anything, which is a working build.
+  }
+  preambleParts = parts;
+  return parts;
+}
+
+/**
+ * Put the user's preamble in front of a step prompt.
+ *
+ * composePrompt owns the budget, and `base` - which carries the JSON format
+ * instruction - is never truncated. What was dropped is logged, because
+ * silently sending less than the user configured is how a setting stops
+ * meaning anything.
+ */
+function withPreamble(base: string): string {
+  const parts = readPreamble();
+  if (!parts.persona && !(parts.skills || []).length && !(parts.mcpContext || []).length) return base;
+  const composed = composePrompt({
+    persona: parts.persona,
+    skills: parts.skills,
+    mcpContext: parts.mcpContext,
+    base: base,
+  });
+  if (composed.truncated.length) {
+    console.log("Preamble over budget; dropped: " + composed.truncated.join(", "));
+  }
+  return composed.text;
+}
+
 function buildPrompt(userPrompt: string, tree: string, relevantFiles: { path: string; content: string }[], priorFiles: string[], isFirstStep: boolean, testable?: boolean): string {
   let contextStr = "";
   // Asked for only where the plan said there is behaviour to assert. Requesting
@@ -499,15 +548,15 @@ function buildPrompt(userPrompt: string, tree: string, relevantFiles: { path: st
   // what it was. A one-line reminder still goes with each step: models drift,
   // and re-stating the shape is cheaper than a re-ask.
   if (!isFirstStep) {
-    return "Next step. Same reply format as before - either the " +
+    return withPreamble("Next step. Same reply format as before - either the " +
       "{\"files\":[{\"path\",\"mode\",\"content\"}]} JSON block, or one code block per " +
       "file with the path on the fence line. Write every file completely; no " +
       "ellipses and no '... rest unchanged'." +
       contextStr +
-      "\n\nStep:\n" + userPrompt;
+      "\n\nStep:\n" + userPrompt);
   }
 
-  return "You are an autonomous coding agent assistant.\n" +
+  return withPreamble("You are an autonomous coding agent assistant.\n" +
     "Reply with the file changes. There are two accepted formats. Pick ONE.\n" +
     "\n" +
     "FORMAT A - JSON (preferred, and required if you need commands or search_replace):\n" +
@@ -550,7 +599,7 @@ function buildPrompt(userPrompt: string, tree: string, relevantFiles: { path: st
     "- DO NOT create or edit " + GENERATED_FILES.join(", ") + " — the app generates those.\n" +
     "- Do not add commands that create virtualenvs or install packages unless the step is specifically about that.\n" +
     contextStr +
-    "\n\nUser request:\n" + userPrompt;
+    "\n\nUser request:\n" + userPrompt);
 }
 
 function buildFollowUp(command: string, output: string, priorFiles: string[]): string {

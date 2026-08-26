@@ -3378,6 +3378,16 @@ function testPromptCompose() {
   check("nonsense budget falls back to the default",
     C.composePrompt(parts, NaN).text === out.text);
   check("null parts do not throw", typeof C.composePrompt(null).text === "string");
+
+  // The agent has to read the preamble from the environment, the way provider
+  // controls already travel, rather than as a new positional argument threaded
+  // through every mode and every caller for something only buildPrompt uses.
+  const agentSrc = fs.readFileSync(path.join(__dirname, "..", "src", "index.ts"), "utf8");
+  check("the agent reads AGENT_PREAMBLE", /AGENT_PREAMBLE/.test(agentSrc));
+  check("and composes rather than concatenating", /composePrompt\(/.test(agentSrc));
+  check("a malformed preamble is ignored rather than fatal",
+    /try \{[\s\S]{0,240}AGENT_PREAMBLE[\s\S]{0,240}catch/.test(agentSrc));
+  check("what was dropped is reported", /Preamble over budget/.test(agentSrc));
 }
 
 function testSkillStore() {
