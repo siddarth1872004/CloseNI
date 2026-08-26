@@ -24,6 +24,14 @@ readline.createInterface({ input: process.stdin }).on("line", function (line) {
   } else if (msg.method === "tools/call") {
     if (mode === "error") {
       send({ jsonrpc: "2.0", id: msg.id, error: { code: -32000, message: "tool exploded" } });
+    } else if (mode === "toolerror") {
+      // How a REAL server reports a tool failure: a successful JSON-RPC result
+      // carrying isError, with the message as ordinary text content. JSON-RPC
+      // error is reserved for protocol failures. Verified against
+      // @modelcontextprotocol/server-everything, which answers an unknown tool
+      // exactly this way - and our client called it a success until it did.
+      send({ jsonrpc: "2.0", id: msg.id,
+        result: { isError: true, content: [{ type: "text", text: "MCP error -32602: Tool not found" }] } });
     } else {
       send({ jsonrpc: "2.0", id: msg.id,
         result: { content: [{ type: "text", text: "ARGS:" + JSON.stringify(msg.params.arguments) }] } });

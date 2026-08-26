@@ -164,7 +164,23 @@ export async function callTool(
 ): Promise<ToolResult> {
   const r = await rpc(server, "tools/call", { name: tool, arguments: args || {} }, timeoutMs);
   if (!r.ok) return { ok: false, text: "", error: r.error };
+
   const text = textFromResult(r.result);
+
+  // A tool failure arrives as a SUCCESSFUL JSON-RPC result carrying isError,
+  // with the message as ordinary text content. JSON-RPC's own error field is
+  // reserved for protocol failures, so checking only that misses every tool
+  // that ran and went wrong.
+  //
+  // Found against @modelcontextprotocol/server-everything: asking for a tool
+  // that does not exist returned ok:true with "MCP error -32602: Tool not
+  // found" as the text, which this app would then have folded into every step's
+  // prompt as if it were fetched context. The scripted fake could not have shown
+  // it - it only ever returned a JSON-RPC error, because that is what I assumed.
+  if (r.result && (r.result as any).isError) {
+    return { ok: false, text: "", error: text || "the tool reported an error" };
+  }
+
   return text
     ? { ok: true, text: text }
     : { ok: false, text: "", error: "the tool returned no text content" };

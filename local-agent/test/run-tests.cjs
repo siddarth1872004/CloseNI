@@ -3481,6 +3481,17 @@ async function testMcpClient() {
   check("tools/list returns the server's tools",
     listed.ok === true && listed.tools.indexOf("fetch") !== -1, JSON.stringify(listed));
   check("every tool is listed", listed.tools.length === 2, JSON.stringify(listed.tools));
+  // A real server reports a tool failure as a SUCCESSFUL result carrying
+  // isError, with the message as ordinary text - JSON-RPC error is only for
+  // protocol failures. Found against @modelcontextprotocol/server-everything:
+  // our client returned ok:true with "MCP error -32602: Tool not found" as the
+  // text, so a misconfigured tool would have folded its own error message into
+  // every step's prompt, presented as fetched context.
+  const toolErr = await M.callTool(spec("toolerror"), "nope", {});
+  check("a tool error in the result is a failure, not content", toolErr.ok === false, JSON.stringify(toolErr));
+  check("and the message is reported as an error", /Tool not found/.test(toolErr.error || ""), toolErr.error);
+  check("its text is not returned as if it were context", !toolErr.text, JSON.stringify(toolErr.text));
+
   const listFailed = await M.listTools(spec("exit"));
   check("listing a dead server fails cleanly",
     listFailed.ok === false && Array.isArray(listFailed.tools));

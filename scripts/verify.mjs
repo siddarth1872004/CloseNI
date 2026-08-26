@@ -320,6 +320,16 @@ check('research uses the provider search, not a scraped results page',
 check('GitHub search is authenticated',
   /searchRepos/.test(read('desktop/github-api.js')));
 
+// A real MCP server reports a tool failure as a SUCCESSFUL result carrying
+// isError, not as a JSON-RPC error. Checking only the latter meant a failed
+// tool's message was folded into every step's prompt as if it were context.
+check('a tool error in the result is treated as a failure',
+  /isError/.test(read('local-agent/src/mcp/mcp-client.ts')));
+check('the fake reproduces the shape a real server uses',
+  /isError/.test(read('local-agent/test/fixtures/fake-mcp-server.js')));
+check('there is an opt-in interop check against a real server',
+  !!JSON.parse(read('package.json')).scripts['mcp:interop']);
+
 // A checkpoint's title becomes a git commit subject when a build is exported.
 // Storing the step DETAIL there produced "step 1: Overall: Temperature converter
 // Execute ONLY this step: Tempe" on a real exported build.
@@ -543,9 +553,10 @@ ${'-'.repeat(W)}
       with an injected transport, never over the network.
     · Whether generated projects are correct. The checks prove code parses
       and compiles, not that it behaves.
-    · Interoperability with any real MCP server. The client is tested against
-      a scripted fake, which proves the framing and the failure handling. It
-      does not prove that this client and, say, mcp-server-fetch agree.
+    · MCP against servers other than the reference one. Interop IS verified -
+      'npm run mcp:interop' passes against @modelcontextprotocol/server-everything,
+      which uses the official SDK - but that is one implementation, and the
+      check is opt-in because it needs the network.
     · Whether generated projects behave in general. One three-step build was
       run against DeepSeek on 11 August and its output verified by hand - it
       ran and printed the right answer - but that is a single sample, and the
