@@ -3424,6 +3424,58 @@ function testSkillStore() {
   fs.rmSync(root, { recursive: true, force: true });
 }
 
+async function testMcpClient() {
+  section("MCP, spoken by hand over stdio");
+  const M = require(path.join(DIST, "mcp/mcp-client.js"));
+  const fixture = path.join(__dirname, "fixtures", "fake-mcp-server.js");
+  const spec = function (mode) {
+    return { command: process.execPath, args: [fixture], env: { FAKE_MCP_MODE: mode } };
+  };
+
+  // The result shape is MCP's, and pulling text out of it is pure.
+  check("text content is extracted",
+    M.textFromResult({ content: [{ type: "text", text: "hello" }] }) === "hello");
+  check("several text blocks are joined",
+    M.textFromResult({ content: [{ type: "text", text: "a" }, { type: "text", text: "b" }] }) === "a\nb");
+  check("non-text content is ignored",
+    M.textFromResult({ content: [{ type: "image", data: "..." }, { type: "text", text: "t" }] }) === "t");
+  check("an unrecognised shape yields empty", M.textFromResult({ nope: 1 }) === "");
+  check("null does not throw", M.textFromResult(null) === "");
+
+  const good = await M.callTool(spec("ok"), "fetch", { url: "https://x.test" });
+  check("a handshake and a call return text", good.ok === true, JSON.stringify(good));
+  check("the arguments reached the tool", good.text.indexOf('"url":"https://x.test"') !== -1, good.text);
+
+  const errored = await M.callTool(spec("error"), "fetch", {});
+  check("a JSON-RPC error is reported, not thrown", errored.ok === false);
+  check("and carries the server's message", /tool exploded/.test(errored.error || ""), errored.error);
+
+  const dead = await M.callTool(spec("exit"), "fetch", {});
+  check("a server that exits immediately fails cleanly", dead.ok === false);
+  check("and says so", !!dead.error);
+
+  const silent = await M.callTool(spec("silent"), "fetch", {}, 1200);
+  check("a server that never answers times out", silent.ok === false);
+  check("and names the timeout", /timed out/i.test(silent.error || ""), silent.error);
+
+  const junk = await M.callTool(spec("garbage"), "fetch", {}, 1200);
+  check("malformed output does not crash the caller", junk.ok === false);
+
+  const missing = await M.callTool({ command: "definitely-not-a-real-command-xyz" }, "fetch", {}, 2000);
+  check("a command that does not exist fails cleanly", missing.ok === false);
+  check("the default timeout is 20s", M.MCP_TIMEOUT_MS === 20000);
+
+  // The third method. Not needed to make a configured call - that names its
+  // tool - but the Settings panel shows what a server offers.
+  const listed = await M.listTools(spec("ok"));
+  check("tools/list returns the server's tools",
+    listed.ok === true && listed.tools.indexOf("fetch") !== -1, JSON.stringify(listed));
+  check("every tool is listed", listed.tools.length === 2, JSON.stringify(listed.tools));
+  const listFailed = await M.listTools(spec("exit"));
+  check("listing a dead server fails cleanly",
+    listFailed.ok === false && Array.isArray(listFailed.tools));
+}
+
 (async () => {
   testEditPlanParsing();
   testPlanParsing();
@@ -3487,6 +3539,7 @@ function testSkillStore() {
   testStorageRoot();
   testPromptCompose();
   testSkillStore();
+  await testMcpClient();
 
   console.log("\n" + (fail === 0 ? "PASS" : "FAIL") + " — " + pass + " passed, " + fail + " failed");
   process.exit(fail === 0 ? 0 : 1);
