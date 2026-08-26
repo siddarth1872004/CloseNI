@@ -383,7 +383,7 @@
         rejection + "\nAddress that specifically." : "");
     const args = ["browser", stepDetail, ws, CN.getProvider(), CN.getAutonomy(), String(i), stepDetail, (plan && plan.summary) || ""];
     const res = sessionActive()
-      ? await CN.sendStep(i, stepDetail, (plan && plan.summary) || "", !!s.testable)
+      ? await CN.sendStep(i, stepDetail, (plan && plan.summary) || "", !!s.testable, s.title || "")
       : await CN.runAgent(args);
 
     if (stepTimer && window.CNTiming) {

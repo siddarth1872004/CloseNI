@@ -647,6 +647,15 @@ interface StepRequest {
    */
   threadHasContext?: boolean;
   /**
+   * The step's title, for the checkpoint and anything reading it later.
+   *
+   * Separate from `stepDetail`, which is the whole prompt - "Overall: <goal>
+   * Execute ONLY this step: ..." - and makes a useless commit subject. A real
+   * build exported to git produced "step 1: Overall: Temperature converter
+   * Execute ONLY this step: Tempe" before this existed.
+   */
+  title?: string;
+  /**
    * Did the plan say this step has behaviour worth asserting?
    *
    * Declared once while the model was designing the whole project, rather than
@@ -873,7 +882,7 @@ async function runBuildStep(controller: PlaywrightController, config: ProviderCo
     // undoing a step means deleting exactly those.
     checkpoint = mergeCheckpoint(checkpoint, stepIndex,
       capturePrior(workspace, plan.changes.map((c) => c.filePath)),
-      { title: stepDetail.slice(0, 80) });
+      { title: (req.title || stepDetail).slice(0, 80) });
     const applyResult = applyPatch(workspace, plan);
     let failed: { command: string; output: string } | null = null;
 
@@ -1392,6 +1401,7 @@ async function buildSessionMode(workspace: string, providerId: string, autonomy:
               stepDetail: msg.detail || "",
               goalSummary: msg.goal || "",
               testable: !!msg.testable,
+              title: msg.title || "",
               // Whether the conversation came back. A resumed build whose thread
               // is gone must be told so before it sends a short prompt into a
               // model that has never seen the plan.

@@ -477,7 +477,7 @@ ipcMain.handle("send-step", function (event, payload) {
       // Whether the plan said this step has behaviour worth asserting. Dropped
       // here and the step is never asked for tests, silently - which is exactly
       // how dependsOn died between the plan and the scheduler.
-      testable: !!payload.testable
+      testable: !!payload.testable, title: payload.title || ""
     }) + "\n");
   });
 });

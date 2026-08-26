@@ -320,6 +320,15 @@ check('research uses the provider search, not a scraped results page',
 check('GitHub search is authenticated',
   /searchRepos/.test(read('desktop/github-api.js')));
 
+// A checkpoint's title becomes a git commit subject when a build is exported.
+// Storing the step DETAIL there produced "step 1: Overall: Temperature converter
+// Execute ONLY this step: Tempe" on a real exported build.
+check('a checkpoint records the step title, not the whole prompt',
+  /req\.title \|\| stepDetail/.test(agent));
+check('and the title is sent by both the app and the CLI',
+  /title: payload\.title/.test(read('desktop/main.js')) &&
+  /title: steps\[i\]\.title/.test(read('bin/closeni.js')));
+
 // The stream tap wrapped fetch only, and DeepSeek's page never calls fetch -
 // 0 fetch calls against 36 XHR, measured. So the tap never fired once, and
 // completion silently ran on text stability for the whole life of the feature.
@@ -537,10 +546,10 @@ ${'-'.repeat(W)}
     · Interoperability with any real MCP server. The client is tested against
       a scripted fake, which proves the framing and the failure handling. It
       does not prove that this client and, say, mcp-server-fetch agree.
-    · Whether a full BUILD works against a live provider. The read path IS
-      verified - 'npm run smoke' passed against DeepSeek on 11 August - but no
-      plan has been built end to end since the checkpoint, rollover, review and
-      test work landed.
+    · Whether generated projects behave in general. One three-step build was
+      run against DeepSeek on 11 August and its output verified by hand - it
+      ran and printed the right answer - but that is a single sample, and the
+      automated checks still only prove code parses and compiles.
 ${'-'.repeat(W)}
 `);
 

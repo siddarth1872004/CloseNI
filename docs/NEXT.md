@@ -250,6 +250,26 @@ so there are now drift checks that the markup and the prose agree. Design:
   timing now have end-to-end coverage against a stub agent. Design:
   `docs/superpowers/specs/2026-08-11-headless-cli-design.md`.
 
+## The first full build against a live provider — 11 August 2026
+
+Everything above had been tested and not *run*. A three-step plan built through
+`closeni build` against DeepSeek closed that:
+
+- **3/3 steps, 1m 10s**, and the generated project runs: `100.0°C = 212.0°F`.
+- **`testable` worked** - steps declaring it produced `test_convert.py` and
+  `test_rounding.py` unprompted, without being told the filenames.
+- **Checkpoints written**, one per step, and `planRollback` against them
+  correctly undid steps 2-3 and removed exactly the files they created.
+- **The export planned three commits** growing 2 -> 4 -> 5 files with deletes
+  shrinking 3 -> 1 -> 0, which is the "stage every path at its state as of that
+  step" fix behaving.
+- **Timing attributed 61% to waiting on the model**, 36% to sending.
+
+It also found a defect nothing else would have. The checkpoint stored the step's
+*detail* rather than its title, so an exported build's history read
+`step 1: Overall: Temperature converter Execute ONLY this step: Tempe`. Fixed,
+and verified by a second live build: `step 1: Slugify helper`.
+
 ## 8 · Keeping the project honest
 
 The verification work has repeatedly caught things reading could not. Worth

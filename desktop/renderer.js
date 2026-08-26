@@ -1621,9 +1621,9 @@ window.CN = {
       }).catch(function (e) { return { ok: false, error: String(e) }; });
     } catch (e) { return Promise.resolve({ ok: false, error: String(e) }); }
   },
-  sendStep: function (index, detail, goal, testable) {
+  sendStep: function (index, detail, goal, testable, title) {
     try {
-      return window.api.sendStep(index, detail, goal, testable)
+      return window.api.sendStep(index, detail, goal, testable, title)
         .catch(function (e) { return { success: false, error: String(e) }; });
     } catch (e) { return Promise.resolve({ success: false, error: String(e) }); }
   },

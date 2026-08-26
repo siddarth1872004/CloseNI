@@ -220,7 +220,10 @@ function save() {
       (steps[i].files && steps[i].files.length ? " Expected files: " + steps[i].files.join(", ") : "");
 
     send({ type: "step", index: i, detail: detail, prompt: detail,
-           goal: state.summary || "", testable: !!steps[i].testable });
+           goal: state.summary || "", testable: !!steps[i].testable,
+           // The title, so a checkpoint - and any git export made from it -
+           // carries something a person can read.
+           title: steps[i].title || "" });
 
     const res = await Promise.race([waitStep(i), failedProc.then(function () { return null; })]);
     timing.finish(stepTimer, Date.now());
