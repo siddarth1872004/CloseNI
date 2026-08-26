@@ -503,6 +503,9 @@ ${'-'.repeat(W)}
       with an injected transport, never over the network.
     · Whether generated projects are correct. The checks prove code parses
       and compiles, not that it behaves.
+    · Interoperability with any real MCP server. The client is tested against
+      a scripted fake, which proves the framing and the failure handling. It
+      does not prove that this client and, say, mcp-server-fetch agree.
     · Whether a full BUILD works against a live provider. The read path IS
       verified - 'npm run smoke' passed against DeepSeek on 11 August - but no
       plan has been built end to end since the checkpoint, rollover, review and

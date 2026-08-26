@@ -169,7 +169,7 @@ why.
 
 - **Qwen Studio, GLM** — gated in Settings, each with its reason in its config.
 
-## 5 · GitHub & external tools — 3 of 5
+## 5 · GitHub & external tools — DONE
 
 Roadmap items 11-15. Spec: `specs/2026-08-10-github-design.md`,
 plan: `plans/2026-08-10-github.md`
@@ -181,10 +181,26 @@ plan: `plans/2026-08-10-github.md`
 - **12. In-app sign-in, repo access, push** — `done`. A pasted token encrypted
   with `safeStorage`; repository list, creation, and push through a
   `GIT_ASKPASS` helper.
-- **13. MCP tool support** — `todo`. Needs no credentials.
+- **13. MCP tool support** — `done`, as a **context provider** rather than an
+  agentic loop. The constraint is structural: the model drives a web chat window
+  and cannot call a tool, so a tool loop would mean a full browser round-trip -
+  60 to 90 seconds - for every call, and five calls would add seven minutes to
+  one step. Instead the configured tools run **once, before the first step**, and
+  their text is folded into every step's prompt. Three JSON-RPC methods over
+  stdio, hand-written, no new dependency. Nothing an MCP server does can fail a
+  build: a server that will not start, errors, times out or emits noise becomes a
+  logged note and less context.
 - **14. GitHub Actions + external tooling** — `done` for Actions: recent runs
   with their state, and `workflow_dispatch`.
-- **15. Skills, personas, GitHub skill-`md`** — `todo`. Needs no credentials.
+- **15. Skills, personas, GitHub skill-`md`** — `done`. A persona is a stance
+  and a skill is a practice; both are plain Markdown in the user data directory,
+  with the filename as the display name and no frontmatter, registry or
+  versioning - a skill is a paragraph, and inventing a format around it would be
+  the larger commitment. Import takes `owner/repo/path/to/file.md` through the
+  token from item 12; after that it is a local file. Everything prepended shares
+  one 6000-character budget, cut lowest-priority first and **reported**, and
+  `base` is never truncated at any budget because it carries the JSON format
+  instruction this project has lost whole builds to losing.
 
 **A live bug was fixed on the way.** The git IPC ran
 `spawn("git", args, { shell: true })`, which concatenates arguments into a shell
