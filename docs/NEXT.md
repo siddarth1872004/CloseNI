@@ -20,7 +20,7 @@ Three layers, most reliable first:
 
 | Layer | What it answers | Status |
 |---|---|---|
-| The page's own network stream | did a reply start, did it end | **done** for completion; not yet for text |
+| The page's own network stream | did a reply start, did it end | **done and verified live** for completion; not yet for text |
 | The site's own controls (Copy) | what is the exact text of this block | **done** |
 | The rendered DOM | everything else | fallback only |
 
@@ -31,17 +31,21 @@ Three layers, most reliable first:
 The stream currently tells us **when a reply ends**. It can also tell us **what
 the reply is**, which removes the DOM from the read path entirely.
 
-- **Read the text from the stream.** Needs each provider's chunk format. This is
-  the single highest-value item left: no highlighting to un-parse, no toolbar
+- **Read the text from the stream.** No longer blocked on finding the endpoint -
+  it is `/api/v0/chat/completion` over XHR, and the tap already sees it. What is
+  left is the chunk format, which can now be captured from `responseText` on the
+  request we are already watching. This is no highlighting to un-parse, no toolbar
   text to filter, no virtualisation, and long replies stop being truncated by a
   list that only renders what is on screen.
-- **Confirm DeepSeek's endpoint.** ~~Currently a guess.~~ **Measured wrong.**
-  `npm run smoke` against the live site on 11 August reported `replyStream`
-  degraded: `/api/.*(completion|chat_session|chat)` matched **no request** during
-  a real reply. So completion is running entirely on text stability today, and
-  the stream work in this section has never actually been exercised. Replacing
-  the pattern still needs one look at the Network tab - but it is now a known
-  defect rather than an unknown.
+- ~~**Confirm DeepSeek's endpoint.**~~ **Done, and the pattern was never the
+  problem.** Instrumenting a real reply showed DeepSeek streams over
+  `POST /api/v0/chat/completion` (`text/event-stream`) - which the old pattern
+  *did* match. The tap wrapped `window.fetch`, and **DeepSeek's page never calls
+  fetch at all**: 0 fetch calls against 36 XHR in one measured reply. So the tap
+  had never fired once, and completion had run on text stability for the entire
+  life of the feature. The tap now watches both transports, and the pattern is
+  the exact measured endpoint rather than a loose guess that also matched
+  `chat_session/create`. **Measured effect: completion 15.1s to 8.7s.**
 - **Detect a refusal or a rate limit from the stream** rather than from prose.
   A provider saying "you have hit your limit" currently reads as a normal reply
   that happens not to contain JSON, and the build fails on a re-ask instead of
@@ -127,11 +131,15 @@ the reply is**, which removes the DOM from the read path entirely.
 
 ## 5 · Providers
 
-- **Fix DeepSeek's stop button.** New, and found the same way: the smoke test
-  reported `stopButton` never appearing during a real reply, so
-  `waitForStopButtonDisappear` never fires. Completion waits out text stability
-  instead - measured at 14.9s for a 43-character answer. A working selector here
-  would cut most of that from every step of every build.
+- ~~**Fix DeepSeek's stop button.**~~ **Closed: there is nothing to fix.**
+  Measured on 11 August - DeepSeek has no distinct stop control. The stop button
+  *is* the send button, one element that gains `ds-button--disabled` when idle,
+  so "enabled" means either *generating* or *you have typed something*, and the
+  only classes that distinguish the states are hashed (`_52c986b`). Any selector
+  would be ambiguous and built on exactly the kind of guess this document opens
+  by warning against. It is now unconfigured, and the smoke test reports it
+  skipped rather than degraded. The reply stream is a better end signal and is
+  exact.
 
 - **Un-gate Qwen** - page control already works; it needs a completion wait that
   survives a reasoning model, which the stream signal may simply solve.

@@ -320,6 +320,21 @@ check('research uses the provider search, not a scraped results page',
 check('GitHub search is authenticated',
   /searchRepos/.test(read('desktop/github-api.js')));
 
+// The stream tap wrapped fetch only, and DeepSeek's page never calls fetch -
+// 0 fetch calls against 36 XHR, measured. So the tap never fired once, and
+// completion silently ran on text stability for the whole life of the feature.
+// A tap that watches one transport is a tap that works until it does not.
+const controller = read('local-agent/src/providers/playwright-controller.ts');
+check('the stream tap watches XHR as well as fetch',
+  /XMLHttpRequest/.test(controller) && /w\.fetch/.test(controller));
+check('an XHR stream closes on loadend, so a failed one cannot hang the counter',
+  /loadend/.test(controller));
+check("DeepSeek's stream pattern is the measured endpoint, not a guess",
+  JSON.parse(read('local-agent/config/providers/deepseek.json')).selectors.streamUrlPattern
+    === '/api/v0/chat/completion');
+check('a provider with no stop control does not pretend to have one',
+  !JSON.parse(read('local-agent/config/providers/deepseek.json')).selectors.stopButton);
+
 // The live smoke test. Its value rests on watching the REAL wait loop and on
 // asserting a budget rather than reporting a number, so both are pinned.
 const smoke = read('local-agent/src/health/smoke-report.ts');

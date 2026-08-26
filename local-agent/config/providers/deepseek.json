@@ -6,19 +6,18 @@
   "selectors": {
     "chatInput": "textarea[placeholder], div[contenteditable=\"true\"], textarea",
     "sendButton": "button[type=\"submit\"], button[data-testid=\"send-button\"]",
-    "stopButton": "button[data-testid=\"stop-button\"]",
     "assistantMessage": "div[class*=\"ds-markdown\"], [data-testid=\"assistant-message\"], .markdown-body",
     "copyButton": "div[role=\"button\"]:has(span.code-info-button-text)",
     "_copyButtonNote": "Matches the code-block toolbar buttons; the caller filters by the label so Download is not clicked. .code-info-button-text is the only unhashed class on that control - the rest (ds-button--capsule etc.) are design-system modifiers and the surrounding path is entirely build hashes.",
     "_assistantNote": "ds-markdown first: it is the container DeepSeek renders assistant content into. The previous value led with [data-testid] and [class*=message][class*=assistant], which matched three nodes that never update while a reply streams - a build step sat at messages=3, chars=9019 for the full 300s wait because the node being watched was the PREVIOUS answer.",
-    "streamUrlPattern": "/api/.*(completion|chat_session|chat)",
-    "_streamNote": "MEASURED WRONG on 11 August 2026 by `npm run smoke` against the live site: this pattern matched no request during a real reply, so completion falls back to text stability. Kept rather than deleted so the next person knows it was tried and what it was. Replacing it needs one look at the Network tab during a reply - see docs/NEXT.md section 1.",
-    "_stopButtonNote": "MEASURED NOT MATCHING on 11 August 2026: the stop button never appeared during a real reply, so waitForStopButtonDisappear never fires and completion waits out text stability instead. A working selector here would cut roughly 8s off every step."
+    "streamUrlPattern": "/api/v0/chat/completion",
+    "_streamNote": "MEASURED on 11 August 2026 by instrumenting a real reply: DeepSeek streams its answer over POST /api/v0/chat/completion with content-type text/event-stream. Exact rather than a loose pattern on purpose - the earlier guess also matched chat_session/create, and a short request that opened AND closed before the reply began would have satisfied 'all streams closed' and ended the wait early. The reply is never read from this; only its start and end are used."
   },
   "completionRules": {
-    "waitForStopButtonDisappear": true,
+    "waitForStopButtonDisappear": false,
     "maxWaitMs": 300000,
-    "_maxWaitNote": "Raised from 120s. A reasoning model on a plan- or build-sized prompt was still thinking when the old wait expired, so a partial response got extracted and then failed to parse. The wait ends as soon as the reply is complete, so a longer ceiling costs nothing on fast answers."
+    "_maxWaitNote": "Raised from 120s. A reasoning model on a plan- or build-sized prompt was still thinking when the old wait expired, so a partial response got extracted and then failed to parse. The wait ends as soon as the reply is complete, so a longer ceiling costs nothing on fast answers.",
+    "_stopButtonNote": "DeepSeek has NO distinct stop control, measured 11 August 2026. The stop button IS the send button - one element that gains ds-button--disabled when idle - so 'enabled' means either 'generating' OR 'you have typed something', and the only distinguishing classes are hashed (_52c986b). A selector here would be both ambiguous and the kind of guess every serious bug in this project has come from. The reply stream above is a better end signal and is exact."
   },
   "_controlsNote": "DeepSeek has no model dropdown. Two modes and two inline toggles, all reporting their own state. Smart Search exists only under Instant.",
   "controls": [
