@@ -320,6 +320,20 @@ check('research uses the provider search, not a scraped results page',
 check('GitHub search is authenticated',
   /searchRepos/.test(read('desktop/github-api.js')));
 
+// Replay: real provider markup, no network. The seam matters - the harness has
+// to drive the REAL extractors, because a copy keeps passing after the original
+// breaks. And the fixture must never become a credential file, which is why the
+// HAR approach was dropped.
+check('there is a replay harness', !!JSON.parse(read('package.json')).scripts.replay);
+check('it drives the real controller, not a copy',
+  /attachPageForReplay/.test(read('scripts/replay.mjs')) &&
+  /attachPageForReplay/.test(read('local-agent/src/providers/playwright-controller.ts')));
+const fixture = read('local-agent/test/fixtures/replay/deepseek-reply.html');
+check('the replay fixture carries no credentials',
+  !/set-cookie|authorization|bearer |smidV2|thumbcache/i.test(fixture));
+check('and no URLs beyond the SVG namespace',
+  (fixture.match(/https?:\/\/[^"' ]+/g) || []).every((u) => u.startsWith('http://www.w3.org/')));
+
 // A real MCP server reports a tool failure as a SUCCESSFUL result carrying
 // isError, not as a JSON-RPC error. Checking only the latter meant a failed
 // tool's message was folded into every step's prompt as if it were context.

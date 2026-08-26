@@ -41,7 +41,8 @@
     "verify:all": "npm run verify && npm run edge && npm test",
     "smoke": "node local-agent/dist/index.js smoke",
     "headless": "node bin/closeni.js",
-    "mcp:interop": "node scripts/mcp-interop.mjs"
+    "mcp:interop": "node scripts/mcp-interop.mjs",
+    "replay": "node scripts/replay.mjs"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

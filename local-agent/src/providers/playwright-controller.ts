@@ -705,6 +705,24 @@ export class PlaywrightController {
     return out;
   }
 
+  /**
+   * Point this controller at a page somebody else opened.
+   *
+   * A test seam, and the only one. It exists so the replay harness can run the
+   * REAL extractors against recorded provider markup rather than a copy of them
+   * - a copy would keep passing after the original broke, which is the mistake
+   * the smoke test was built to avoid.
+   *
+   * Deliberately not the removed `attachTo`: that shared a browser context
+   * between parallel build workers and went with the one-conversation decision.
+   * This takes a page and does nothing else - no context, no thread, no
+   * session state.
+   */
+  attachPageForReplay(page: Page): void {
+    this.page = page;
+    this.ownsContext = false;
+  }
+
   async countMessages(config: ProviderConfig): Promise<number> {
     if (!this.page) return 0;
     try {

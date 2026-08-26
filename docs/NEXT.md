@@ -284,8 +284,23 @@ extending:
   passed after 300 seconds. **Not yet run against a live provider**, which is the
   one thing left to make it worth anything. Design:
   `docs/superpowers/specs/2026-08-11-live-smoke-test-design.md`.
-- **Record and replay**: capture a real session's network traffic once, then
-  replay it in tests. Real provider behaviour, no network, no account.
+- ~~**Record and replay**: capture a real session's network traffic once, then
+  replay it in tests.~~ **Done, but not with network traffic.** Recording a HAR
+  of a signed-in DeepSeek session produced 4.1MB carrying live cookies on 13
+  requests and `Authorization` on 11 - a credential file, in the same class as
+  `sessions.json` and `browser-profiles/**`, which can never be committed. A
+  scrubber that misses one field leaks a session, so the whole approach was
+  dropped.
+
+  The markup is the part worth keeping anyway. Every expensive bug this project
+  has had was in *reading the page*, and none of that needs the network. The
+  fixture is 9KB of real DeepSeek output - prose, a Prism-highlighted code block
+  shredded across dozens of `<span class="token ...">` elements, more prose -
+  with no headers, no cookies and no URLs beyond the SVG namespace.
+
+  `npm run replay` drives the **real** controller methods against it, not a copy:
+  a copy would keep passing after the original broke, which is the mistake the
+  smoke test exists to avoid. Nine checks, offline, no account.
 - **Keep every fix's evidence in the commit.** It has been the difference
   between fixing a bug and fixing the reason it was believed.
 
