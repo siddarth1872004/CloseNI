@@ -174,7 +174,7 @@ nav{display:flex;flex-direction:column;gap:2px;}
 .nav-btn.active{color:var(--txt);border-left-color:var(--txt);background:var(--surface-raised);}
 .nav-btn.active i{color:var(--txt);}
 #rail-bottom{margin-top:auto;display:flex;flex-direction:column;gap:6px;}
-#workspace-label{font-size:11px;color:var(--dim);word-break:break-all;margin-bottom:6px;}
+#workspace-label{font-size:11px;color:var(--mut);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:var(--sp-1);}
 .btn{background:none;border:1px solid var(--line-strong);color:var(--dim);padding:8px 14px;font-size:11px;
   letter-spacing:.08em;cursor:pointer;border-radius:3px;transition:.12s;text-transform:uppercase;}
 .btn:hover:not(:disabled){border-color:var(--txt);color:var(--txt);}
@@ -644,3 +644,14 @@ input:focus,textarea:focus,select:focus{transition:border-color .06s steps(1);}
 .plan-step:hover .plan-step-edit,.plan-step-edit:focus-within{opacity:1;}
 .plan-step-head{display:flex;align-items:center;gap:8px;}
 .plan-step-edit .btn{padding:2px 6px;font-size:10px;}
+
+/* Recent workspaces. Tokens only: the theme lint refuses colour literals
+   outside a theme block, and nine themes have to keep working. */
+#recent-list{display:flex;flex-direction:column;gap:2px;margin-bottom:var(--sp-2);}
+.recent-row{display:flex;align-items:center;gap:6px;padding:4px 6px;border:1px solid transparent;border-radius:3px;cursor:pointer;font-size:11px;}
+.recent-row:hover{background:var(--surface-sunken);}
+.recent-row.active{border-color:var(--line);background:var(--surface-sunken);}
+.recent-path{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--txt);}
+.recent-state{color:var(--mut);font-size:10px;white-space:nowrap;}
+.recent-forget{background:none;border:none;color:var(--mut);cursor:pointer;font-size:10px;padding:0 2px;line-height:1;}
+.recent-forget:hover{color:var(--txt);}

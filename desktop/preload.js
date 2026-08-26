@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld("api", {
   writeBuildState: function (p) { return ipcRenderer.invoke("write-build-state", p); },
   clearBuildState: function (workspace) { return ipcRenderer.invoke("clear-build-state", workspace); },
   clearCheckpoints: function (workspace) { return ipcRenderer.invoke("clear-checkpoints", workspace); },
+  workspaceProgress: function (paths) { return ipcRenderer.invoke("workspace-progress", paths); },
   listSkills: function () { return ipcRenderer.invoke("list-skills"); },
   readSkill: function (kind, name) { return ipcRenderer.invoke("read-skill", { kind: kind, name: name }); },
   writeSkill: function (kind, name, text) { return ipcRenderer.invoke("write-skill", { kind: kind, name: name, text: text }); },

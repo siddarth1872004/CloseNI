@@ -104,22 +104,90 @@ document.querySelectorAll(".nav-btn").forEach(function (btn) {
   };
 });
 
+/**
+ * Switch to a workspace.
+ *
+ * The one path both Browse and the recent list go through, so a project opened
+ * either way is opened identically - restoreBuild brings back its plan and
+ * statuses, and nothing runs until the user asks. That is the same rule the
+ * resume work established this morning: a restart is as often a crash as a
+ * tidy shutdown.
+ */
+let recentWorkspaces = [];
+try {
+  recentWorkspaces = window.CNRecent.parse(localStorage.getItem("closeni.recent-workspaces"));
+} catch (e) { recentWorkspaces = []; }
+
+function saveRecent() {
+  try { localStorage.setItem("closeni.recent-workspaces", JSON.stringify(recentWorkspaces)); } catch (e) {}
+}
+
+async function renderRecent() {
+  const box = $("recent-list");
+  if (!box || !window.CNRecent) return;
+  box.innerHTML = "";
+  if (!recentWorkspaces.length) return;
+
+  // One call for the whole list: the rail redraws on every switch, and eight
+  // round-trips to render eight lines is waste.
+  let progress = {};
+  try {
+    const r = await window.api.workspaceProgress(recentWorkspaces);
+    if (r && r.ok) progress = r.progress || {};
+  } catch (e) { /* the list still renders, just without the numbers */ }
+
+  recentWorkspaces.forEach(function (p) {
+    const row = document.createElement("div");
+    row.className = "recent-row" + (p === workspace ? " active" : "");
+    const name = document.createElement("span");
+    name.className = "recent-path";
+    // The tail is what distinguishes two projects; the head is usually the
+    // same for all of them and would push the useful part off the rail.
+    name.textContent = p.split(/[\\/]/).filter(Boolean).slice(-2).join("/");
+    name.title = p;
+    const state = document.createElement("span");
+    state.className = "recent-state";
+    state.textContent = window.CNRecent.describe(progress[p]);
+    const drop = document.createElement("button");
+    drop.className = "recent-forget";
+    drop.textContent = "x";
+    drop.title = "Forget this workspace (the folder is not touched)";
+    drop.onclick = function (ev) {
+      ev.stopPropagation();
+      recentWorkspaces = window.CNRecent.forget(recentWorkspaces, p);
+      saveRecent();
+      renderRecent();
+    };
+    row.appendChild(name); row.appendChild(state); row.appendChild(drop);
+    row.onclick = function () { if (p !== workspace) openWorkspace(p); };
+    box.appendChild(row);
+  });
+}
+
+async function openWorkspace(folder) {
+  if (!folder) return;
+  workspace = folder;
+  // Truncated in the rail, so the full path lives in the tooltip.
+  $("workspace-label").textContent = folder;
+  $("workspace-label").title = folder;
+  log("workspace: " + folder, "ok");
+  recentWorkspaces = window.CNRecent.remember(recentWorkspaces, folder);
+  saveRecent();
+  loadChatsForWorkspace();
+  // A build left unfinished in this folder comes back with it. Restoring
+  // only - nothing runs until the user presses Build.
+  if (window.CN && window.CN.restoreBuild) {
+    const restored = await window.CN.restoreBuild(folder);
+    // Replaces whatever plan was in memory: the plan and the step list have to
+    // describe the same build, and the step list has just been replaced.
+    if (restored) { currentPlan = restored; renderPlanDocument(restored, { keepBuild: true }); }
+  }
+  renderRecent();
+}
+
 $("browse-btn").onclick = async function () {
   const f = await window.api.selectFolder();
-  if (f) {
-    workspace = f;
-    $("workspace-label").textContent = f;
-    log("workspace: " + f, "ok");
-    loadChatsForWorkspace();
-    // A build left unfinished in this folder comes back with it. Restoring
-    // only - nothing runs until the user presses Build.
-    if (window.CN && window.CN.restoreBuild) {
-      const restored = await window.CN.restoreBuild(f);
-      // Replaces whatever plan was in memory: the plan and the step list have
-      // to describe the same build, and the step list has just been replaced.
-      if (restored) { currentPlan = restored; renderPlanDocument(restored); }
-    }
-  }
+  if (f) await openWorkspace(f);
 };
 // The picker lists whatever is enabled in local-agent/config/providers, so
 // adding a provider is a JSON file rather than a markup edit.
@@ -276,6 +344,16 @@ function renderAllProviderControls() {
   // One check at startup. It costs a headless browser launch, so it is not on a
   // timer - the light says "not checked" rather than pretending to be live.
   refreshAccount(false);
+
+  // Reopen the project you were last in, restored but not running - the same
+  // thing clicking it in the list would do. Nothing starts, no browser opens
+  // and no conversation is touched until you ask for something.
+  if (typeof renderRecent === "function") {
+    renderRecent();
+    if (recentWorkspaces.length && typeof openWorkspace === "function") {
+      openWorkspace(recentWorkspaces[0]);
+    }
+  }
 })();
 
 /* ---------- account status ----------
@@ -523,7 +601,20 @@ function editPlanStep(act, i) {
   renderPlanDocument(currentPlan);
 }
 
-function renderPlanDocument(plan) {
+/**
+ * Draw the plan sidebar.
+ *
+ * `keepBuild` matters more than it looks. This function ends by handing the
+ * plan to the builder, which rebuilds its step list with every status set to
+ * pending - correct for a plan that has just been generated, and destructive
+ * for one that has just been RESTORED, where the statuses are the whole point.
+ *
+ * That was a live bug from the moment resume landed: opening a workspace with a
+ * half-finished build showed every step pending, so pressing Build would have
+ * redone all of it. It went unnoticed because restoreBuild's own log line said
+ * "7/18 already done" while the cards beside it said otherwise.
+ */
+function renderPlanDocument(plan, opts) {
   const content = $("plan-content");
   if (!content) return;
   content.innerHTML = "";
@@ -607,7 +698,9 @@ function renderPlanDocument(plan) {
   content.appendChild(sec);
 
   $("plan-sidebar").classList.remove("hidden");
-  if (window.CN) window.CN.setPlan(plan);
+  // Skipped when restoring: restoreBuild has already populated the builder,
+  // statuses and all, and setPlan would reset every one of them to pending.
+  if (window.CN && !(opts && opts.keepBuild)) window.CN.setPlan(plan);
 }
 
 function resetEditState() {

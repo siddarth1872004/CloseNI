@@ -66,6 +66,9 @@
 
       <div class="micro mt-1">Workspace</div>
       <div id="workspace-label">none selected</div>
+      <!-- Projects you have opened before. Switching restores that project's
+           plan, statuses and conversation; nothing runs until you ask. -->
+      <div id="recent-list"></div>
       <button id="browse-btn" class="btn">Browse</button>
       <div class="micro mt-1">Chat Session</div>
       <select id="chat-select" class="mb-1">
@@ -433,6 +436,7 @@
 <script src="scheduler.js"></script>
 <script src="plan-edit.js"></script>
 <script src="step-timing.js"></script>
+<script src="recent-workspaces.js"></script>
 <script src="github-safe.js"></script>
 <script src="renderer.js"></script>
 <script src="builder.js"></script>

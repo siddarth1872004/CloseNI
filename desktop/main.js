@@ -1203,6 +1203,34 @@ ipcMain.handle("apply-rollback", function (event, payload) {
  * plan means "roll back to step 4" could restore a file from a build that has
  * nothing to do with this one - and it would look like it worked.
  */
+/**
+ * How far along each remembered workspace is.
+ *
+ * One call for the whole list rather than one per entry: the rail redraws on
+ * every switch, and eight round-trips to render eight lines is waste.
+ *
+ * A path that is gone reports missing rather than absent. A deleted folder and
+ * a folder never built in are different situations, and telling them apart is
+ * the difference between "I moved that" and "the app lost my project".
+ */
+ipcMain.handle("workspace-progress", function (event, paths) {
+  const out = {};
+  for (const ws of Array.isArray(paths) ? paths : []) {
+    if (typeof ws !== "string" || !ws.trim()) continue;
+    try {
+      if (!fs.existsSync(ws)) { out[ws] = { missing: true }; continue; }
+      const state = BUILDSTATE.parseBuildState(
+        fs.readFileSync(path.join(ws, BUILDSTATE.BUILD_STATE_DIR, BUILDSTATE.BUILD_STATE_NAME), "utf-8"));
+      out[ws] = state ? BUILDSTATE.describeProgress(state) : null;
+    } catch (e) {
+      // Present but with no readable build: a real workspace nobody has built
+      // in yet, which is not an error.
+      out[ws] = null;
+    }
+  }
+  return { ok: true, progress: out };
+});
+
 ipcMain.handle("clear-checkpoints", function (event, workspace) {
   try {
     if (workspace) fs.rmSync(checkpointDir(workspace), { recursive: true, force: true });

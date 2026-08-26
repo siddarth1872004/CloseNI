@@ -3560,6 +3560,53 @@ function testSkillsWiring() {
   });
 }
 
+function testRecentWorkspaces() {
+  section("the projects you have been working on");
+  const R = require(path.join(__dirname, "..", "..", "desktop", "recent-workspaces.js"));
+
+  check("an empty list starts empty", JSON.stringify(R.parse(null)) === "[]");
+  check("garbage reads as empty", JSON.stringify(R.parse("{{")) === "[]");
+  check("a non-array reads as empty", JSON.stringify(R.parse('{"a":1}')) === "[]");
+  check("non-strings are dropped", JSON.stringify(R.parse('["/a",7,null,"/b"]')) === '["/a","/b"]');
+
+  let list = R.remember([], "/projects/one");
+  check("the first workspace is remembered", JSON.stringify(list) === '["/projects/one"]');
+  list = R.remember(list, "/projects/two");
+  check("the newest is first", JSON.stringify(list) === '["/projects/two","/projects/one"]');
+
+  // Re-opening a project you already have must move it up, not duplicate it -
+  // a list with the same path twice is a list nobody trusts.
+  list = R.remember(list, "/projects/one");
+  check("re-opening moves it to the top rather than duplicating",
+    JSON.stringify(list) === '["/projects/one","/projects/two"]', JSON.stringify(list));
+  check("and the length does not grow", list.length === 2);
+
+  // The cap keeps the rail readable.
+  let many = [];
+  for (let i = 0; i < 12; i++) many = R.remember(many, "/p/" + i);
+  check("the list is capped", many.length === R.MAX_RECENT, String(many.length));
+  check("the cap is 8", R.MAX_RECENT === 8);
+  check("the oldest fell off the end", many.indexOf("/p/0") === -1);
+  check("the newest is still first", many[0] === "/p/11");
+
+  check("forgetting removes one", JSON.stringify(R.forget(["/a", "/b"], "/a")) === '["/b"]');
+  check("forgetting something absent changes nothing",
+    JSON.stringify(R.forget(["/a"], "/zzz")) === '["/a"]');
+  check("an empty path is never remembered",
+    JSON.stringify(R.remember(["/a"], "")) === '["/a"]' &&
+    JSON.stringify(R.remember(["/a"], null)) === '["/a"]');
+  check("whitespace is trimmed before comparing",
+    JSON.stringify(R.remember(["/a"], "  /a  ")) === '["/a"]');
+
+  // What the rail shows beside each path.
+  check("a finished build reads as done", R.describe({ done: 5, total: 5 }) === "done");
+  check("a partial build shows both numbers", R.describe({ done: 7, total: 18 }) === "7/18");
+  check("no plan says so", R.describe(null) === "no plan");
+  check("a missing folder says so, and is not confused with an empty one",
+    R.describe({ missing: true }) === "missing");
+  check("zero of zero is not 'done'", R.describe({ done: 0, total: 0 }) === "no plan");
+}
+
 (async () => {
   testEditPlanParsing();
   testPlanParsing();
@@ -3626,6 +3673,7 @@ function testSkillsWiring() {
   await testMcpClient();
   await testMcpContext();
   await testSkillsWiring();
+  testRecentWorkspaces();
 
   console.log("\n" + (fail === 0 ? "PASS" : "FAIL") + " — " + pass + " passed, " + fail + " failed");
   process.exit(fail === 0 ? 0 : 1);

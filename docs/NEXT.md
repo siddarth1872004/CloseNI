@@ -177,7 +177,22 @@ so there are now drift checks that the markup and the prose agree. Design:
 
 ## 7 · Things people will ask for
 
-- **Multiple workspaces open at once**, with one browser profile shared.
+- ~~**Multiple workspaces open at once**, with one browser profile shared.~~
+  **Done for switching**, and most of it already worked: `restoreBuild` brings
+  back a workspace's plan and statuses, and `sessions.json` is keyed by
+  workspace so each project already had its own conversation. What was missing
+  was any memory of which folders you use. A recent list now sits in the rail,
+  the last workspace reopens on launch - restored, never resumed - and a folder
+  that has gone says `missing` rather than vanishing from the list.
+
+  Building it found a live bug: `renderPlanDocument` ended by handing the plan to
+  the builder, which resets every status to `pending`. **Resume had been silently
+  broken since it landed** - a half-finished build showed every step pending and
+  wrote that back to disk. Fixed, and pinned.
+
+  **Still open:** two builds running *at the same time*. That is architectural -
+  one long-lived process owning the browser context, a multi-session protocol,
+  and a renderer that is single-workspace throughout - and deferred deliberately.
 - ~~**A plan editor** - reorder, merge and delete steps before building.~~
   **Done.** The UI was the easy half: `dependsOn` is index-based, so every edit
   rewrites the graph, and getting it wrong does not throw - it produces a plan

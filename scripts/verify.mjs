@@ -222,6 +222,22 @@ check('the preamble travels as an environment variable, like provider controls',
 check('a status probe sends no preamble',
   /agentEnv\("0", null\)/.test(read('desktop/main.js')));
 
+// Recent workspaces, and the bug adding them exposed: renderPlanDocument hands
+// the plan to the builder, which resets every status to pending - correct for a
+// new plan, destructive for a restored one. Resume had been silently broken
+// since it landed, and the wrong statuses were being written back to disk.
+const rendererSrc = read('desktop/renderer.js');
+check('restoring a build does not reset its statuses',
+  /renderPlanDocument\(restored, \{ keepBuild: true \}\)/.test(rendererSrc) &&
+  /!\(opts && opts\.keepBuild\)/.test(rendererSrc));
+check('Browse and the recent list share one switch path',
+  /\$\("browse-btn"\)\.onclick[\s\S]{0,200}openWorkspace\(f\)/.test(rendererSrc));
+check('the recent list stores paths only, not session data',
+  /closeni\.recent-workspaces/.test(rendererSrc) &&
+  !/recent-workspaces/.test(read('local-agent/src/session-store.ts')));
+check('a missing folder is named rather than dropped',
+  /missing/.test(read('desktop/recent-workspaces.js')));
+
 // Skills, personas and MCP context all arrive as one preamble. The risk is the
 // same one that kept the code-quality block to four lines: text in front of the
 // JSON instruction is parse risk, and this project has lost builds to it.
