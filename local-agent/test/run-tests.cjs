@@ -3380,6 +3380,50 @@ function testPromptCompose() {
   check("null parts do not throw", typeof C.composePrompt(null).text === "string");
 }
 
+function testSkillStore() {
+  section("personas and skills are just files");
+  const S = require(path.join(DIST, "skill-store.js"));
+
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "agentic-skills-"));
+  const sd = S.skillsDir(root);
+  fs.mkdirSync(sd, { recursive: true });
+  fs.writeFileSync(path.join(sd, "pytest.md"), "Always write pytest tests.");
+  fs.writeFileSync(path.join(sd, "stdlib.md"), "Prefer the standard library.");
+  fs.writeFileSync(path.join(sd, "notes.txt"), "not a skill");
+  fs.mkdirSync(path.join(sd, "adir.md"), { recursive: true });
+
+  check("skills live under the storage root",
+    sd === path.join(root, "skills") && S.personasDir(root) === path.join(root, "personas"));
+  const names = S.listMarkdown(sd);
+  check("the filename is the display name",
+    JSON.stringify(names) === JSON.stringify(["pytest", "stdlib"]), JSON.stringify(names));
+  check("a non-markdown file is ignored", names.indexOf("notes") === -1);
+  check("a directory named .md is ignored", names.indexOf("adir") === -1);
+  check("an unreadable directory yields an empty list rather than throwing",
+    JSON.stringify(S.listMarkdown(path.join(root, "nope"))) === "[]");
+
+  const read = S.readSelected(sd, ["pytest", "missing", "stdlib"]);
+  check("only the selected files are read", read.length === 2, JSON.stringify(read));
+  check("contents come back", read[0] === "Always write pytest tests.");
+  check("a selected file that is gone is skipped, not fatal", read.join(" ").indexOf("missing") === -1);
+  check("selection order is preserved", read[1] === "Prefer the standard library.");
+
+  // A name comes from the renderer and is used to build a path. Anything that
+  // could leave the directory is refused rather than sanitised, because a
+  // sanitised name silently reads a different file than the one asked for.
+  check("a plain name is safe", S.isSafeName("pytest") === true);
+  check("a dotted name is safe", S.isSafeName("py.test-1_x") === true);
+  check("traversal is refused", S.isSafeName("../../etc/passwd") === false);
+  check("a separator is refused", S.isSafeName("a/b") === false && S.isSafeName("a\\b") === false);
+  check("an absolute path is refused", S.isSafeName("/etc/passwd") === false);
+  check("empty is refused", S.isSafeName("") === false && S.isSafeName("   ") === false);
+  check("a leading dot is refused", S.isSafeName(".hidden") === false);
+  check("an unsafe name reads nothing",
+    JSON.stringify(S.readSelected(sd, ["../../etc/passwd"])) === "[]");
+
+  fs.rmSync(root, { recursive: true, force: true });
+}
+
 (async () => {
   testEditPlanParsing();
   testPlanParsing();
@@ -3442,6 +3486,7 @@ function testPromptCompose() {
   await testHeadlessCli();
   testStorageRoot();
   testPromptCompose();
+  testSkillStore();
 
   console.log("\n" + (fail === 0 ? "PASS" : "FAIL") + " — " + pass + " passed, " + fail + " failed");
   process.exit(fail === 0 ? 0 : 1);
