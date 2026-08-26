@@ -3476,6 +3476,49 @@ async function testMcpClient() {
     listFailed.ok === false && Array.isArray(listFailed.tools));
 }
 
+async function testMcpContext() {
+  section("MCP context, gathered once before a build");
+  const X = require(path.join(DIST, "mcp/mcp-context.js"));
+
+  const raw = {
+    servers: { fetch: { command: "uvx", args: ["mcp-server-fetch"] } },
+    calls: [{ server: "fetch", tool: "fetch", args: { url: "https://x.test" } }],
+  };
+  const cfg = X.parseMcpConfig(raw);
+  check("servers survive parsing", cfg.servers.fetch.command === "uvx");
+  check("calls survive parsing", cfg.calls.length === 1 && cfg.calls[0].tool === "fetch");
+  check("garbage yields an empty config", Object.keys(X.parseMcpConfig("{{").servers).length === 0);
+  check("null yields an empty config", X.parseMcpConfig(null).calls.length === 0);
+  check("a server with no command is dropped",
+    Object.keys(X.parseMcpConfig({ servers: { a: {} } }).servers).length === 0);
+  check("a call naming an unknown server is dropped by the planner",
+    X.planCalls(X.parseMcpConfig({ servers: {}, calls: [{ server: "gone", tool: "t" }] })).length === 0);
+
+  const planned = X.planCalls(cfg);
+  check("a planned call carries its server spec", planned[0].spec.command === "uvx");
+
+  // The whole point: a failure is context we did not get, never a failed build.
+  const okRun = async function () { return { ok: true, text: "DOCS" }; };
+  const gathered = await X.gatherContext(cfg, okRun);
+  check("successful calls return their text", gathered.texts.join("") === "DOCS", JSON.stringify(gathered.texts));
+  check("and nothing is reported", gathered.notes.length === 0);
+
+  const failRun = async function () { return { ok: false, text: "", error: "server exploded" }; };
+  const failed = await X.gatherContext(cfg, failRun);
+  check("a failed call contributes no text", failed.texts.length === 0);
+  check("but is reported rather than hidden", /server exploded/.test(failed.notes.join(" ")), JSON.stringify(failed.notes));
+  check("a build is not failed by it", Array.isArray(failed.texts));
+
+  const throwRun = async function () { throw new Error("boom"); };
+  const threw = await X.gatherContext(cfg, throwRun);
+  check("a client that throws is caught",
+    threw.texts.length === 0 && threw.notes.length === 1, JSON.stringify(threw.notes));
+
+  const empty = await X.gatherContext(X.parseMcpConfig(null), okRun);
+  check("no configuration means no calls and no noise",
+    empty.texts.length === 0 && empty.notes.length === 0);
+}
+
 (async () => {
   testEditPlanParsing();
   testPlanParsing();
@@ -3540,6 +3583,7 @@ async function testMcpClient() {
   testPromptCompose();
   testSkillStore();
   await testMcpClient();
+  await testMcpContext();
 
   console.log("\n" + (fail === 0 ? "PASS" : "FAIL") + " — " + pass + " passed, " + fail + " failed");
   process.exit(fail === 0 ? 0 : 1);
