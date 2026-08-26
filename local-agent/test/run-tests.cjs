@@ -3321,6 +3321,65 @@ function testStorageRoot() {
     rooted.profileDir === path.join("/root", "browser-profiles", "deepseek"), rooted.profileDir);
 }
 
+function testPromptCompose() {
+  section("what gets prepended, and what gets dropped");
+  const C = require(path.join(DIST, "prompt-compose.js"));
+
+  const parts = {
+    persona: "You are terse.",
+    skills: ["Write pytest tests.", "Prefer the standard library."],
+    mcpContext: ["Flask docs: use app.route."],
+    base: "TASK: build a thing. Reply with ```json.",
+  };
+  const out = C.composePrompt(parts);
+
+  // Order is the design decision: who you are, how to work, what is true, what
+  // to do. The task is last so it is what the model is still reading when it
+  // starts generating.
+  const iPersona = out.text.indexOf("You are terse.");
+  const iSkill = out.text.indexOf("Write pytest tests.");
+  const iMcp = out.text.indexOf("Flask docs");
+  const iBase = out.text.indexOf("TASK: build a thing.");
+  check("persona comes first", iPersona >= 0 && iPersona < iSkill);
+  check("skills come before context", iSkill < iMcp);
+  check("context comes before the task", iMcp < iBase);
+  check("nothing was dropped under budget", out.truncated.length === 0, JSON.stringify(out.truncated));
+  check("every skill is present", out.text.includes("Prefer the standard library."));
+
+  const bare = C.composePrompt({ base: "ONLY" });
+  check("an empty parts object yields exactly base", bare.text === "ONLY", JSON.stringify(bare.text));
+  check("and reports nothing dropped", bare.truncated.length === 0);
+  const noPersona = C.composePrompt({ skills: ["S"], base: "B" });
+  check("no persona leaves no blank lead-in", !/^\s/.test(noPersona.text), JSON.stringify(noPersona.text.slice(0, 12)));
+  const emptyStrings = C.composePrompt({ persona: "   ", skills: ["", "  "], mcpContext: [""], base: "B" });
+  check("blank parts are treated as absent", emptyStrings.text === "B", JSON.stringify(emptyStrings.text));
+
+  const big = function (n) { return "x".repeat(n); };
+  const over = C.composePrompt(
+    { persona: big(400), skills: [big(400)], mcpContext: [big(400)], base: "BASE" }, 900);
+  check("mcp context is dropped first", over.truncated.indexOf("mcp context") !== -1, JSON.stringify(over.truncated));
+  const tighter = C.composePrompt(
+    { persona: big(400), skills: [big(400)], mcpContext: [big(400)], base: "BASE" }, 500);
+  check("then skills", tighter.truncated.indexOf("skills") !== -1, JSON.stringify(tighter.truncated));
+  const tightest = C.composePrompt(
+    { persona: big(400), skills: [big(400)], mcpContext: [big(400)], base: "BASE" }, 50);
+  check("then persona", tightest.truncated.indexOf("persona") !== -1, JSON.stringify(tightest.truncated));
+
+  // THE check. base carries the JSON instruction, and this project has lost
+  // whole builds to replies the parser could not read.
+  check("base survives a budget smaller than itself",
+    tightest.text.indexOf("BASE") !== -1, JSON.stringify(tightest.text));
+  const microBudget = C.composePrompt({ persona: big(9000), base: "BASE" }, 1);
+  check("base survives a budget of 1", microBudget.text === "BASE", JSON.stringify(microBudget.text));
+  check("base alone over budget is still returned whole",
+    C.composePrompt({ base: big(9000) }, 10).text.length === 9000);
+
+  check("the default budget is 6000", C.PREAMBLE_BUDGET_CHARS === 6000);
+  check("nonsense budget falls back to the default",
+    C.composePrompt(parts, NaN).text === out.text);
+  check("null parts do not throw", typeof C.composePrompt(null).text === "string");
+}
+
 (async () => {
   testEditPlanParsing();
   testPlanParsing();
@@ -3382,6 +3441,7 @@ function testStorageRoot() {
   testStepTiming();
   await testHeadlessCli();
   testStorageRoot();
+  testPromptCompose();
 
   console.log("\n" + (fail === 0 ? "PASS" : "FAIL") + " — " + pass + " passed, " + fail + " failed");
   process.exit(fail === 0 ? 0 : 1);
