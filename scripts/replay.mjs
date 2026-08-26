@@ -72,6 +72,62 @@ check("prose after the code survives",
   structured.lastIndexOf("```") < structured.length - 20,
   "last fence at " + structured.lastIndexOf("```") + " of " + structured.length);
 
+
+/* ---- the long-prompt composer, against a React-style controlled textarea ----
+ *
+ * React does not use the prototype's value setter. It installs an OWN property
+ * on the element - its value tracker - so `el.value = x` hits that shadow and
+ * React never learns the text changed. The send control stays disabled and
+ * Enter does nothing.
+ *
+ * A real build hit this the first time a conversation rolled over: a 6384
+ * character seeded prompt went in, nothing sent, and the step sat at
+ * "messages=0" for its whole 300s timeout. Reproduced here so it cannot come
+ * back, without needing a provider or an account.
+ */
+const composer = await browser.newPage();
+await composer.setContent("<html><body><textarea id=t></textarea></body></html>");
+await composer.evaluate(() => {
+  const el = document.getElementById("t");
+  const w = window;
+  w.__reactValue = "";
+  const proto = Object.getOwnPropertyDescriptor(w.HTMLTextAreaElement.prototype, "value");
+  // The shadow React installs: writes here are recorded but never reach the
+  // element, which is what makes a naive el.value assignment silently useless.
+  Object.defineProperty(el, "value", {
+    get() { return w.__reactValue; },
+    set(v) { w.__shadowed = true; w.__reactValue = ""; },
+    configurable: true,
+  });
+  w.__native = proto.set;
+});
+
+const LONG = "x".repeat(6384);
+await composer.evaluate((text) => {
+  const doc = document, w = window;
+  const el = doc.querySelector('textarea, div[contenteditable="true"]');
+  if (!el) return;
+  if (el.tagName === "TEXTAREA") {
+    const desc = Object.getOwnPropertyDescriptor(w.HTMLTextAreaElement.prototype, "value");
+    if (desc && desc.set) desc.set.call(el, text);
+    else el.value = text;
+  } else {
+    el.textContent = text;
+  }
+  el.dispatchEvent(new Event("input", { bubbles: true }));
+}, LONG);
+
+const landed = await composer.evaluate(() => {
+  const el = document.getElementById("t");
+  const proto = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value");
+  return { real: proto.get.call(el).length, shadowed: !!window.__shadowed };
+});
+check("a long prompt reaches the element past a React-style value shadow",
+  landed.real === LONG.length, "element holds " + landed.real + " of " + LONG.length);
+check("and does not go through the shadow that swallows it",
+  landed.shadowed === false, "the naive el.value path was taken");
+await composer.close();
+
 await browser.close();
 console.log("  " + "-".repeat(58));
 console.log("  " + (fail === 0 ? "PASS" : "FAIL") + " — " + pass + " passed, " + fail + " failed\n");

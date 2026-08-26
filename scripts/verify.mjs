@@ -320,6 +320,17 @@ check('research uses the provider search, not a scraped results page',
 check('GitHub search is authenticated',
   /searchRepos/.test(read('desktop/github-api.js')));
 
+// The long-prompt path. A React composer shadows `value` with an own property,
+// so el.value = text is swallowed and nothing sends - which hung a real build
+// the first time a conversation rolled over and produced a 6384-char prompt.
+const ctl = read('local-agent/src/providers/playwright-controller.ts');
+check('a long prompt is written through the native value setter',
+  /getOwnPropertyDescriptor\(w\.HTMLTextAreaElement\.prototype, "value"\)/.test(ctl));
+check('and the composer is checked before anything is sent',
+  /The composer did not take the prompt/.test(ctl));
+check('with fill\(\) as the fallback that goes through the browser itself',
+  /retyping it[\s\S]{0,120}input\.fill\(prompt\)/.test(ctl));
+
 // Replay: real provider markup, no network. The seam matters - the harness has
 // to drive the REAL extractors, because a copy keeps passing after the original
 // breaks. And the fixture must never become a credential file, which is why the

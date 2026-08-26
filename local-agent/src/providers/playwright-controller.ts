@@ -578,20 +578,57 @@ export class PlaywrightController {
     await input.click();
 
     if (prompt.length > 5000) {
-      console.log("Using clipboard paste for long prompt...");
-      await this.page.evaluate(async (text: string) => {
+      console.log("Long prompt - setting the composer directly...");
+      // Through the NATIVE value setter, not el.value.
+      //
+      // DeepSeek's composer is React-controlled, and React keeps its own copy of
+      // the value. Assigning el.value updates the DOM but not that copy, so
+      // React's tracker sees no change and swallows the input event: the text is
+      // visible, React still believes the box is empty, the send control stays
+      // disabled, and Enter does nothing.
+      //
+      // That is exactly what happened the first time a conversation rolled over
+      // in a real build - a 6384-character seeded prompt went in, nothing was
+      // sent, and the step sat at "messages=0" until its 300s timeout. The bug
+      // was invisible until then because only a rollover produces a prompt long
+      // enough to take this branch.
+      await this.page.evaluate((text: string) => {
         const doc = (globalThis as any).document;
+        const w = globalThis as any;
         const el = doc.querySelector('textarea, div[contenteditable="true"]');
-        if (el) {
-          if (el.tagName === "TEXTAREA") el.value = text;
-          else el.textContent = text;
-          el.dispatchEvent(new Event("input", { bubbles: true }));
-          el.dispatchEvent(new Event("change", { bubbles: true }));
+        if (!el) return;
+        if (el.tagName === "TEXTAREA") {
+          const desc = Object.getOwnPropertyDescriptor(w.HTMLTextAreaElement.prototype, "value");
+          if (desc && desc.set) desc.set.call(el, text);
+          else el.value = text;
+        } else {
+          el.textContent = text;
         }
+        el.dispatchEvent(new Event("input", { bubbles: true }));
       }, prompt);
       await this.page.waitForTimeout(500);
     } else {
       await input.fill(prompt);
+    }
+
+    // Verify the composer actually holds the prompt before trying to send it.
+    //
+    // Defence that does not depend on knowing which framework the page uses: if
+    // the text is not there, pressing Enter sends nothing and the step waits out
+    // its whole timeout with no way to tell why. Playwright's fill() goes through
+    // the browser's own input pipeline, so it is the fallback that works when a
+    // hand-rolled write does not.
+    const seen = await this.page.evaluate(() => {
+      const doc = (globalThis as any).document;
+      const el = doc.querySelector('textarea, div[contenteditable="true"]');
+      if (!el) return -1;
+      return (el.tagName === "TEXTAREA" ? el.value : el.textContent || "").length;
+    });
+    if (seen < Math.min(prompt.length, 40)) {
+      console.log("The composer did not take the prompt (" + seen + " of " +
+        prompt.length + " characters) - retyping it.");
+      await input.fill(prompt);
+      await this.page.waitForTimeout(500);
     }
     await this.page.waitForTimeout(1000);
 
