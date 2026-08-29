@@ -333,6 +333,37 @@ extending:
   whose last one reproduces the working tree exactly, with readable subjects
   ("step 2: Implement database module with connection and initialization").
 
+- **A build now installs into its own virtualenv, and then uses it.** A real run
+  reported `pip3: not found` at every step and then failed nine consecutive
+  steps on `No module named pytest` - one fact about the machine, reported as
+  nine code bugs. Debian ships pip only inside virtualenvs, so a bare
+  `pip3 install` cannot work and `pip install` outside one is refused with
+  `externally-managed-environment`.
+
+  Before step one the build creates `.venv`, installs every `requirements.txt`
+  at the root or one level down (the project that failed was a monorepo -
+  `backend/requirements.txt`, `frontend/package.json` - and everything only
+  looked at the root), and runs `npm install` where a `package.json` lives.
+  Re-run each step, so a `requirements.txt` that only appears at step nine still
+  takes effect; a content hash keeps that from reinstalling on the eight steps
+  in between.
+
+  Creating a venv and then checking the code with the system interpreter would
+  install into somewhere nothing looks, so `python` now resolves to
+  `.venv/bin/python` for the syntax checks, the test checks and any command the
+  model suggests - `pip3 install -r ...` is rewritten to `.venv/bin/python -m
+  pip install -r ...` before the user approves it, the same contract
+  `normalizeCommand` already keeps.
+
+  Only pytest is installed by name, and only because it is the runner this app
+  wants to run. Installing package names parsed out of model output is one typo
+  away from installing whatever squats them.
+
+  `.venv/` and `node_modules/` are added to the workspace `.gitignore` before
+  the first install: the git export refuses to run on a dirty tree and tells the
+  user to commit what is there, and without this it would have been asking them
+  to commit `node_modules`.
+
 ---
 
 ## What not to do

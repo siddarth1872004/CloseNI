@@ -17,6 +17,8 @@ import { computeDelta, nextLedger } from "./context/delta.js";
 import { buildApplyFollowUp, buildTestFollowUp } from "./follow-up.js";
 import { planBehaviourChecks, judge as judgeBehaviour, hasTestFiles, looksLikeMissingDependency } from "./verification/behaviour-checker.js";
 import { resolveTool } from "./verification/toolchain.js";
+import { VENV_DIR, venvPython, findManifests, planEnvironmentSetup,
+  describePythonUnavailable, rewriteForVenv, mergeGitignore } from "./verification/python-env.js";
 import { MANIFEST_NAME } from "./run-manifest.js";
 import { defaultStorageRoot } from "./storage-paths.js";
 import { composePrompt } from "./prompt-compose.js";
@@ -69,6 +71,170 @@ async function askApproval(command: string, cwd: string, autonomy: string): Prom
 
 function projLog(text: string) {
   for (const l of text.split("\n")) console.log("PROJ|" + l);
+}
+
+/*
+ * The build's own virtualenv.
+ *
+ * A run on a machine with no pip suggested `pip3 install -r
+ * backend/requirements.txt` at every step, failed every time with "pip3: not
+ * found", wrote each failure off as environment setup, and then failed nine
+ * consecutive steps on "No module named pytest". One fact about the machine,
+ * reported nine times as nine code bugs.
+ *
+ * Run once per step rather than once per build, because the agent is a fresh
+ * process each step and because a requirements.txt often does not exist until
+ * late - in one real build it arrived at step nine. The hash comparison is what
+ * keeps that from reinstalling everything on the eight steps in between.
+ */
+const ENV_STATE_FILE = "env.json";
+
+interface EnvState {
+  installedHashes: Record<string, string>;
+  installedNodeDirs: string[];
+  /** This machine cannot create a virtualenv at all; say so once, not per step. */
+  pythonUnavailable?: boolean;
+}
+
+function envStatePath(workspace: string): string {
+  return path.join(workspace, CHECKPOINT_DIR, ENV_STATE_FILE);
+}
+
+function readEnvState(workspace: string): EnvState {
+  try {
+    const raw = JSON.parse(fs.readFileSync(envStatePath(workspace), "utf-8"));
+    return {
+      installedHashes: raw.installedHashes || {},
+      installedNodeDirs: Array.isArray(raw.installedNodeDirs) ? raw.installedNodeDirs : [],
+      pythonUnavailable: !!raw.pythonUnavailable,
+    };
+  } catch {
+    return { installedHashes: {}, installedNodeDirs: [] };
+  }
+}
+
+function writeEnvState(workspace: string, state: EnvState): void {
+  try {
+    fs.mkdirSync(path.dirname(envStatePath(workspace)), { recursive: true });
+    fs.writeFileSync(envStatePath(workspace), JSON.stringify(state, null, 2));
+  } catch { /* a state file that cannot be written only costs a reinstall */ }
+}
+
+function fileHash(file: string): string | null {
+  try { return require("crypto").createHash("sha1").update(fs.readFileSync(file)).digest("hex"); }
+  catch { return null; }
+}
+
+/** Does this project want pytest, or is the standard library enough? */
+function wantsPytest(workspace: string): boolean {
+  try {
+    const names = fs.readdirSync(workspace);
+    return ["pytest.ini", "pyproject.toml", "setup.cfg", "tests", "test"]
+      .some((n) => names.indexOf(n) !== -1);
+  } catch { return false; }
+}
+
+/**
+ * Create the venv and install into it, before anything is checked.
+ *
+ * Never fails the step. A machine that cannot install packages is not a build
+ * that wrote bad code - that call is the one isEnvironmentSetup already makes,
+ * and getting it wrong is how a PEP 668 error once blocked fourteen good steps.
+ */
+async function ensureEnvironment(workspace: string): Promise<void> {
+  const state = readEnvState(workspace);
+  const list = (dir: string): string[] | null => {
+    try { return fs.readdirSync(path.join(workspace, dir)); } catch { return null; }
+  };
+  const manifests = findManifests(list);
+  if (!manifests.length) return;
+
+  const vp = venvPython(workspace);
+  const hashes: Record<string, string> = {};
+  for (const m of manifests) {
+    const rel = m.dir ? m.dir + "/" + m.file : m.file;
+    const h = fileHash(path.join(workspace, rel));
+    if (h) hashes[rel] = h;
+  }
+
+  // Before the first install, not after: the export's dirty-tree message must
+  // never be asking the user to commit node_modules.
+  if (!fs.existsSync(vp) || !state.installedNodeDirs.length) {
+    const ignoreFile = path.join(workspace, ".gitignore");
+    let current: string | null = null;
+    try { current = fs.readFileSync(ignoreFile, "utf-8"); } catch { current = null; }
+    const merged = mergeGitignore(current);
+    if (merged !== null) {
+      try { fs.writeFileSync(ignoreFile, merged); } catch { /* not worth failing a build over */ }
+    }
+  }
+
+  const commands = planEnvironmentSetup({
+    basePython: resolveTool("python"),
+    venvPython: vp,
+    venvExists: fs.existsSync(vp),
+    manifests: manifests,
+    installedNodeDirs: state.installedNodeDirs,
+    needsPytest: wantsPytest(workspace) && manifests.some((m) => m.file === "requirements.txt"),
+    installedHashes: state.installedHashes,
+    hashes: hashes,
+  });
+
+  for (const c of commands) {
+    // Nothing Python can succeed on a machine whose venv module cannot
+    // bootstrap pip. Node still can, so only the Python half is skipped.
+    if (state.pythonUnavailable && c.kind !== "npm") continue;
+    console.log("PHASE:" + JSON.stringify({ phase: "checking", detail: c.label }));
+    console.log("RUNNING_CHECK: " + c.command);
+    const r = await runCommand(c.command, path.join(workspace, c.cwd), 300000, { timeoutIsFailure: true });
+    if (!r.success) {
+      const why = describePythonUnavailable(r.output);
+      if (why) {
+        // Said once, in a sentence that names the command that fixes it. The
+        // alternative - which is what happened - is nine steps each reporting
+        // "No module named pytest" as though the code were at fault.
+        console.log(why);
+        projLog(why);
+        state.pythonUnavailable = true;
+      } else {
+        console.log("ENVIRONMENT_COMMAND_SKIPPED: " + c.command);
+        projLog("Could not " + c.label + ", continuing: " + r.output.slice(0, 300));
+      }
+      continue;
+    }
+    if (c.kind === "npm") state.installedNodeDirs = state.installedNodeDirs.concat([c.cwd]);
+    else if (c.manifest) state.installedHashes[c.manifest] = hashes[c.manifest] || "";
+  }
+  writeEnvState(workspace, state);
+}
+
+/**
+ * Tool resolution that prefers the build's own virtualenv.
+ *
+ * Creating a venv and then checking the code with the system interpreter would
+ * install flask somewhere nothing ever looks - the venv has to be what "python"
+ * means for the rest of the step, or none of the above is worth doing.
+ */
+/** The venv interpreter, or null when there is not one to point at. */
+function venvForCommands(workspace: string): string | null {
+  const vp = venvPython(workspace);
+  return fs.existsSync(vp) ? vp : null;
+}
+
+function workspaceResolver(workspace: string): (name: string) => string | null {
+  const vp = venvPython(workspace);
+  const haveVenv = fs.existsSync(vp);
+  const binDir = path.join(workspace, VENV_DIR, process.platform === "win32" ? "Scripts" : "bin");
+  return (name: string) => {
+    if (haveVenv) {
+      if (name === "python") return vp;
+      // Only when it is really in there: claiming pytest that is not installed
+      // turns a missing runner into a failing suite.
+      const exe = path.join(binDir, process.platform === "win32" ? name + ".exe" : name);
+      if (fs.existsSync(exe)) return vp + " -m " + name;
+    }
+    return resolveTool(name);
+  };
 }
 
 function emit(obj: any) {
@@ -400,7 +566,7 @@ async function behaviourMode(workspace: string) {
     projectRun = typeof m.run === "string" && m.run.trim() ? m.run.trim() : null;
   } catch { /* no manifest, no smoke check */ }
 
-  const checks = planBehaviourChecks(rootEntries, readManifest, resolveTool, projectRun);
+  const checks = planBehaviourChecks(rootEntries, readManifest, workspaceResolver(workspace), projectRun);
   if (!checks.length) {
     emit({
       success: true, passed: 0, failed: 0, results: [],
@@ -911,7 +1077,11 @@ async function runBuildStep(controller: PlaywrightController, config: ProviderCo
     if (!applyResult.success) {
       failed = { command: "apply patch", output: applyResult.errors.join("\n") };
     } else {
-      const checks = planChecksForWorkspace(workspace, plan.changes.map((c) => c.filePath));
+      // Before anything is checked: the venv exists and holds what the project
+      // declares, so `python` below means the interpreter that can see flask.
+      await ensureEnvironment(workspace);
+      const resolveHere = workspaceResolver(workspace);
+      const checks = planChecksForWorkspace(workspace, plan.changes.map((c) => c.filePath), resolveHere);
       for (const c of checks) {
         // "types" and "syntax" read differently and should say so: a syntax
         // failure is the model producing something that does not parse, a type
@@ -943,7 +1113,7 @@ async function runBuildStep(controller: PlaywrightController, config: ProviderCo
           try { rootNames = fs.readdirSync(workspace); } catch {}
           const suite = planBehaviourChecks(rootNames, (file: string) => {
             try { return JSON.parse(fs.readFileSync(path.join(workspace, file), "utf-8")); } catch { return null; }
-          }, resolveTool, null).filter((b) => b.kind === "test" && b.available);
+          }, resolveHere, null).filter((b) => b.kind === "test" && b.available);
 
           for (const t of suite) {
             console.log("PHASE:" + JSON.stringify({ phase: "checking", detail: t.language + " tests" }));
@@ -977,7 +1147,11 @@ async function runBuildStep(controller: PlaywrightController, config: ProviderCo
         for (const suggested of plan.commands) {
           // Rewrite interpreter names that do not exist here before the user
           // approves, so what they see is what actually runs.
-          const cmd = normalizeCommand(suggested);
+          // rewriteForVenv second: the model writes `pip3 install ...` and
+          // `python3 -m pytest`, and on the machine that reported this `pip3`
+          // did not exist at all while `python3` was the one interpreter
+          // guaranteed not to see what the venv holds.
+          const cmd = rewriteForVenv(normalizeCommand(suggested), venvForCommands(workspace));
           if (cmd !== suggested) console.log("NORMALIZED_COMMAND: " + suggested + "  ->  " + cmd);
           console.log("REQUESTING_COMMAND: " + cmd);
           // Auto-allow means "do not interrupt me for pytest". It was never

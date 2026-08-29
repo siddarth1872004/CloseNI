@@ -345,6 +345,25 @@ check('a missing dependency does not fail the step',
 check('but a missing LOCAL module still does',
   /local\.has/.test(bc));
 
+// A build installs into its own venv, and then uses it. A real run suggested
+// `pip3 install -r backend/requirements.txt` at every step, failed every time
+// with "pip3: not found", and then failed nine steps on "No module named
+// pytest" - one fact about the machine, reported as nine code bugs.
+const pe = read('local-agent/src/verification/python-env.ts');
+const idx = read('local-agent/src/index.ts');
+check('a build creates its own venv', /-m venv/.test(pe));
+check('and installs with the venv python, never a bare pip',
+  /-m pip install/.test(pe) && !/^\s*"pip3? install/m.test(pe));
+check('manifests one level down are found', /findManifests/.test(pe));
+check('the venv is what "python" resolves to', /workspaceResolver/.test(idx));
+check('suggested pip3 commands are rewritten to it', /rewriteForVenv\(normalizeCommand/.test(idx));
+check('checks accept that resolver', /resolve \|\| resolveTool/.test(read('local-agent/src/verification/check-planner.ts')));
+// The export refuses to run on a dirty tree and tells the user to commit what
+// is there. Without this it would be asking them to commit node_modules.
+check('build artefacts are gitignored', /mergeGitignore/.test(idx) && /node_modules\//.test(pe));
+check('a machine that cannot build a venv is told once, with the fix',
+  /describePythonUnavailable/.test(idx) && /sudo apt install/.test(pe));
+
 // A failed reply request must stop the wait rather than poll for five minutes
 // and then blame the model. Only the HTTP status is read - no payload is
 // inspected, because a rate limit is a 429 whatever the body says.

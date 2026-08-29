@@ -3654,6 +3654,119 @@ function testStreamStatus() {
     S.describeStreamFailure(200) === null);
 }
 
+function testPythonEnv() {
+  section("a build makes its own venv and installs into it");
+  const E = require(path.join(DIST, "verification/python-env.js"));
+
+  // --- where the venv lives ---
+  check("posix venv python", E.venvPython("/w", "linux") === "/w/.venv/bin/python");
+  check("windows venv python",
+    E.venvPython("C:\\w", "win32").replace(/\//g, "\\") === "C:\\w\\.venv\\Scripts\\python.exe");
+
+  // --- what to install, found root-first then one level down ---
+  // The real project that produced these errors is a monorepo: the model wrote
+  // backend/requirements.txt and frontend/package.json, and every root-only
+  // lookup missed both.
+  const tree = {
+    "": ["backend", "frontend", "README.md"],
+    "backend": ["app.py", "requirements.txt"],
+    "frontend": ["package.json", "src"],
+  };
+  const list = function (rel) { return tree[rel] || null; };
+  const found = E.findManifests(list);
+  check("a requirements.txt one level down is found",
+    found.some(function (m) { return m.dir === "backend" && m.file === "requirements.txt"; }),
+    JSON.stringify(found));
+  check("so is a package.json one level down",
+    found.some(function (m) { return m.dir === "frontend" && m.file === "package.json"; }));
+  check("and nothing else is", found.length === 2, JSON.stringify(found));
+
+  // --- the commands ---
+  const plan = E.planEnvironmentSetup({
+    basePython: "python3",
+    venvPython: "/w/.venv/bin/python",
+    venvExists: false,
+    manifests: found,
+    installedNodeDirs: [],
+    needsPytest: true,
+  });
+  const cmds = plan.map(function (c) { return c.command; });
+  check("the venv is created first", /python3 -m venv/.test(cmds[0]), cmds[0]);
+  check("pip is the venv's pip, never a bare pip3",
+    cmds.filter(function (c) { return /pip/.test(c); })
+        .every(function (c) { return c.indexOf("/w/.venv/bin/python -m pip") === 0; }),
+    JSON.stringify(cmds));
+  check("requirements.txt is installed",
+    cmds.some(function (c) { return /-r backend\/requirements\.txt/.test(c); }), JSON.stringify(cmds));
+  check("pytest is installed, because it is our runner and not a guess",
+    cmds.some(function (c) { return /-m pip install pytest$/.test(c); }), JSON.stringify(cmds));
+  check("npm install runs in the directory that has the package.json",
+    plan.some(function (c) { return c.kind === "npm" && c.cwd === "frontend"; }), JSON.stringify(plan));
+
+  // Nothing to do is nothing to run: re-running setup every step must not
+  // reinstall the world.
+  const settled = E.planEnvironmentSetup({
+    basePython: "python3", venvPython: "/w/.venv/bin/python", venvExists: true,
+    manifests: found, installedNodeDirs: ["frontend"], needsPytest: false,
+    installedHashes: { "backend/requirements.txt": "h1" },
+    hashes: { "backend/requirements.txt": "h1" },
+  });
+  check("an unchanged requirements.txt is not reinstalled", settled.length === 0, JSON.stringify(settled));
+  const changed = E.planEnvironmentSetup({
+    basePython: "python3", venvPython: "/w/.venv/bin/python", venvExists: true,
+    manifests: found, installedNodeDirs: ["frontend"], needsPytest: false,
+    installedHashes: { "backend/requirements.txt": "h1" },
+    hashes: { "backend/requirements.txt": "h2" },
+  });
+  check("but a changed one is", changed.length === 1, JSON.stringify(changed));
+
+  // --- "python not found" must not happen once the venv exists ---
+  const vp = "/w/.venv/bin/python";
+  check("pip3 becomes the venv pip",
+    E.rewriteForVenv("pip3 install -r backend/requirements.txt", vp)
+      === vp + " -m pip install -r backend/requirements.txt");
+  check("bare pip too", E.rewriteForVenv("pip install flask", vp) === vp + " -m pip install flask");
+  check("python3 becomes the venv python",
+    E.rewriteForVenv("python3 -m pytest -q", vp) === vp + " -m pytest -q");
+  check("and so does python", E.rewriteForVenv("python app.py", vp) === vp + " app.py");
+  check("a second clause is rewritten as well",
+    E.rewriteForVenv("cd backend && python3 -m pytest", vp) === "cd backend && " + vp + " -m pytest");
+  check("without a venv nothing is rewritten",
+    E.rewriteForVenv("python3 -m pytest", null) === "python3 -m pytest");
+  check("a word merely containing python is left alone",
+    E.rewriteForVenv("./mypython run", vp) === "./mypython run");
+
+  // --- when the machine cannot do it at all ---
+  // Measured on the machine that produced the reported errors: python3.14 with
+  // no pip, no ensurepip, so `python3 -m venv` cannot make a working venv.
+  const ensurepip = "The virtual environment was not created successfully because ensurepip is not\n" +
+    "available.  On Debian/Ubuntu systems, you need to install the python3-venv\n" +
+    "package using the following command.\n\n    apt install python3.14-venv\n";
+  const why = E.describePythonUnavailable(ensurepip);
+  check("the reason is named", /ensurepip/.test(why || ""), why);
+  check("and so is the one command that fixes it",
+    /sudo apt install python3\.14-venv/.test(why || ""), why);
+  check("a missing venv module is recognised too",
+    /python3?-venv|ensurepip/.test(E.describePythonUnavailable("No module named venv") || ""));
+  // --- the venv must not end up in the project's history ---
+  // The git export refuses to run on a dirty tree and tells the user to commit
+  // what is there. Creating a venv and running npm install in the workspace
+  // made that message ask them to commit node_modules.
+  const fresh = E.mergeGitignore(null);
+  check("a workspace with no .gitignore gets one", /\.venv\//.test(fresh || ""), fresh);
+  check("node_modules is in it too", /node_modules\//.test(fresh || ""));
+  const kept = E.mergeGitignore("dist/\n");
+  check("the project's own rules are kept", /^dist\/$/m.test(kept || ""), kept);
+  check("nothing to add means no rewrite",
+    E.mergeGitignore(E.BUILD_ARTEFACTS.join("\n")) === null);
+  check("a slash-prefixed entry counts as present",
+    E.mergeGitignore("/node_modules/\n/.venv/\n/__pycache__/\n/.closeni/\n/.agent-backups/") === null);
+
+  check("a working venv has nothing to explain",
+    E.describePythonUnavailable("") === null &&
+    E.describePythonUnavailable("Successfully installed flask-3.0.0") === null);
+}
+
 function testUnittestFallback() {
   section("python tests run even without pytest");
   const B = require(path.join(DIST, "verification/behaviour-checker.js"));
@@ -3787,6 +3900,7 @@ function testUnittestFallback() {
   await testMcpContext();
   testStreamStatus();
   testUnittestFallback();
+  testPythonEnv();
   await testSkillsWiring();
   testRecentWorkspaces();
 

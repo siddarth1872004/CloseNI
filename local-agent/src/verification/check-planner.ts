@@ -233,7 +233,11 @@ export function planChecks(
  * The impure shell: read the workspace root, make somewhere for compiler
  * artifacts to land, then defer every decision to the pure function above.
  */
-export function planChecksForWorkspace(workspace: string, changedPaths: string[]): Check[] {
+export function planChecksForWorkspace(
+  workspace: string,
+  changedPaths: string[],
+  resolve?: ToolResolver,
+): Check[] {
   let rootEntries: string[] = [];
   try {
     rootEntries = fs.readdirSync(workspace);
@@ -248,5 +252,8 @@ export function planChecksForWorkspace(workspace: string, changedPaths: string[]
   } catch {
     /* a check that cannot write its artifacts will report that itself */
   }
-  return planChecks(changedPaths, rootEntries, resolveTool, tmpDir);
+  // The resolver is a parameter so a build can hand in one that prefers its own
+  // virtualenv. Checking code with the system interpreter after installing its
+  // dependencies into a venv finds none of them.
+  return planChecks(changedPaths, rootEntries, resolve || resolveTool, tmpDir);
 }
