@@ -316,6 +316,23 @@ extending:
 - **Keep every fix's evidence in the commit.** It has been the difference
   between fixing a bug and fixing the reason it was believed.
 
+- **A build that finishes is not a build that was checked.** A nine-step run
+  against DeepSeek produced a working Flask + React + SQLite todo app, 9/9 in
+  2m54s, and the model wrote `test_app.py` and `test_database.py` beside the
+  code. Nothing ran them: every python rule needed a `pytest.ini`, a
+  `pyproject.toml`, a `setup.cfg` or a `tests/` directory, and the project had
+  none. One assertion was wrong and stayed wrong until it was run by hand.
+
+  Loose `test_*.py` now runs with `python -m unittest discover` - the standard
+  library, so there is no missing-runner case, which is what let the layout fall
+  through. A declared pytest still wins.
+
+  The rollback and the git export were then replayed against that build's nine
+  real checkpoints: rolling back to step 4 restores 2 files, removes 3, and the
+  result matches the step-3 hashes byte for byte; the export plans nine commits
+  whose last one reproduces the working tree exactly, with readable subjects
+  ("step 2: Implement database module with connection and initialization").
+
 ---
 
 ## What not to do
