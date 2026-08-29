@@ -576,8 +576,6 @@ ${'-'.repeat(W)}
       DeepSeek has been driven end to end.
     · GitHub sign-in, push, clone and Actions against a real token. Tested
       with an injected transport, never over the network.
-    · Whether generated projects are correct. The checks prove code parses
-      and compiles, not that it behaves.
     · MCP against servers other than the reference one. Interop IS verified -
       'npm run mcp:interop' passes against @modelcontextprotocol/server-everything,
       which uses the official SDK - but that is one implementation, and the
