@@ -3618,6 +3618,42 @@ function testRecentWorkspaces() {
   check("zero of zero is not 'done'", R.describe({ done: 0, total: 0 }) === "no plan");
 }
 
+function testStreamStatus() {
+  section("a failed reply request says so instead of timing out");
+  const S = require(path.join(DIST, "providers/stream-status.js"));
+
+  check("a healthy reply is not a failure", S.describeStreamFailure(200) === null);
+  check("nor is any 2xx", S.describeStreamFailure(204) === null);
+  // XHR reports 0 before headers arrive; treating that as an error would fail
+  // every single healthy reply.
+  check("status 0 is not a failure", S.describeStreamFailure(0) === null);
+  check("a missing status is not a failure",
+    S.describeStreamFailure(undefined) === null && S.describeStreamFailure(NaN) === null);
+
+  const limited = S.describeStreamFailure(429);
+  check("429 is recognised as rate limiting", /rate limiting/i.test(limited.message), limited.message);
+  check("and says to wait rather than blaming the code",
+    /wait/i.test(limited.message) && /nothing is wrong with the code/i.test(limited.message));
+  check("and is fatal, because waiting longer cannot help", limited.fatal === true);
+
+  const unauth = S.describeStreamFailure(401);
+  check("401 points at the session, not the code", /sign in again/i.test(unauth.message), unauth.message);
+  check("403 does too", /sign in again/i.test(S.describeStreamFailure(403).message));
+
+  const server = S.describeStreamFailure(503);
+  check("5xx is named as the provider's end", /their end/i.test(server.message), server.message);
+
+  const other = S.describeStreamFailure(418);
+  check("an unrecognised failure still reports its code", /HTTP 418/.test(other.message), other.message);
+  check("and still stops the wait", other.fatal === true);
+
+  // Deliberately out of scope, and the test records why: a content refusal is a
+  // successful reply whose prose declines. Same status, same stream, nothing
+  // structural to read - so this module must not pretend to detect it.
+  check("a content refusal is not something a status can reveal",
+    S.describeStreamFailure(200) === null);
+}
+
 (async () => {
   testEditPlanParsing();
   testPlanParsing();
@@ -3683,6 +3719,7 @@ function testRecentWorkspaces() {
   testSkillStore();
   await testMcpClient();
   await testMcpContext();
+  testStreamStatus();
   await testSkillsWiring();
   testRecentWorkspaces();
 

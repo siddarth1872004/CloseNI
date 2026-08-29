@@ -331,6 +331,18 @@ check('and the composer is checked before anything is sent',
 check('with fill\(\) as the fallback that goes through the browser itself',
   /retyping it[\s\S]{0,120}input\.fill\(prompt\)/.test(ctl));
 
+// A failed reply request must stop the wait rather than poll for five minutes
+// and then blame the model. Only the HTTP status is read - no payload is
+// inspected, because a rate limit is a 429 whatever the body says.
+const ctlSrc = read('local-agent/src/providers/playwright-controller.ts');
+check('the tap reports the reply request status',
+  /__closeniStream\("open", this\.status\)/.test(ctlSrc));
+check('and the wait stops on a failed one',
+  /describeStreamFailure\(this\.lastStreamStatus\)/.test(ctlSrc));
+check('a rate limit is judged by status, not by matching prose',
+  /429/.test(read('local-agent/src/providers/stream-status.ts')) &&
+  !/rate limit(ed)?"|hit your limit/i.test(read('local-agent/src/providers/stream-status.ts')));
+
 // Replay: real provider markup, no network. The seam matters - the harness has
 // to drive the REAL extractors, because a copy keeps passing after the original
 // breaks. And the fixture must never become a credential file, which is why the

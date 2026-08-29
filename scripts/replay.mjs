@@ -128,6 +128,61 @@ check("and does not go through the shadow that swallows it",
   landed.shadowed === false, "the naive el.value path was taken");
 await composer.close();
 
+
+/* ---- a reply request that fails, against the real wait loop ----------------
+ *
+ * The failure this covers cannot be provoked on demand: you cannot ask a
+ * provider to rate limit you. So the page is synthetic and the 429 is fulfilled
+ * by the router - but the tap, the status plumbing and waitForResponse are the
+ * real ones.
+ *
+ * Before this, a 429 meant the reply never arrived and the step polled an
+ * element that would never change for its full five-minute timeout, then
+ * reported a slow model. It was never asked.
+ */
+const failing = await browser.newPage();
+// The document is served from a routed origin rather than set with
+// setContent, so the page has a real URL and a relative XHR is same-origin -
+// exactly as it is on the provider.
+await failing.route("**/api/v0/chat/completion", (route) =>
+  route.fulfill({ status: 429, contentType: "application/json", body: '{"error":"rate limited"}' }));
+await failing.route("https://example.test/", (route) =>
+  route.fulfill({ status: 200, contentType: "text/html",
+    body: "<html><body><textarea></textarea><div class='ds-markdown'></div></body></html>" }));
+await failing.goto("https://example.test/", { waitUntil: "domcontentloaded" });
+
+const failCtl = new PlaywrightController(config);
+failCtl.attachPageForReplay(failing);
+
+// sendPrompt arms the tap; the page then issues the request the tap watches.
+await failCtl.sendPrompt("probe", config);
+await failing.evaluate(() => {
+  const x = new XMLHttpRequest();
+  x.open("POST", "/api/v0/chat/completion");
+  x.send("{}");
+});
+await failing.waitForTimeout(1500);
+
+const stats = failCtl.streamStats();
+check("the tap records the reply request's HTTP status", stats.status === 429, "status " + stats.status);
+
+const began = Date.now();
+let failure = null;
+try {
+  await failCtl.waitForResponse(config, 0, "");
+} catch (e) { failure = e.message; }
+const waited = Date.now() - began;
+
+check("a failed reply request stops the wait", !!failure, "no error thrown");
+check("and says it is rate limiting, not a slow model",
+  /rate limiting/i.test(failure || ""), failure);
+check("and tells the user to wait rather than blaming their code",
+  /nothing is wrong with the code/i.test(failure || ""), failure);
+// The whole point: seconds, not the full maxWaitMs.
+check("in seconds rather than the full timeout",
+  waited < 30000, Math.round(waited / 1000) + "s of " + Math.round(config.completionRules.maxWaitMs / 1000) + "s");
+await failing.close();
+
 await browser.close();
 console.log("  " + "-".repeat(58));
 console.log("  " + (fail === 0 ? "PASS" : "FAIL") + " — " + pass + " passed, " + fail + " failed\n");

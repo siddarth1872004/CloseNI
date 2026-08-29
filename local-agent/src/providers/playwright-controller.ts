@@ -7,6 +7,7 @@ import { applyProviderControls } from "./controls/index.js";
 import { parseDesiredControls } from "./controls/decisions.js";
 import { formatResults } from "./controls/helpers.js";
 import { storagePaths } from "../storage-paths.js";
+import { describeStreamFailure } from "./stream-status.js";
 
 export interface ProviderConfig {
   id: string;
@@ -162,6 +163,8 @@ export class PlaywrightController {
   /** Streams seen since the last reset: how many opened, how many closed. */
   private streamsOpened = 0;
   private streamsClosed = 0;
+  /** HTTP status of the most recent reply request, 0 until one is seen. */
+  private lastStreamStatus = 0;
   private streamWatchInstalled = false;
 
   constructor(config: ProviderConfig) {
@@ -203,8 +206,8 @@ export class PlaywrightController {
   }
 
   /** Reply streams seen since the last send, for the smoke report. */
-  streamStats(): { opened: number; closed: number } {
-    return { opened: this.streamsOpened, closed: this.streamsClosed };
+  streamStats(): { opened: number; closed: number; status: number } {
+    return { opened: this.streamsOpened, closed: this.streamsClosed, status: this.lastStreamStatus };
   }
 
   getConversationSize(): { chars: number; turns: number } {
@@ -469,7 +472,7 @@ export class PlaywrightController {
           try {
             if (!re.test(String(url)) || !res.body) return res;
             const [mine, theirs] = res.body.tee();
-            w.__closeniStream("open");
+            w.__closeniStream("open", res.status);
             (async () => {
               const rd = mine.getReader();
               try { for (;;) { const r = await rd.read(); if (r.done) break; } }
@@ -498,7 +501,13 @@ export class PlaywrightController {
               let opened = false;
               this.addEventListener("readystatechange", () => {
                 // HEADERS_RECEIVED: the server has begun answering.
-                if (!opened && this.readyState >= 2) { opened = true; w.__closeniStream("open"); }
+                // HEADERS_RECEIVED is also the first moment `status` exists,
+                // so the reply's HTTP result is known here for free - no body is
+                // read and nothing is guessed at.
+                if (!opened && this.readyState >= 2) {
+                  opened = true;
+                  w.__closeniStream("open", this.status);
+                }
               });
               // loadend covers load, error and abort, so a stream that fails
               // still closes and cannot leave the counter permanently unbalanced.
@@ -514,9 +523,14 @@ export class PlaywrightController {
 
     try {
       if (!this.streamWatchInstalled) {
-        await this.page.exposeBinding("__closeniStream", (_src: any, ev: string) => {
-          if (ev === "open") this.streamsOpened++;
-          else if (ev === "close") this.streamsClosed++;
+        await this.page.exposeBinding("__closeniStream", (_src: any, ev: string, status?: number) => {
+          if (ev === "open") {
+            this.streamsOpened++;
+            // Kept so the wait can stop early on a request that will never
+            // answer. A 429 today means five minutes of polling and then a
+            // report that the model was slow; it was never asked.
+            this.lastStreamStatus = typeof status === "number" ? status : 0;
+          } else if (ev === "close") this.streamsClosed++;
         });
         // For any page loaded from here on.
         await this.page.addInitScript(tap, pattern);
@@ -565,6 +579,7 @@ export class PlaywrightController {
     // this prompt", which is meaningless if earlier ones are still counted.
     this.streamsOpened = 0;
     this.streamsClosed = 0;
+    this.lastStreamStatus = 0;
     phase("sending", prompt.length + " chars");
     console.log("Typing prompt into chat (length: " + prompt.length + ")...");
     let input;
@@ -838,6 +853,23 @@ export class PlaywrightController {
       // diagnostic into the failure it was added to diagnose.
       if (observe) {
         try { observe({ messages: count, chars: (text || "").length, stopVisible: stopVisibleNow }); } catch {}
+      }
+
+      // Stop early when the reply request itself failed.
+      //
+      // The status is already known - the tap reads it when headers arrive, for
+      // free, from a request it is watching anyway. Without this, a 429 means
+      // five minutes of polling an element that will never change, and then a
+      // report that the model was slow. It was never asked.
+      //
+      // Only the status is read. No payload is inspected and no message is
+      // pattern-matched, because a rate limit is a 429 whatever the body says -
+      // and guessing at a body nobody here has seen is how this project's every
+      // serious bug started.
+      const streamFailure = describeStreamFailure(this.lastStreamStatus);
+      if (streamFailure && streamFailure.fatal) {
+        console.log("The provider's reply request failed: " + streamFailure.message);
+        throw new Error(streamFailure.message);
       }
 
       // A reply to a follow-up is usually SHORTER than the answer before it, so

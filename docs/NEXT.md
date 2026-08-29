@@ -59,13 +59,25 @@ the reply is**, which removes the DOM from the read path entirely.
   life of the feature. The tap now watches both transports, and the pattern is
   the exact measured endpoint rather than a loose guess that also matched
   `chat_session/create`. **Measured effect: completion 15.1s to 8.7s.**
-- **Detect a refusal or a rate limit from the stream** rather than from prose.
-  Still open, and **still blocked on evidence** - corrected from an earlier claim
-  that this had become cheap. A healthy reply carries `status: "WIP"` and
-  `quasi_status: "FINISHED"`; what a refusal or a throttled account carries is
-  unknown, and cannot be learned without provoking one. Building it from the two
-  states seen in a healthy reply would be guessing at a payload exactly the way
-  the old code guessed at a selector.
+- ~~**Detect a rate limit from the stream.**~~ **Done**, once the two halves
+  were separated - they are not the same problem.
+
+  A **rate limit** is not a reply at all: it is an HTTP failure on the completion
+  request, and the tap already reads that request's status when headers arrive,
+  for free. 429 now stops the wait in seconds with "the provider is rate limiting
+  this account, wait a few minutes - nothing is wrong with the code", instead of
+  polling an element that will never change for the full five-minute timeout and
+  then reporting a slow model. 401/403 point at an expired session, 5xx at the
+  provider. Only the status is read: a rate limit is a 429 whatever the body
+  says, and guessing at a body nobody here has seen is how this project's every
+  serious bug started.
+
+- **Detect a content refusal.** Still open, and now understood to be a different
+  shape of problem: a provider declining something comes back as an ordinary
+  successful reply whose *prose* declines - same endpoint, same status, same
+  `WIP` to `FINISHED`. There is nothing structural to read, so this cannot be
+  done from the stream at all. It would mean reading prose, which is what this
+  section wanted to stop doing.
 
 ## 2 · Stop losing work to one bad step
 
