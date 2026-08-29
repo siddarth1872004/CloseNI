@@ -3654,6 +3654,72 @@ function testStreamStatus() {
     S.describeStreamFailure(200) === null);
 }
 
+function testUnittestFallback() {
+  section("python tests run even without pytest");
+  const B = require(path.join(DIST, "verification/behaviour-checker.js"));
+  const all = function (t) { return t; };
+  const noPytest = function (t) { return t === "pytest" ? null : t; };
+  const none = function () { return null; };
+  function tests(rootEntries, resolve) {
+    return B.planBehaviourChecks(rootEntries, function () { return null; }, resolve || all, null)
+      .filter(function (c) { return c.kind === "test"; });
+  }
+
+  // The layout a real build produced: top-level test_*.py, no pytest.ini, no
+  // pyproject.toml, no tests/ directory. Nothing planned a test check at all,
+  // so CloseNI asked the model for tests, got them, and never ran them - and a
+  // failing assertion went unnoticed until it was run by hand.
+  const flat = tests(["app.py", "database.py", "test_app.py", "test_database.py"]);
+  check("top-level test files are found", flat.length === 1, JSON.stringify(flat));
+  check("and run with unittest, which needs nothing installed",
+    /unittest/.test(flat[0] && flat[0].command), flat[0] && flat[0].command);
+  check("it is available even with no pytest",
+    tests(["test_app.py"], noPytest)[0].available === true);
+  check("the _test suffix is found too", tests(["app_test.py"]).length === 1);
+
+  // pytest still wins where the project declares it: a project with a
+  // pytest.ini means the author chose pytest, and unittest discover would miss
+  // fixtures and parametrisation.
+  const declared = tests(["pytest.ini", "test_app.py"]);
+  check("a declared pytest project still uses pytest",
+    /pytest/.test(declared[0].command) && !/unittest/.test(declared[0].command), declared[0].command);
+  check("and only one suite is planned", declared.length === 1);
+
+  // Absence stays absence.
+  check("a project with no tests plans no suite", tests(["app.py", "README.md"]).length === 0);
+  check("no python at all plans no python suite",
+    tests(["index.js"]).filter(function (c) { return c.language === "python"; }).length === 0);
+  // unittest is stdlib, so the only way it is unavailable is having no python.
+  check("no interpreter means the suite is reported unavailable, not dropped",
+    tests(["test_app.py"], none).length === 1 && tests(["test_app.py"], none)[0].available === false);
+
+  // Running the suite is only an improvement if a missing dependency is not
+  // mistaken for broken code. A real generated project imports flask; on a
+  // machine without it every step would fail its test check, and the repair
+  // loop would ask the model to fix something only pip install can. Same
+  // reasoning as isEnvironmentSetup: a fact about this machine, not the code.
+  check("a missing third-party module is an environment problem",
+    B.looksLikeMissingDependency("ModuleNotFoundError: No module named 'flask'") === true);
+  check("so is a failed import of a test module",
+    B.looksLikeMissingDependency("ImportError: Failed to import test module: test_app\nModuleNotFoundError: No module named 'flask'") === true);
+  check("node's version is recognised too",
+    B.looksLikeMissingDependency("Error: Cannot find module 'express'") === true);
+  // A real assertion failure must still fail the step - that is the point of
+  // running the tests at all.
+  check("an assertion failure is not an environment problem",
+    B.looksLikeMissingDependency("AssertionError: 1 != 0") === false);
+  check("nor is a plain failure summary",
+    B.looksLikeMissingDependency("FAILED (failures=1)") === false);
+  check("empty output is not an environment problem",
+    B.looksLikeMissingDependency("") === false && B.looksLikeMissingDependency(null) === false);
+  // The project's own modules are not dependencies - if `database` cannot be
+  // imported, the build really did break something.
+  check("a missing LOCAL module is still a real failure",
+    B.looksLikeMissingDependency("ModuleNotFoundError: No module named 'database'", ["database.py", "app.py"]) === false);
+  check("but a third-party one beside local files is still environment",
+    B.looksLikeMissingDependency("ModuleNotFoundError: No module named 'flask'", ["database.py", "app.py"]) === true);
+}
+
 (async () => {
   testEditPlanParsing();
   testPlanParsing();
@@ -3720,6 +3786,7 @@ function testStreamStatus() {
   await testMcpClient();
   await testMcpContext();
   testStreamStatus();
+  testUnittestFallback();
   await testSkillsWiring();
   testRecentWorkspaces();
 

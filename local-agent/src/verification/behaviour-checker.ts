@@ -184,11 +184,37 @@ export function planBehaviourChecks(
 
   // A tests/ directory with no manifest at all is still a Python suite.
   if (!sawSuite && PYTHON_TEST_DIRS.some((d) => present.has(d))) {
+    sawSuite = true;
     const tool = resolve("pytest");
     out.push({
       kind: "test", language: "python", timeoutMs: TEST_TIMEOUT_MS,
       tool: "pytest", available: !!tool,
       command: (tool || "pytest") + " -q",
+    });
+  }
+
+  /*
+   * Loose test_*.py files, run with unittest.
+   *
+   * This is the layout a real build produced: the model wrote test_app.py and
+   * test_database.py beside the code, with no pytest.ini, no pyproject.toml and
+   * no tests/ directory - so nothing above matched and NO test check was
+   * planned at all. CloseNI asked for the tests, got them, and never ran them.
+   * One of the assertions was wrong, and nobody found out until it was run by
+   * hand afterwards.
+   *
+   * unittest rather than pytest, because it is in the standard library: there
+   * is no "no runner installed" case to report, which is the whole reason this
+   * layout was falling through. A project that declares pytest still gets
+   * pytest - the rules above run first and win, because declaring it means the
+   * author wants fixtures and parametrisation that discover would miss.
+   */
+  if (!sawSuite && (rootEntries || []).some((e) => /^test_.+\.py$/i.test(String(e)) || /_test\.py$/i.test(String(e)))) {
+    const python = resolve("python");
+    out.push({
+      kind: "test", language: "python", timeoutMs: TEST_TIMEOUT_MS,
+      tool: "python", available: !!python,
+      command: (python || "python") + " -m unittest discover -v",
     });
   }
 
@@ -224,4 +250,35 @@ export function judge(
   }
   if (outcome.timedOut) return { passed: false, detail: "timed out" };
   return { passed: outcome.success, detail: outcome.success ? "passed" : "failed" };
+}
+
+/**
+ * Did the suite fail because a dependency is not installed?
+ *
+ * Same reasoning as isEnvironmentSetup in command-policy: a missing package is
+ * a fact about this machine, not about the code just written. Without this,
+ * running a project's tests during a build makes things WORSE on any machine
+ * that has not installed the project's requirements - every step fails its test
+ * check on an ImportError, and the repair loop spends its attempts asking the
+ * model to fix something only `pip install` can.
+ *
+ * A module the project itself provides is deliberately excluded. If `database`
+ * cannot be imported and database.py is right there, the build really did break
+ * something and the step should fail.
+ */
+export function looksLikeMissingDependency(output: string, projectFiles?: string[]): boolean {
+  const text = String(output || "");
+  if (!text.trim()) return false;
+
+  const names: string[] = [];
+  for (const m of text.matchAll(/No module named ['"]([^'"]+)['"]/g)) names.push(m[1]);
+  for (const m of text.matchAll(/Cannot find module ['"]([^'"]+)['"]/g)) names.push(m[1]);
+  if (!names.length) return false;
+
+  // A module the project ships is not a dependency.
+  const local = new Set(
+    (projectFiles || []).map((f) =>
+      String(f).replace(/\\/g, "/").split("/").pop()!.replace(/\.(py|js|mjs|cjs|ts)$/i, "")),
+  );
+  return names.some((n) => !local.has(String(n).split(".")[0]));
 }

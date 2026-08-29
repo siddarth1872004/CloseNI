@@ -331,6 +331,20 @@ check('and the composer is checked before anything is sent',
 check('with fill\(\) as the fallback that goes through the browser itself',
   /retyping it[\s\S]{0,120}input\.fill\(prompt\)/.test(ctl));
 
+// Python tests were only ever run through pytest, and only when a manifest or
+// a tests/ directory existed. A real build wrote test_*.py beside the code with
+// neither, so NO test check was planned - CloseNI asked for tests, got them,
+// and never ran them, and a wrong assertion went unnoticed.
+const bc = read('local-agent/src/verification/behaviour-checker.ts');
+check('loose python test files are run with unittest',
+  /unittest discover/.test(bc));
+check('a declared pytest project still wins',
+  bc.indexOf('pytest.ini') < bc.indexOf('unittest discover'));
+check('a missing dependency does not fail the step',
+  /looksLikeMissingDependency/.test(read('local-agent/src/index.ts')));
+check('but a missing LOCAL module still does',
+  /local\.has/.test(bc));
+
 // A failed reply request must stop the wait rather than poll for five minutes
 // and then blame the model. Only the HTTP status is read - no payload is
 // inspected, because a rate limit is a 429 whatever the body says.

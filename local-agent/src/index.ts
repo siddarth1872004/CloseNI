@@ -15,7 +15,7 @@ import { getProjectContext } from "./context/context-engine.js";
 import { selectRelevantFiles, WorkspaceFile } from "./context/relevance.js";
 import { computeDelta, nextLedger } from "./context/delta.js";
 import { buildApplyFollowUp, buildTestFollowUp } from "./follow-up.js";
-import { planBehaviourChecks, judge as judgeBehaviour, hasTestFiles } from "./verification/behaviour-checker.js";
+import { planBehaviourChecks, judge as judgeBehaviour, hasTestFiles, looksLikeMissingDependency } from "./verification/behaviour-checker.js";
 import { resolveTool } from "./verification/toolchain.js";
 import { MANIFEST_NAME } from "./run-manifest.js";
 import { defaultStorageRoot } from "./storage-paths.js";
@@ -951,6 +951,17 @@ async function runBuildStep(controller: PlaywrightController, config: ProviderCo
             const r = await runCommand(t.command, workspace, t.timeoutMs, { timeoutIsFailure: true });
             console.log("CHECK_RESULT: " + (r.success ? "PASS" : "FAIL"));
             if (!r.success) {
+              // A dependency that is not installed is a fact about this machine,
+              // not about the code just written - the same call isEnvironmentSetup
+              // makes for a pip blocked by PEP 668. Failing the step here would
+              // have the repair loop asking the model to fix an ImportError only
+              // `pip install` can, on every step, for the rest of the build.
+              if (looksLikeMissingDependency(r.output, workspaceNames)) {
+                console.log("Tests could not run: a dependency is not installed here. " +
+                  "Reporting it and carrying on - this is the machine, not the code.");
+                projLog(r.output.slice(0, 600));
+                continue;
+              }
               // "run tests" routes to buildTestFollowUp, which says the code or
               // the assertion could be wrong. The generic wording would tell the
               // model its code failed, and a wrong assertion then gets satisfied
