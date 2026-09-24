@@ -94,7 +94,8 @@ const FILE_RULES: FileRule[] = [
   },
   // -d for the same reason: .class files beside the sources would mean the
   // check modified the project it was inspecting.
-  { extensions: [".java"], tool: "javac", language: "java", command: (t, f, tmp) => t + ' -d "' + tmp + '" "' + f + '"' },
+  { extensions: [".java"], tool: "javac", language: "java",
+    command: (t, f, tmp) => t + ' -d "' + tmp + '"' + javaSourcePath(f) + ' "' + f + '"' },
   // gofmt -e reports syntax errors and writes nothing, which is what a check
   // wants: `go vet` needs a package, and `go build` needs a module.
   { extensions: [".go"], tool: "gofmt", language: "go", command: (t, f) => t + ' -e "' + f + '"' },
@@ -147,6 +148,33 @@ const TYPE_RULES: FileRule[] = [
       ' --cache-dir "' + tmp + '/mypy" "' + f + '"',
   },
 ];
+
+/**
+ * A -sourcepath naming every directory above a Java file, nearest first.
+ *
+ * javac looks for a sibling class under the source root: for
+ * `src/com/example/Main.java` importing `com.example.util.Helper`, it needs
+ * `src` on the source path to find `src/com/example/util/Helper.java`. By
+ * default the source path is the working directory, which is only right for
+ * the default package at the workspace root - so a package-structured project
+ * with no build file failed every file that imported another, on code that
+ * compiled. Measured, not assumed: `javac -d tmp src/com/example/Main.java`
+ * reports "package com.example.util does not exist" beside the file that
+ * declares it.
+ *
+ * The real root is wherever the package declaration says, which would mean
+ * reading the file; offering every ancestor is pure and finds the same one,
+ * because only the true root contains the package's directories. A file at the
+ * workspace root gets nothing added - the default already covers it.
+ */
+function javaSourcePath(filePath: string): string {
+  const parts = filePath.replace(/\\/g, "/").split("/").slice(0, -1).filter((p) => p && p !== ".");
+  if (!parts.length) return "";
+  const roots: string[] = [];
+  for (let i = parts.length; i > 0; i--) roots.push(parts.slice(0, i).join("/"));
+  roots.push(".");
+  return ' -sourcepath "' + roots.join(process.platform === "win32" ? ";" : ":") + '"';
+}
 
 function extensionOf(filePath: string): string {
   const name = filePath.replace(/\\/g, "/").split("/").pop() || "";

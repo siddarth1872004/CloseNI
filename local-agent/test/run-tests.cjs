@@ -1730,6 +1730,15 @@ function testToolchain() {
   const allCandidates = Object.keys(TOOL_CANDIDATES)
     .reduce(function (acc, k) { return acc.concat(TOOL_CANDIDATES[k]); }, []);
   check("no .exe names are probed", allCandidates.every(function (c) { return c.indexOf(".exe") === -1; }));
+
+  // `go --version` is not a flag and exits 2, and gofmt has no version flag at
+  // all, so probing them that way resolved Go as absent on every machine that
+  // had it - found by running scripts/languages.mjs against a real Go install.
+  const { probeCommand } = require(path.join(DIST, "verification/toolchain.js"));
+  check("go is probed with its version subcommand", probeCommand("go", "go") === "go version");
+  check("gofmt is probed bare, on an empty stdin", probeCommand("gofmt", "gofmt") === "gofmt");
+  check("everything else is probed with --version", probeCommand("cargo", "cargo") === "cargo --version");
+  check("a multi-word candidate keeps its words", probeCommand("mypy", "python3 -m mypy") === "python3 -m mypy --version");
 }
 
 function testCheckPlanner() {
@@ -1760,6 +1769,15 @@ function testCheckPlanner() {
       'rustc --edition 2021 --crate-type lib --emit=metadata --out-dir "/tmp/checks" "scratch.rs"');
   check("a lone Java file compiles to a temp directory",
     commands(planChecks(["App.java"], [], all, TMP))[0] === 'javac -d "/tmp/checks" "App.java"');
+  // Without a source path javac only finds siblings in the default package at
+  // the root, and a packaged project with no build file failed every import.
+  const sep = process.platform === "win32" ? ";" : ":";
+  check("a packaged Java file offers every ancestor as a source root",
+    commands(planChecks(["src/com/example/Main.java"], [], all, TMP))[0] ===
+      'javac -d "/tmp/checks" -sourcepath "' + ["src/com/example", "src/com", "src", "."].join(sep) +
+      '" "src/com/example/Main.java"');
+  check("a Windows path is split the same way",
+    commands(planChecks(["src\\Main.java"], [], all, TMP))[0].indexOf('-sourcepath "src' + sep + '."') !== -1);
   // The syntax pass is unchanged. Python now gets a mypy check on top of it,
   // which is why this asserts the syntax commands rather than every command -
   // see "type checking, not just parsing" for the addition itself.
