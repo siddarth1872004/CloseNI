@@ -364,6 +364,41 @@ extending:
   user to commit what is there, and without this it would have been asking them
   to commit `node_modules`.
 
+- **Every language check, run against the compiler it names.** Six of the
+  twelve had never executed: the machine they were written on had none of the
+  toolchains, so they were proven to be *chosen* correctly and never proven to
+  *work*. `npm run languages` now writes a working and a broken sample per
+  language and runs the real planner and runner over both. On a machine with
+  every toolchain but .NET, eleven languages, 114 assertions. It found three
+  defects no unit test could have:
+
+  - **Go had never been checked anywhere.** `resolveTool` probed with
+    `go --version` - not a flag, exit 2 - and `gofmt --version`, which has no
+    version flag at all. Both read as "not installed" beside a working Go, and
+    the log said `No go found` in the tone of a machine that simply lacked it.
+    The probe is now per tool: `go version`, and bare `gofmt` on an empty stdin.
+  - **Java in packages failed on correct code.** With no build file, `javac`
+    only finds siblings in the default package at the workspace root, so
+    `src/com/example/Main.java` importing `com.example.util.Helper` failed
+    "package does not exist" beside the file declaring it. The check now offers
+    every ancestor directory as a `-sourcepath`; only the true root contains the
+    package's directories, so it finds the same one reading the file would.
+  - **`py_compile` wrote `__pycache__` into the workspace.** Hidden by the
+    `.gitignore` a build writes - but only a build with a `requirements.txt` or
+    `package.json` writes one, so a plain Python project was left with a tree the
+    git export refuses as dirty. `PYTHONPYCACHEPREFIX` moves it to a temp dir.
+
+- **The packaged Linux build, launched.** Packed with `electron-builder --linux
+  dir`, the verify audit then passes in full (173/173), and the app launched
+  under Xvfb on a clean profile: window loads, the agent spawns on Electron's
+  binary and answers the account check, the browser gate shows. The download
+  could not finish - the network in use blocked `cdn.playwright.dev` - and the
+  gate said only **"Download failed (exit 1)"**. The installer had printed the
+  reason (`server returned code 403 ... request blocked`) first, then buried it
+  under generic lines. The gate now reports that reason and, for a network
+  refusal, names the host a proxy has to allow. It also stopped showing the
+  installer's terminal colour codes as literal `[2m` in the dialog.
+
 ---
 
 ## What not to do
