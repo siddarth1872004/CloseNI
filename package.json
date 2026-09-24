@@ -42,7 +42,8 @@
     "smoke": "node local-agent/dist/index.js smoke",
     "headless": "node bin/closeni.js",
     "mcp:interop": "node scripts/mcp-interop.mjs",
-    "replay": "node scripts/replay.mjs"
+    "replay": "node scripts/replay.mjs",
+    "languages": "node scripts/languages.mjs"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

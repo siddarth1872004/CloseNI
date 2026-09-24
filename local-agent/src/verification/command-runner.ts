@@ -1,4 +1,6 @@
 ﻿import { spawn, spawnSync } from "child_process";
+import * as os from "os";
+import * as path from "path";
 import { resolveTool } from "./toolchain.js";
 
 export interface CommandResult {
@@ -34,6 +36,12 @@ export function runCommand(
     const env = Object.assign({}, process.env);
     if (command.includes("python")) {
       env.PYTHONIOENCODING = "utf-8";
+      // py_compile writes a __pycache__ beside every file it checks, so the
+      // syntax check alone left bytecode in the project it was inspecting - and
+      // a Python project with no requirements.txt never gets the .gitignore
+      // entry that would hide it, so the git export then refused the tree as
+      // dirty. Python 3.8+ writes the cache here instead; older ones ignore it.
+      if (!env.PYTHONPYCACHEPREFIX) env.PYTHONPYCACHEPREFIX = path.join(os.tmpdir(), "closeni-pycache");
     }
 
     const proc = spawn(command, { cwd: cwd, shell: true, env: env });

@@ -44,6 +44,28 @@ export const TOOL_CANDIDATES: Record<string, string[]> = {
     : ["mypy", "python3 -m mypy", "python -m mypy"],
 };
 
+/**
+ * What to append to a candidate to prove it runs. `--version` everywhere except
+ * where it is not a flag at all.
+ *
+ * Go has no `--version`: `go --version` exits 2 with "flag provided but not
+ * defined", and gofmt has no version flag of any kind. Probing both that way
+ * resolved Go as not installed on every machine that had it, so every Go check
+ * was skipped - silently, and reported as "no go found" beside a working
+ * compiler. `go version` is the real subcommand; gofmt with no arguments
+ * formats an empty stdin and exits 0.
+ */
+export const TOOL_PROBES: Record<string, string> = {
+  go: " version",
+  gofmt: "",
+};
+
+/** The command that proves `candidate` works as tool `name`. */
+export function probeCommand(name: string, candidate: string): string {
+  const args = Object.prototype.hasOwnProperty.call(TOOL_PROBES, name) ? TOOL_PROBES[name] : " --version";
+  return candidate + args;
+}
+
 const cache = new Map<string, string | null>();
 
 /** Test seam: the cache is per-process and would otherwise outlive a test. */
@@ -58,7 +80,9 @@ export function resolveTool(name: string): string | null {
   const candidates = TOOL_CANDIDATES[name] || [name];
   for (const candidate of candidates) {
     try {
-      if (spawnSync(candidate + " --version", { shell: true, stdio: "ignore", timeout: 10000 }).status === 0) {
+      // stdio "ignore" hands the probe an empty stdin, which is what lets a bare
+      // `gofmt` finish instead of waiting for input.
+      if (spawnSync(probeCommand(name, candidate), { shell: true, stdio: "ignore", timeout: 10000 }).status === 0) {
         cache.set(name, candidate);
         return candidate;
       }
