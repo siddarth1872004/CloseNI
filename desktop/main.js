@@ -3,7 +3,7 @@ const fs = require("fs");
 const { app, BrowserWindow, ipcMain, dialog, shell, Menu } = require("electron");
 const path = require("path");
 const { spawn } = require("child_process");
-const { hasChromium } = require("./browser-check.js");
+const { hasChromium, stripAnsi, describeInstallFailure } = require("./browser-check.js");
 const GH = require("./github-safe.js");
 const GHAPI = require("./github-api.js");
 const { safeStorage } = require("electron");
@@ -1333,15 +1333,20 @@ ipcMain.handle("install-browser", function () {
         PLAYWRIGHT_BROWSERS_PATH: browsersDir(),
       }),
     });
+    // Kept whole, not just forwarded: the reason a download failed is printed
+    // first and then buried under generic lines, and the dialog shows the last.
+    let output = "";
     function forward(d) {
-      const line = String(d).trim();
+      output += String(d);
+      if (output.length > 65536) output = output.slice(-65536);
+      const line = stripAnsi(d).trim();
       if (line && win) win.webContents.send("browser-progress", line);
     }
     proc.stdout.on("data", forward);
     proc.stderr.on("data", forward);
     proc.on("error", function (e) { resolve({ ok: false, error: String(e) }); });
     proc.on("close", function (code) {
-      resolve(code === 0 ? { ok: true } : { ok: false, error: "Download failed (exit " + code + ")." });
+      resolve(code === 0 ? { ok: true } : { ok: false, error: describeInstallFailure(output, code) });
     });
   });
 });

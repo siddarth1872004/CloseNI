@@ -580,6 +580,31 @@ function testBrowserCheck() {
   check("the headless shell alone does not count", hasChromium(["chromium_headless_shell-1234"]) === false);
   check("ffmpeg alone does not count", hasChromium(["ffmpeg-1011"]) === false);
   check("a partial download does not count", hasChromium(["chromium-1234.downloads-in-progress"]) === false);
+
+  // Captured from a real failed install behind a proxy that blocks the CDN.
+  const B = require(path.join(__dirname, "..", "..", "desktop", "browser-check.js"));
+  const ESC = String.fromCharCode(27);
+  const blockedLog = [
+    "Downloading Chrome for Testing 151.0.7922.34 (playwright chromium v1234)" + ESC + "[2m from https://cdn.playwright.dev/x.zip" + ESC + "[22m",
+    "Error: Download failed: server returned code 403 body 'request blocked: no rule or allowlist entry allows host \"cdn.playwright.dev\"'. URL: https://cdn.playwright.dev/x.zip",
+    "    at ClientRequest.<anonymous> (coreBundle.js:1:1)",
+    "Failed to install browsers",
+    "Error: Failed to download Chrome for Testing 151.0.7922.34 (playwright chromium v1234), caused by",
+    "Error: Download failure, code=1",
+  ].join("\n");
+  check("colour codes are stripped from progress",
+    B.stripAnsi(blockedLog.split("\n")[0]).indexOf(ESC) === -1 && /\(playwright chromium v1234\) from https/.test(B.stripAnsi(blockedLog)));
+  const why = B.describeInstallFailure(blockedLog, 1);
+  check("a failed download names the real reason, not the last generic line",
+    /server returned code 403/.test(why) && !/Download failure, code=1/.test(why), why);
+  check("and does not say 'Download failed' twice", why.indexOf("Download failed") === why.lastIndexOf("Download failed"), why);
+  check("and a blocked download says which host to allow", /cdn\.playwright\.dev - a proxy or firewall/.test(why), why);
+  check("a failure with no reason still reads as a sentence",
+    B.describeInstallFailure("Failed to install browsers\n", 1) === "Download failed (exit 1). Check the connection and try again.");
+  check("a failure that is not the network does not blame the network",
+    !/firewall/.test(B.describeInstallFailure("Error: ENOSPC: no space left on device", 1)));
+  check("a very long reason is cut", B.describeInstallFailure("Error: " + "x".repeat(1000), 1).length < 300);
+  check("the gate uses it", /describeInstallFailure\(output, code\)/.test(fs.readFileSync(path.join(__dirname, "..", "..", "desktop", "main.js"), "utf8")));
 }
 
 function testBuildConfig() {
