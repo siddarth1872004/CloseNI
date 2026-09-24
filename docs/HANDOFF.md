@@ -28,9 +28,9 @@ a Windows Node on `/mnt/c` cannot run from a `\\wsl.localhost\...` path.
 
 ## State
 
-- **1202 unit tests + 155 end-to-end tests.** The unit suite passes;
-  the e2e suite passes except the one headed-browser case, which needs a
-  display (`xvfb-run` supplies one).
+- **1202 unit tests + 180 end-to-end tests, all passing.** Two e2e cases open
+  a visible browser, so on a machine with no display run the suite under
+  `xvfb-run`.
   `node local-agent/test/run-tests.cjs` and `node local-agent/test/run-e2e.cjs`
   (the e2e suite takes about 15 minutes and drives a real Chromium against a
   mock chat server; only the model's answers are faked).
