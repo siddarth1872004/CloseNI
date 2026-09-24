@@ -3636,6 +3636,68 @@ function testRecentWorkspaces() {
   check("zero of zero is not 'done'", R.describe({ done: 0, total: 0 }) === "no plan");
 }
 
+function testOnboarding() {
+  section("a first launch is told what to do, in order");
+  const O = require(path.join(__dirname, "..", "..", "desktop", "onboarding.js"));
+  const ids = function (st) { return O.steps(st).map(function (x) { return x.id; }).join(","); };
+
+  const fresh = { browserReady: true, workspace: "", account: "unknown", providerName: "DeepSeek", chatted: false };
+  check("the order is browser, folder, sign-in, first prompt",
+    ids(fresh) === "browser,workspace,signin,prompt", ids(fresh));
+  check("a fresh install starts at the folder", O.current(fresh) === "workspace");
+  check("with no browser, the browser comes first",
+    O.current(Object.assign({}, fresh, { browserReady: false })) === "browser");
+  check("an unknown browser state is not reported missing",
+    O.steps({}).find(function (x) { return x.id === "browser"; }).done === true);
+
+  // The account light starts unknown and costs a browser launch to check, so
+  // unknown must never read as signed out - that would send someone already
+  // signed in through the sign-in window again.
+  const withFolder = Object.assign({}, fresh, { workspace: "/w" });
+  const unknownStep = O.steps(withFolder).find(function (x) { return x.id === "signin"; });
+  check("an unchecked account offers a check, not a sign-in", unknownStep.action === "Check", unknownStep.action);
+  check("and says it may already be signed in", /already be signed in/.test(unknownStep.detail));
+  const off = O.steps(Object.assign({}, withFolder, { account: "off" })).find(function (x) { return x.id === "signin"; });
+  check("a signed-out account offers sign-in", off.action === "Sign in");
+  check("and explains the window before it opens", /window opens/.test(off.detail) && /closes by itself/.test(off.detail));
+  check("the provider is named", /DeepSeek/.test(off.title) && /DeepSeek/.test(off.detail));
+  const busy = O.steps(Object.assign({}, withFolder, { account: "busy" })).find(function (x) { return x.id === "signin"; });
+  check("a check in progress offers no button to press twice", busy.action === null && /Checking/.test(busy.title));
+
+  const signedIn = Object.assign({}, withFolder, { account: "on" });
+  check("signed in moves on to the first prompt", O.current(signedIn) === "prompt");
+  check("which offers a worked example",
+    O.steps(signedIn).find(function (x) { return x.id === "prompt"; }).action === "Use an example");
+  check("and the guide is still visible", O.visible(signedIn, false) === true);
+
+  const finished = Object.assign({}, signedIn, { chatted: true });
+  check("once everything is done there is nothing current", O.current(finished) === null);
+  check("and the guide goes away by itself", O.visible(finished, false) === false);
+  check("a dismissed guide stays gone", O.visible(fresh, true) === false);
+  check("only the stored word dismisses it",
+    O.isDismissed("dismissed") && !O.isDismissed(null) && !O.isDismissed("") && !O.isDismissed("yes"));
+  check("a done step has no button", O.steps(finished).every(function (x) { return x.action === null; }));
+  check("no provider name still reads as a sentence",
+    /your provider/.test(O.steps({ account: "off" }).find(function (x) { return x.id === "signin"; }).title));
+
+  // The example is only worth anything if it plans small and asks for tests.
+  check("the example names a file and a language", /convert\.py/.test(O.EXAMPLE_PROMPT) && /Python/.test(O.EXAMPLE_PROMPT));
+  check("and asks for tests", /tests/.test(O.EXAMPLE_PROMPT));
+
+  // Wiring: the guide reads real state, never a flag of its own.
+  const D = path.join(__dirname, "..", "..", "desktop");
+  const html = fs.readFileSync(path.join(D, "index.html"), "utf8");
+  const renderer = fs.readFileSync(path.join(D, "renderer.js"), "utf8");
+  check("the page loads onboarding.js before renderer.js",
+    html.indexOf('<script src="onboarding.js">') !== -1 &&
+      html.indexOf('<script src="onboarding.js">') < html.indexOf('<script src="renderer.js">'));
+  check("there is somewhere to draw it", /id="welcome"/.test(html));
+  check("Settings can bring it back", /id="welcome-reset"/.test(html));
+  check("the account light updates it", /acctNow = state;\s*renderOnboarding\(\)/.test(renderer));
+  check("opening a folder updates it", /renderRecent\(\);\s*renderOnboarding\(\);\s*\}/.test(renderer));
+  check("the browser gate updates it", /browserReady = false;\s*renderOnboarding\(\)/.test(renderer));
+}
+
 function testStreamStatus() {
   section("a failed reply request says so instead of timing out");
   const S = require(path.join(DIST, "providers/stream-status.js"));
@@ -3921,6 +3983,7 @@ function testUnittestFallback() {
   testPythonEnv();
   await testSkillsWiring();
   testRecentWorkspaces();
+  testOnboarding();
 
   console.log("\n" + (fail === 0 ? "PASS" : "FAIL") + " — " + pass + " passed, " + fail + " failed");
   process.exit(fail === 0 ? 0 : 1);
