@@ -30,8 +30,6 @@
       <button class="nav-btn active" data-mode="chat"><i>01</i>Chat</button>
       <button class="nav-btn" data-mode="build"><i>02</i>Builder</button>
       <button class="nav-btn" data-mode="test"><i>03</i>Test</button>
-      <!-- Listed but not selectable, the same way a gated provider is: it is
-           planned, not missing. Hiding it would just make the numbering jump. -->
       <button class="nav-btn" data-mode="research"><i>04</i>Research</button>
       <button class="nav-btn" data-mode="push"><i>05</i>Ship</button>
       <button class="nav-btn" data-mode="settings"><i>06</i>Settings</button>
@@ -90,6 +88,9 @@
     <section id="panel-chat" class="panel active">
       <div id="chat-view">
         <div id="chat-column">
+          <!-- Getting started. Filled by renderOnboarding from state the app
+               already holds, and gone once every step is done or it is hidden. -->
+          <div id="welcome" class="is-hidden" aria-live="polite"></div>
           <div id="chat-flow"></div>
           <div id="chat-bar">
             <textarea id="chat-input" placeholder="Ask anything..."></textarea>
@@ -389,6 +390,9 @@
                   <div class="hint">Drives web AI chats to plan and build software.</div>
                 </div>
               </div>
+              <div class="row mt-2">
+                <button id="welcome-reset" class="btn btn-sm">Show the getting-started guide</button>
+              </div>
             </div>
           </div>
 
@@ -438,6 +442,7 @@
 <script src="step-timing.js"></script>
 <script src="recent-workspaces.js"></script>
 <script src="github-safe.js"></script>
+<script src="onboarding.js"></script>
 <script src="renderer.js"></script>
 <script src="builder.js"></script>
 </body>
