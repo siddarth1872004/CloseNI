@@ -480,11 +480,13 @@ cd desktop && npm start
 #### Downloads
 
 **There are none yet.** Installers have been built and withdrawn while known problems
-are worked through — the Research panel is unfinished and plans do not always parse.
+are worked through — plans do not always parse.
 Shipping a binary that fails on the first thing you try is worse than shipping nothing,
 so the releases page is deliberately empty. Build from source above.
 
 #### First run
+
+A **Getting started** checklist above the chat walks through the steps below in order, with one button for whichever you are on. It ticks each off from what the app can actually see — a folder open, the account light green — and disappears once you have sent a first message.
 
 1. **Workspace** — Select a target directory for your project.
 2. **Settings** — Select an AI provider, install Chromium if prompted, and sign in. The browser window that opens is real; log in as you normally would. The profile persists, so this happens once per provider.
@@ -506,11 +508,14 @@ Sets up the display and library paths needed for Electron and Chromium under WSL
 ### Test Suites
 
 ```bash
-npm test              # unit suite — 536 tests, no browser required
+npm test              # unit suite — 1202 tests, no browser required
 npm run test:e2e      # end-to-end, real Chromium against a local mock provider
 npm run verify        # 41 structural checks: claims vs code, release config, packaging
 npm run verify:visual # all nine themes rendered and contrast-checked, plus the site
+npm run languages     # every language check against the real compiler, good and broken code
 ```
+
+`npm run languages` is the one that needs toolchains: for each of the twelve languages it writes a small working project and a broken one, runs the same checks a build runs, and requires the first to pass, the second to fail, and neither to leave files behind. A language whose compiler is missing prints `SKIP` rather than `ok` — a skipped language has verified nothing.
 
 The end-to-end suite drives a real Chromium against a local HTTP server that imitates a chat site. Only the model's answers are faked; the page interaction, streaming detection, extraction, parsing, patch application, and verification are all the production paths. It is the suite that finds the defects reading cannot: blank worker pages and a session reporting itself ready before its output handler was attached, back when steps ran in parallel; and, when chat, plan and build were merged into one conversation, the two assertions that were still checking for the old separate build thread.
 

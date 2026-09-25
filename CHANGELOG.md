@@ -5,9 +5,9 @@ All notable changes to CloseNI are recorded here. This project follows
 
 ## [0.1.0] — unreleased
 
-**Not published.** Installers build in CI and have been withdrawn: the Research
-panel is unfinished and plans do not always parse. A binary that fails on the
-first thing someone tries is worse than no binary.
+**Not published.** Installers build in CI and have been withdrawn: plans do not
+always parse. A binary that fails on the first thing someone tries is worse than
+no binary.
 
 **Why 0.1 and not 1.0.** The version says what this is: one provider driven end
 to end, a Windows installer nobody has run yet, and a GitHub integration that
@@ -22,7 +22,7 @@ agent spawning. The Windows application packs, audits clean, and has been
 started on Windows 11. The NSIS installer is built by CI and has not been
 installed by anyone — treat it as unproven. GitHub sign-in, push, clone and
 Actions are unit-tested with an injected transport and have never made a live
-request. Qwen Studio and GLM ship gated, as does Research.
+request. Qwen Studio and GLM ship gated.
 
 ### Fixed before release
 
@@ -39,13 +39,29 @@ running the packaged build rather than reading it:
   and Playwright is unpacked from the archive so it can spawn real executables.
 - **The default File / Edit / View menu** carried a reload and a devtools item,
   duplicating navigation the app already has.
+- **A failed browser download said only "Download failed (exit 1)."** The
+  installer prints the real reason first - a 403 from a proxy, a DNS failure -
+  and then buries it under generic lines. The gate now reports that reason, and
+  for a network refusal names `cdn.playwright.dev` as the host to allow. Found
+  by launching the packaged Linux build on a network that blocked the CDN.
 
 ### Gated
 
-- **Research** — listed in the sidebar and not selectable. Chat reaches the same
-  provider and the same conversation, so nothing is lost by waiting.
 - **Qwen Studio** and **GLM** — listed in Settings, not selectable, each with
   the reason recorded in its config.
+
+### Getting started
+
+- A first launch shows a **Getting started** checklist above the chat: browser,
+  project folder, provider sign-in, first prompt - in that order, with only the
+  current step explained and one button that does it. Every tick is read from
+  state the app already holds (the browser gate, the workspace, the account
+  light, the conversation), never from a flag of its own, so it cannot report a
+  sign-in done that failed. An unchecked account offers a check rather than a
+  sign-in, since you may already be signed in. The last step fills in a worked
+  example small enough to plan in two or three steps.
+- It goes away when every step is done, or for good when hidden. Settings,
+  About brings it back.
 
 ### Providers
 
@@ -125,6 +141,21 @@ running the packaged build rather than reading it:
   then stop with an explanation rather than looping.
 - Environment failures are classified separately from code failures. A `venv`
   blocked by PEP 668 no longer fails a step whose code was already correct.
+- **Eleven of the twelve checks have now run against a real toolchain**, a
+  working and a broken sample each, through `npm run languages`. C# is the one
+  left: there is no .NET on the machine that ran it. Running them found three
+  defects no unit test could:
+  - **Go was never checked, on any machine.** The tool probe ran `go --version`,
+    which is not a flag (`go version` is), and `gofmt --version`, which has no
+    version flag at all - so Go resolved as not installed beside a working
+    compiler, and every Go check was skipped.
+  - **Java in packages failed on correct code** when there was no build file:
+    `javac` could not find a sibling package, so a file importing another
+    failed its check and the model would have spent its repairs on it. The check
+    now offers every ancestor directory as a source root.
+  - **The Python syntax check left `__pycache__` in the workspace**, which made
+    the git export refuse the tree as dirty for any Python project without a
+    `requirements.txt`. Bytecode now goes to a temp directory.
 
 ### Running what was built
 

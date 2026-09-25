@@ -28,13 +28,17 @@ a Windows Node on `/mnt/c` cannot run from a `\\wsl.localhost\...` path.
 
 ## State
 
-- **128 commits, all on `main`.** The most recent commit is not yet pushed
-  anywhere; the repository is being recreated.
-- **536 unit tests + 155 end-to-end tests, all passing.**
+- **1202 unit tests + 180 end-to-end tests, all passing.** Two e2e cases open
+  a visible browser, so on a machine with no display run the suite under
+  `xvfb-run`.
   `node local-agent/test/run-tests.cjs` and `node local-agent/test/run-e2e.cjs`
   (the e2e suite takes about 15 minutes and drives a real Chromium against a
   mock chat server; only the model's answers are faked).
-- **26 of 28 roadmap items done.** See `docs/ROADMAP.md`.
+- **All 28 roadmap items done.** See `docs/ROADMAP.md`. What remains is
+  verification that needs an account, a token or a Windows machine.
+- **`npm run verify` passes all 173 checks** including the packaged-artifact
+  audit, and **`npm run languages`** runs every language check against the real
+  compiler (see below).
 - Every sub-project has a design spec and an implementation plan in
   `docs/superpowers/` — 12 specs, 13 plans — including decisions that were
   rejected and why. Read the relevant one before changing an area.
@@ -84,10 +88,18 @@ toolchains.
   Enter, which works) and its Deep thinking / Smart Search toggles report
   not-found. Re-capture with
   `node scripts/capture-provider-ui.mjs deepseek`.
-- **Go, TypeScript, Ruby, PHP, C# and shell checks were added but never run** —
-  none of those toolchains exist here, so they skip.
+- **C# is the one language check never run** - no .NET on any machine it has
+  been tried on. The other eleven ran on 24 September against a working and a
+  broken sample each (`npm run languages`), which found Go had been silently
+  skipped everywhere (the probe used `go --version`) and Java in packages
+  failing on correct code. Both fixed.
 - **The UI has barely been looked at.** Nine themes, the Test panel, the
   frontend preview and the pixel motion have never been seen by a person.
+  The Linux build has been packed and launched headless under Xvfb: the
+  window loads, the agent spawns on Electron's binary, the browser gate and
+  the getting-started guide appear on a clean profile. The browser download
+  itself could not be completed there (the network blocked the CDN), which
+  is how the gate's "Download failed (exit 1)" was found to hide the reason.
 - **Recent bug fixes are unverified**: build resume after a failure, New Chat
   clearing the transcript, the command safety floor, and environment-setup
   failures no longer failing a step.
@@ -96,16 +108,10 @@ toolchains.
 
 ## What is left on the roadmap
 
-Two items, both credential-free, spec written at
-`docs/superpowers/specs/2026-08-10-skills-and-mcp-design.md`, no code:
-
-- **Item 15 — skills and personas.** Markdown files in the user's data directory
-  that shape build prompts, importable from GitHub. The more valuable of the two:
-  it turns "write better code" into editable files instead of four lines
-  hardcoded in `buildPrompt`.
-- **Item 13 — MCP tool support**, as a context provider that runs before a build.
-  Not an agentic loop: the model drives a chat window, so a tool call costs a
-  full browser round-trip of 60–90 seconds.
+Nothing. Items 13 (MCP, as a context provider run once before a build) and 15
+(skills and personas as Markdown files) were the last two and are done - see
+`docs/superpowers/plans/2026-08-11-skills-and-mcp.md`. First-run onboarding,
+the one piece of `NEXT-SESSION.md` that needed no account, is done too.
 
 ## Immediate task
 

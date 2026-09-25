@@ -98,7 +98,10 @@ error — that is the failure mode to watch for.
 fails and check the blocked cascade is honest about what never ran.
 
 **Languages:** a Rust project with `Cargo.toml` (one `cargo check`, not one per
-file) and a Java one. Neither compiled language has been built end to end.
+file) and a Java one. Neither compiled language has been *built by a model* end
+to end - but their checks have now run for real against Cargo, Maven and Gradle
+projects (`npm run languages`), so a failure there is the model's, not the
+checker's.
 
 **Adversarial:** a request the model will answer in prose rather than JSON; a
 project needing a package that cannot be installed; a plan over 40 steps
@@ -137,9 +140,10 @@ automation, a small game, a developer tool, something embedded or hardware-ish.
 
 **By language**
 
-Beyond the six already checked: Go, TypeScript, Ruby, PHP, C#, shell. Each
-needs a manifest rule and a per-file check, or the build silently skips
-verification and reports success on code nobody compiled.
+Every language except C# now has its check proven against a real toolchain,
+good code passing and broken code failing: `npm run languages`. Running it found
+Go skipped on every machine (the probe used `go --version`, which is not a flag)
+and Java in packages failing on correct code. C# needs a machine with .NET.
 
 ### What each axis is likely to expose
 
@@ -154,10 +158,21 @@ verification and reports success on code nobody compiled.
 
 ---
 
-## 4 · Onboarding for first-time users
+## 4 · Onboarding for first-time users — **done**, revisit after 1–3
 
-Deliberately **after** 1–3: the right onboarding is the one that removes the
-friction those sessions actually hit, not the friction imagined beforehand.
+Built on 24 September as a **Getting started** checklist above the chat:
+browser, project folder, sign-in, first prompt, with only the current step
+explained and one button that does it. Every tick is read from existing state -
+the gate, the workspace, the account light, the conversation - so it cannot say
+"signed in" beside a sign-in that failed. It disappears when done, and Hide keeps
+it gone (Settings → About brings it back). Logic in `desktop/onboarding.js`,
+unit-tested; checked rendered in Midnight and Paper, and in the packaged Linux
+build on a clean profile.
+
+Still true: the right onboarding is the one that removes the friction sessions
+1–3 actually hit. Revisit the wording and the worked example once they have run.
+
+The original sketch, kept for comparison:
 
 What a first launch currently drops someone into: no workspace, no provider
 signed in, no chat, and a Build button that will not work. Nothing explains the
@@ -204,14 +219,7 @@ Independent of everything else; fill gaps with it.
 
 ## Still on the roadmap
 
-**Items 13 (MCP) and 15 (skills, personas)** are the only roadmap gaps left —
-26 of 28 done. The spec is written
-(`specs/2026-08-10-skills-and-mcp-design.md`); there is no plan or code.
-
-Item 15 is the more valuable: it turns "write better code" into editable `.md`
-files instead of four lines hardcoded in `buildPrompt`. Item 13 is real but
-structurally awkward — the model drives a chat window, so MCP can only be a
-context provider that runs before a build.
-
-Neither is worth starting before sections 1–3 pass. A feature built on an
-unverified foundation is a feature built twice.
+Nothing. Items 13 (MCP) and 15 (skills, personas) are done - 28 of 28. Everything
+left is in sections 0-3 and 5-6 above, and all of it needs something a
+development container does not have: a provider account, a GitHub token, a
+Windows machine, or a person looking at the screen.

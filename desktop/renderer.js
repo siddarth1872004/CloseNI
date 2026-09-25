@@ -3,6 +3,11 @@ let provider = "deepseek";
 let chatHistory = [];
 let currentPlan = null;
 let editingPlan = false;
+// What the getting-started guide reads. Both are written where the state
+// actually changes - the browser gate and the account light - never by the
+// guide itself, so it cannot report a step done that is not.
+let browserReady = true;
+let acctNow = "unknown";
 
 const MODE_TITLES = { chat: "CHAT", build: "BUILDER", test: "TEST", research: "RESEARCH", push: "SHIP", settings: "SETTINGS" };
 
@@ -183,6 +188,7 @@ async function openWorkspace(folder) {
     if (restored) { currentPlan = restored; renderPlanDocument(restored, { keepBuild: true }); }
   }
   renderRecent();
+  renderOnboarding();
 }
 
 $("browse-btn").onclick = async function () {
@@ -421,11 +427,132 @@ function setAcct(state, text) {
     nameEl.textContent = full.replace(/\s*\(.*\)$/, "").replace(/\s+Chat$/i, "");
     nameEl.title = full;
   }
+  acctNow = state;
+  renderOnboarding();
   const signedIn = state === "on";
   const inBtn = $("acct-signin");
   const outBtn = $("acct-signout");
   if (inBtn) inBtn.classList.toggle("is-hidden", signedIn);
   if (outBtn) outBtn.classList.toggle("is-hidden", !signedIn);
+}
+
+/*
+ * The getting-started guide above the chat.
+ *
+ * The decisions - order, wording, what counts as done - live in onboarding.js
+ * where they are tested; this only draws them and wires the buttons to the
+ * controls that already exist, so each step does exactly what the rail or
+ * Settings would do.
+ */
+function onboardingState() {
+  const p = providerList.find(function (x) { return x.id === provider; });
+  return {
+    browserReady: browserReady,
+    workspace: workspace,
+    account: acctNow,
+    providerName: p && p.name ? p.name.replace(/\s*\(.*\)$/, "").replace(/\s+Chat$/i, "") : "your provider",
+    // A saved conversation in this folder counts: someone reopening a project
+    // they have already worked in does not need to be told to say something.
+    chatted: chatHistory.length > 0 || savedChatCount() > 0,
+  };
+}
+
+// availableChats is declared further down this file; reading it before that
+// line runs throws rather than returning undefined, so the guard is a try.
+function savedChatCount() {
+  try { return availableChats.length; } catch (e) { return 0; }
+}
+
+function onboardingDismissed() {
+  try { return window.CNOnboarding.isDismissed(localStorage.getItem(window.CNOnboarding.DISMISS_KEY)); }
+  catch (e) { return false; }
+}
+
+function onboardingAction(id) {
+  if (id === "browser") { const g = $("browser-gate"); if (g) g.classList.add("show"); return; }
+  if (id === "workspace") { $("browse-btn").click(); return; }
+  if (id === "signin") {
+    if (acctNow === "unknown") refreshAccount(true);
+    else $("provider-signin").click();
+    return;
+  }
+  if (id === "prompt") {
+    const input = $("chat-input");
+    input.value = window.CNOnboarding.EXAMPLE_PROMPT;
+    input.focus();
+    toast("Example filled in - press Send");
+  }
+}
+
+function renderOnboarding() {
+  const box = $("welcome");
+  if (!box || !window.CNOnboarding) return;
+  const O = window.CNOnboarding;
+  const state = onboardingState();
+  if (!O.visible(state, onboardingDismissed())) {
+    box.classList.add("is-hidden");
+    box.innerHTML = "";
+    return;
+  }
+  const next = O.current(state);
+  box.classList.remove("is-hidden");
+  box.innerHTML = "";
+
+  const head = document.createElement("div");
+  head.className = "welcome-head";
+  const title = document.createElement("div");
+  title.className = "micro";
+  title.textContent = "Getting started";
+  const hide = document.createElement("button");
+  hide.className = "btn btn-sm";
+  hide.textContent = "Hide";
+  hide.title = "Hide this guide. Settings, About brings it back.";
+  hide.onclick = function () {
+    try { localStorage.setItem(O.DISMISS_KEY, "dismissed"); } catch (e) {}
+    renderOnboarding();
+  };
+  head.appendChild(title); head.appendChild(hide);
+  box.appendChild(head);
+
+  const intro = document.createElement("div");
+  intro.className = "hint";
+  intro.textContent = "CloseNI plans and builds software by chatting with a free AI site in a " +
+    "real browser - no API key. Four things, in this order:";
+  box.appendChild(intro);
+
+  const list = document.createElement("ol");
+  list.className = "welcome-steps";
+  O.steps(state).forEach(function (step) {
+    const li = document.createElement("li");
+    li.className = "welcome-step" + (step.done ? " done" : "") + (step.id === next ? " next" : "");
+    const mark = document.createElement("span");
+    mark.className = "welcome-mark";
+    mark.setAttribute("aria-hidden", "true");
+    mark.textContent = step.done ? "✓" : "";
+    const body = document.createElement("div");
+    body.className = "welcome-body";
+    const t = document.createElement("div");
+    t.className = "welcome-title";
+    t.textContent = step.title + (step.done ? " - done" : "");
+    body.appendChild(t);
+    // Only the step you are on explains itself; the rest are one line each.
+    if (step.id === next) {
+      const d = document.createElement("div");
+      d.className = "hint";
+      d.textContent = step.detail;
+      body.appendChild(d);
+    }
+    li.appendChild(mark); li.appendChild(body);
+    if (step.action && step.id === next) {
+      const b = document.createElement("button");
+      b.className = "btn btn-sm invert";
+      b.textContent = step.action;
+      b.onclick = function () { onboardingAction(step.id); };
+      li.appendChild(b);
+    }
+    list.appendChild(li);
+  });
+  box.appendChild(list);
 }
 
 function setThread(thread) {
@@ -751,6 +878,7 @@ $("chat-send").onclick = async function () {
   }
   chatHistory.push({ role: "user", text: text });
   if (ph.textContent && ph.textContent !== "...") chatHistory.push({ role: "ai", text: ph.textContent });
+  renderOnboarding();
 };
 
 $("generate-plan").onclick = async function () {
@@ -1529,6 +1657,7 @@ async function loadChatsForWorkspace() {
       availableChats = res.chats || [];
       currentChatIndex = -1;
       updateChatSelector();
+      renderOnboarding();
     } catch (e) {
       console.log("Failed to load chats (first time?):", e);
       availableChats = [];
@@ -1655,6 +1784,8 @@ window.CN = {
   const status = await window.api.browserStatus().catch(function () { return { ready: true }; });
   if (status.ready) return;
 
+  browserReady = false;
+  renderOnboarding();
   gate.classList.add("show");
   const out = $("browser-progress");
   window.api.onBrowserProgress(function (line) { out.textContent = line; });
@@ -1666,6 +1797,8 @@ window.CN = {
     const r = await window.api.installBrowser();
     if (r && r.ok) {
       gate.classList.remove("show");
+      browserReady = true;
+      renderOnboarding();
       toast("Browser ready");
     } else {
       btn.disabled = false;
@@ -1748,3 +1881,13 @@ document.querySelectorAll(".settings-tab").forEach(function (tab) {
 
   apply(current);
 })();
+
+$("welcome-reset").onclick = function () {
+  try { localStorage.removeItem(window.CNOnboarding.DISMISS_KEY); } catch (e) {}
+  renderOnboarding();
+  const state = onboardingState();
+  if (window.CNOnboarding.visible(state, false)) switchTab("chat");
+  else toast("Nothing left to set up - every step is done");
+};
+
+renderOnboarding();

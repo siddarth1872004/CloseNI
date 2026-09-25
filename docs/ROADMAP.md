@@ -1,6 +1,6 @@
 # CloseNI Roadmap
 
-28 items, grouped into 10 sub-projects — 9 from the original plan plus one added after using the app. **9 of 10 complete**; only 5 · GitHub & external tools remains. Each sub-project gets its own design spec
+28 items, grouped into 10 sub-projects — 9 from the original plan plus one added after using the app. **All 10 complete.** What is left is verification that needs a live provider account, a GitHub token or a Windows machine — see `NEXT-SESSION.md`. Each sub-project gets its own design spec
 and implementation plan under `docs/superpowers/`, and is expected to leave the
 application working on its own.
 
@@ -155,17 +155,13 @@ plan: `plans/2026-08-10-concurrency.md`
 Work that exists in the tree but is switched off, so nobody has to rediscover
 why.
 
-- **Research panel** — gated in the sidebar since 2026-08-11. Its web search
-  scraped `html.duckduckgo.com`, which now answers every scripted request with
-  a **202 challenge page**; confirmed with the complete browser header set. The
-  request cannot succeed over plain HTTPS, and it was being made on every click:
-  eight searches produced eight failures. It also reported `success: true` with
-  an empty result list, so total failure looked like a search that found nothing.
-  `researchMode` now refuses immediately and says why.
-
-  **The way back** is to run the search in the browser this app already drives
-  rather than over `https.get`. That is the project's whole premise, and it is
-  why the panel is gated rather than the scraper patched.
+- ~~**Research panel**~~ — **un-gated on 2026-08-11.** It was gated because its
+  web search scraped `html.duckduckgo.com`, which answers every scripted request
+  with a **202 challenge page**, and it reported that total failure as
+  `success: true` with no results. The web half now turns on the provider's own
+  search (DeepSeek's Smart Search, already a provider control) and lists the
+  sources it cited; the GitHub half uses the token held for push. No search page
+  is scraped. Design: `specs/2026-08-11-research-panel-design.md`.
 
 - **Qwen Studio, GLM** — gated in Settings, each with its reason in its config.
 
