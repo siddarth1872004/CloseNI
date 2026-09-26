@@ -69,11 +69,15 @@ export function describeStrategy(s: Strategy): string {
   }
 }
 
-/** Build the Playwright locator a strategy describes, scoped to root when given. */
-export function locatorFor(page: Page, s: Strategy, root?: Locator): Locator {
+/**
+ * Build the Playwright locator a strategy describes, scoped to root when given.
+ * `includeHidden` lets a role match an element that is not shown yet, such as a
+ * stop control waiting for a reply; the other kinds already match hidden ones.
+ */
+export function locatorFor(page: Page, s: Strategy, root?: Locator, includeHidden?: boolean): Locator {
   const base: Page | Locator = root || page;
   switch (s.kind) {
-    case "role": return base.getByRole(s.role as any, { name: nameMatcher(s.name), exact: s.exact });
+    case "role": return base.getByRole(s.role as any, { name: nameMatcher(s.name), exact: s.exact, ...(includeHidden ? { includeHidden } : {}) });
     case "label": return base.getByLabel(nameMatcher(s.text) as any);
     case "placeholder": return base.getByPlaceholder(nameMatcher(s.text) as any);
     case "testid": return base.getByTestId(s.id);
