@@ -399,6 +399,37 @@ extending:
   refusal, names the host a proxy has to allow. It also stopped showing the
   installer's terminal colour codes as literal `[2m` in the dialog.
 
+- **Having a venv is not the same as being able to use it.** A 15-step Flask +
+  React build on 30 August stopped at step 2 and blocked the other thirteen.
+  Both of its repair attempts were spent on commands CloseNI had mangled itself,
+  so the loop could not have succeeded however good the model's answer was.
+
+  `flask db init` ran against the system PATH and came back `command not found`,
+  while `.venv/bin/flask` sat in the workspace. The venv installs console
+  scripts - flask, alembic, uvicorn - beside the interpreter, and nothing put
+  that directory anywhere the shell would look. A model command now resolves to
+  the venv's own script, and only for a name really in there: pointing at one
+  that was never installed turns a missing tool into a confusing failure.
+
+  `python -m pip install -r requirements.txt` was rewritten to
+  `<venv>/python -m <venv>/python -m pip install -r requirements.txt`. The venv
+  rewrite treated any whitespace as command position, so the `pip` that is the
+  argument of `-m` was rewritten as though it were a command - and
+  `pip install --upgrade pip` had the package name it was upgrading rewritten
+  too. Only a word the shell would actually run is rewritten now: the start of
+  the command, or just after a separator, with `VAR=value` prefixes still
+  allowed through.
+
+  The step's own failure was then honest and its own: the model had hand-written
+  `migrations/env.py` calling `fileConfig` on a `migrations/alembic.ini` that
+  never existed, because `flask db init` - the command that creates it - had
+  never run. Measured in that workspace: `flask --version` was
+  `command not found` before and `Flask 2.3.3` after.
+
+  Worth keeping: `ENVIRONMENT_COMMAND_SKIPPED` did its job throughout. Every one
+  of these was reported as environment setup that did not work rather than as a
+  bug in the generated code. The reporting was right; the command was wrong.
+
 ---
 
 ## What not to do

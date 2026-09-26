@@ -357,6 +357,11 @@ check('and installs with the venv python, never a bare pip',
 check('manifests one level down are found', /findManifests/.test(pe));
 check('the venv is what "python" resolves to', /workspaceResolver/.test(idx));
 check('suggested pip3 commands are rewritten to it', /rewriteForVenv\(normalizeCommand/.test(idx));
+// A 15-step build lost both repair attempts to the rewrite itself: `flask db
+// init` ran against the system PATH and was not found, and `python -m pip
+// install` came back as `<venv>/python -m <venv>/python -m pip install`.
+check('so are the console scripts the venv installs', /venvScriptResolver/.test(idx));
+check('and only a word in command position is rewritten', /\[;&\|\(\]/.test(pe));
 check('checks accept that resolver', /resolve \|\| resolveTool/.test(read('local-agent/src/verification/check-planner.ts')));
 // The export refuses to run on a dirty tree and tells the user to commit what
 // is there. Without this it would be asking them to commit node_modules.

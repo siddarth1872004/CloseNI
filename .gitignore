@@ -42,6 +42,10 @@ app/
 run.py
 requirements.txt
 
+# Workspaces the app was pointed at while testing it. These are projects it
+# generated, each with its own .venv and node_modules — 113MB for one of them.
+Test_Outputs/
+
 # Provider fixtures written by the e2e suite.
 local-agent/test/fixtures/providers/
 

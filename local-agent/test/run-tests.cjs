@@ -3841,6 +3841,37 @@ function testPythonEnv() {
   check("a word merely containing python is left alone",
     E.rewriteForVenv("./mypython run", vp) === "./mypython run");
 
+  // --- only a word the shell would run, from a real 15-step build ---
+  // Every one of these came back as `<venv>/python -m <venv>/python -m pip`,
+  // which fails, so both repair attempts were spent on the rewrite rather than
+  // on the code.
+  check("pip as the argument of -m is not a command",
+    E.rewriteForVenv("python -m pip install -r requirements.txt", vp)
+      === vp + " -m pip install -r requirements.txt");
+  check("rewriting twice changes nothing",
+    E.rewriteForVenv(E.rewriteForVenv("python -m pip install -r req.txt", vp), vp)
+      === vp + " -m pip install -r req.txt");
+  check("pip upgrading itself keeps the package name",
+    E.rewriteForVenv("pip install --upgrade pip", vp) === vp + " -m pip install --upgrade pip");
+  check("and so does a clause that starts with cd",
+    E.rewriteForVenv("cd backend && python -m pip install -r requirements.txt", vp)
+      === "cd backend && " + vp + " -m pip install -r requirements.txt");
+  check("an environment prefix does not hide the interpreter",
+    E.rewriteForVenv("PYTHONPATH=. python app.py", vp) === "PYTHONPATH=. " + vp + " app.py");
+
+  // --- console scripts the venv installed, which nothing puts on PATH ---
+  const script = (n) => (n === "flask" || n === "alembic" ? "/w/.venv/bin/" + n : null);
+  check("flask resolves to the one in the venv",
+    E.rewriteForVenv("cd backend && flask db init", vp, script)
+      === "cd backend && /w/.venv/bin/flask db init");
+  check("a name the venv does not have is left alone",
+    E.rewriteForVenv("cd frontend && npm install", vp, script) === "cd frontend && npm install");
+  check("an argument that happens to name a script is not one",
+    E.rewriteForVenv("python -m pip install flask", vp, script)
+      === vp + " -m pip install flask");
+  check("without a resolver a console script is untouched",
+    E.rewriteForVenv("flask db init", vp) === "flask db init");
+
   // --- when the machine cannot do it at all ---
   // Measured on the machine that produced the reported errors: python3.14 with
   // no pip, no ensurepip, so `python3 -m venv` cannot make a working venv.
