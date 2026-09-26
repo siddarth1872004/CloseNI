@@ -8,6 +8,7 @@ import { parseDesiredControls } from "./controls/decisions.js";
 import { formatResults } from "./controls/helpers.js";
 import { storagePaths } from "../storage-paths.js";
 import { describeStreamFailure } from "./stream-status.js";
+import { replyStreamTap } from "./stream-tap.js";
 
 export interface ProviderConfig {
   id: string;
@@ -452,74 +453,9 @@ export class PlaywrightController {
     const pattern = config.selectors.streamUrlPattern;
     if (!this.page || !pattern) return;
 
-    // The wrapper, as source, so the identical code can be installed two ways.
-    // Both transports, because a page may use either and DeepSeek uses only
-    // one of them - XHR. The original wrapped fetch alone, so the tap never
-    // fired once against the live site and completion silently fell back to
-    // text stability for the whole life of the feature. Measured on 11 August:
-    // 0 fetch calls, 36 XHR calls, with /api/v0/chat/completion among them.
-    const tap = (pat: string) => {
-      const w = globalThis as any;
-      if (w.__closeniTapped) return;
-      w.__closeniTapped = true;
-      const re = new RegExp(pat);
-
-      if (w.fetch) {
-        const orig = w.fetch.bind(w);
-        w.fetch = async (...args: any[]) => {
-          const url = typeof args[0] === "string" ? args[0] : (args[0] && args[0].url) || "";
-          const res = await orig(...args);
-          try {
-            if (!re.test(String(url)) || !res.body) return res;
-            const [mine, theirs] = res.body.tee();
-            w.__closeniStream("open", res.status);
-            (async () => {
-              const rd = mine.getReader();
-              try { for (;;) { const r = await rd.read(); if (r.done) break; } }
-              finally { w.__closeniStream("close"); }
-            })();
-            return new (w.Response)(theirs, res);
-          } catch { return res; }
-        };
-      }
-
-      // XHR needs no tee: the page reads the response itself and readyState
-      // tells us the same two things a tee'd body would - it started, it
-      // finished. Nothing is intercepted, so the page behaves identically.
-      const X = w.XMLHttpRequest;
-      if (X && X.prototype && X.prototype.open) {
-        const open = X.prototype.open;
-        const send = X.prototype.send;
-        X.prototype.open = function (method: string, url: string, ...rest: any[]) {
-          try { (this as any).__closeniUrl = String(url || ""); } catch { /* frozen */ }
-          return open.apply(this, [method, url, ...rest] as any);
-        };
-        X.prototype.send = function (...args: any[]) {
-          try {
-            const url = (this as any).__closeniUrl || "";
-            if (re.test(url)) {
-              let opened = false;
-              this.addEventListener("readystatechange", () => {
-                // HEADERS_RECEIVED: the server has begun answering.
-                // HEADERS_RECEIVED is also the first moment `status` exists,
-                // so the reply's HTTP result is known here for free - no body is
-                // read and nothing is guessed at.
-                if (!opened && this.readyState >= 2) {
-                  opened = true;
-                  w.__closeniStream("open", this.status);
-                }
-              });
-              // loadend covers load, error and abort, so a stream that fails
-              // still closes and cannot leave the counter permanently unbalanced.
-              this.addEventListener("loadend", () => {
-                if (opened) w.__closeniStream("close");
-              });
-            }
-          } catch { /* never break the page's own request */ }
-          return send.apply(this, args as any);
-        };
-      }
-    };
+    // The wrapper lives in stream-tap.ts, shared with the browser-native layer
+    // so the two cannot drift. It is installed two ways, below.
+    const tap = replyStreamTap;
 
     try {
       if (!this.streamWatchInstalled) {
