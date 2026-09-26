@@ -368,8 +368,11 @@ check('a machine that cannot build a venv is told once, with the fix',
 // and then blame the model. Only the HTTP status is read - no payload is
 // inspected, because a rate limit is a 429 whatever the body says.
 const ctlSrc = read('local-agent/src/providers/playwright-controller.ts');
+// The tap itself lives in stream-tap.ts, shared with the browser-native layer;
+// the controller must still be the one installing it.
+const tapSrc = read('local-agent/src/providers/stream-tap.ts');
 check('the tap reports the reply request status',
-  /__closeniStream\("open", this\.status\)/.test(ctlSrc));
+  /__closeniStream\("open", this\.status\)/.test(tapSrc) && /replyStreamTap/.test(ctlSrc));
 check('and the wait stops on a failed one',
   /describeStreamFailure\(this\.lastStreamStatus\)/.test(ctlSrc));
 check('a rate limit is judged by status, not by matching prose',
@@ -415,9 +418,9 @@ check('and the title is sent by both the app and the CLI',
 // A tap that watches one transport is a tap that works until it does not.
 const controller = read('local-agent/src/providers/playwright-controller.ts');
 check('the stream tap watches XHR as well as fetch',
-  /XMLHttpRequest/.test(controller) && /w\.fetch/.test(controller));
+  /XMLHttpRequest/.test(tapSrc) && /w\.fetch/.test(tapSrc) && /import \{ replyStreamTap \}/.test(controller));
 check('an XHR stream closes on loadend, so a failed one cannot hang the counter',
-  /loadend/.test(controller));
+  /loadend/.test(tapSrc));
 check("DeepSeek's stream pattern is the measured endpoint, not a guess",
   JSON.parse(read('local-agent/config/providers/deepseek.json')).selectors.streamUrlPattern
     === '/api/v0/chat/completion');
