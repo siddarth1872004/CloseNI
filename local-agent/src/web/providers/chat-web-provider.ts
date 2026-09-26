@@ -85,6 +85,8 @@ export class ChatWebProvider implements AIWebProvider {
   private lastNav: NavOutcome | null = null;
   private lastWait: WaitResult | null = null;
   private baseline = { count: 0, text: "" };
+  /** Prompts sent since this conversation began: whether a reply should be on the page. */
+  private sentInConversation = 0;
   private lastUrl = "";
   private readonly tracer: Tracer;
   private readonly diagDir: string;
@@ -286,6 +288,7 @@ export class ChatWebProvider implements AIWebProvider {
 
   async openChat(): Promise<StateReport> {
     if (!this.attached) await this.launch();
+    this.sentInConversation = 0;
     const mp = this.page();
     this.lastNav = await navigate(mp, this.spec.baseUrl, { tracer: this.tracer, timeoutMs: 30000, retries: 1 });
     this.lastUrl = this.lastNav.finalUrl || this.spec.baseUrl;
@@ -303,6 +306,7 @@ export class ChatWebProvider implements AIWebProvider {
 
   async startConversation(): Promise<StateReport> {
     if (!this.mp) return this.openChat();
+    this.sentInConversation = 0;
     const nc = await this.chain("newChat", true);
     if (nc && (await nc.locator.first().isVisible().catch(() => false))) {
       await nc.locator.first().click({ timeout: 5000 }).catch(() => { /* fall back to navigation */ });
@@ -441,6 +445,7 @@ export class ChatWebProvider implements AIWebProvider {
         await this.noteTerminal(after, "submit");
       }
     }
+    if (result.sent) this.sentInConversation++;
     this.tracer.event({ action: "submit", result: result.sent ? "success" : "failure", selector: composer.description, detail: result.method + " chars=" + prompt.length, error: result.error });
     return result;
   }
@@ -706,17 +711,38 @@ export class ChatWebProvider implements AIWebProvider {
     if (this.mp && this.mp.healthy()) {
       for (const name of Object.keys(this.spec.chains) as ChainName[]) {
         if (!this.spec.chains[name].strategies.length) continue;
-        chains.push(await diagnoseChain(this.mp.page, this.spec.chains[name]));
+        const d = await diagnoseChain(this.mp.page, this.spec.chains[name]);
+        const situational = SITUATIONAL[name];
+        if (d.verdict === "broken" && situational && !situational(state.state, this.sentInConversation)) {
+          d.verdict = "absent";
+          d.note = "nothing to match while " + state.state + " - " + (SITUATION_NOTE[name] || "") + "; not judged";
+        }
+        chains.push(d);
       }
     }
     const composer = chains.find((c) => c.name === "composer");
     const ok = state.state === "CHAT_READY" && !!composer && composer.verdict !== "broken";
     const fallbacks = chains.filter((c) => c.verdict === "fallback").map((c) => c.name);
     const broken = chains.filter((c) => c.verdict === "broken").map((c) => c.name);
-    const summary = state.state + (fallbacks.length ? "; on fallback: " + fallbacks.join(", ") : "") + (broken.length ? "; nothing matches: " + broken.join(", ") : "");
+    const absent = chains.filter((c) => c.verdict === "absent").map((c) => c.name);
+    const summary = state.state + (fallbacks.length ? "; on fallback: " + fallbacks.join(", ") : "") + (broken.length ? "; nothing matches: " + broken.join(", ") : "") +
+      (absent.length ? "; not present in this state: " + absent.join(", ") : "");
     return { provider: this.id, state, chains, ok, summary };
   }
 }
+
+/** Chains whose element exists only in some states: when is it expected? */
+const SITUATIONAL: Partial<Record<ChainName, (state: string, promptsSent: number) => boolean>> = {
+  stop: (state) => state === "GENERATING",
+  assistant: (_state, sent) => sent > 0,
+  // Copy controls sit on code blocks, and a reply may have none.
+  copy: () => false,
+};
+const SITUATION_NOTE: Partial<Record<ChainName, string>> = {
+  stop: "it appears only while generating",
+  assistant: "it appears only after a prompt is sent",
+  copy: "it appears only on code blocks",
+};
 
 function originOf(u: string): string | undefined {
   try { return new URL(u).origin; } catch { return undefined; }

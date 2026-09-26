@@ -199,7 +199,12 @@ export interface StrategyReport { description: string; provenance: Provenance; c
 
 export interface ChainDiagnosis {
   name: string;
-  verdict: "ok" | "fallback" | "broken";
+  /**
+   * "absent": nothing matched, but the element only exists in some states - a
+   * stop control while generating, a reply once one was written - and the page
+   * is not in that state. Not judged, rather than called broken.
+   */
+  verdict: "ok" | "fallback" | "broken" | "absent";
   /** Index of the strategy that would be used, -1 when none match. */
   winner: number;
   results: StrategyReport[];
