@@ -4009,6 +4009,9 @@ function testUnittestFallback() {
   await testSkillsWiring();
   testRecentWorkspaces();
   testOnboarding();
+  // The browser-native layer's pure logic (src/web). Its browser suite is
+  // run-web.cjs, which needs Chromium and is run separately.
+  await require("./web-unit.cjs").run(check, section);
 
   console.log("\n" + (fail === 0 ? "PASS" : "FAIL") + " — " + pass + " passed, " + fail + " failed");
   process.exit(fail === 0 ? 0 : 1);
