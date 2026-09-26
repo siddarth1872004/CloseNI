@@ -43,7 +43,19 @@
     "headless": "node bin/closeni.js",
     "mcp:interop": "node scripts/mcp-interop.mjs",
     "replay": "node scripts/replay.mjs",
-    "languages": "node scripts/languages.mjs"
+    "languages": "node scripts/languages.mjs",
+    "test:browser": "node local-agent/test/run-web.cjs browser",
+    "test:providers": "node local-agent/test/run-web.cjs providers",
+    "test:deepseek": "node local-agent/test/run-web.cjs deepseek",
+    "test:qwen": "node local-agent/test/run-web.cjs qwen",
+    "test:glm": "node local-agent/test/run-web.cjs glm",
+    "test:research": "node local-agent/test/run-web.cjs research",
+    "test:extraction": "node local-agent/test/web-unit.cjs && node local-agent/test/run-web.cjs extraction",
+    "test:chaos": "node local-agent/test/run-web.cjs chaos",
+    "test:web": "node local-agent/test/web-unit.cjs && node local-agent/test/run-web.cjs",
+    "test:all": "npm test && npm run test:web && npm run test:e2e",
+    "web:report": "node scripts/web-report.mjs",
+    "webtest": "node local-agent/dist/index.js webtest"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

@@ -30,6 +30,7 @@ import { ChatSession, BrowserChatSession, transportOf, isBrowserTransport } from
 import { OllamaSession } from "./providers/ollama-session.js";
 import { hasSearchControl, extractSources, RESEARCH_PROMPT_PREFIX } from "./research.js";
 import { BUILD_STATE_DIR } from "./build-state.js";
+import { runLive } from "./web/live.js";
 
 // Every extension the check planner knows about. A file the walker misses is a
 // file nothing ever verifies, and the run reports success on it regardless.
@@ -1250,6 +1251,29 @@ const SMOKE_PROMPT =
   "print('" + SMOKE_TOKEN + "')\n" +
   "No explanation before or after it.";
 
+/**
+ * The identical provider scenarios against the live sites, through the
+ * browser-native layer (src/web). Results merge into
+ * docs/testing/results/live-results.json for the provider matrix.
+ *
+ * Gated providers are tested too: gating is about what the app offers, and
+ * this measures whether the web interface can be driven at all. Nothing here
+ * signs in - a provider that needs a login is recorded as AUTH_REQUIRED.
+ */
+async function webtestMode(which: string, flags: string[]) {
+  const registry = new ProviderRegistry();
+  registry.loadProviders();
+  const ids = which === "all" ? ["deepseek", "qwen", "glm"] : [which];
+  const resultsFile = path.resolve(__dirname, "..", "..", "docs", "testing", "results", "live-results.json");
+  for (const id of ids) {
+    const config = registry.getProvider(id === "qwen" ? "qwen-studio" : id) || { id };
+    const run = await runLive(id, config, { headed: flags.includes("--headed"), resultsFile });
+    console.log("\n" + run.provider + " (" + Math.round(run.durationMs / 1000) + "s)");
+    for (const r of run.rows) console.log("  " + r.status.padEnd(14) + r.capability + (r.detail ? " - " + r.detail : ""));
+  }
+  console.log("\nresults merged into " + resultsFile);
+}
+
 async function smokeMode(providerId: string) {
   const registry = new ProviderRegistry();
   registry.loadProviders();
@@ -1749,6 +1773,8 @@ async function main() {
     // Positional layout differs from the other modes: workspace and provider
     // come straight after the mode, because there is no per-step prompt.
     else if (mode === "smoke") await smokeMode(args[1] || "deepseek");
+    // Positional layout: deepseek|qwen|glm|all, then flags (--headed).
+    else if (mode === "webtest") await webtestMode(args[1] || "all", args.slice(2));
     else if (mode === "health") await healthMode(args[1] || "deepseek", args[2] || "");
     else if (mode === "build-session") await buildSessionMode(args[1] || path.resolve(process.cwd()), args[2] || "deepseek", args[3] || "auto");
     // Positional layout: workspace, provider, step index, suggestion text.
