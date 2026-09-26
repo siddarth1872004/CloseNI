@@ -19,6 +19,10 @@ local-agent/storage/browser-profiles/*
 local-agent/storage/sessions.json
 local-agent/storage/last-chat-url.json
 
+# Browser-layer debug artifacts (screenshots, sanitised DOM) and research caches.
+local-agent/storage/diagnostics/
+local-agent/storage/research-cache/
+
 # Backups the agent writes while patching a workspace.
 .agent-backups/
 
