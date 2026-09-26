@@ -222,6 +222,23 @@ function venvForCommands(workspace: string): string | null {
   return fs.existsSync(vp) ? vp : null;
 }
 
+/**
+ * A console script the venv installed, by absolute path, or null.
+ *
+ * The venv is where flask, alembic and uvicorn end up, and nothing adds its bin
+ * directory to PATH - so a model's `flask db init` ran against the system PATH
+ * and failed with "command not found" while .venv/bin/flask existed. The path
+ * rather than `python -m <name>`: not every console script is a runnable
+ * module, and the file that is there is the one thing known to work.
+ */
+function venvScriptResolver(workspace: string): (name: string) => string | null {
+  const binDir = path.join(workspace, VENV_DIR, process.platform === "win32" ? "Scripts" : "bin");
+  return (name: string) => {
+    const exe = path.join(binDir, process.platform === "win32" ? name + ".exe" : name);
+    return fs.existsSync(exe) ? exe : null;
+  };
+}
+
 function workspaceResolver(workspace: string): (name: string) => string | null {
   const vp = venvPython(workspace);
   const haveVenv = fs.existsSync(vp);
@@ -1145,6 +1162,7 @@ async function runBuildStep(controller: PlaywrightController, config: ProviderCo
       }
 
       if (!failed && plan.commands) {
+        const venvScripts = venvScriptResolver(workspace);
         for (const suggested of plan.commands) {
           // Rewrite interpreter names that do not exist here before the user
           // approves, so what they see is what actually runs.
@@ -1152,7 +1170,7 @@ async function runBuildStep(controller: PlaywrightController, config: ProviderCo
           // `python3 -m pytest`, and on the machine that reported this `pip3`
           // did not exist at all while `python3` was the one interpreter
           // guaranteed not to see what the venv holds.
-          const cmd = rewriteForVenv(normalizeCommand(suggested), venvForCommands(workspace));
+          const cmd = rewriteForVenv(normalizeCommand(suggested), venvForCommands(workspace), venvScripts);
           if (cmd !== suggested) console.log("NORMALIZED_COMMAND: " + suggested + "  ->  " + cmd);
           console.log("REQUESTING_COMMAND: " + cmd);
           // Auto-allow means "do not interrupt me for pytest". It was never
