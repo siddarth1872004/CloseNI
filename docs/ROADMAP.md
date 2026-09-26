@@ -351,6 +351,30 @@ Verified with a clean build after the deletions.
 
 ---
 
+## 11 · Browser-native providers and research — BUILT, NOT YET LIVE
+
+`local-agent/src/web/`, designed in `docs/architecture/browser-research.md` after
+the audit in `docs/audit/2026-09-26-browser-layer-audit.md`.
+
+- One `AIWebProvider` drives DeepSeek, Qwen and GLM through adapters that record
+  what is `MEASURED`, `UNVERIFIED` or `UNKNOWN`.
+- Named UI states replace "not signed in" for everything: login, CAPTCHA, rate
+  limit, error, loading. Login and challenges stop a run; nothing tries to pass
+  them.
+- Completion comes from signals (reply stream, stop control, stability), and a
+  stalled or cut reply is reported `partial`, not complete.
+- Research: plan, multi-strategy search, fetch, page model, evidence with
+  provenance, dedupe, conflict detection, link following, budgets, a cited
+  context, and a source graph.
+- Identical scenarios per provider against fixture pages, chaos tests, and a
+  generated matrix (`docs/testing/provider-matrix.md`).
+
+**Not done:** any live run (the development container could not reach the
+sites), and moving the build path onto this layer. That should happen only after
+`webtest` has passed live on the provider being switched.
+
+---
+
 ## Dependency order
 
 ```

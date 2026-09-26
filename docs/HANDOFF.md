@@ -21,14 +21,22 @@ Two processes with one contract:
 - `local-agent/` — TypeScript compiled to CommonJS in `local-agent/dist/`. A CLI
   you can run by hand: `node local-agent/dist/index.js plan "..." /path deepseek`.
   Modes: `chat`, `plan`, `revise`, `browser` (one step), `build-session`,
-  `suggest`, `ask`, `testall`, `research`, `signin`.
+  `suggest`, `ask`, `testall`, `research`, `signin`, `webtest`.
+- `local-agent/src/web/` — a browser-native layer built **beside**
+  `PlaywrightController`, not wired into builds yet: session manager, UI state
+  detection (AUTH_REQUIRED / CAPTCHA / RATE_LIMITED / …), selector fallback
+  chains, one extraction pipeline, one `AIWebProvider` over DeepSeek/Qwen/GLM
+  adapters, and a research engine that searches, reads and cites. Design:
+  `docs/architecture/browser-research.md`; audit:
+  `docs/audit/2026-09-26-browser-layer-audit.md`.
 
 Build with `npm run build`. On WSL you must `source scripts/wsl-env.sh` first —
 a Windows Node on `/mnt/c` cannot run from a `\\wsl.localhost\...` path.
 
 ## State
 
-- **1202 unit tests + 180 end-to-end tests, all passing.** Two e2e cases open
+- **1420 unit tests + 180 end-to-end tests, all passing**, plus the web
+  layer's browser suite (`npm run test:web`, real Chromium against fixtures). Two e2e cases open
   a visible browser, so on a machine with no display run the suite under
   `xvfb-run`.
   `node local-agent/test/run-tests.cjs` and `node local-agent/test/run-e2e.cjs`
@@ -100,6 +108,12 @@ toolchains.
   the getting-started guide appear on a clean profile. The browser download
   itself could not be completed there (the network blocked the CDN), which
   is how the gate's "Download failed (exit 1)" was found to hide the reason.
+- **The browser-native layer (`src/web/`) has never met a live site.** Every
+  provider and search host was refused by the development container's network
+  policy, so its live matrix rows are `BLOCKED`. It is proven against fixture
+  pages shaped like each provider (`npm run test:web`). First live step:
+  `npm run webtest -- deepseek --headed` on a signed-in machine, then
+  `npm run web:report`.
 - **Recent bug fixes are unverified**: build resume after a failure, New Chat
   clearing the transcript, the command safety floor, and environment-setup
   failures no longer failing a step.
