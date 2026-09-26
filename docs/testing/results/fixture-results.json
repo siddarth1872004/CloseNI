@@ -1,0 +1,1131 @@
+{
+  "generatedAt": "2026-09-26T07:59:06.644Z",
+  "environment": {
+    "node": "v22.22.2",
+    "platform": "linux",
+    "chromium": {
+      "launches": 8,
+      "contexts": [],
+      "browserConnected": false
+    }
+  },
+  "pass": 199,
+  "fail": 0,
+  "rows": [
+    {
+      "provider": "browser",
+      "capability": "Page crash recovery",
+      "status": "PASS",
+      "detail": "Page.crash via CDP → page recreated"
+    },
+    {
+      "provider": "browser",
+      "capability": "Navigation (redirect/404/timeout/refused)",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "provider": "browser",
+      "capability": "Selector fallback chains",
+      "status": "PASS",
+      "detail": "role/name, text, heuristic links; diagnosis lists every strategy"
+    },
+    {
+      "provider": "browser",
+      "capability": "Debug artifacts",
+      "status": "PASS",
+      "detail": "screenshot, sanitised DOM, aria snapshot, meta.json"
+    },
+    {
+      "provider": "deepseek",
+      "capability": "Browser launch",
+      "status": "PASS",
+      "detail": "persistent profile context"
+    },
+    {
+      "provider": "deepseek",
+      "capability": "UI detection",
+      "status": "PASS",
+      "detail": "composer visible and enabled"
+    },
+    {
+      "provider": "deepseek",
+      "capability": "Auth detection",
+      "status": "PASS",
+      "detail": "password field visible; login/sign-in control visible; no chat composer"
+    },
+    {
+      "provider": "deepseek",
+      "capability": "CAPTCHA detection",
+      "status": "PASS",
+      "detail": "a challenge widget (reCAPTCHA/hCaptcha/Turnstile-style) is on the page"
+    },
+    {
+      "provider": "deepseek",
+      "capability": "Server error detection",
+      "status": "PASS",
+      "detail": "HTTP 500"
+    },
+    {
+      "provider": "deepseek",
+      "capability": "Slow load",
+      "status": "PASS",
+      "detail": "composer appears after 2.5s of a busy indicator"
+    },
+    {
+      "provider": "deepseek",
+      "capability": "Prompt submission",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "provider": "deepseek",
+      "capability": "Response detection",
+      "status": "PASS",
+      "detail": "signal=stream-closed"
+    },
+    {
+      "provider": "deepseek",
+      "capability": "Instruction following",
+      "status": "PASS",
+      "detail": "exact token echoed"
+    },
+    {
+      "provider": "deepseek",
+      "capability": "Reasoning",
+      "status": "PASS",
+      "detail": "generic reasoning marker; the live site's markup is UNKNOWN"
+    },
+    {
+      "provider": "deepseek",
+      "capability": "Code extraction",
+      "status": "PASS",
+      "detail": "Copy control used: true"
+    },
+    {
+      "provider": "deepseek",
+      "capability": "JSON generation",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "provider": "deepseek",
+      "capability": "Markdown extraction",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "provider": "deepseek",
+      "capability": "Tables",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "provider": "deepseek",
+      "capability": "Links/citations",
+      "status": "PASS",
+      "detail": "links preserved; a linked file becomes an attachment"
+    },
+    {
+      "provider": "deepseek",
+      "capability": "Long response",
+      "status": "PASS",
+      "detail": "22388 chars"
+    },
+    {
+      "provider": "deepseek",
+      "capability": "Streaming capture",
+      "status": "PASS",
+      "detail": "19 partials"
+    },
+    {
+      "provider": "deepseek",
+      "capability": "Large context",
+      "status": "PASS",
+      "detail": "27787-char prompt"
+    },
+    {
+      "provider": "deepseek",
+      "capability": "Duplicate response",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "provider": "deepseek",
+      "capability": "Empty response",
+      "status": "PASS",
+      "detail": "signal=empty"
+    },
+    {
+      "provider": "deepseek",
+      "capability": "Long-running conversation",
+      "status": "PASS",
+      "detail": "11 turns in one conversation"
+    },
+    {
+      "provider": "deepseek",
+      "capability": "New conversation",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "provider": "deepseek",
+      "capability": "Selector health",
+      "status": "PARTIAL",
+      "detail": "CHAT_READY; on fallback: send, newChat; not present in this state: copy | composer:ok, send:fallback, assistant:ok, newChat:fallback, copy:absent"
+    },
+    {
+      "provider": "deepseek",
+      "capability": "Auth wall after send",
+      "status": "PASS",
+      "detail": "AUTH_REQUIRED: a login dialog is open over the composer"
+    },
+    {
+      "provider": "deepseek",
+      "capability": "Rate-limit detection",
+      "status": "PASS",
+      "detail": "HTTP 429 on the reply stream"
+    },
+    {
+      "provider": "deepseek",
+      "capability": "Generation failure",
+      "status": "PASS",
+      "detail": "HTTP 500 on the reply"
+    },
+    {
+      "provider": "deepseek",
+      "capability": "Unexpected modal",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "provider": "deepseek",
+      "capability": "Popup",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "provider": "deepseek",
+      "capability": "Dialog",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "provider": "deepseek",
+      "capability": "Mid-answer pause",
+      "status": "PASS",
+      "detail": "signal=stream-closed"
+    },
+    {
+      "provider": "deepseek",
+      "capability": "Late start",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "provider": "deepseek",
+      "capability": "Rewrite during stream",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "provider": "deepseek",
+      "capability": "Stalled generation",
+      "status": "PASS",
+      "detail": "reply request still open, nothing arriving → status partial, signal stalled"
+    },
+    {
+      "provider": "deepseek",
+      "capability": "Network interruption",
+      "status": "PASS",
+      "detail": "the stream tap reports the failed transfer → status partial/interrupted"
+    },
+    {
+      "provider": "deepseek",
+      "capability": "Layout change",
+      "status": "PASS",
+      "detail": "carried by heuristic=last-assistant-block"
+    },
+    {
+      "provider": "deepseek",
+      "capability": "Stop generation",
+      "status": "NOT_APPLICABLE",
+      "detail": "measured: DeepSeek's stop control is its send control"
+    },
+    {
+      "provider": "deepseek",
+      "capability": "Failure recovery",
+      "status": "PASS",
+      "detail": "renderer crash mid-reply → interrupted → page recreated"
+    },
+    {
+      "provider": "deepseek",
+      "capability": "Unresponsive page",
+      "status": "PASS",
+      "detail": "main thread locked by the site's script → interrupted after the unresponsive window, page replaced"
+    },
+    {
+      "provider": "deepseek",
+      "capability": "Research synthesis",
+      "status": "PASS",
+      "detail": "fixture model quotes the cited evidence"
+    },
+    {
+      "provider": "deepseek",
+      "capability": "Citation handling",
+      "status": "PASS",
+      "detail": "citations checked against the context's source list"
+    },
+    {
+      "provider": "deepseek",
+      "capability": "Contradictory information",
+      "status": "PASS",
+      "detail": "2 conflict(s) passed to the model"
+    },
+    {
+      "provider": "deepseek",
+      "capability": "Multi-source reasoning",
+      "status": "PASS",
+      "detail": "5 sources in context"
+    },
+    {
+      "provider": "deepseek",
+      "capability": "Tool-use simulation",
+      "status": "NOT_APPLICABLE",
+      "detail": "the model drives a chat window and cannot call tools; research runs outside it (see ROADMAP item 13)"
+    },
+    {
+      "provider": "qwen",
+      "capability": "Browser launch",
+      "status": "PASS",
+      "detail": "persistent profile context"
+    },
+    {
+      "provider": "qwen",
+      "capability": "UI detection",
+      "status": "PASS",
+      "detail": "composer visible and enabled"
+    },
+    {
+      "provider": "qwen",
+      "capability": "Auth detection",
+      "status": "PASS",
+      "detail": "password field visible; login/sign-in control visible; no chat composer"
+    },
+    {
+      "provider": "qwen",
+      "capability": "CAPTCHA detection",
+      "status": "PASS",
+      "detail": "a challenge widget (reCAPTCHA/hCaptcha/Turnstile-style) is on the page"
+    },
+    {
+      "provider": "qwen",
+      "capability": "Server error detection",
+      "status": "PASS",
+      "detail": "HTTP 500"
+    },
+    {
+      "provider": "qwen",
+      "capability": "Slow load",
+      "status": "PASS",
+      "detail": "composer appears after 2.5s of a busy indicator"
+    },
+    {
+      "provider": "qwen",
+      "capability": "Prompt submission",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "provider": "qwen",
+      "capability": "Response detection",
+      "status": "PASS",
+      "detail": "signal=stop-button-gone"
+    },
+    {
+      "provider": "qwen",
+      "capability": "Instruction following",
+      "status": "PASS",
+      "detail": "exact token echoed"
+    },
+    {
+      "provider": "qwen",
+      "capability": "Reasoning",
+      "status": "PASS",
+      "detail": "generic reasoning marker; the live site's markup is UNKNOWN"
+    },
+    {
+      "provider": "qwen",
+      "capability": "Code extraction",
+      "status": "PASS",
+      "detail": "DOM reading"
+    },
+    {
+      "provider": "qwen",
+      "capability": "JSON generation",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "provider": "qwen",
+      "capability": "Markdown extraction",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "provider": "qwen",
+      "capability": "Tables",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "provider": "qwen",
+      "capability": "Links/citations",
+      "status": "PASS",
+      "detail": "links preserved; a linked file becomes an attachment"
+    },
+    {
+      "provider": "qwen",
+      "capability": "Long response",
+      "status": "PASS",
+      "detail": "22388 chars"
+    },
+    {
+      "provider": "qwen",
+      "capability": "Streaming capture",
+      "status": "PASS",
+      "detail": "19 partials"
+    },
+    {
+      "provider": "qwen",
+      "capability": "Large context",
+      "status": "PASS",
+      "detail": "27787-char prompt"
+    },
+    {
+      "provider": "qwen",
+      "capability": "Duplicate response",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "provider": "qwen",
+      "capability": "Empty response",
+      "status": "PASS",
+      "detail": "signal=empty"
+    },
+    {
+      "provider": "qwen",
+      "capability": "Long-running conversation",
+      "status": "PASS",
+      "detail": "11 turns in one conversation"
+    },
+    {
+      "provider": "qwen",
+      "capability": "New conversation",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "provider": "qwen",
+      "capability": "Selector health",
+      "status": "PARTIAL",
+      "detail": "CHAT_READY; on fallback: newChat; not present in this state: stop | composer:ok, send:ok, stop:absent, assistant:ok, newChat:fallback"
+    },
+    {
+      "provider": "qwen",
+      "capability": "Auth wall after send",
+      "status": "PASS",
+      "detail": "AUTH_REQUIRED: a login dialog is open over the composer"
+    },
+    {
+      "provider": "qwen",
+      "capability": "Rate-limit detection",
+      "status": "PASS",
+      "detail": "alert text (no stream tap)"
+    },
+    {
+      "provider": "qwen",
+      "capability": "Generation failure",
+      "status": "PASS",
+      "detail": "HTTP 500 on the reply"
+    },
+    {
+      "provider": "qwen",
+      "capability": "Unexpected modal",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "provider": "qwen",
+      "capability": "Popup",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "provider": "qwen",
+      "capability": "Dialog",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "provider": "qwen",
+      "capability": "Mid-answer pause",
+      "status": "PASS",
+      "detail": "signal=stop-button-gone"
+    },
+    {
+      "provider": "qwen",
+      "capability": "Late start",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "provider": "qwen",
+      "capability": "Rewrite during stream",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "provider": "qwen",
+      "capability": "Stalled generation",
+      "status": "PASS",
+      "detail": "stop control still visible → status partial, signal timeout"
+    },
+    {
+      "provider": "qwen",
+      "capability": "Network interruption",
+      "status": "PARTIAL",
+      "detail": "no measured stream endpoint: a cut reply ends like a finished one (status complete)"
+    },
+    {
+      "provider": "qwen",
+      "capability": "Layout change",
+      "status": "PASS",
+      "detail": "carried by heuristic=last-assistant-block"
+    },
+    {
+      "provider": "qwen",
+      "capability": "Stop generation",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "provider": "qwen",
+      "capability": "Failure recovery",
+      "status": "PASS",
+      "detail": "renderer crash mid-reply → interrupted → page recreated"
+    },
+    {
+      "provider": "qwen",
+      "capability": "Unresponsive page",
+      "status": "PASS",
+      "detail": "main thread locked by the site's script → interrupted after the unresponsive window, page replaced"
+    },
+    {
+      "provider": "qwen",
+      "capability": "Research synthesis",
+      "status": "PASS",
+      "detail": "fixture model quotes the cited evidence"
+    },
+    {
+      "provider": "qwen",
+      "capability": "Citation handling",
+      "status": "PASS",
+      "detail": "citations checked against the context's source list"
+    },
+    {
+      "provider": "qwen",
+      "capability": "Contradictory information",
+      "status": "PASS",
+      "detail": "2 conflict(s) passed to the model"
+    },
+    {
+      "provider": "qwen",
+      "capability": "Multi-source reasoning",
+      "status": "PASS",
+      "detail": "5 sources in context"
+    },
+    {
+      "provider": "qwen",
+      "capability": "Tool-use simulation",
+      "status": "NOT_APPLICABLE",
+      "detail": "the model drives a chat window and cannot call tools; research runs outside it (see ROADMAP item 13)"
+    },
+    {
+      "provider": "glm",
+      "capability": "Browser launch",
+      "status": "PASS",
+      "detail": "persistent profile context"
+    },
+    {
+      "provider": "glm",
+      "capability": "UI detection",
+      "status": "PASS",
+      "detail": "composer visible and enabled"
+    },
+    {
+      "provider": "glm",
+      "capability": "Auth detection",
+      "status": "PASS",
+      "detail": "password field visible; login/sign-in control visible; no chat composer"
+    },
+    {
+      "provider": "glm",
+      "capability": "CAPTCHA detection",
+      "status": "PASS",
+      "detail": "a challenge widget (reCAPTCHA/hCaptcha/Turnstile-style) is on the page"
+    },
+    {
+      "provider": "glm",
+      "capability": "Server error detection",
+      "status": "PASS",
+      "detail": "HTTP 500"
+    },
+    {
+      "provider": "glm",
+      "capability": "Slow load",
+      "status": "PASS",
+      "detail": "composer appears after 2.5s of a busy indicator"
+    },
+    {
+      "provider": "glm",
+      "capability": "Prompt submission",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "provider": "glm",
+      "capability": "Response detection",
+      "status": "PASS",
+      "detail": "signal=stop-button-gone"
+    },
+    {
+      "provider": "glm",
+      "capability": "Instruction following",
+      "status": "PASS",
+      "detail": "exact token echoed"
+    },
+    {
+      "provider": "glm",
+      "capability": "Reasoning",
+      "status": "PASS",
+      "detail": "generic reasoning marker; the live site's markup is UNKNOWN"
+    },
+    {
+      "provider": "glm",
+      "capability": "Code extraction",
+      "status": "PASS",
+      "detail": "DOM reading"
+    },
+    {
+      "provider": "glm",
+      "capability": "JSON generation",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "provider": "glm",
+      "capability": "Markdown extraction",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "provider": "glm",
+      "capability": "Tables",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "provider": "glm",
+      "capability": "Links/citations",
+      "status": "PASS",
+      "detail": "links preserved; a linked file becomes an attachment"
+    },
+    {
+      "provider": "glm",
+      "capability": "Long response",
+      "status": "PASS",
+      "detail": "22388 chars"
+    },
+    {
+      "provider": "glm",
+      "capability": "Streaming capture",
+      "status": "PASS",
+      "detail": "19 partials"
+    },
+    {
+      "provider": "glm",
+      "capability": "Large context",
+      "status": "PASS",
+      "detail": "27787-char prompt"
+    },
+    {
+      "provider": "glm",
+      "capability": "Duplicate response",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "provider": "glm",
+      "capability": "Empty response",
+      "status": "PASS",
+      "detail": "signal=empty"
+    },
+    {
+      "provider": "glm",
+      "capability": "Long-running conversation",
+      "status": "PASS",
+      "detail": "11 turns in one conversation"
+    },
+    {
+      "provider": "glm",
+      "capability": "New conversation",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "provider": "glm",
+      "capability": "Selector health",
+      "status": "PARTIAL",
+      "detail": "CHAT_READY; on fallback: send, assistant, newChat; not present in this state: stop | composer:ok, send:fallback, stop:absent, assistant:fallback, newChat:fallback"
+    },
+    {
+      "provider": "glm",
+      "capability": "Auth wall after send",
+      "status": "PASS",
+      "detail": "AUTH_REQUIRED: a login dialog is open over the composer"
+    },
+    {
+      "provider": "glm",
+      "capability": "Rate-limit detection",
+      "status": "PASS",
+      "detail": "alert text (no stream tap)"
+    },
+    {
+      "provider": "glm",
+      "capability": "Generation failure",
+      "status": "PASS",
+      "detail": "HTTP 500 on the reply"
+    },
+    {
+      "provider": "glm",
+      "capability": "Unexpected modal",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "provider": "glm",
+      "capability": "Popup",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "provider": "glm",
+      "capability": "Dialog",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "provider": "glm",
+      "capability": "Mid-answer pause",
+      "status": "PASS",
+      "detail": "signal=stop-button-gone"
+    },
+    {
+      "provider": "glm",
+      "capability": "Late start",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "provider": "glm",
+      "capability": "Rewrite during stream",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "provider": "glm",
+      "capability": "Stalled generation",
+      "status": "PASS",
+      "detail": "stop control still visible → status partial, signal timeout"
+    },
+    {
+      "provider": "glm",
+      "capability": "Network interruption",
+      "status": "PARTIAL",
+      "detail": "no measured stream endpoint: a cut reply ends like a finished one (status complete)"
+    },
+    {
+      "provider": "glm",
+      "capability": "Layout change",
+      "status": "PASS",
+      "detail": "carried by heuristic=last-assistant-block"
+    },
+    {
+      "provider": "glm",
+      "capability": "Stop generation",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "provider": "glm",
+      "capability": "Failure recovery",
+      "status": "PASS",
+      "detail": "renderer crash mid-reply → interrupted → page recreated"
+    },
+    {
+      "provider": "glm",
+      "capability": "Unresponsive page",
+      "status": "PASS",
+      "detail": "main thread locked by the site's script → interrupted after the unresponsive window, page replaced"
+    },
+    {
+      "provider": "glm",
+      "capability": "Research synthesis",
+      "status": "PASS",
+      "detail": "fixture model quotes the cited evidence"
+    },
+    {
+      "provider": "glm",
+      "capability": "Citation handling",
+      "status": "PASS",
+      "detail": "citations checked against the context's source list"
+    },
+    {
+      "provider": "glm",
+      "capability": "Contradictory information",
+      "status": "PASS",
+      "detail": "2 conflict(s) passed to the model"
+    },
+    {
+      "provider": "glm",
+      "capability": "Multi-source reasoning",
+      "status": "PASS",
+      "detail": "5 sources in context"
+    },
+    {
+      "provider": "glm",
+      "capability": "Tool-use simulation",
+      "status": "NOT_APPLICABLE",
+      "detail": "the model drives a chat window and cannot call tools; research runs outside it (see ROADMAP item 13)"
+    },
+    {
+      "provider": "extraction",
+      "capability": "Recorded DeepSeek markup",
+      "status": "PASS",
+      "detail": "replay fixture through ChatWebProvider.extractResponse"
+    },
+    {
+      "provider": "research",
+      "capability": "Browser fetcher (http/browser/escalation)",
+      "status": "PASS",
+      "detail": "static via HTTP; app shell escalated; infinite scroll bounded"
+    },
+    {
+      "provider": "research",
+      "capability": "Search normalisation",
+      "status": "PASS",
+      "detail": "fixture engine; live engines UNVERIFIED"
+    },
+    {
+      "provider": "research",
+      "capability": "Multi-query research loop",
+      "status": "PASS",
+      "detail": "4 queries, 7 pages, stop=sufficient"
+    },
+    {
+      "provider": "research",
+      "capability": "Duplicate removal",
+      "status": "PASS",
+      "detail": "tracking variants + syndicated mirror"
+    },
+    {
+      "provider": "research",
+      "capability": "Conflict detection",
+      "status": "PASS",
+      "detail": "10,000 widgets per second vs 12,000 widgets per second (widgets per second); 100 requests per minute vs 60 requests per minute (requests per minute)"
+    },
+    {
+      "provider": "research",
+      "capability": "Provenance",
+      "status": "PASS",
+      "detail": "claim → evidence span → section → URL"
+    },
+    {
+      "provider": "research",
+      "capability": "Link following",
+      "status": "PASS",
+      "detail": "install page found only via the docs sidebar link"
+    },
+    {
+      "provider": "research",
+      "capability": "Budgets and stop conditions",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "provider": "chaos",
+      "capability": "Browser killed",
+      "status": "PASS",
+      "detail": "shared research browser SIGKILL → relaunch on next use"
+    },
+    {
+      "provider": "chaos",
+      "capability": "Tab closed",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "provider": "chaos",
+      "capability": "Selector removed",
+      "status": "PASS",
+      "detail": "via css=[class*=\"assistant\"]"
+    },
+    {
+      "provider": "chaos",
+      "capability": "Viewport change",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "provider": "chaos",
+      "capability": "Reload mid-generation",
+      "status": "PARTIAL",
+      "detail": "the wait ends (status empty); whether a live site restores the reply after reload is UNKNOWN"
+    },
+    {
+      "provider": "chaos",
+      "capability": "Malformed/empty extraction",
+      "status": "PASS",
+      "detail": ""
+    }
+  ],
+  "timings": [
+    {
+      "provider": "deepseek",
+      "op": "openChat",
+      "ms": 397
+    },
+    {
+      "provider": "deepseek",
+      "op": "ask-basic",
+      "ms": 631
+    },
+    {
+      "provider": "deepseek",
+      "op": "ask-reasoning",
+      "ms": 763
+    },
+    {
+      "provider": "deepseek",
+      "op": "ask-code",
+      "ms": 1473
+    },
+    {
+      "provider": "deepseek",
+      "op": "ask-json",
+      "ms": 999
+    },
+    {
+      "provider": "deepseek",
+      "op": "ask-list",
+      "ms": 676
+    },
+    {
+      "provider": "deepseek",
+      "op": "ask-table",
+      "ms": 1028
+    },
+    {
+      "provider": "deepseek",
+      "op": "ask-links",
+      "ms": 1137
+    },
+    {
+      "provider": "deepseek",
+      "op": "ask-long",
+      "ms": 3497
+    },
+    {
+      "provider": "deepseek",
+      "op": "ask-large-context",
+      "ms": 647
+    },
+    {
+      "provider": "deepseek",
+      "op": "ask-same-1",
+      "ms": 623
+    },
+    {
+      "provider": "deepseek",
+      "op": "ask-same-2",
+      "ms": 615
+    },
+    {
+      "provider": "deepseek",
+      "op": "ask-empty",
+      "ms": 760
+    },
+    {
+      "provider": "deepseek",
+      "op": "ask-turn",
+      "ms": 642
+    },
+    {
+      "provider": "deepseek",
+      "op": "suite",
+      "ms": 60851
+    },
+    {
+      "provider": "qwen",
+      "op": "openChat",
+      "ms": 368
+    },
+    {
+      "provider": "qwen",
+      "op": "ask-basic",
+      "ms": 627
+    },
+    {
+      "provider": "qwen",
+      "op": "ask-reasoning",
+      "ms": 757
+    },
+    {
+      "provider": "qwen",
+      "op": "ask-code",
+      "ms": 1082
+    },
+    {
+      "provider": "qwen",
+      "op": "ask-json",
+      "ms": 776
+    },
+    {
+      "provider": "qwen",
+      "op": "ask-list",
+      "ms": 762
+    },
+    {
+      "provider": "qwen",
+      "op": "ask-table",
+      "ms": 919
+    },
+    {
+      "provider": "qwen",
+      "op": "ask-links",
+      "ms": 1086
+    },
+    {
+      "provider": "qwen",
+      "op": "ask-long",
+      "ms": 3348
+    },
+    {
+      "provider": "qwen",
+      "op": "ask-large-context",
+      "ms": 645
+    },
+    {
+      "provider": "qwen",
+      "op": "ask-same-1",
+      "ms": 607
+    },
+    {
+      "provider": "qwen",
+      "op": "ask-same-2",
+      "ms": 600
+    },
+    {
+      "provider": "qwen",
+      "op": "ask-empty",
+      "ms": 751
+    },
+    {
+      "provider": "qwen",
+      "op": "ask-turn",
+      "ms": 625
+    },
+    {
+      "provider": "qwen",
+      "op": "suite",
+      "ms": 67871
+    },
+    {
+      "provider": "glm",
+      "op": "openChat",
+      "ms": 369
+    },
+    {
+      "provider": "glm",
+      "op": "ask-basic",
+      "ms": 635
+    },
+    {
+      "provider": "glm",
+      "op": "ask-reasoning",
+      "ms": 785
+    },
+    {
+      "provider": "glm",
+      "op": "ask-code",
+      "ms": 1117
+    },
+    {
+      "provider": "glm",
+      "op": "ask-json",
+      "ms": 811
+    },
+    {
+      "provider": "glm",
+      "op": "ask-list",
+      "ms": 643
+    },
+    {
+      "provider": "glm",
+      "op": "ask-table",
+      "ms": 961
+    },
+    {
+      "provider": "glm",
+      "op": "ask-links",
+      "ms": 1124
+    },
+    {
+      "provider": "glm",
+      "op": "ask-long",
+      "ms": 3499
+    },
+    {
+      "provider": "glm",
+      "op": "ask-large-context",
+      "ms": 2792
+    },
+    {
+      "provider": "glm",
+      "op": "ask-same-1",
+      "ms": 649
+    },
+    {
+      "provider": "glm",
+      "op": "ask-same-2",
+      "ms": 668
+    },
+    {
+      "provider": "glm",
+      "op": "ask-empty",
+      "ms": 768
+    },
+    {
+      "provider": "glm",
+      "op": "ask-turn",
+      "ms": 635
+    },
+    {
+      "provider": "glm",
+      "op": "suite",
+      "ms": 70326
+    }
+  ]
+}

@@ -24,6 +24,24 @@ installed by anyone — treat it as unproven. GitHub sign-in, push, clone and
 Actions are unit-tested with an injected transport and have never made a live
 request. Qwen Studio and GLM ship gated.
 
+### Browser-native provider and research layer (not wired into builds)
+
+- `local-agent/src/web/`: session manager with isolated contexts, crash, popup,
+  dialog and download handling, bounded shutdown; classified navigation;
+  selector fallback chains with diagnosis; debug artifacts with sanitised DOM.
+- UI states `AUTH_REQUIRED`, `CAPTCHA`, `RATE_LIMITED`, `ERROR`,
+  `GENERATION_FAILED` and others, detected and recorded. A login or challenge
+  stops the run.
+- One extraction pipeline (Raw → DOM → Semantic → Normalized → Structured) that
+  keeps code with language, tables, links, citations and reasoning.
+- A research engine that plans, searches, reads, cites, deduplicates and flags
+  conflicting sources.
+- `closeni webtest <provider>`, `npm run test:web` and its groups, and
+  `npm run web:report`. Live results so far: `BLOCKED`, because the
+  development container's network refused every provider host.
+- The reply-stream tap moved to `providers/stream-tap.ts`, shared by the
+  controller and the new layer. The controller's behaviour is unchanged.
+
 ### Fixed before release
 
 Three defects that only appeared once the app was installed, each found by
