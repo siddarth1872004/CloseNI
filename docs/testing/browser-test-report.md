@@ -141,7 +141,10 @@ hands it a built context.
   3. Stability ended DeepSeek replies during a pause while the request was still open.
   4. Long prompts in a contenteditable composer lost their line breaks.
   5. The empty-reply signal was lost when a stop control came and went during the post-send
-     check.
+     check. The first fix still sampled it: on a faster machine the ~30ms flash fell between two
+     polls every time, and Qwen and GLM reported an empty reply as `no-start` carrying the
+     previous answer. A MutationObserver in the page now latches the control being shown, so
+     it cannot fall between samples; 10 of 10 runs passed where 0 of 3 had.
   6. With two subquestions, no word counted as distinctive, so any sentence about the subject
      was "evidence" for a how-to question.
   7. The health check called a Copy or stop control "broken" on a page state that cannot have

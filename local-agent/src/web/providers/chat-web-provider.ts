@@ -30,7 +30,7 @@ import { replyStreamTap, mutationCounter } from "../../providers/stream-tap.js";
 import { BrowserSessionManager, ManagedContext, ManagedPage } from "../browser/session-manager.js";
 import { navigate, NavOutcome, waitFor } from "../browser/navigate.js";
 import { captureDiagnostics, DebugArtifacts, diagnosticsRoot } from "../browser/diagnostics.js";
-import { ChainDiagnosis, ChainSpec, Resolved, diagnoseChain, resolveChain } from "../selectors/chain.js";
+import { ChainDiagnosis, ChainSpec, Resolved, diagnoseChain, locatorFor, resolveChain } from "../selectors/chain.js";
 import { snapshotLocator } from "../semantic/dom.js";
 import { pipeline } from "../response/normalize.js";
 import { Tracer, quietTracer } from "../trace.js";
@@ -82,6 +82,8 @@ export class ChatWebProvider implements AIWebProvider {
    * briefly, and the detector must still know it came and went.
    */
   private stopSeenSinceSubmit = false;
+  /** Which submit a stop-control watcher belongs to, so a late one cannot mark the next. */
+  private submitSeq = 0;
   private lastNav: NavOutcome | null = null;
   private lastWait: WaitResult | null = null;
   private baseline = { count: 0, text: "" };
@@ -120,6 +122,9 @@ export class ChatWebProvider implements AIWebProvider {
   private onStream(ev: string, status?: number, errored?: boolean): void {
     if (ev === "open") { this.stream.opened++; this.stream.status = typeof status === "number" ? status : 0; }
     else if (ev === "close") { this.stream.closed++; if (errored) this.stream.cut = true; }
+    // Not the stream: the stop-control latch shares this binding, and `status`
+    // carries the submit it was installed for.
+    else if (ev === "stop-shown" && status === this.submitSeq) this.stopSeenSinceSubmit = true;
   }
 
   private page(): ManagedPage {
@@ -410,6 +415,7 @@ export class ChatWebProvider implements AIWebProvider {
       method += "+refill";
       await box.fill(prompt, { timeout: 10000 }).catch(() => { /* reported below */ });
     }
+    await this.watchStopFlash(++this.submitSeq);
     const send = await this.chain("send", true);
     let sentBy = "enter";
     if (send && (await send.locator.last().isEnabled().catch(() => false))) {
@@ -450,6 +456,52 @@ export class ChatWebProvider implements AIWebProvider {
     return result;
   }
 
+  /**
+   * Latch the stop control appearing, however briefly.
+   *
+   * Sampling it every poll misses an empty reply: the page raises the control
+   * and drops it again inside one interval - about 30ms on the fixtures, where
+   * the 150ms poll only caught it on a slow enough machine. With nothing seen,
+   * the wait has no sign the provider answered and reports no-start after the
+   * whole start timeout. Playwright's waitFor samples too, with gaps of up to
+   * 100ms, and missed it one run in three.
+   *
+   * A MutationObserver runs after every DOM change, so it cannot fall between
+   * the change that shows the control and the one that hides it. It watches the
+   * elements the stop chain describes, hidden ones included, plus whatever its
+   * CSS links match later - a control inserted only while generating. Heuristics
+   * are skipped: they mark elements only when run. Anything this misses, the
+   * poll still sees if it stays up for one interval, as it did before.
+   */
+  private async watchStopFlash(seq: number): Promise<void> {
+    const page = this.page().page;
+    const handles: any[] = [];
+    const css: string[] = [];
+    for (const s of this.spec.chains.stop.strategies) {
+      if (s.kind === "heuristic") continue;
+      if (s.kind === "css" || s.kind === "structural") css.push(s.css);
+      const hs = await bounded(locatorFor(page, s, undefined, true).elementHandles(), 3000);
+      if (Array.isArray(hs)) handles.push(...hs.slice(0, 10));
+    }
+    if (!handles.length && !css.length) return;
+    await bounded(page.evaluate(([els, sels, n, ms]: [any[], string[], number, number]) => {
+      const w = globalThis as any;
+      if (w.__closeniStopObs) w.__closeniStopObs.disconnect();
+      const shown = (el: any) => el.isConnected && el.getClientRects().length > 0 && w.getComputedStyle(el).visibility !== "hidden";
+      const obs = new w.MutationObserver(() => {
+        let hit = els.some(shown);
+        for (const s of sels) { if (hit) break; try { hit = Array.from(w.document.querySelectorAll(s)).some(shown); } catch { /* invalid */ } }
+        if (!hit) return;
+        obs.disconnect();
+        try { w.__closeniStream("stop-shown", n); } catch { /* no binding: polling decides */ }
+      });
+      obs.observe(w.document.body, { subtree: true, childList: true, attributes: true, characterData: true });
+      w.__closeniStopObs = obs;
+      w.setTimeout(() => obs.disconnect(), ms);
+    }, [handles, css, seq, this.spec.timing.startTimeoutMs] as [any[], string[], number, number]), 3000);
+    for (const h of handles) h.dispose().catch(() => { /* page gone */ });
+  }
+
   // --------------------------------------------------------------- wait --
 
   async waitForResponse(opts: AskOptions = {}): Promise<WaitResult> {
@@ -459,7 +511,8 @@ export class ChatWebProvider implements AIWebProvider {
       maxWaitMs: opts.maxWaitMs || t.maxWaitMs, useStopControl: this.spec.chains.stop.strategies.length > 0,
       streamStallMs: t.streamStallMs,
     });
-    if (this.stopSeenSinceSubmit) {
+    let stopReported = this.stopSeenSinceSubmit;
+    if (stopReported) {
       detector.feed({ atMs: 0, assistantCount: this.baseline.count, text: this.baseline.text, stopVisible: true, streamsOpened: 0, streamsClosed: 0, mutationSeq: -1 });
     }
     const capture = new StreamCapture();
@@ -518,7 +571,10 @@ export class ChatWebProvider implements AIWebProvider {
       }
       const stop = this.resolved.stop || (await this.chain("stop"));
       const sv = stop ? await bounded(stop.locator.first().isVisible(), 3000) : false;
-      const stopVisible = sv === true;
+      // A flash the watcher latched between two samples is reported once, as
+      // though this sample had caught it; the next one then sees it gone.
+      const stopVisible = sv === true || (this.stopSeenSinceSubmit && !stopReported);
+      if (stopVisible) stopReported = true;
       const v = detector.feed({ atMs: at, assistantCount: count, text, stopVisible,
         streamsOpened: this.stream.opened, streamsClosed: this.stream.closed, mutationSeq: seq, streamStatus: this.stream.status });
       if (text !== undefined && detector.hasStarted) {
