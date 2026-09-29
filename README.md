@@ -719,7 +719,7 @@ Stated plainly, because a README that only lists strengths is not useful.
 - **Chat sites change.** Provider control is per-site page automation. A redesign can break extraction until the selectors are updated, which is a JSON edit, not a code change.
 - **Verification is syntax and compilation, not correctness.** A project can pass every check and still be wrong.
 - **Nothing is published.** Installers build in CI and have been withdrawn.
-- **Plans do not always parse.** The reply is re-asked once and reported honestly if that fails, but it remains a live limitation.
+- **Plans do not always parse.** The reply is re-asked once and reported honestly if that fails, but it remains a live limitation. Settings → Extraction can add a local [Needle](https://github.com/cactus-compute/needle) model that reads a prose plan and names a refusal. It is off by default and has not yet been run with the real model.
 - **Installers are unsigned.** SmartScreen and Gatekeeper will say so, and that warning is accurate.
 - **Only the Linux artifacts have been verified.** The first `.exe` the release workflow produces is unverified until someone installs it.
 - **Large projects are not proven at scale.** Builds of a few dozen steps behave well. Beyond that is untested.
