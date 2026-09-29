@@ -12,7 +12,7 @@
  * about this application.
  */
 (function (root) {
-  var DEFAULT_THEME = "midnight";
+  var DEFAULT_THEME = "terminal";
   var THEME_KEY = "closeni.theme";
   var DECOR_KEY = "closeni.theme.decor";
 
@@ -22,6 +22,8 @@
   // actually set --overlay-texture, because the two drifting apart shows up as
   // a toggle that does nothing.
   var THEMES = [
+    { id: "terminal",        name: "Terminal",          decor: false },
+    { id: "pixel",           name: "Pixel",             decor: true },
     { id: "midnight",        name: "Midnight",          decor: false },
     { id: "paper",           name: "Paper",             decor: false },
     { id: "phosphor",        name: "Phosphor",          decor: true },

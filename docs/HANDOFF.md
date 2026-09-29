@@ -18,6 +18,12 @@ Two processes with one contract:
   `renderer.js` (panels), `builder.js` (step scheduler). **No bundler**, so
   shared renderer logic lives in UMD-style modules (`window.X` in the browser,
   `module.exports` under Node) — that is how they are unit-tested.
+- **The product is now agent-first.** The Code panel (`desktop/code.js`,
+  vocabulary in `desktop/code-view.js`) talks to `agent-session`, a
+  long-lived process running `local-agent/src/agent/`: protocol (tool calls
+  as fenced blocks over a chat site), tools, permissions (default / accept
+  edits / plan / auto, over command-policy's always-ask floor) and the loop.
+  The planned build (Plan and Build panels) is a separate mode.
 - `local-agent/` — TypeScript compiled to CommonJS in `local-agent/dist/`. A CLI
   you can run by hand: `node local-agent/dist/index.js plan "..." /path deepseek`.
   Modes: `chat`, `plan`, `revise`, `browser` (one step), `build-session`,
@@ -114,6 +120,12 @@ toolchains.
   pages shaped like each provider (`npm run test:web`). First live step:
   `npm run webtest -- deepseek --headed` on a signed-in machine, then
   `npm run web:report`.
+- **The coding agent has never met a live provider.** Protocol, tools,
+  permissions and loop are proven against a scripted model
+  (`test/agent-unit.cjs`), end to end through a real browser against the mock
+  chat (`run-e2e.cjs`, "coding agent" sections), and the panel by
+  `npm run test:ui`. First live step: a signed-in machine, the Code panel,
+  and a small real task - watch whether the model keeps to the tool blocks.
 - **Needle extraction (Settings → Extraction, off by default) has never run
   the real model.** Hugging Face was refused, so the weights never downloaded.
   The bridge imported the real `cactus-needle` 3.0.6. Everything else ran
