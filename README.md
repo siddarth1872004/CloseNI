@@ -560,7 +560,7 @@ Eleven built-in themes, switchable from Settings. Themes style CloseNI's own chr
 
 | Theme | Character | Theme | Character |
 |---|---|---|---|
-| **Terminal** | The default. A terminal coding agent's look: monospace, near-black, one coral accent. | **Cassette · Miami** | Sunset gradient, high saturation. |
+| **Terminal** | The default. A terminal coding agent's look: monospace, near-black, monochrome. | **Cassette · Miami** | Sunset gradient, high saturation. |
 | **Paper** | Full light mode, not a dark theme with the lights up. | **Cassette · Grid** | Flat retro, no texture. |
 | **Phosphor** | Green CRT, with scanlines. | **Blueprint** | Drafting blue on a grid. |
 | **Amber** | Amber CRT, with scanlines. | **High contrast** | Maximum legibility, no decoration. |

@@ -60,8 +60,8 @@ request. Qwen Studio and GLM ship gated.
 - **Memory and rewind.** `CLOSENI.md` (or `AGENTS.md` / `CLAUDE.md`) is read at
   the start of each conversation, and `/init` writes one. `/rewind` restores
   every file the last turn changed and tells the model it happened.
-- **Terminal** is the new default theme: monospace, near-black, one coral
-  accent. Eleven themes in all. A theme someone already chose is kept.
+- **Terminal** is the new default theme: monospace, near-black and
+  monochrome, with colour only where it carries meaning (diffs, results). Eleven themes in all. A theme someone already chose is kept.
 - **One long-lived session per project** (`agent-session`). It yields the
   browser to anything else that needs it, and reopens the same conversation on
   the next message. `npm run agent -- "<request>" <folder> <provider> [mode]`
