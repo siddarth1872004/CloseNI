@@ -142,20 +142,20 @@
   --overlay-texture:none; --accent:#ffffff; --glow:none;
 }
 
-/* A terminal coding agent's look: near-black, one warm coral accent for the
-   agent's own marks, green and red kept for diffs and results, and monospace
-   everywhere. The default. */
+/* A terminal coding agent's look: near-black and monochrome, the agent's own
+   marks in plain light grey, green and red kept only where they mean something
+   (diffs and results), and monospace everywhere. The default. */
 [data-theme="terminal"]{
   --bg:#141414; --panel:#181818; --surface:#1b1b1b; --surface-raised:#232323; --surface-sunken:#101010;
   --overlay:rgba(0,0,0,.75);
-  --line:#262626; --line-strong:#3a3a3a; --line-focus:#8fb4ff;
+  --line:#262626; --line-strong:#3a3a3a; --line-focus:#d0d0d0;
   --txt:#ebe9e5; --dim:#a8a49d; --mut:#8a867e; --inverse:#141414;
   --ok:#8ccf7e; --ok-bg:#12261a; --ok-line:#2f5c3a;
   --warn:#e5c07b; --warn-bg:#262011; --warn-line:#6b5a2a;
   --err:#f07878; --err-bg:#2c1414; --err-line:#6e2c2c;
   --lang-py:#8fb4ff; --lang-rs:#e8a06b; --lang-js:#e5c07b; --lang-java:#f07878; --lang-c:#b69cf0; --lang-default:#a8a49d;
   --shadow-1:0 4px 20px rgba(0,0,0,.55); --shadow-2:0 12px 40px rgba(0,0,0,.8);
-  --overlay-texture:none; --accent:#d97757; --glow:none;
+  --overlay-texture:none; --accent:#e4e4e4; --glow:none;
 }
 
 /* The README, as a theme: GitHub-dark surfaces, a green phosphor gradient for
@@ -1036,8 +1036,8 @@ input:focus,textarea:focus,select:focus{transition:border-color .06s steps(1);}
 .cc-sug.sel .k{color:var(--accent);}
 [data-decor="off"] .cc-tool.run .cc-dot{animation:none;}
 
-/* Terminal: the whole app in monospace, flat and quiet, the accent kept for
-   the agent's own marks. */
+/* Terminal: the whole app in monospace, flat and quiet, monochrome except
+   where colour carries meaning. */
 :root[data-theme="terminal"] body{font-family:ui-monospace,"Cascadia Mono","SF Mono",Consolas,monospace;font-size:13px;}
 :root[data-theme="terminal"] #wordmark svg{color:var(--accent);}
 :root[data-theme="terminal"] #wordmark span span{color:var(--accent);}
