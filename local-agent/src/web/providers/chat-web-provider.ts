@@ -55,6 +55,7 @@ const bound = new WeakSet<object>();
 const owners = new WeakMap<object, ChatWebProvider>();
 
 const TIMED_OUT = Symbol("timed-out");
+const CHAIN_BOUND_MS = 8000;
 
 /**
  * A page call bounded in time. page.evaluate has no timeout of its own, so a
@@ -203,7 +204,22 @@ export class ChatWebProvider implements AIWebProvider {
 
   // ------------------------------------------------------------- chains --
 
+  /**
+   * Resolve a chain, bounded in time. Locator counts have no timeout of their
+   * own, so against a page whose main thread is stuck this would wait forever;
+   * after CHAIN_BOUND_MS it answers "not found" instead. The wait loop bounds
+   * it more tightly still, to tell a stuck page from a missing element.
+   */
   private async chain(name: ChainName, fresh: boolean = false): Promise<Resolved | null> {
+    const r = await bounded(this.chainUnbounded(name, fresh), CHAIN_BOUND_MS);
+    if (r === TIMED_OUT) {
+      this.tracer.event({ action: "selector-timeout", result: "failure", detail: name + " did not resolve within " + CHAIN_BOUND_MS + "ms - the page is not answering" });
+      return null;
+    }
+    return r;
+  }
+
+  private async chainUnbounded(name: ChainName, fresh: boolean): Promise<Resolved | null> {
     const spec: ChainSpec = this.spec.chains[name];
     if (!spec.strategies.length) return null;
     const cached = this.resolved[name];
@@ -485,6 +501,24 @@ export class ChatWebProvider implements AIWebProvider {
     let finalState: UIState = "UNKNOWN";
     let unresponsiveSince = -1;
     let stopShownFed = 0;
+    // The page is not answering. Give it a while - a heavy render can stall
+    // briefly - then call it what it is. Every page call in this loop is
+    // bounded and lands here on a timeout: one that is not blocks the loop
+    // forever if the page freezes between two calls, which is how this hung.
+    const stuck = async (at: number, mp: ManagedPage): Promise<WaitResult | null> => {
+      if (unresponsiveSince < 0) unresponsiveSince = at;
+      if (at - unresponsiveSince > t.unresponsiveMs) {
+        finalState = "ERROR";
+        const r = finish(capture.text ? "partial" : "failed", "interrupted", "the page stopped responding for " + Math.round((at - unresponsiveSince) / 1000) + "s - its main thread is stuck");
+        // Replace the page so the next action gets a working one; closing a
+        // wedged page is itself bounded.
+        await bounded(mp.page.close(), 5000);
+        mp.closed = true;
+        return r;
+      }
+      await sleep(t.pollMs);
+      return null;
+    };
     const finish = (status: WaitResult["status"], signal: WaitResult["signal"], error?: string): WaitResult => {
       const r: WaitResult = { status, signal, waitedMs: nowMs() - start, partials: capture.partials.slice(), finalState, ...(error ? { error } : {}) };
       this.lastWait = r;
@@ -506,28 +540,18 @@ export class ChatWebProvider implements AIWebProvider {
         return { seq: g.__closeniMut ? g.__closeniMut.seq : -1, shown: g.__closeniStop ? g.__closeniStop.shown : 0 };
       }), 3000);
       if (seqR === TIMED_OUT) {
-        // The page is not answering at all. Give it a while - a heavy render
-        // can stall briefly - then call it what it is.
-        if (unresponsiveSince < 0) unresponsiveSince = at;
-        if (at - unresponsiveSince > t.unresponsiveMs) {
-          finalState = "ERROR";
-          const r = finish(capture.text ? "partial" : "failed", "interrupted", "the page stopped responding for " + Math.round((at - unresponsiveSince) / 1000) + "s - its main thread is stuck");
-          // Replace the page so the next action gets a working one; closing a
-          // wedged page is itself bounded.
-          await bounded(mp.page.close(), 5000);
-          mp.closed = true;
-          return r;
-        }
-        await sleep(t.pollMs);
+        const r = await stuck(at, mp);
+        if (r) return r;
         continue;
       }
-      unresponsiveSince = -1;
       const seq: number = seqR.seq;
       let text: string | undefined;
       let count = this.baseline.count;
       // Only re-read the reply when the page actually changed.
       if (seq !== lastSeq || seq === -1) {
-        const a = await this.chain("assistant", true);
+        const ar = await bounded(this.chain("assistant", true), 5000);
+        if (ar === TIMED_OUT) { const r = await stuck(at, mp); if (r) return r; continue; }
+        const a = ar;
         count = a ? a.count : 0;
         const tr = a ? await bounded(a.locator.last().innerText({ timeout: 5000 }), 6000) : "";
         text = tr === TIMED_OUT ? undefined : (tr || "");
@@ -536,7 +560,10 @@ export class ChatWebProvider implements AIWebProvider {
         const a = this.resolved.assistant;
         count = a ? a.count : count;
       }
-      const stop = this.resolved.stop || (await this.chain("stop"));
+      const sr = this.resolved.stop ? this.resolved.stop : await bounded(this.chain("stop"), 5000);
+      if (sr === TIMED_OUT) { const r = await stuck(at, mp); if (r) return r; continue; }
+      unresponsiveSince = -1;
+      const stop = sr;
       const sv = stop ? await bounded(stop.locator.first().isVisible(), 3000) : false;
       // A stop control that came and went between two polls still counts: the
       // page's own watcher saw it (see stop-watcher.ts).

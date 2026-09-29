@@ -454,12 +454,19 @@ async function main() {
     check(P + ": and answers again", /ACK recovered/.test(after.content.text));
     record(P, "Failure recovery", reopened.state === "CHAT_READY" && /ACK recovered/.test(after.content.text) ? "PASS" : "FAIL", "renderer crash mid-reply → interrupted → page recreated");
 
-    const hr = mk(flavor, "hang-renderer", { unresponsiveMs: 4000 });
-    await hr.openChat();
-    const hrT = Date.now();
-    const hrR = await hr.ask("TOKEN-hang");
-    const hrOk = hrR.extraction_metadata.completionSignal === "interrupted" && Date.now() - hrT < 30000;
-    check(P + ": a page whose script locks its main thread is declared unresponsive, not waited on forever", hrOk, JSON.stringify({ s: hrR.status, sig: hrR.extraction_metadata.completionSignal, ms: Date.now() - hrT }));
+    // Three times: whether the page freezes between two of the wait's calls is
+    // timing, and one unbounded call in that gap hung the whole suite once. The
+    // race guard makes a regression a failure here instead of a hang.
+    const hrRuns = [];
+    for (let k = 0; k < 3; k++) {
+      const hr = mk(flavor, "hang-renderer", { unresponsiveMs: 4000 });
+      await hr.openChat();
+      const hrT = Date.now();
+      const hrR = await Promise.race([hr.ask("TOKEN-hang"), new Promise((res) => setTimeout(() => res(null), 60000))]);
+      hrRuns.push(hrR ? { sig: hrR.extraction_metadata.completionSignal, ms: Date.now() - hrT } : { sig: "HUNG", ms: Date.now() - hrT });
+    }
+    const hrOk = hrRuns.every((r) => r.sig === "interrupted" && r.ms < 30000);
+    check(P + ": a page whose script locks its main thread is declared unresponsive, not waited on forever (3 of 3)", hrOk, JSON.stringify(hrRuns));
     const hrBack = await mk(flavor, "normal").openChat();
     check(P + ": and a fresh page works afterwards", hrBack.state === "CHAT_READY", JSON.stringify(hrBack));
     record(P, "Unresponsive page", hrOk && hrBack.state === "CHAT_READY" ? "PASS" : "FAIL", "main thread locked by the site's script → interrupted after the unresponsive window, page replaced");
