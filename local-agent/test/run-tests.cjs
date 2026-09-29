@@ -658,7 +658,11 @@ function testBuildConfig() {
   const agentGlobs = files.filter(function (f) { return String(f).indexOf("local-agent") === 0; });
   check("only the agent's dist and config are included",
     agentGlobs.length > 0 && agentGlobs.every(function (f) {
-      return f.indexOf("local-agent/dist") === 0 || f.indexOf("local-agent/config") === 0;
+      // The Needle bridge is named file by file, never as a glob: it sits in a
+      // directory nothing else is kept in, and must stay the only thing shipped
+      // from it.
+      return f.indexOf("local-agent/dist") === 0 || f.indexOf("local-agent/config") === 0 ||
+        f === "local-agent/python/needle_bridge.py";
     }), agentGlobs.join(" "));
   ["local-agent/storage", ".superpowers", "docs", "samples", "app", "instance", "vscode-extension"]
     .forEach(function (dir) {
@@ -4027,6 +4031,8 @@ function testUnittestFallback() {
   // The browser-native layer's pure logic (src/web). Its browser suite is
   // run-web.cjs, which needs Chromium and is run separately.
   await require("./web-unit.cjs").run(check, section);
+  // The optional structured-extraction backend (src/extract).
+  await require("./extract-unit.cjs").run(check, section);
 
   console.log("\n" + (fail === 0 ? "PASS" : "FAIL") + " — " + pass + " passed, " + fail + " failed");
   process.exit(fail === 0 ? 0 : 1);

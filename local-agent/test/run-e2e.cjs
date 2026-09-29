@@ -174,6 +174,71 @@ async function main() {
     fs.rmSync(ws, { recursive: true, force: true });
   }
 
+  // ------------------------------------ plan mode: optional Needle extraction
+  // Through the stand-in needle package (test/fixtures/fake-needle), so this
+  // proves the wiring from a real browser reply to the emitted plan - not how
+  // well the real model reads one.
+  section("plan mode — prose plan, with and without extraction");
+  {
+    const py = ["python3", "python"].find(function (cmd) {
+      try { return require("child_process").spawnSync(cmd, ["--version"], { timeout: 10000 }).status === 0; } catch (e) { return false; }
+    });
+    const prose = [
+      "Here is how I would build it.",
+      "",
+      "Step 1: Setup - create requirements.txt and src/app.py.",
+      "Step 2: Models - add src/models.py with tests.",
+      "Step 3: Routes - wire the routes in src/routes.py.",
+    ].join("\n");
+    let ws = mkWorkspace();
+    mock.setReplies([prose, prose]);
+    let run = await runAgent(["plan", "build a notes api", ws, "mock"], { env: { CLOSENI_EXTRACTOR: "builtin" } });
+    check("extraction off: a prose plan still fails as before",
+      !!run.result && run.result.success === false && run.result.error === "Could not parse plan.", JSON.stringify(run.result));
+    fs.rmSync(ws, { recursive: true, force: true });
+
+    if (!py) {
+      console.log("  skip (no Python for the extraction bridge)");
+    } else {
+      const needleEnv = {
+        CLOSENI_EXTRACTOR: "needle", CLOSENI_NEEDLE_PYTHON: py,
+        PYTHONPATH: path.join(__dirname, "fixtures", "fake-needle"),
+      };
+      ws = mkWorkspace();
+      mock.setReplies([prose, prose]);
+      run = await runAgent(["plan", "build a notes api", ws, "mock"], { env: needleEnv });
+      check("extraction on: the prose plan is read", !!run.result && run.result.success === true &&
+        !!run.result.plan && run.result.plan.steps.length === 3, JSON.stringify(run.result).slice(0, 400));
+      check("only after the re-ask", mock.prompts().length === 2, "sent " + mock.prompts().length);
+      check("its files come from the reply", !!run.result && !!run.result.plan &&
+        run.result.plan.steps[2].files.join() === "src/routes.py", JSON.stringify(run.result && run.result.plan));
+      check("the result says extraction read it", !!run.result && !!run.result.extraction && run.result.extraction.read === 3);
+      fs.rmSync(ws, { recursive: true, force: true });
+
+      ws = mkWorkspace();
+      mock.setReplies([F + 'json\n{"summary":"clean","steps":[{"title":"S","detail":"D","files":["x.py"]}]}\n' + F]);
+      run = await runAgent(["plan", "x", ws, "mock"], { env: needleEnv });
+      check("a plan that parses never reaches the extractor", !!run.result && run.result.success === true &&
+        !run.result.extraction && run.result.plan.summary === "clean");
+      fs.rmSync(ws, { recursive: true, force: true });
+
+      ws = mkWorkspace();
+      mock.setReplies(["Sorry, I can't help with that request."]);
+      run = await runAgent(["plan", "x", ws, "mock"], { env: needleEnv });
+      check("a refusal is named as one", !!run.result && run.result.success === false &&
+        /declined/.test(run.result.error) && /can't help/.test(run.result.error), JSON.stringify(run.result));
+      fs.rmSync(ws, { recursive: true, force: true });
+
+      ws = mkWorkspace();
+      mock.setReplies([prose]);
+      run = await runAgent(["plan", "x", ws, "mock"], { env: Object.assign({}, needleEnv, { CLOSENI_NEEDLE_PYTHON: "closeni-no-such-python" }) });
+      check("a broken extractor fails the plan the old way", !!run.result && run.result.success === false &&
+        /^Could not parse plan\./.test(run.result.error), JSON.stringify(run.result));
+      check("and says why once", /Extraction \(needle\) unavailable/.test(run.out));
+      fs.rmSync(ws, { recursive: true, force: true });
+    }
+  }
+
   // --------------------------------------------------------------- build mode
   section("build mode — writes files to the workspace");
   {
