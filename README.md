@@ -579,7 +579,7 @@ npm run languages         # every language check against the real compiler, good
 ```
 
 - **End-to-end.** The end-to-end suite drives a real Chromium against a local HTTP server that imitates a chat site. Only the model's answers are faked. The page interaction, streaming detection, extraction, parsing, patch application and verification are all the production paths.
-- **Browser suite.** The browser suite found ten real defects that reading the code had not, including a stream binding that reported to the wrong object and a login that appeared after send and was read as "sent". They are listed in the [test report](docs/testing/browser-test-report.md).
+- **Browser suite.** The browser suite found eleven real defects that reading the code had not, including a stream binding that reported to the wrong object and a login that appeared after send and was read as "sent". They are listed in the [test report](docs/testing/browser-test-report.md).
 - **`scripts/verify.mjs`.** [`scripts/verify.mjs`](scripts/verify.mjs) checks the things that rot silently:
   - the documentation still matches the code;
   - every image and anchor in this file resolves;

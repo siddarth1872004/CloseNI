@@ -154,8 +154,13 @@ hands it a built context.
   9. A reply that never started returned the previous answer's text as its content.
   10. A failed or never-started wait with nothing on the page was reported as `empty`, as if the
       provider had answered with nothing.
+  11. Against a page whose script locks its main thread, the wait could hang forever. Its
+      liveness check was time-bounded, but the selector lookup after it was not. If the page
+      froze between the two, the run blocked for good. It passed once and hung the whole suite
+      on the next run. Every chain lookup is now bounded. The suite freezes the page three
+      times per flavour, and a guard turns a regression into a failed check instead of a hang.
 
-  All ten are fixed and have tests.
+  All eleven are fixed and have tests.
 - Chaos:
   - SIGKILL of the shared browser: relaunched on next use.
   - Closed tab: recovered.

@@ -54,6 +54,8 @@ request. Qwen Studio and GLM ship gated.
     itself.
   - **A reply that never started returned the previous answer's text.**
   - **A failed or never-started wait was reported as `empty`.**
+  - **A page with a frozen main thread could hang the wait forever.** One
+    selector lookup in the wait loop had no time bound; now none do.
 
 ### Fixed before release
 

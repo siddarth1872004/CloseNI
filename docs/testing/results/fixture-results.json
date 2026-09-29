@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-29T04:15:04.393Z",
+  "generatedAt": "2026-09-29T05:09:28.183Z",
   "environment": {
     "node": "v22.22.2",
     "platform": "linux",
@@ -905,227 +905,227 @@
     {
       "provider": "deepseek",
       "op": "openChat",
-      "ms": 413
+      "ms": 435
     },
     {
       "provider": "deepseek",
       "op": "ask-basic",
-      "ms": 665
+      "ms": 689
     },
     {
       "provider": "deepseek",
       "op": "ask-reasoning",
-      "ms": 682
+      "ms": 673
     },
     {
       "provider": "deepseek",
       "op": "ask-code",
-      "ms": 1486
+      "ms": 1499
     },
     {
       "provider": "deepseek",
       "op": "ask-json",
-      "ms": 997
+      "ms": 984
     },
     {
       "provider": "deepseek",
       "op": "ask-list",
-      "ms": 787
+      "ms": 656
     },
     {
       "provider": "deepseek",
-      "op": "ask-table",
-      "ms": 973
-    },
-    {
-      "provider": "deepseek",
-      "op": "ask-links",
-      "ms": 1105
-    },
-    {
-      "provider": "deepseek",
-      "op": "ask-long",
-      "ms": 3406
-    },
-    {
-      "provider": "deepseek",
-      "op": "ask-large-context",
-      "ms": 693
-    },
-    {
-      "provider": "deepseek",
-      "op": "ask-same-1",
-      "ms": 629
-    },
-    {
-      "provider": "deepseek",
-      "op": "ask-same-2",
-      "ms": 640
-    },
-    {
-      "provider": "deepseek",
-      "op": "ask-empty",
-      "ms": 766
-    },
-    {
-      "provider": "deepseek",
-      "op": "ask-turn",
-      "ms": 626
-    },
-    {
-      "provider": "deepseek",
-      "op": "suite",
-      "ms": 70701
-    },
-    {
-      "provider": "qwen",
-      "op": "openChat",
-      "ms": 444
-    },
-    {
-      "provider": "qwen",
-      "op": "ask-basic",
-      "ms": 627
-    },
-    {
-      "provider": "qwen",
-      "op": "ask-reasoning",
-      "ms": 785
-    },
-    {
-      "provider": "qwen",
-      "op": "ask-code",
-      "ms": 1104
-    },
-    {
-      "provider": "qwen",
-      "op": "ask-json",
-      "ms": 779
-    },
-    {
-      "provider": "qwen",
-      "op": "ask-list",
-      "ms": 779
-    },
-    {
-      "provider": "qwen",
-      "op": "ask-table",
-      "ms": 953
-    },
-    {
-      "provider": "qwen",
-      "op": "ask-links",
-      "ms": 1103
-    },
-    {
-      "provider": "qwen",
-      "op": "ask-long",
-      "ms": 3391
-    },
-    {
-      "provider": "qwen",
-      "op": "ask-large-context",
-      "ms": 667
-    },
-    {
-      "provider": "qwen",
-      "op": "ask-same-1",
-      "ms": 633
-    },
-    {
-      "provider": "qwen",
-      "op": "ask-same-2",
-      "ms": 629
-    },
-    {
-      "provider": "qwen",
-      "op": "ask-empty",
-      "ms": 917
-    },
-    {
-      "provider": "qwen",
-      "op": "ask-turn",
-      "ms": 641
-    },
-    {
-      "provider": "qwen",
-      "op": "suite",
-      "ms": 70905
-    },
-    {
-      "provider": "glm",
-      "op": "openChat",
-      "ms": 397
-    },
-    {
-      "provider": "glm",
-      "op": "ask-basic",
-      "ms": 679
-    },
-    {
-      "provider": "glm",
-      "op": "ask-reasoning",
-      "ms": 634
-    },
-    {
-      "provider": "glm",
-      "op": "ask-code",
-      "ms": 1127
-    },
-    {
-      "provider": "glm",
-      "op": "ask-json",
-      "ms": 797
-    },
-    {
-      "provider": "glm",
-      "op": "ask-list",
-      "ms": 676
-    },
-    {
-      "provider": "glm",
       "op": "ask-table",
       "ms": 982
     },
     {
-      "provider": "glm",
+      "provider": "deepseek",
       "op": "ask-links",
-      "ms": 1141
+      "ms": 1130
     },
     {
-      "provider": "glm",
+      "provider": "deepseek",
       "op": "ask-long",
-      "ms": 3369
+      "ms": 3473
     },
     {
-      "provider": "glm",
+      "provider": "deepseek",
       "op": "ask-large-context",
-      "ms": 2356
+      "ms": 688
     },
     {
-      "provider": "glm",
+      "provider": "deepseek",
       "op": "ask-same-1",
-      "ms": 647
+      "ms": 651
+    },
+    {
+      "provider": "deepseek",
+      "op": "ask-same-2",
+      "ms": 679
+    },
+    {
+      "provider": "deepseek",
+      "op": "ask-empty",
+      "ms": 780
+    },
+    {
+      "provider": "deepseek",
+      "op": "ask-turn",
+      "ms": 660
+    },
+    {
+      "provider": "deepseek",
+      "op": "suite",
+      "ms": 85810
+    },
+    {
+      "provider": "qwen",
+      "op": "openChat",
+      "ms": 400
+    },
+    {
+      "provider": "qwen",
+      "op": "ask-basic",
+      "ms": 666
+    },
+    {
+      "provider": "qwen",
+      "op": "ask-reasoning",
+      "ms": 799
+    },
+    {
+      "provider": "qwen",
+      "op": "ask-code",
+      "ms": 1109
+    },
+    {
+      "provider": "qwen",
+      "op": "ask-json",
+      "ms": 798
+    },
+    {
+      "provider": "qwen",
+      "op": "ask-list",
+      "ms": 652
+    },
+    {
+      "provider": "qwen",
+      "op": "ask-table",
+      "ms": 1002
+    },
+    {
+      "provider": "qwen",
+      "op": "ask-links",
+      "ms": 1117
+    },
+    {
+      "provider": "qwen",
+      "op": "ask-long",
+      "ms": 3444
+    },
+    {
+      "provider": "qwen",
+      "op": "ask-large-context",
+      "ms": 678
+    },
+    {
+      "provider": "qwen",
+      "op": "ask-same-1",
+      "ms": 659
+    },
+    {
+      "provider": "qwen",
+      "op": "ask-same-2",
+      "ms": 671
+    },
+    {
+      "provider": "qwen",
+      "op": "ask-empty",
+      "ms": 934
+    },
+    {
+      "provider": "qwen",
+      "op": "ask-turn",
+      "ms": 645
+    },
+    {
+      "provider": "qwen",
+      "op": "suite",
+      "ms": 91491
     },
     {
       "provider": "glm",
-      "op": "ask-same-2",
+      "op": "openChat",
+      "ms": 418
+    },
+    {
+      "provider": "glm",
+      "op": "ask-basic",
+      "ms": 677
+    },
+    {
+      "provider": "glm",
+      "op": "ask-reasoning",
+      "ms": 676
+    },
+    {
+      "provider": "glm",
+      "op": "ask-code",
+      "ms": 1139
+    },
+    {
+      "provider": "glm",
+      "op": "ask-json",
+      "ms": 858
+    },
+    {
+      "provider": "glm",
+      "op": "ask-list",
       "ms": 670
     },
     {
       "provider": "glm",
+      "op": "ask-table",
+      "ms": 997
+    },
+    {
+      "provider": "glm",
+      "op": "ask-links",
+      "ms": 1172
+    },
+    {
+      "provider": "glm",
+      "op": "ask-long",
+      "ms": 3452
+    },
+    {
+      "provider": "glm",
+      "op": "ask-large-context",
+      "ms": 2665
+    },
+    {
+      "provider": "glm",
+      "op": "ask-same-1",
+      "ms": 689
+    },
+    {
+      "provider": "glm",
+      "op": "ask-same-2",
+      "ms": 687
+    },
+    {
+      "provider": "glm",
       "op": "ask-empty",
-      "ms": 955
+      "ms": 965
     },
     {
       "provider": "glm",
       "op": "ask-turn",
-      "ms": 646
+      "ms": 721
     },
     {
       "provider": "glm",
       "op": "suite",
-      "ms": 72427
+      "ms": 95462
     }
   ]
 }
