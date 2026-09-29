@@ -2860,6 +2860,21 @@ function testSmokeReport() {
   const unsent = S.judgeSmoke({ sent: false });
   check("a prompt that never sent is critical", find(unsent, "send").health === "critical");
   check("and the report fails", unsent.ok === false);
+  {
+    const { cleanError } = require(path.join(DIST, "clean-error.js"));
+    const raw = 'page.goto: net::ERR_TUNNEL_CONNECTION_FAILED at https://chat.deepseek.com/\nCall log:\n\u001b[2m  - navigating to "https://chat.deepseek.com/", waiting until "domcontentloaded"\u001b[22m\n';
+    check("an error shown to a person loses the call log and colour codes", cleanError(raw) === "page.goto: net::ERR_TUNNEL_CONNECTION_FAILED at https://chat.deepseek.com/", JSON.stringify(cleanError(raw)));
+    check("a plain multi-line error is kept whole", cleanError("line one\nline two") === "line one\nline two");
+    check("a missing error is an empty string, not 'undefined'", cleanError(undefined) === "");
+  }
+  check("nothing after an unsent prompt is judged - it is 'not run', not a selector failure",
+    ["stopButton", "replyStream", "assistantMessage", "completion", "replyContent", "copyButton"].every((st) => find(unsent, st).health === "skipped"));
+  const offline = S.judgeSmoke({ sent: false, error: "page.goto: net::ERR_TUNNEL_CONNECTION_FAILED at https://chat.deepseek.com/" });
+  check("an unreachable site is named as the network, not as selectors",
+    /could not be reached/.test(find(offline, "send").detail) && /no selector was tested/.test(offline.summary) && !/selector is watching/.test(JSON.stringify(offline)), offline.summary);
+  const refused = S.judgeSmoke({ sent: false, error: "the composer did not take the prompt" });
+  check("a send that failed on the page is not called a network problem",
+    !/could not be reached/.test(refused.summary) && /could not be sent/.test(find(refused, "send").detail), refused.summary);
   check("empty observations do not throw", typeof S.judgeSmoke({}).summary === "string");
   check("undefined does not throw", S.judgeSmoke(undefined).ok === false);
 
