@@ -9,7 +9,9 @@ let editingPlan = false;
 let browserReady = true;
 let acctNow = "unknown";
 
-const MODE_TITLES = { chat: "CHAT", build: "BUILDER", test: "TEST", research: "RESEARCH", push: "SHIP", settings: "SETTINGS" };
+const MODE_TITLES = { code: "CODE", chat: "PLAN", build: "BUILD", test: "TEST", research: "RESEARCH", push: "SHIP", settings: "SETTINGS" };
+// The flow bar describes the planned build, so it shows only in that mode's panels.
+const FLOW_MODES = { chat: true, build: true, test: true, push: true };
 
 function $(id) { return document.getElementById(id); }
 function setStatus(t) {
@@ -130,6 +132,8 @@ function switchTab(mode) {
   // Read from disk on open: a skill created in an editor should appear without
   // restarting the app.
   if (mode === "settings" && typeof refreshSkills === "function") refreshSkills();
+  const fl = $("flow"); if (fl) fl.style.display = FLOW_MODES[mode] ? "" : "none";
+  if (mode === "code" && window.CN && window.CN.focusCode) window.CN.focusCode();
   refreshFlow();
 }
 
@@ -257,6 +261,7 @@ async function openWorkspace(folder) {
   workspace = folder;
   // A different project has not been run or shipped from here yet.
   flowSeen.tested = false; flowSeen.shipped = false;
+  if (window.CN && window.CN.onWorkspaceChange) window.CN.onWorkspaceChange();
   // Truncated in the rail, so the full path lives in the tooltip.
   $("workspace-label").textContent = folder;
   $("workspace-label").title = folder;
@@ -1858,6 +1863,13 @@ window.CN = {
   restoreBuild: function () { return Promise.resolve(null); },
   notePhase: function () {},
   buildStats: function () { return {}; },
+  getControls: function () { return desiredControls(); },
+  buildPreamble: function () { return buildPreamble(); },
+  setStatus: function (t) { setStatus(t); },
+  getProviderName: function () {
+    const p = providerList.find(function (x) { return x.id === provider; });
+    return p ? p.name : provider;
+  },
   openConsole: function () { setConsole(true, false); },
   refreshFlow: function () { refreshFlow(); },
 };

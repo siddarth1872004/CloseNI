@@ -9,14 +9,14 @@
      Midnight for a frame and then switch, which reads as a flicker on every
      launch. Inline and synchronous is the only way to avoid that. */
   try {
-    // Nothing saved means the default, Pixel. Midnight is the unstyled :root,
+    // Nothing saved means the default, Terminal. Midnight is the unstyled :root,
     // so it is the only theme that works with no attribute at all.
-    var t = localStorage.getItem("closeni.theme") || "pixel";
+    var t = localStorage.getItem("closeni.theme") || "terminal";
     document.documentElement.setAttribute("data-theme", t);
     if (localStorage.getItem("closeni.theme.decor") === "off") {
       document.documentElement.setAttribute("data-decor", "off");
     }
-  } catch (e) { document.documentElement.setAttribute("data-theme", "pixel"); }
+  } catch (e) { document.documentElement.setAttribute("data-theme", "terminal"); }
 </script>
 </head>
 <body>
@@ -29,12 +29,16 @@
       <span>Close<span>NI</span></span>
     </div>
     <nav>
-      <button class="nav-btn active" data-mode="chat"><i>01</i>Chat</button>
-      <button class="nav-btn" data-mode="build"><i>02</i>Builder</button>
-      <button class="nav-btn" data-mode="test"><i>03</i>Test</button>
-      <button class="nav-btn" data-mode="research"><i>04</i>Research</button>
-      <button class="nav-btn" data-mode="push"><i>05</i>Ship</button>
-      <button class="nav-btn" data-mode="settings"><i>06</i>Settings</button>
+      <!-- Code is the agent: ask, and it reads, edits and runs things in the
+           project. Plan and Build are the planned-build mode - plan first,
+           then build step by step - for when that is what you want. -->
+      <button class="nav-btn active" data-mode="code"><i>01</i>Code</button>
+      <button class="nav-btn" data-mode="chat"><i>02</i>Plan</button>
+      <button class="nav-btn" data-mode="build"><i>03</i>Build</button>
+      <button class="nav-btn" data-mode="test"><i>04</i>Test</button>
+      <button class="nav-btn" data-mode="research"><i>05</i>Research</button>
+      <button class="nav-btn" data-mode="push"><i>06</i>Ship</button>
+      <button class="nav-btn" data-mode="settings"><i>07</i>Settings</button>
     </nav>
     <div id="rail-bottom">
       <!-- Account. Whether the provider is signed in decides whether anything
@@ -90,14 +94,42 @@
   </aside>
   <main id="main">
     <header id="topbar">
-      <span id="mode-title">CHAT</span>
+      <span id="mode-title">CODE</span>
       <!-- Describe, plan, build, test, ship: where this project is, and the one
            thing to do next. Drawn by renderer.js from desktop/flow.js. -->
-      <nav id="flow" aria-label="Project flow"></nav>
+      <nav id="flow" aria-label="Project flow" style="display:none"></nav>
       <span id="status-line">idle</span>
     </header>
 
-    <section id="panel-chat" class="panel active">
+    <section id="panel-code" class="panel active">
+      <div id="code-scroll">
+        <div id="code-welcome" class="code-welcome">
+          <div class="cw-title"><span class="cw-star">✻</span> Welcome to <b>CloseNI</b>!</div>
+          <div class="cw-sub">/help for help, shift+tab to change mode, @ to attach a file</div>
+          <div class="cw-cwd">cwd: <span id="code-cwd">no folder selected</span></div>
+          <div id="code-need" class="cw-need"></div>
+        </div>
+        <div class="code-tips">
+          <div>Tips for getting started:</div>
+          <div>1. Ask for a change, a fix or an explanation - the agent reads the project itself</div>
+          <div>2. Run <b>/init</b> to write a CLOSENI.md with instructions for this project</div>
+          <div>3. Use <b>/plan</b> to get a plan first, or <b>/build</b> for a step-by-step planned build</div>
+        </div>
+        <div id="code-transcript"></div>
+        <div id="code-spinner" class="code-spinner hidden"><span class="cs-glyph">✻</span> <span class="cs-verb">Thinking…</span> <span class="cs-meta">(0s · esc to interrupt)</span></div>
+      </div>
+      <div id="code-todos" class="code-todos hidden"></div>
+      <div id="code-foot">
+        <div id="code-suggest" class="code-suggest hidden"></div>
+        <div id="code-box" class="code-box" data-mode="default">
+          <span class="code-caret">&gt;</span>
+          <textarea id="code-input" rows="1" spellcheck="false" placeholder='Try "fix the failing test" or "explain @src/app.py"'></textarea>
+        </div>
+        <div class="code-status"><span id="code-mode" class="code-mode default">? for shortcuts</span><span id="code-meta" class="code-meta"></span></div>
+      </div>
+    </section>
+
+    <section id="panel-chat" class="panel">
       <div id="chat-view">
         <div id="chat-column">
           <!-- Getting started. Filled by renderOnboarding from state the app
@@ -501,8 +533,10 @@
 <script src="github-safe.js"></script>
 <script src="onboarding.js"></script>
 <script src="flow.js"></script>
+<script src="code-view.js"></script>
 <script src="extraction-settings.js"></script>
 <script src="renderer.js"></script>
 <script src="builder.js"></script>
+<script src="code.js"></script>
 </body>
 </html>
