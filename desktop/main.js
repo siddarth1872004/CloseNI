@@ -146,7 +146,11 @@ function browsersDir() { return path.join(storageRoot(), "browsers"); }
  */
 let agentQueue = Promise.resolve();
 function queueAgentRun(label, task) {
-  const run = agentQueue.then(function () { return task(); }, function () { return task(); });
+  // The Code panel's session holds the profile between messages. Anything else
+  // that needs the browser gets it: the session yields, and the panel starts
+  // a new one - rejoining the same conversation - on its next message.
+  const go = function () { return releaseCode().then(task); };
+  const run = agentQueue.then(go, go);
   // The queue must survive a failed run, or one rejection stalls every run after it.
   agentQueue = run.then(function () {}, function () {});
   return run;
@@ -318,7 +322,8 @@ ipcMain.on("approval-response", function (event, approved) {
   }
 });
 
-ipcMain.handle("suggest", function (event, payload) {
+ipcMain.handle("suggest", async function (event, payload) {
+  await releaseCode();
   return new Promise(function (resolve) {
     let proc;
     try {
@@ -359,7 +364,8 @@ ipcMain.handle("suggest", function (event, payload) {
  * Ask about a run. Same shape as "suggest" - the difference is entirely in what
  * the agent does with it, not in how the process is driven.
  */
-ipcMain.handle("ask-run", function (event, payload) {
+ipcMain.handle("ask-run", async function (event, payload) {
+  await releaseCode();
   return new Promise(function (resolve) {
     let proc;
     try {
@@ -397,6 +403,104 @@ ipcMain.handle("ask-run", function (event, payload) {
   });
 });
 
+/*
+ * The coding agent's session: one long-lived process for the Code panel.
+ *
+ * It opens the same browser profile as everything else, so it never runs
+ * beside a build or a one-off run. A build refuses to start it; anything
+ * queued ends it first (see queueAgentRun), and the panel reopens it on its
+ * next message.
+ */
+let codeProc = null;
+let codeClosing = null;
+
+function releaseCode() {
+  if (!codeProc) return codeClosing || Promise.resolve();
+  const proc = codeProc;
+  codeProc = null;
+  codeClosing = new Promise(function (resolve) {
+    let settled = false;
+    function finish() {
+      if (settled) return;
+      settled = true;
+      codeClosing = null;
+      try { win.webContents.send("code-event", { type: "closed" }); } catch (e) {}
+      resolve();
+    }
+    proc.once("close", finish);
+    try { proc.stdin.write(JSON.stringify({ type: "close" }) + "\n"); } catch (e) {}
+    // Closing waits for a reply in flight; a stuck page must not hold the app.
+    setTimeout(function () { try { proc.kill(); } catch (e) {} }, 20000);
+    setTimeout(finish, 25000);
+  });
+  return codeClosing;
+}
+
+ipcMain.handle("code-start", async function (event, payload) {
+  if (codeClosing) { try { await codeClosing; } catch (e) {} }
+  if (codeProc) return { ok: true };
+  if (sessionProc || sessionClosing) return { ok: false, error: "A build is using the browser. Stop it, or wait for it to finish." };
+  if (agentProc) return { ok: false, error: "Something else is using the browser. Try again in a moment." };
+  return new Promise(function (resolve) {
+    let proc;
+    try {
+      proc = spawnAgent(["agent-session", payload.workspace, payload.provider || "deepseek", payload.mode || "default"],
+        agentEnv(payload.headed ? "1" : "0", payload.controls, payload.preamble));
+    } catch (e) { resolve({ ok: false, error: String(e) }); return; }
+    codeProc = proc;
+    let lineBuf = "";
+    let settled = false;
+    proc.stdout.on("data", function (d) {
+      lineBuf += d.toString();
+      let idx;
+      while ((idx = lineBuf.indexOf("\n")) !== -1) {
+        const line = lineBuf.substring(0, idx).replace(/\r$/, "");
+        lineBuf = lineBuf.substring(idx + 1);
+        const m = line.match(/^AGENT_EVENT: (.*)$/);
+        if (!m) {
+          // A failure before the session is ready arrives as the usual output
+          // block; it is the reason the panel needs to show.
+          if (line.indexOf('{"success"') === 0 && !settled) {
+            try { const r = JSON.parse(line); if (r && r.success === false) { settled = true; resolve({ ok: false, error: r.error || "the agent stopped" }); } } catch (e) {}
+          }
+          routeLine(line);
+          continue;
+        }
+        let ev;
+        try { ev = JSON.parse(m[1]); } catch (e) { continue; }
+        if (ev.type === "ready" && !settled) { settled = true; resolve(Object.assign({ ok: true }, ev)); }
+        try { win.webContents.send("code-event", ev); } catch (e) {}
+      }
+    });
+    proc.stderr.on("data", function (d) { routeLine(d.toString()); });
+    proc.on("close", function () {
+      if (codeProc === proc) { codeProc = null; try { win.webContents.send("code-event", { type: "closed" }); } catch (e) {} }
+      clearPhase();
+      if (!settled) { settled = true; resolve({ ok: false, error: "the agent exited before it was ready" }); }
+    });
+    proc.on("error", function (e) {
+      if (codeProc === proc) codeProc = null;
+      if (!settled) { settled = true; resolve({ ok: false, error: String(e) }); }
+    });
+  });
+});
+
+/* Everything the panel sends once the session is up is one JSON line. */
+function codeSend(msg) {
+  if (!codeProc || !codeProc.stdin.writable) return { ok: false, error: "no session" };
+  codeProc.stdin.write(JSON.stringify(msg) + "\n");
+  return { ok: true };
+}
+ipcMain.handle("code-send", function (event, text) { return codeSend({ type: "user", text: String(text || "") }); });
+ipcMain.handle("code-permission", function (event, p) {
+  return codeSend({ type: "permission", id: p && p.id, decision: p && p.decision, feedback: p && p.feedback });
+});
+ipcMain.handle("code-mode", function (event, mode) { return codeSend({ type: "mode", mode: mode }); });
+ipcMain.handle("code-interrupt", function () { return codeSend({ type: "interrupt" }); });
+ipcMain.handle("code-rewind", function () { return codeSend({ type: "rewind" }); });
+ipcMain.handle("code-clear", function () { return codeSend({ type: "clear" }); });
+ipcMain.handle("code-end", function () { return releaseCode(); });
+
 let sessionProc = null;
 /*
  * Set while a previous session is shutting down.
@@ -415,8 +519,10 @@ const pendingSteps = new Map();
 function profileBusy() { return !!(sessionProc || sessionClosing); }
 
 ipcMain.handle("start-session", async function (event, payload) {
-  // Let the previous session release the profile before opening it again.
+  // Let the previous session release the profile before opening it again -
+  // the Code panel's included.
   if (sessionClosing) { try { await sessionClosing; } catch (e) {} }
+  await releaseCode();
   return new Promise(function (resolve) {
     if (sessionProc) { resolve({ ok: true }); return; }
     const headed = payload.headed ? "1" : "0";
@@ -1068,7 +1174,8 @@ ipcMain.handle("open-thread", function (event, url) {
   }
 });
 
-ipcMain.handle("sign-in", function (event, providerId) {
+ipcMain.handle("sign-in", async function (event, providerId) {
+  await releaseCode();
   return new Promise(function (resolve) {
     let proc;
     try {
