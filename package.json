@@ -33,6 +33,7 @@
     "dist": "electron-builder",
     "verify": "node scripts/verify.mjs",
     "verify:visual": "node scripts/verify-visual.mjs",
+    "test:ui": "node scripts/ui-code.mjs",
     "test": "node local-agent/test/run-tests.cjs",
     "test:e2e": "node local-agent/test/run-e2e.cjs",
     "assets": "node scripts/make-svg-assets.mjs && node scripts/make-screenshots.mjs",
@@ -53,9 +54,10 @@
     "test:extraction": "node local-agent/test/web-unit.cjs && node local-agent/test/run-web.cjs extraction",
     "test:chaos": "node local-agent/test/run-web.cjs chaos",
     "test:web": "node local-agent/test/web-unit.cjs && node local-agent/test/run-web.cjs",
-    "test:all": "npm test && npm run test:web && npm run test:e2e",
+    "test:all": "npm test && npm run test:web && npm run test:ui && npm run test:e2e",
     "web:report": "node scripts/web-report.mjs",
-    "webtest": "node local-agent/dist/index.js webtest"
+    "webtest": "node local-agent/dist/index.js webtest",
+    "agent": "node local-agent/dist/index.js agent"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
