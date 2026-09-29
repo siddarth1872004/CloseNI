@@ -27,6 +27,7 @@ import { AdapterSpec } from "./adapters.js";
 import { classifyState, collectSignalsInPage, LOGIN_TEXT, PageSignals, isTerminalForAutomation } from "./state.js";
 import { CompletionDetector, StreamCapture } from "./completion-detector.js";
 import { replyStreamTap, mutationCounter } from "../../providers/stream-tap.js";
+import { stopProbes, stopWatcherInPage } from "./stop-watcher.js";
 import { BrowserSessionManager, ManagedContext, ManagedPage } from "../browser/session-manager.js";
 import { navigate, NavOutcome, waitFor } from "../browser/navigate.js";
 import { captureDiagnostics, DebugArtifacts, diagnosticsRoot } from "../browser/diagnostics.js";
@@ -117,6 +118,15 @@ export class ChatWebProvider implements AIWebProvider {
     this.resolved = {};
   }
 
+  /** How many times the page's own watcher has seen the stop control appear since the prompt. */
+  private async stopShown(): Promise<number> {
+    if (!this.mp) return 0;
+    // Bounded like every other in-page call: a page whose main thread is stuck
+    // must not hang the send.
+    const n = await bounded(this.mp.page.evaluate(() => { const s = (globalThis as any).__closeniStop; return s ? s.shown : 0; }), 2000);
+    return n === TIMED_OUT ? 0 : n;
+  }
+
   private onStream(ev: string, status?: number, errored?: boolean): void {
     if (ev === "open") { this.stream.opened++; this.stream.status = typeof status === "number" ? status : 0; }
     else if (ev === "close") { this.stream.closed++; if (errored) this.stream.cut = true; }
@@ -137,6 +147,7 @@ export class ChatWebProvider implements AIWebProvider {
       // the same profile reuses the page. So the binding reports to whoever
       // owns the page now, not to whoever installed it.
       owners.set(p, this);
+      const probes = stopProbes(this.spec.chains.stop);
       if (!bound.has(p)) {
         await p.exposeBinding("__closeniStream", (_src: any, ev: string, status?: number, errored?: boolean) => {
           const owner = owners.get(p);
@@ -144,10 +155,12 @@ export class ChatWebProvider implements AIWebProvider {
         });
         await p.addInitScript(mutationCounter);
         if (this.spec.streamUrlPattern) await p.addInitScript(replyStreamTap, this.spec.streamUrlPattern);
+        if (probes.length) await p.addInitScript(stopWatcherInPage, probes);
         bound.add(p);
       }
       await p.evaluate(mutationCounter).catch(() => { /* about:blank before navigation */ });
       if (this.spec.streamUrlPattern) await p.evaluate(replyStreamTap, this.spec.streamUrlPattern).catch(() => { /* same */ });
+      if (probes.length) await p.evaluate(stopWatcherInPage, probes).catch(() => { /* same */ });
     } catch (err: any) {
       this.tracer.event({ action: "install-watchers", result: "failure", error: String(err && err.message || err) });
     }
@@ -327,7 +340,8 @@ export class ChatWebProvider implements AIWebProvider {
   // ------------------------------------------------------------- prompt --
 
   private async composerText(loc: Locator): Promise<number> {
-    return loc.evaluate((el: any) => (el.tagName === "TEXTAREA" || el.tagName === "INPUT" ? el.value : el.textContent || "").length).catch(() => -1);
+    const n = await bounded(loc.evaluate((el: any) => (el.tagName === "TEXTAREA" || el.tagName === "INPUT" ? el.value : el.textContent || "").length, undefined, { timeout: 3000 }), 4000);
+    return n === TIMED_OUT ? -1 : n;
   }
 
   /**
@@ -377,6 +391,7 @@ export class ChatWebProvider implements AIWebProvider {
     this.stream = { opened: 0, closed: 0, status: 0, cut: false };
     this.stopSeenSinceSubmit = false;
     owners.set(this.page().page, this);
+    await bounded(this.page().page.evaluate(() => { const s = (globalThis as any).__closeniStop; if (s) s.shown = 0; }), 2000);
     const box = composer.locator.last();
     let method: string;
     await box.click({ timeout: 5000 }).catch(() => { /* focus by fill instead */ });
@@ -424,6 +439,7 @@ export class ChatWebProvider implements AIWebProvider {
       if (this.stream.opened > 0) return true;
       const n = await this.composerText(box);
       if (n === 0) return true;
+      if ((await this.stopShown()) > 0) { this.stopSeenSinceSubmit = true; return true; }
       const s = await this.chain("stop");
       if (s && (await s.locator.first().isVisible().catch(() => false))) { this.stopSeenSinceSubmit = true; return true; }
       const a = await this.chain("assistant", true);
@@ -468,6 +484,7 @@ export class ChatWebProvider implements AIWebProvider {
     let lastStateCheck = 0;
     let finalState: UIState = "UNKNOWN";
     let unresponsiveSince = -1;
+    let stopShownFed = 0;
     const finish = (status: WaitResult["status"], signal: WaitResult["signal"], error?: string): WaitResult => {
       const r: WaitResult = { status, signal, waitedMs: nowMs() - start, partials: capture.partials.slice(), finalState, ...(error ? { error } : {}) };
       this.lastWait = r;
@@ -484,7 +501,10 @@ export class ChatWebProvider implements AIWebProvider {
         return finish(recovered && capture.text ? "partial" : "failed", "interrupted", "page " + (mp && mp.crashed ? "crashed" : "closed") + " during generation" + (recovered ? " - recovered the page; the reply may be complete on reload" : ""));
       }
       const at = nowMs() - start;
-      const seqR = await bounded(mp.page.evaluate(() => { const m = (globalThis as any).__closeniMut; return m ? m.seq : -1; }), 3000);
+      const seqR = await bounded(mp.page.evaluate(() => {
+        const g = globalThis as any;
+        return { seq: g.__closeniMut ? g.__closeniMut.seq : -1, shown: g.__closeniStop ? g.__closeniStop.shown : 0 };
+      }), 3000);
       if (seqR === TIMED_OUT) {
         // The page is not answering at all. Give it a while - a heavy render
         // can stall briefly - then call it what it is.
@@ -502,7 +522,7 @@ export class ChatWebProvider implements AIWebProvider {
         continue;
       }
       unresponsiveSince = -1;
-      const seq: number = seqR;
+      const seq: number = seqR.seq;
       let text: string | undefined;
       let count = this.baseline.count;
       // Only re-read the reply when the page actually changed.
@@ -518,7 +538,10 @@ export class ChatWebProvider implements AIWebProvider {
       }
       const stop = this.resolved.stop || (await this.chain("stop"));
       const sv = stop ? await bounded(stop.locator.first().isVisible(), 3000) : false;
-      const stopVisible = sv === true;
+      // A stop control that came and went between two polls still counts: the
+      // page's own watcher saw it (see stop-watcher.ts).
+      const stopVisible = sv === true || seqR.shown > stopShownFed;
+      stopShownFed = seqR.shown;
       const v = detector.feed({ atMs: at, assistantCount: count, text, stopVisible,
         streamsOpened: this.stream.opened, streamsClosed: this.stream.closed, mutationSeq: seq, streamStatus: this.stream.status });
       if (text !== undefined && detector.hasStarted) {
@@ -593,13 +616,28 @@ export class ChatWebProvider implements AIWebProvider {
     const warnings: string[] = [];
     const url = this.mp ? this.mp.page.url() : this.lastUrl;
     const wait = opts.wait || this.lastWait || undefined;
-    // An empty reply leaves the PREVIOUS message as the last one on the page.
-    // Reading it would return the last answer as this one.
+    // An empty reply, or one that never started, leaves the PREVIOUS message as
+    // the last one on the page. Reading it would return the last answer as
+    // this one.
     const emptyReply = !!wait && wait.signal === "empty";
-    const assistant = this.mp && this.mp.healthy() && !emptyReply ? await this.chain("assistant", true) : null;
+    const neverStarted = !!wait && wait.status === "no-start";
+    let assistant = this.mp && this.mp.healthy() && !emptyReply && !neverStarted ? await this.chain("assistant", true) : null;
+    // Whatever the wait says, the newest block being exactly the one that was
+    // there before the prompt means nothing new was written.
+    if (assistant && wait && this.baseline.count > 0 && assistant.count === this.baseline.count) {
+      const now = (await assistant.locator.last().innerText().catch(() => "")) || "";
+      if (now === this.baseline.text) {
+        assistant = null;
+        warnings.push("the newest message on the page is the previous answer - no new reply was written");
+      }
+    }
     let diag: ChainDiagnosis | undefined;
     if (emptyReply) {
       warnings.push("the provider finished without adding a reply");
+    } else if (neverStarted) {
+      warnings.push("no reply started, so nothing was read - the last message on the page is the previous answer");
+    } else if (!assistant && warnings.length) {
+      // already explained above
     } else if (!assistant) {
       warnings.push("no assistant message found by any strategy");
     } else if (assistant.index > 0) {

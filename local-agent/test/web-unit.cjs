@@ -232,6 +232,21 @@ async function run(check, section) {
     check("status complete without a wait", res.status === "complete");
     const empty = N.pipeline({ provider: "fx", dom: parseHtml("<div></div>").root, innerText: "", url: "", capturedAt: "t" }, {}, { meta: { strategy: "x", provenance: "FIXTURE", extractMs: 0, copyButtonUsed: false, warnings: [] } });
     check("an empty reply is status 'empty' with no reasoning field", empty.status === "empty" && !("reasoning" in empty));
+    const meta0 = { strategy: "x", provenance: "FIXTURE", extractMs: 0, copyButtonUsed: false, warnings: [] };
+    const blank = { provider: "fx", dom: parseHtml("<div></div>").root, innerText: "", url: "", capturedAt: "t" };
+    const ns = N.pipeline(blank, {}, { wait: { status: "no-start", signal: "no-start", waitedMs: 1, partials: [], finalState: "UNKNOWN" }, meta: { ...meta0 } });
+    check("a reply that never started stays 'no-start', not 'empty'", ns.status === "no-start", ns.status);
+    const fl = N.pipeline(blank, {}, { wait: { status: "failed", signal: "failed", waitedMs: 1, partials: [], finalState: "GENERATION_FAILED" }, meta: { ...meta0 } });
+    check("a failed reply stays 'failed', not 'empty'", fl.status === "failed", fl.status);
+    const em = N.pipeline(blank, {}, { wait: { status: "complete", signal: "empty", waitedMs: 1, partials: [], finalState: "GENERATION_COMPLETE" }, meta: { ...meta0 } });
+    check("an answer of nothing is 'empty'", em.status === "empty", em.status);
+  }
+  {
+    const SW = req("providers/stop-watcher.js");
+    const probes = SW.stopProbes(A.QWEN.chains.stop);
+    check("a stop chain compiles to in-page probes (css and button name)", probes.some((p) => p.css) && probes.some((p) => p.buttonName !== undefined), JSON.stringify(probes));
+    check("a chain with no stop strategies has no probes", SW.stopProbes(A.DEEPSEEK.chains.stop).length === 0);
+    check("heuristic and text strategies are left to the poll", SW.stopProbes({ name: "stop", strategies: [{ kind: "heuristic", name: "stop-button" }, { kind: "text", text: "Stop" }] }).length === 0);
     const flat = N.pipeline({ provider: "fx", dom: null, innerText: "only text", url: "", capturedAt: "t" }, {}, { meta: { strategy: "x", provenance: "FIXTURE", extractMs: 0, copyButtonUsed: false, warnings: [] } });
     check("no DOM → text kept, and a warning that structure was lost", flat.content.text === "only text" && /structure lost/.test(flat.extraction_metadata.warnings.join()));
     const lossy = N.pipeline({ provider: "fx", dom: parseHtml("<div><p>tiny</p></div>").root, innerText: "tiny plus a great deal more text that the DOM snapshot somehow did not contain at all", url: "", capturedAt: "t" }, {}, { meta: { strategy: "x", provenance: "FIXTURE", extractMs: 0, copyButtonUsed: false, warnings: [] } });

@@ -122,7 +122,11 @@ export function toStructured(n: NormalizedResponse, opts: StructureOptions): AIR
     if (m) conversationId = m[1];
   }
   const empty = (!n.content.text.trim() && !n.content.code.length) || (!!opts.wait && opts.wait.signal === "empty");
-  const status: AIResponse["status"] = empty ? "empty" : (opts.wait ? opts.wait.status : "complete");
+  // A wait that failed, never started or ran out keeps that status even with
+  // nothing on the page - "empty" would say the provider answered with nothing,
+  // which is a different fact.
+  const failedWait = !!opts.wait && opts.wait.signal !== "empty" && (opts.wait.status === "failed" || opts.wait.status === "no-start" || opts.wait.status === "timeout");
+  const status: AIResponse["status"] = failedWait ? opts.wait!.status : empty ? "empty" : (opts.wait ? opts.wait.status : "complete");
   const res: AIResponse = {
     provider: n.provider,
     timestamp: n.capturedAt,
