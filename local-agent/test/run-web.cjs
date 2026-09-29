@@ -36,6 +36,7 @@ const { WebFetcher } = req("research/fetcher.js");
 const { ResearchAgent } = req("research/agent.js");
 const { ResearchCaches } = req("research/cache.js");
 const { snapshot } = req("semantic/dom.js");
+const SW = req("providers/stop-watcher.js");
 
 const RESULTS = path.join(__dirname, "..", "..", "docs", "testing", "results", "fixture-results.json");
 const argv = process.argv.slice(2);
@@ -175,6 +176,20 @@ async function main() {
     check("a slow page arrives within its budget", slow.ok && slow.durationMs >= 2500);
     record("browser", "Navigation (redirect/404/timeout/refused)", redir.ok && !nf.ok && !hang.ok && !refusedNav.ok ? "PASS" : "FAIL");
 
+    section("browser: a stop control shown between two polls is still seen");
+    const sp = await rr.page("stop-watch");
+    await sp.page.setContent('<main><button id="s" class="stop-btn" style="display:none">Stop</button><div role="button" id="r" aria-label="Stop generating" hidden></div></main>');
+    await sp.page.evaluate(SW.stopWatcherInPage, SW.stopProbes(A.QWEN.chains.stop));
+    // Shown for a few milliseconds, well inside any sane poll interval.
+    await sp.page.evaluate(() => new Promise((res) => { const b = document.getElementById("s"); b.style.display = ""; setTimeout(() => { b.style.display = "none"; res(); }, 5); }));
+    const polledNow = await sp.page.locator("#s").isVisible();
+    const seenCss = await sp.page.evaluate(() => globalThis.__closeniStop.shown);
+    check("a 5 ms flash is invisible to a poll but counted by the page's watcher", !polledNow && seenCss === 1, "shown=" + seenCss);
+    await sp.page.evaluate(() => new Promise((res) => { const r = document.getElementById("r"); r.hidden = false; r.style.width = "10px"; r.style.height = "10px"; setTimeout(() => { r.hidden = true; res(); }, 5); }));
+    const seenRole = await sp.page.evaluate(() => globalThis.__closeniStop.shown);
+    check("a stop button matched by its accessible name is counted too", seenRole === 2, "shown=" + seenRole);
+    await rr.closePage("stop-watch");
+
     section("browser: selector chains resolve by role, text and heuristics");
     const cp = await rr.page("chains");
     await cp.page.setContent('<main><div class="x1"><p>old reply text that is long enough</p></div><div class="composer-area"><div contenteditable="true" aria-label="Message"></div><button aria-label="Send message"><svg></svg></button></div></main>');
@@ -299,6 +314,11 @@ async function main() {
 
     const empty = await ask("EMPTY", "ask-empty");
     check(P + ": an empty reply is 'empty', never the previous answer", empty.status === "empty" && !/identical answer/.test(empty.content.text), JSON.stringify({ s: empty.status, t: empty.content.text, sig: empty.extraction_metadata.completionSignal }));
+    // It raced once: the stop control of an empty reply is up for milliseconds.
+    // Five more in a row, so a race shows up here rather than in a later run.
+    const again = [];
+    for (let k = 0; k < 5; k++) { const e = await p.ask("EMPTY"); again.push(e.status + "/" + e.extraction_metadata.completionSignal + (/identical answer/.test(e.content.text) ? "/PREVIOUS" : "")); }
+    check(P + ": and it is 'empty' five times out of five", again.every((x) => x === "empty/empty"), again.join(" "));
     record(P, "Empty response", empty.status === "empty" ? "PASS" : "FAIL", "signal=" + empty.extraction_metadata.completionSignal);
 
     const convId = s1.conversationId;
