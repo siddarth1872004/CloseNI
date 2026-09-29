@@ -142,6 +142,28 @@
   --overlay-texture:none; --glow:none;
 }
 
+/* The README, as a theme: GitHub-dark surfaces, a green phosphor gradient for
+   the wordmark, and the badge colours - green, blue, purple, amber, coral - as
+   accents. Its texture is a sparse pixel starfield rather than scanlines, drawn
+   behind the panels instead of over them. The --px-* tokens exist only here:
+   the rules that use them are all scoped to this theme. */
+[data-theme="pixel"]{
+  --bg:#0a0d12; --panel:#0d1117; --surface:#0d1117; --surface-raised:#161b22; --surface-sunken:#070a0e;
+  --overlay:rgba(1,4,9,.82);
+  --line:#21262d; --line-strong:#30363d; --line-focus:#79c0ff;
+  --txt:#e6edf3; --dim:#9da7b3; --mut:#7d8590; --inverse:#0a0d12;
+  --ok:#56d364; --ok-bg:#0f2417; --ok-line:#2ea043;
+  --warn:#e3b341; --warn-bg:#261d08; --warn-line:#9e6a03;
+  --err:#ff7b72; --err-bg:#2d1113; --err-line:#a3302b;
+  --lang-py:#79c0ff; --lang-rs:#ffa657; --lang-js:#e3b341; --lang-java:#ff7b72; --lang-c:#bc8cff; --lang-default:#9da7b3;
+  --shadow-1:0 4px 20px rgba(0,0,0,.55); --shadow-2:0 12px 40px rgba(0,0,0,.8);
+  --overlay-texture:radial-gradient(circle,rgba(126,231,135,.55) 0 1px,transparent 1.2px),radial-gradient(circle,rgba(121,192,255,.45) 0 1px,transparent 1.2px),radial-gradient(circle,rgba(188,140,255,.45) 0 1px,transparent 1.2px);
+  --glow:0 0 8px rgba(86,211,100,.45);
+  --px-g1:#aff5b4; --px-g2:#56d364; --px-g3:#2ea043; --px-g4:#196c2e;
+  --px-blue:#79c0ff; --px-purple:#bc8cff; --px-amber:#e3b341; --px-red:#ff7b72;
+  --px-shadow:#010409; --px-chrome:#30363d;
+}
+
 *{margin:0;padding:0;box-sizing:border-box;}
 body{background:var(--bg);color:var(--txt);font:14px/1.5 "Segoe UI",system-ui,sans-serif;overflow:hidden;}
 #log,#plog,pre,#workspace-label,.micro,#wordmark,input,textarea,select,#status-line,.nav-btn i,#step-detail-label,.step-card-num,#res-web a,#res-gh a{
@@ -166,7 +188,7 @@ body{background:var(--bg);color:var(--txt);font:14px/1.5 "Segoe UI",system-ui,sa
 .lang-mark{font-family:ui-monospace,Consolas,monospace;font-size:9px;line-height:1;
   padding:3px 5px;border-radius:var(--r-sm);flex:none;
   color:var(--lang-default);border:1px solid currentColor;opacity:.85;}
-nav{display:flex;flex-direction:column;gap:2px;}
+#rail nav{display:flex;flex-direction:column;gap:2px;}
 .nav-btn{display:flex;gap:10px;align-items:baseline;text-align:left;padding:9px 10px;background:none;border:none;
   border-left:2px solid transparent;color:var(--dim);font-size:13px;cursor:pointer;transition:.12s;}
 .nav-btn i{font-style:normal;font-size:10px;color:var(--mut);}
@@ -675,3 +697,211 @@ input:focus,textarea:focus,select:focus{transition:border-color .06s steps(1);}
 
 /* Extraction settings: the three fields read as one column, like the selects. */
 #extract-needle input{width:100%;box-sizing:border-box;}
+
+/* ------------------------------------------------------- flow and layout ----
+   Shared by every theme: the flow bar in the top bar, the rail's three cards,
+   and the console drawer. Colours are tokens, so each theme restyles them. */
+
+#topbar{gap:var(--sp-4);}
+#flow{display:flex;align-items:center;gap:2px;min-width:0;overflow:hidden;}
+.flow-step{display:inline-flex;align-items:center;gap:var(--sp-2);background:none;cursor:pointer;
+  border:1px solid transparent;border-radius:var(--r-sm);color:var(--mut);padding:4px 8px;
+  font:10px/1 ui-monospace,"Cascadia Mono",Consolas,monospace;letter-spacing:.14em;text-transform:uppercase;
+  white-space:nowrap;transition:color .1s steps(2),border-color .1s steps(2),background .1s steps(2);}
+.flow-sep{width:14px;height:1px;flex:none;background:var(--line-strong);}
+.flow-sep.done{background:var(--ok-line);}
+.flow-step i{font-style:normal;display:inline-grid;place-items:center;width:15px;height:15px;font-size:9px;
+  border:1px solid var(--line-strong);border-radius:var(--r-sm);letter-spacing:0;}
+.flow-step:hover{color:var(--txt);}
+.flow-step.here{background:var(--surface-raised);}
+.flow-step.done{color:var(--dim);}
+.flow-step.done i{color:var(--ok);background:var(--ok-bg);border-color:var(--ok-line);}
+.flow-step.next{color:var(--txt);border-color:var(--line-strong);}
+.flow-step.next i{border-color:var(--txt);}
+.flow-step.active{color:var(--warn);}
+.flow-step.active i{color:var(--warn);background:var(--warn-bg);border-color:var(--warn-line);}
+.flow-step.failed{color:var(--err);}
+.flow-step.failed i{color:var(--err);background:var(--err-bg);border-color:var(--err-line);}
+.flow-step:focus-visible{outline:none;box-shadow:0 0 0 2px var(--line-focus);}
+/* Narrow windows keep the numbers and drop the words. */
+@media (max-width:1180px){.flow-step{font-size:0;gap:0;}.flow-step i{font-size:9px;}}
+
+/* The rail: provider, project, conversation - three cards instead of fifteen
+   controls in a column. */
+#rail{overflow-y:auto;}
+#rail #wordmark{margin-bottom:18px;}
+#rail .nav-btn{padding-top:7px;padding-bottom:7px;}
+#rail-bottom{margin-top:var(--sp-4);}
+.rail-card{display:flex;flex-direction:column;gap:6px;padding:var(--sp-3);
+  border:1px solid var(--line);border-radius:var(--r-md);background:var(--surface);}
+.rail-card + .rail-card{margin-top:var(--sp-2);}
+.rail-card-head{margin-bottom:2px;}
+
+/* The console drawer. */
+.console{display:flex;flex-direction:column;gap:var(--sp-2);flex:none;}
+.console-bar{display:flex;align-items:center;gap:var(--sp-3);width:100%;background:none;cursor:pointer;
+  border:1px solid var(--line);border-radius:var(--r-md);padding:6px 10px;color:var(--dim);text-align:left;
+  font:10px/1 ui-monospace,"Cascadia Mono",Consolas,monospace;letter-spacing:.14em;text-transform:uppercase;}
+.console-bar:hover{color:var(--txt);border-color:var(--line-strong);}
+.console-bar:focus-visible{outline:none;box-shadow:0 0 0 2px var(--line-focus);}
+.console-caret{width:0;height:0;border-left:5px solid currentColor;border-top:4px solid transparent;
+  border-bottom:4px solid transparent;transform:rotate(90deg);transition:transform .1s steps(2);}
+.console.collapsed .console-caret{transform:none;}
+.console-hint{color:var(--mut);letter-spacing:.08em;text-transform:none;}
+.console-unread{margin-left:auto;display:none;padding:2px 6px;border-radius:var(--r-sm);
+  color:var(--inverse);background:var(--txt);letter-spacing:0;}
+.console-unread.on{display:inline-block;}
+.console.collapsed #log-row{display:none;}
+
+/* ------------------------------------------------------------ Pixel theme ----
+   The README's look, carried into the app. Every rule is scoped to
+   :root[data-theme="pixel"], so no other theme changes, and every colour is a
+   token. The swatch previews use their own attribute, which :root never
+   matches.
+
+   Pixel is the one theme with ambient motion: the stars twinkle, the wordmark's
+   cursor blinks and the wordmark boots in once. Elsewhere that kind of motion
+   was rejected. Here the theme is the request, so the motion is slow, stepped,
+   and switched off by the decoration toggle and by reduced motion. */
+
+/* The starfield sits behind the panels, not over them like scanlines. */
+:root[data-theme="pixel"] #app::before{z-index:-1;
+  background-size:173px 139px,251px 211px,331px 283px;
+  background-position:17px 29px,103px 61px,211px 157px;
+  animation:px-twinkle 7s steps(4) infinite;}
+@keyframes px-twinkle{0%,100%{opacity:.55;}50%{opacity:1;}75%{opacity:.35;}}
+
+/* Wordmark: stepped green gradient, a hard offset shadow, a blinking block
+   cursor, and a left-to-right boot sweep on launch. */
+:root[data-theme="pixel"] #wordmark{font-weight:700;letter-spacing:.14em;
+  animation:px-boot .9s steps(9) 1;}
+:root[data-theme="pixel"] #wordmark > span,
+:root[data-theme="pixel"] #wordmark span span{color:transparent;
+  background:linear-gradient(180deg,var(--px-g1) 0 34%,var(--px-g2) 34% 67%,var(--px-g3) 67% 100%);
+  -webkit-background-clip:text;background-clip:text;}
+:root[data-theme="pixel"] #wordmark > span{filter:drop-shadow(2px 2px 0 var(--px-shadow));}
+:root[data-theme="pixel"] #wordmark svg{color:var(--px-g2);filter:drop-shadow(2px 2px 0 var(--px-shadow));}
+:root[data-theme="pixel"] #wordmark::after{content:"";width:8px;height:14px;margin-left:-2px;
+  background:var(--px-g2);animation:px-blink 1.1s steps(1) infinite;}
+@keyframes px-blink{0%,49%{opacity:1;}50%,100%{opacity:0;}}
+@keyframes px-boot{from{clip-path:inset(0 100% 0 0);}to{clip-path:inset(0 0 0 0);}}
+
+/* Window chrome: the three squares from the README's title bars. */
+:root[data-theme="pixel"] #topbar{align-items:center;background:var(--surface-raised);
+  border:1px solid var(--line-strong);padding:8px 12px;box-shadow:3px 3px 0 var(--px-shadow);}
+:root[data-theme="pixel"] #mode-title{display:inline-flex;align-items:center;color:var(--dim);}
+:root[data-theme="pixel"] #mode-title::before{content:"";width:8px;height:8px;margin-right:40px;flex:none;
+  background:var(--px-chrome);box-shadow:12px 0 0 var(--px-chrome),24px 0 0 var(--px-chrome);}
+:root[data-theme="pixel"] #mode-title::after{content:" // CLOSENI";color:var(--mut);white-space:pre;}
+:root[data-theme="pixel"] #status-line{color:var(--px-g2);}
+
+/* Navigation: the active item takes the green bar and number. */
+:root[data-theme="pixel"] .nav-btn.active{border-left-color:var(--px-g2);}
+:root[data-theme="pixel"] .nav-btn.active i{color:var(--px-g2);}
+:root[data-theme="pixel"] .nav-btn:hover i{color:var(--px-blue);}
+:root[data-theme="pixel"] .settings-tab.active{border-left-color:var(--px-g2);}
+
+/* Square corners and hard offset shadows everywhere a thing is a block. */
+:root[data-theme="pixel"] .btn,
+:root[data-theme="pixel"] input,
+:root[data-theme="pixel"] textarea,
+:root[data-theme="pixel"] select,
+:root[data-theme="pixel"] .step-card,
+:root[data-theme="pixel"] .file-card,
+:root[data-theme="pixel"] .res-item,
+:root[data-theme="pixel"] .test-row,
+:root[data-theme="pixel"] .plan-step,
+:root[data-theme="pixel"] .toast,
+:root[data-theme="pixel"] .theme-swatch,
+:root[data-theme="pixel"] #run-bar,
+:root[data-theme="pixel"] #test-output-col,
+:root[data-theme="pixel"] #test-chat-col,
+:root[data-theme="pixel"] #builder-progress-wrap{border-radius:0;}
+:root[data-theme="pixel"] .btn{box-shadow:2px 2px 0 var(--px-shadow);}
+:root[data-theme="pixel"] .btn:hover:not(:disabled){border-color:var(--px-g2);color:var(--px-g1);}
+:root[data-theme="pixel"] .btn:active:not(:disabled){transform:translate(2px,2px);box-shadow:none;}
+:root[data-theme="pixel"] .btn.invert{background:var(--px-g2);border-color:var(--px-g2);color:var(--inverse);}
+:root[data-theme="pixel"] input:focus,
+:root[data-theme="pixel"] textarea:focus{border-color:var(--px-blue);}
+
+/* Cards: the stat tiles' thick coloured edge, cycling through the badge
+   colours so a list reads as a row of tiles. */
+:root[data-theme="pixel"] .plan-step,
+:root[data-theme="pixel"] .file-card,
+:root[data-theme="pixel"] .res-item,
+:root[data-theme="pixel"] #run-bar{border-top:3px solid var(--px-g2);box-shadow:3px 3px 0 var(--px-shadow);}
+:root[data-theme="pixel"] .plan-step:nth-child(5n+2),:root[data-theme="pixel"] .file-card:nth-child(5n+2),
+:root[data-theme="pixel"] .res-item:nth-child(5n+2){border-top-color:var(--px-blue);}
+:root[data-theme="pixel"] .plan-step:nth-child(5n+3),:root[data-theme="pixel"] .file-card:nth-child(5n+3),
+:root[data-theme="pixel"] .res-item:nth-child(5n+3){border-top-color:var(--px-purple);}
+:root[data-theme="pixel"] .plan-step:nth-child(5n+4),:root[data-theme="pixel"] .file-card:nth-child(5n+4),
+:root[data-theme="pixel"] .res-item:nth-child(5n+4){border-top-color:var(--px-amber);}
+:root[data-theme="pixel"] .plan-step:nth-child(5n+5),:root[data-theme="pixel"] .file-card:nth-child(5n+5),
+:root[data-theme="pixel"] .res-item:nth-child(5n+5){border-top-color:var(--px-red);}
+:root[data-theme="pixel"] .step-card{box-shadow:2px 2px 0 var(--px-shadow);}
+:root[data-theme="pixel"] .step-card.active{border-color:var(--px-g2);box-shadow:3px 3px 0 var(--px-g4);}
+:root[data-theme="pixel"] .toast{border-left:3px solid var(--px-g2);box-shadow:3px 3px 0 var(--px-shadow);}
+
+/* Chat reads as a terminal: the prompt sign on what you typed. */
+:root[data-theme="pixel"] .msg.user .msg-label{color:var(--px-g2);}
+:root[data-theme="pixel"] .msg.user .msg-label::before{content:"$ ";}
+:root[data-theme="pixel"] .msg.ai .msg-label{color:var(--px-blue);}
+
+/* The README's BUILD bar: chunked blocks in a thick frame. */
+:root[data-theme="pixel"] #builder-progress-wrap{height:12px;border:2px solid var(--line-strong);
+  background:var(--surface-sunken);}
+:root[data-theme="pixel"] #builder-progress{
+  background:repeating-linear-gradient(90deg,var(--px-g2) 0 8px,transparent 8px 10px);}
+
+/* Square pixel scrollbars. */
+:root[data-theme="pixel"] ::-webkit-scrollbar{width:10px;height:10px;}
+:root[data-theme="pixel"] ::-webkit-scrollbar-track{background:var(--surface-sunken);}
+:root[data-theme="pixel"] ::-webkit-scrollbar-thumb{background:var(--line-strong);border:2px solid var(--surface-sunken);}
+:root[data-theme="pixel"] ::-webkit-scrollbar-thumb:hover{background:var(--px-g3);}
+
+/* The swatch previews the theme with its green gradient. */
+.theme-swatch[data-theme="pixel"] .theme-swatch-chip{border-radius:0;
+  background:linear-gradient(180deg,var(--px-g1) 0 34%,var(--px-g2) 34% 67%,var(--px-g3) 67% 100%);}
+
+/* Decoration off: stars, blink and boot all stop. Reduced motion is already
+   handled by the global rule near the top. */
+:root[data-theme="pixel"][data-decor="off"] #app::before,
+:root[data-theme="pixel"][data-decor="off"] #wordmark,
+:root[data-theme="pixel"][data-decor="off"] #wordmark::after{animation:none;}
+
+/* Pixel: the flow bar, rail cards and console in the README's style. */
+:root[data-theme="pixel"] .flow-step,
+:root[data-theme="pixel"] .flow-step i,
+:root[data-theme="pixel"] .rail-card,
+:root[data-theme="pixel"] .console-bar,
+:root[data-theme="pixel"] .console-unread,
+:root[data-theme="pixel"] #log,
+:root[data-theme="pixel"] #plog{border-radius:0;}
+:root[data-theme="pixel"] .flow-step.next{border-color:var(--px-g2);color:var(--px-g1);box-shadow:2px 2px 0 var(--px-shadow);}
+:root[data-theme="pixel"] .flow-step.next i{border-color:var(--px-g2);color:var(--px-g2);}
+:root[data-theme="pixel"] .flow-step.next::after{content:"";width:6px;height:10px;background:var(--px-g2);
+  animation:px-blink 1.1s steps(1) infinite;}
+:root[data-theme="pixel"] .flow-sep{height:2px;
+  background:repeating-linear-gradient(90deg,var(--px-chrome) 0 2px,transparent 2px 4px);}
+:root[data-theme="pixel"] .flow-sep.done{
+  background:repeating-linear-gradient(90deg,var(--px-g3) 0 2px,transparent 2px 4px);}
+:root[data-theme="pixel"] .rail-card{background:var(--panel);border-color:var(--line-strong);
+  border-top:3px solid var(--px-g2);box-shadow:3px 3px 0 var(--px-shadow);}
+:root[data-theme="pixel"] .rail-card:nth-of-type(2){border-top-color:var(--px-blue);}
+:root[data-theme="pixel"] .rail-card:nth-of-type(3){border-top-color:var(--px-purple);}
+:root[data-theme="pixel"] .rail-card-head::before{content:"";display:inline-block;width:6px;height:6px;
+  margin-right:8px;vertical-align:1px;background:var(--px-chrome);
+  box-shadow:9px 0 0 var(--px-chrome),18px 0 0 var(--px-chrome);margin-right:26px;}
+:root[data-theme="pixel"] .console-bar{background:var(--surface-raised);border-color:var(--line-strong);
+  box-shadow:3px 3px 0 var(--px-shadow);}
+:root[data-theme="pixel"] .console-bar::before{content:"$";color:var(--px-g2);}
+:root[data-theme="pixel"] .console-unread{background:var(--px-g2);}
+:root[data-theme="pixel"] #log,
+:root[data-theme="pixel"] #plog{background:var(--surface-sunken);border-color:var(--line-strong);}
+
+/* Panels get solid ground, so the starfield shows in the gutters and not
+   through text. */
+:root[data-theme="pixel"] #chat-column{background:var(--panel);border:1px solid var(--line-strong);
+  padding:var(--sp-4);box-shadow:3px 3px 0 var(--px-shadow);}
+
+:root[data-theme="pixel"][data-decor="off"] .flow-step.next::after{animation:none;}
