@@ -27,10 +27,11 @@ import { AdapterSpec } from "./adapters.js";
 import { classifyState, collectSignalsInPage, LOGIN_TEXT, PageSignals, isTerminalForAutomation } from "./state.js";
 import { CompletionDetector, StreamCapture } from "./completion-detector.js";
 import { replyStreamTap, mutationCounter } from "../../providers/stream-tap.js";
+import { stopProbes, stopWatcherInPage } from "./stop-watcher.js";
 import { BrowserSessionManager, ManagedContext, ManagedPage } from "../browser/session-manager.js";
 import { navigate, NavOutcome, waitFor } from "../browser/navigate.js";
 import { captureDiagnostics, DebugArtifacts, diagnosticsRoot } from "../browser/diagnostics.js";
-import { ChainDiagnosis, ChainSpec, Resolved, diagnoseChain, locatorFor, resolveChain } from "../selectors/chain.js";
+import { ChainDiagnosis, ChainSpec, Resolved, diagnoseChain, resolveChain } from "../selectors/chain.js";
 import { snapshotLocator } from "../semantic/dom.js";
 import { pipeline } from "../response/normalize.js";
 import { Tracer, quietTracer } from "../trace.js";
@@ -54,6 +55,7 @@ const bound = new WeakSet<object>();
 const owners = new WeakMap<object, ChatWebProvider>();
 
 const TIMED_OUT = Symbol("timed-out");
+const CHAIN_BOUND_MS = 8000;
 
 /**
  * A page call bounded in time. page.evaluate has no timeout of its own, so a
@@ -82,8 +84,6 @@ export class ChatWebProvider implements AIWebProvider {
    * briefly, and the detector must still know it came and went.
    */
   private stopSeenSinceSubmit = false;
-  /** Which submit a stop-control watcher belongs to, so a late one cannot mark the next. */
-  private submitSeq = 0;
   private lastNav: NavOutcome | null = null;
   private lastWait: WaitResult | null = null;
   private baseline = { count: 0, text: "" };
@@ -119,12 +119,18 @@ export class ChatWebProvider implements AIWebProvider {
     this.resolved = {};
   }
 
+  /** How many times the page's own watcher has seen the stop control appear since the prompt. */
+  private async stopShown(): Promise<number> {
+    if (!this.mp) return 0;
+    // Bounded like every other in-page call: a page whose main thread is stuck
+    // must not hang the send.
+    const n = await bounded(this.mp.page.evaluate(() => { const s = (globalThis as any).__closeniStop; return s ? s.shown : 0; }), 2000);
+    return n === TIMED_OUT ? 0 : n;
+  }
+
   private onStream(ev: string, status?: number, errored?: boolean): void {
     if (ev === "open") { this.stream.opened++; this.stream.status = typeof status === "number" ? status : 0; }
     else if (ev === "close") { this.stream.closed++; if (errored) this.stream.cut = true; }
-    // Not the stream: the stop-control latch shares this binding, and `status`
-    // carries the submit it was installed for.
-    else if (ev === "stop-shown" && status === this.submitSeq) this.stopSeenSinceSubmit = true;
   }
 
   private page(): ManagedPage {
@@ -142,6 +148,7 @@ export class ChatWebProvider implements AIWebProvider {
       // the same profile reuses the page. So the binding reports to whoever
       // owns the page now, not to whoever installed it.
       owners.set(p, this);
+      const probes = stopProbes(this.spec.chains.stop);
       if (!bound.has(p)) {
         await p.exposeBinding("__closeniStream", (_src: any, ev: string, status?: number, errored?: boolean) => {
           const owner = owners.get(p);
@@ -149,10 +156,12 @@ export class ChatWebProvider implements AIWebProvider {
         });
         await p.addInitScript(mutationCounter);
         if (this.spec.streamUrlPattern) await p.addInitScript(replyStreamTap, this.spec.streamUrlPattern);
+        if (probes.length) await p.addInitScript(stopWatcherInPage, probes);
         bound.add(p);
       }
       await p.evaluate(mutationCounter).catch(() => { /* about:blank before navigation */ });
       if (this.spec.streamUrlPattern) await p.evaluate(replyStreamTap, this.spec.streamUrlPattern).catch(() => { /* same */ });
+      if (probes.length) await p.evaluate(stopWatcherInPage, probes).catch(() => { /* same */ });
     } catch (err: any) {
       this.tracer.event({ action: "install-watchers", result: "failure", error: String(err && err.message || err) });
     }
@@ -195,7 +204,22 @@ export class ChatWebProvider implements AIWebProvider {
 
   // ------------------------------------------------------------- chains --
 
+  /**
+   * Resolve a chain, bounded in time. Locator counts have no timeout of their
+   * own, so against a page whose main thread is stuck this would wait forever;
+   * after CHAIN_BOUND_MS it answers "not found" instead. The wait loop bounds
+   * it more tightly still, to tell a stuck page from a missing element.
+   */
   private async chain(name: ChainName, fresh: boolean = false): Promise<Resolved | null> {
+    const r = await bounded(this.chainUnbounded(name, fresh), CHAIN_BOUND_MS);
+    if (r === TIMED_OUT) {
+      this.tracer.event({ action: "selector-timeout", result: "failure", detail: name + " did not resolve within " + CHAIN_BOUND_MS + "ms - the page is not answering" });
+      return null;
+    }
+    return r;
+  }
+
+  private async chainUnbounded(name: ChainName, fresh: boolean): Promise<Resolved | null> {
     const spec: ChainSpec = this.spec.chains[name];
     if (!spec.strategies.length) return null;
     const cached = this.resolved[name];
@@ -332,7 +356,8 @@ export class ChatWebProvider implements AIWebProvider {
   // ------------------------------------------------------------- prompt --
 
   private async composerText(loc: Locator): Promise<number> {
-    return loc.evaluate((el: any) => (el.tagName === "TEXTAREA" || el.tagName === "INPUT" ? el.value : el.textContent || "").length).catch(() => -1);
+    const n = await bounded(loc.evaluate((el: any) => (el.tagName === "TEXTAREA" || el.tagName === "INPUT" ? el.value : el.textContent || "").length, undefined, { timeout: 3000 }), 4000);
+    return n === TIMED_OUT ? -1 : n;
   }
 
   /**
@@ -382,6 +407,7 @@ export class ChatWebProvider implements AIWebProvider {
     this.stream = { opened: 0, closed: 0, status: 0, cut: false };
     this.stopSeenSinceSubmit = false;
     owners.set(this.page().page, this);
+    await bounded(this.page().page.evaluate(() => { const s = (globalThis as any).__closeniStop; if (s) s.shown = 0; }), 2000);
     const box = composer.locator.last();
     let method: string;
     await box.click({ timeout: 5000 }).catch(() => { /* focus by fill instead */ });
@@ -415,7 +441,6 @@ export class ChatWebProvider implements AIWebProvider {
       method += "+refill";
       await box.fill(prompt, { timeout: 10000 }).catch(() => { /* reported below */ });
     }
-    await this.watchStopFlash(++this.submitSeq);
     const send = await this.chain("send", true);
     let sentBy = "enter";
     if (send && (await send.locator.last().isEnabled().catch(() => false))) {
@@ -430,6 +455,7 @@ export class ChatWebProvider implements AIWebProvider {
       if (this.stream.opened > 0) return true;
       const n = await this.composerText(box);
       if (n === 0) return true;
+      if ((await this.stopShown()) > 0) { this.stopSeenSinceSubmit = true; return true; }
       const s = await this.chain("stop");
       if (s && (await s.locator.first().isVisible().catch(() => false))) { this.stopSeenSinceSubmit = true; return true; }
       const a = await this.chain("assistant", true);
@@ -456,52 +482,6 @@ export class ChatWebProvider implements AIWebProvider {
     return result;
   }
 
-  /**
-   * Latch the stop control appearing, however briefly.
-   *
-   * Sampling it every poll misses an empty reply: the page raises the control
-   * and drops it again inside one interval - about 30ms on the fixtures, where
-   * the 150ms poll only caught it on a slow enough machine. With nothing seen,
-   * the wait has no sign the provider answered and reports no-start after the
-   * whole start timeout. Playwright's waitFor samples too, with gaps of up to
-   * 100ms, and missed it one run in three.
-   *
-   * A MutationObserver runs after every DOM change, so it cannot fall between
-   * the change that shows the control and the one that hides it. It watches the
-   * elements the stop chain describes, hidden ones included, plus whatever its
-   * CSS links match later - a control inserted only while generating. Heuristics
-   * are skipped: they mark elements only when run. Anything this misses, the
-   * poll still sees if it stays up for one interval, as it did before.
-   */
-  private async watchStopFlash(seq: number): Promise<void> {
-    const page = this.page().page;
-    const handles: any[] = [];
-    const css: string[] = [];
-    for (const s of this.spec.chains.stop.strategies) {
-      if (s.kind === "heuristic") continue;
-      if (s.kind === "css" || s.kind === "structural") css.push(s.css);
-      const hs = await bounded(locatorFor(page, s, undefined, true).elementHandles(), 3000);
-      if (Array.isArray(hs)) handles.push(...hs.slice(0, 10));
-    }
-    if (!handles.length && !css.length) return;
-    await bounded(page.evaluate(([els, sels, n, ms]: [any[], string[], number, number]) => {
-      const w = globalThis as any;
-      if (w.__closeniStopObs) w.__closeniStopObs.disconnect();
-      const shown = (el: any) => el.isConnected && el.getClientRects().length > 0 && w.getComputedStyle(el).visibility !== "hidden";
-      const obs = new w.MutationObserver(() => {
-        let hit = els.some(shown);
-        for (const s of sels) { if (hit) break; try { hit = Array.from(w.document.querySelectorAll(s)).some(shown); } catch { /* invalid */ } }
-        if (!hit) return;
-        obs.disconnect();
-        try { w.__closeniStream("stop-shown", n); } catch { /* no binding: polling decides */ }
-      });
-      obs.observe(w.document.body, { subtree: true, childList: true, attributes: true, characterData: true });
-      w.__closeniStopObs = obs;
-      w.setTimeout(() => obs.disconnect(), ms);
-    }, [handles, css, seq, this.spec.timing.startTimeoutMs] as [any[], string[], number, number]), 3000);
-    for (const h of handles) h.dispose().catch(() => { /* page gone */ });
-  }
-
   // --------------------------------------------------------------- wait --
 
   async waitForResponse(opts: AskOptions = {}): Promise<WaitResult> {
@@ -511,8 +491,7 @@ export class ChatWebProvider implements AIWebProvider {
       maxWaitMs: opts.maxWaitMs || t.maxWaitMs, useStopControl: this.spec.chains.stop.strategies.length > 0,
       streamStallMs: t.streamStallMs,
     });
-    let stopReported = this.stopSeenSinceSubmit;
-    if (stopReported) {
+    if (this.stopSeenSinceSubmit) {
       detector.feed({ atMs: 0, assistantCount: this.baseline.count, text: this.baseline.text, stopVisible: true, streamsOpened: 0, streamsClosed: 0, mutationSeq: -1 });
     }
     const capture = new StreamCapture();
@@ -521,6 +500,25 @@ export class ChatWebProvider implements AIWebProvider {
     let lastStateCheck = 0;
     let finalState: UIState = "UNKNOWN";
     let unresponsiveSince = -1;
+    let stopShownFed = 0;
+    // The page is not answering. Give it a while - a heavy render can stall
+    // briefly - then call it what it is. Every page call in this loop is
+    // bounded and lands here on a timeout: one that is not blocks the loop
+    // forever if the page freezes between two calls, which is how this hung.
+    const stuck = async (at: number, mp: ManagedPage): Promise<WaitResult | null> => {
+      if (unresponsiveSince < 0) unresponsiveSince = at;
+      if (at - unresponsiveSince > t.unresponsiveMs) {
+        finalState = "ERROR";
+        const r = finish(capture.text ? "partial" : "failed", "interrupted", "the page stopped responding for " + Math.round((at - unresponsiveSince) / 1000) + "s - its main thread is stuck");
+        // Replace the page so the next action gets a working one; closing a
+        // wedged page is itself bounded.
+        await bounded(mp.page.close(), 5000);
+        mp.closed = true;
+        return r;
+      }
+      await sleep(t.pollMs);
+      return null;
+    };
     const finish = (status: WaitResult["status"], signal: WaitResult["signal"], error?: string): WaitResult => {
       const r: WaitResult = { status, signal, waitedMs: nowMs() - start, partials: capture.partials.slice(), finalState, ...(error ? { error } : {}) };
       this.lastWait = r;
@@ -537,30 +535,23 @@ export class ChatWebProvider implements AIWebProvider {
         return finish(recovered && capture.text ? "partial" : "failed", "interrupted", "page " + (mp && mp.crashed ? "crashed" : "closed") + " during generation" + (recovered ? " - recovered the page; the reply may be complete on reload" : ""));
       }
       const at = nowMs() - start;
-      const seqR = await bounded(mp.page.evaluate(() => { const m = (globalThis as any).__closeniMut; return m ? m.seq : -1; }), 3000);
+      const seqR = await bounded(mp.page.evaluate(() => {
+        const g = globalThis as any;
+        return { seq: g.__closeniMut ? g.__closeniMut.seq : -1, shown: g.__closeniStop ? g.__closeniStop.shown : 0 };
+      }), 3000);
       if (seqR === TIMED_OUT) {
-        // The page is not answering at all. Give it a while - a heavy render
-        // can stall briefly - then call it what it is.
-        if (unresponsiveSince < 0) unresponsiveSince = at;
-        if (at - unresponsiveSince > t.unresponsiveMs) {
-          finalState = "ERROR";
-          const r = finish(capture.text ? "partial" : "failed", "interrupted", "the page stopped responding for " + Math.round((at - unresponsiveSince) / 1000) + "s - its main thread is stuck");
-          // Replace the page so the next action gets a working one; closing a
-          // wedged page is itself bounded.
-          await bounded(mp.page.close(), 5000);
-          mp.closed = true;
-          return r;
-        }
-        await sleep(t.pollMs);
+        const r = await stuck(at, mp);
+        if (r) return r;
         continue;
       }
-      unresponsiveSince = -1;
-      const seq: number = seqR;
+      const seq: number = seqR.seq;
       let text: string | undefined;
       let count = this.baseline.count;
       // Only re-read the reply when the page actually changed.
       if (seq !== lastSeq || seq === -1) {
-        const a = await this.chain("assistant", true);
+        const ar = await bounded(this.chain("assistant", true), 5000);
+        if (ar === TIMED_OUT) { const r = await stuck(at, mp); if (r) return r; continue; }
+        const a = ar;
         count = a ? a.count : 0;
         const tr = a ? await bounded(a.locator.last().innerText({ timeout: 5000 }), 6000) : "";
         text = tr === TIMED_OUT ? undefined : (tr || "");
@@ -569,12 +560,15 @@ export class ChatWebProvider implements AIWebProvider {
         const a = this.resolved.assistant;
         count = a ? a.count : count;
       }
-      const stop = this.resolved.stop || (await this.chain("stop"));
+      const sr = this.resolved.stop ? this.resolved.stop : await bounded(this.chain("stop"), 5000);
+      if (sr === TIMED_OUT) { const r = await stuck(at, mp); if (r) return r; continue; }
+      unresponsiveSince = -1;
+      const stop = sr;
       const sv = stop ? await bounded(stop.locator.first().isVisible(), 3000) : false;
-      // A flash the watcher latched between two samples is reported once, as
-      // though this sample had caught it; the next one then sees it gone.
-      const stopVisible = sv === true || (this.stopSeenSinceSubmit && !stopReported);
-      if (stopVisible) stopReported = true;
+      // A stop control that came and went between two polls still counts: the
+      // page's own watcher saw it (see stop-watcher.ts).
+      const stopVisible = sv === true || seqR.shown > stopShownFed;
+      stopShownFed = seqR.shown;
       const v = detector.feed({ atMs: at, assistantCount: count, text, stopVisible,
         streamsOpened: this.stream.opened, streamsClosed: this.stream.closed, mutationSeq: seq, streamStatus: this.stream.status });
       if (text !== undefined && detector.hasStarted) {
@@ -649,13 +643,28 @@ export class ChatWebProvider implements AIWebProvider {
     const warnings: string[] = [];
     const url = this.mp ? this.mp.page.url() : this.lastUrl;
     const wait = opts.wait || this.lastWait || undefined;
-    // An empty reply leaves the PREVIOUS message as the last one on the page.
-    // Reading it would return the last answer as this one.
+    // An empty reply, or one that never started, leaves the PREVIOUS message as
+    // the last one on the page. Reading it would return the last answer as
+    // this one.
     const emptyReply = !!wait && wait.signal === "empty";
-    const assistant = this.mp && this.mp.healthy() && !emptyReply ? await this.chain("assistant", true) : null;
+    const neverStarted = !!wait && wait.status === "no-start";
+    let assistant = this.mp && this.mp.healthy() && !emptyReply && !neverStarted ? await this.chain("assistant", true) : null;
+    // Whatever the wait says, the newest block being exactly the one that was
+    // there before the prompt means nothing new was written.
+    if (assistant && wait && this.baseline.count > 0 && assistant.count === this.baseline.count) {
+      const now = (await assistant.locator.last().innerText().catch(() => "")) || "";
+      if (now === this.baseline.text) {
+        assistant = null;
+        warnings.push("the newest message on the page is the previous answer - no new reply was written");
+      }
+    }
     let diag: ChainDiagnosis | undefined;
     if (emptyReply) {
       warnings.push("the provider finished without adding a reply");
+    } else if (neverStarted) {
+      warnings.push("no reply started, so nothing was read - the last message on the page is the previous answer");
+    } else if (!assistant && warnings.length) {
+      // already explained above
     } else if (!assistant) {
       warnings.push("no assistant message found by any strategy");
     } else if (assistant.index > 0) {

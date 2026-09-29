@@ -1882,6 +1882,54 @@ document.querySelectorAll(".settings-tab").forEach(function (tab) {
   apply(current);
 })();
 
+/**
+ * Extraction settings. Saved to a file the main process reads at every agent
+ * spawn; Check and Download test what is typed, before it is saved, so a wrong
+ * interpreter path is found here rather than in the middle of a plan.
+ */
+(function () {
+  const X = window.CNExtraction;
+  const status = $("extract-status");
+  function read() {
+    return X.normalize({
+      backend: $("extract-backend").value,
+      python: $("extract-python").value,
+      weights: $("extract-weights").value,
+      minConfidence: $("extract-confidence").value,
+    });
+  }
+  function show(s) {
+    $("extract-backend").value = s.backend;
+    $("extract-python").value = s.python;
+    $("extract-weights").value = s.weights;
+    $("extract-confidence").value = String(s.minConfidence);
+    $("extract-needle").style.display = s.backend === "needle" ? "" : "none";
+    $("extract-check").disabled = s.backend !== "needle";
+    $("extract-warm").disabled = s.backend !== "needle";
+  }
+  function check(warm) {
+    status.textContent = warm ? "Downloading the model - this can take a few minutes..." : "Checking...";
+    $("extract-check").disabled = true;
+    $("extract-warm").disabled = true;
+    return window.api.checkExtraction(read(), warm).then(function (r) {
+      status.textContent = X.describeCheck(r);
+    }, function (e) {
+      status.textContent = "Check failed: " + String(e);
+    }).then(function () { show(read()); });
+  }
+  $("extract-backend").onchange = function () { show(read()); status.textContent = ""; };
+  $("extract-save").onclick = function () {
+    window.api.writeExtraction(read()).then(function (r) {
+      if (r && r.ok) { show(r.settings); status.textContent = ""; toast("Extraction settings saved"); }
+      else status.textContent = "Could not save: " + ((r && r.error) || "unknown error");
+    });
+  };
+  $("extract-check").onclick = function () { check(false); };
+  $("extract-warm").onclick = function () { check(true); };
+  window.api.readExtraction().then(function (r) { show(r && r.ok ? r.settings : X.DEFAULTS); },
+    function () { show(X.DEFAULTS); });
+})();
+
 $("welcome-reset").onclick = function () {
   try { localStorage.removeItem(window.CNOnboarding.DISMISS_KEY); } catch (e) {}
   renderOnboarding();

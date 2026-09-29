@@ -24,6 +24,39 @@ installed by anyone — treat it as unproven. GitHub sign-in, push, clone and
 Actions are unit-tested with an injected transport and have never made a live
 request. Qwen Studio and GLM ship gated.
 
+### Optional local extraction with Needle (off by default)
+
+- **Settings → Extraction** can add a second reader after the built-in parser:
+  [Needle](https://github.com/cactus-compute/needle), a small local model
+  (`pip install cactus-needle`) whose decode grammar guarantees its output
+  matches the schema it is given. It runs in a Python bridge
+  (`local-agent/python/needle_bridge.py`) that the agent starts on first use.
+  Every call to it has a time limit, and its telemetry is switched off.
+- **What it does.** A plan that still fails to parse after the re-ask is read
+  out of its prose. The steps are found by fixed rules, not by the model. Each
+  step's detail is the provider's own text. Needle supplies only the title, the
+  files and whether the step is testable. A file or run command that does not
+  appear in the reply is dropped. A rescued plan runs its steps in order.
+- **It also says what a reply was.** "Could not parse plan" and "No file changes
+  found" now say when the provider declined (quoting it) or asked a question
+  instead. This is the content-refusal detection `docs/NEXT.md` left open. It
+  only changes the message, never what runs.
+- **What it never does:** write or repair code, or change how a reply that
+  parses is read. If the bridge is missing, slow or crashes, extraction logs
+  one line, turns itself off for the rest of the run, and the run fails or
+  succeeds exactly as it did before.
+- `closeni extractor-check [warm]` checks the setup and, with `warm`,
+  downloads the model. `closeni rescue-plan <file>` runs a saved reply through
+  the parser and then the extractor, with no browser, for measuring real plan
+  replies.
+- **Not verified with the real model.** The development container's network
+  refused Hugging Face, so the weights never downloaded. The real
+  `cactus-needle` 3.0.6 package was imported through the bridge, and its API
+  matches. Everything else ran against a stand-in `needle` package that answers
+  by rule. That proves the plumbing, the limits and the grounding checks, not
+  how well Needle reads a plan. First real run: `closeni extractor-check warm`,
+  then `closeni rescue-plan` over saved replies.
+
 ### Browser-native provider and research layer (not wired into builds)
 
 - `local-agent/src/web/`: session manager with isolated contexts, crash, popup,
@@ -41,6 +74,21 @@ request. Qwen Studio and GLM ship gated.
   development container's network refused every provider host.
 - The reply-stream tap moved to `providers/stream-tap.ts`, shared by the
   controller and the new layer. The controller's behaviour is unchanged.
+- A full regression pass (29 September) found and fixed:
+  - **The live smoke test blamed selectors when the site was unreachable.** With
+    no network it reported the assistant selector as "watching something that
+    is not the live answer". It now says the site could not be reached, and
+    marks every check after the send as not run.
+  - **Errors shown in the app carried Playwright's call log and terminal colour
+    codes.** The agent now sends the one-line cause.
+  - **An empty reply on Qwen- and GLM-style pages was detected only by luck.**
+    Their stop control is up for milliseconds, and detection depended on a poll
+    landing inside that window. The page now counts the control's appearances
+    itself.
+  - **A reply that never started returned the previous answer's text.**
+  - **A failed or never-started wait was reported as `empty`.**
+  - **A page with a frozen main thread could hang the wait forever.** One
+    selector lookup in the wait loop had no time bound; now none do.
 
 ### Fixed before release
 
