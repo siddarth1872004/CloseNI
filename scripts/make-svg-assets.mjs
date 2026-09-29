@@ -575,6 +575,8 @@ function divider() {
 
 function themesStrip() {
   const THEMES = [
+    ['Terminal', '#141414', '#e4e4e4'],
+    ['Pixel', '#0d1117', '#56d364'],
     ['Midnight', '#0b0b0c', '#e8e8ea'],
     ['Paper', '#f7f7f5', '#1b1b1d'],
     ['Phosphor', '#020a04', '#7bffa0'],
@@ -585,7 +587,7 @@ function themesStrip() {
     ['Blueprint', '#081a2e', '#8fc4ef'],
     ['Contrast', '#000000', '#ffffff'],
   ];
-  const CYCLE = 9;
+  const CYCLE = 11;
   const SWW = 20, SWH = 13, gap = 2;
   const COLS = THEMES.length * (SWW + gap) + 6;
   const ROWS = 26;
@@ -611,8 +613,8 @@ function themesStrip() {
     g += `<g opacity="0"><text x="${(x + SWW / 2) * PX}" y="${(y + SWH + 4) * PX}" fill="${C.text}" font-size="11" text-anchor="middle" font-family="${MONO}">${esc(name)}</text>${visible(t0, t1, CYCLE)}</g>`;
   });
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" shape-rendering="crispEdges" aria-label="Nine CloseNI themes, each shown as a miniature of the interface, cycling one at a time">
-<title>Nine themes</title>
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" shape-rendering="crispEdges" aria-label="Eleven CloseNI themes, each shown as a miniature of the interface, cycling one at a time">
+<title>Eleven themes</title>
 <rect width="${W}" height="${H}" fill="${C.bg}"/>
 <g font-family="${MONO}">
   <text x="${3 * PX}" y="${4 * PX}" fill="${C.dim}" font-size="10.5" letter-spacing="2.2">APPEARANCE</text>
@@ -785,6 +787,8 @@ const RAMPS = {
   blue: ['#eef6ff', '#c5e1ff', '#9fcdff', '#79c0ff', '#58a6ff', '#3b82d6', '#2a64ad'],
   violet: ['#f6efff', '#e0cbff', '#cfaeff', '#bc8cff', '#a371f7', '#8957e5', '#6e40c9'],
   amber: ['#fff6dd', '#ffe6a6', '#f4cf6e', '#e3b341', '#d29922', '#b07d12', '#8a6008'],
+  // The hero title: white fading to grey, top row to bottom.
+  mono: ['#ffffff', '#ececec', '#d6d6d6', '#bdbdbd', '#a3a3a3', '#8a8a8a', '#717171'],
 };
 
 // ------------------------------------------------------------------ hero ----
@@ -816,7 +820,8 @@ function hero() {
   // per letter and row so each row can take its own colour from the ramp.
   let shape = '';
   let letters = '';
-  const swaps = [[0, 'green'], [4.9, 'blue'], [7.4, 'violet'], [9.9, 'amber'], [12.4, 'green']];
+  // Monochrome: the title keeps its boot, shine and glitch, but no hue.
+  const swaps = [[0, 'mono']];
   [...word].forEach((ch, i) => {
     const lx = X0 + i * (LW + GAP);
     let rows = '';
@@ -827,24 +832,24 @@ function hero() {
         rects += rect;
         shape += rect;
       }
-      rows += `<g fill="${RAMPS.green[r]}">${track('fill', CYCLE, swaps.map(([t, k]) => [t, RAMPS[k][r]]))}${rects}</g>`;
+      rows += `<g fill="${RAMPS.mono[r]}">${rects}</g>`;
     });
     const t = 0.3 + i * 0.17;
     letters += `<g opacity="0">${rows}${shown([[t, t + 0.05], [t + 0.1, CYCLE - 0.25]], CYCLE)}</g>`;
   });
   const boot = 0.3 + word.length * 0.17 + 0.1;
 
-  // Glitch: red and cyan copies knocked sideways, plus torn scan bars.
+  // Glitch: light and dark copies knocked sideways, plus torn scan bars.
   const glitchAt = [4.9, 7.4, 9.9, 12.4];
   const gw = glitchAt.flatMap((t) => [[t - 0.08, t], [t + 0.04, t + 0.12]]);
   const glitch =
-    `<use href="#logo" x="${-2 * PX}" fill="#ff7b72" opacity="0">${shown(gw, CYCLE)}</use>` +
-    `<use href="#logo" x="${2 * PX}" y="${PX}" fill="#39d0d8" opacity="0">${shown(gw, CYCLE)}</use>`;
+    `<use href="#logo" x="${-2 * PX}" fill="#f5f5f5" opacity="0">${shown(gw, CYCLE)}</use>` +
+    `<use href="#logo" x="${2 * PX}" y="${PX}" fill="#5c5c5c" opacity="0">${shown(gw, CYCLE)}</use>`;
   let tears = '';
   for (let k = 0; k < 7; k++) {
     const ty = Y0 + Math.floor(rand() * LOGO_H), tx = X0 - 6 + Math.floor(rand() * (LOGO_W - 10));
     const tw = 8 + Math.floor(rand() * 40);
-    tears += `<rect x="${tx * PX}" y="${ty * PX}" width="${tw * PX}" height="${PX}" fill="${[C.white, C.bg, '#39d0d8', '#ff7b72'][k % 4]}" opacity="0">${shown(gw, CYCLE)}</rect>`;
+    tears += `<rect x="${tx * PX}" y="${ty * PX}" width="${tw * PX}" height="${PX}" fill="${[C.white, C.bg, '#9a9a9a', '#dcdcdc'][k % 4]}" opacity="0">${shown(gw, CYCLE)}</rect>`;
   }
 
   // Shine: a stepped diagonal band swept across the letters, clipped to them.
@@ -864,7 +869,7 @@ function hero() {
   typeKeys.push([CYCLE - 0.25, (sub.length * CW).toFixed(2)]);
   const typeClip = `<clipPath id="typed"><rect x="${SX}" y="${SY - 16}" height="22" width="0">${track('width', CYCLE, [[0, '0'], ...typeKeys, [CYCLE - 0.2, '0']])}</rect></clipPath>`;
   const caretX = typeKeys.map(([t, w]) => [t, (SX + Number(w)).toFixed(2)]);
-  const caret = `<rect y="${SY - 13}" width="9" height="15" fill="${C.green}" x="${SX}" opacity="0">${track('x', CYCLE, caretX)}` +
+  const caret = `<rect y="${SY - 13}" width="9" height="15" fill="#e4e4e4" x="${SX}" opacity="0">${track('x', CYCLE, caretX)}` +
     `${shown([[boot + 0.2, CYCLE - 0.25]], CYCLE)}</rect>`;
   const tagline = `<g opacity="0"><text x="${W / 2}" y="${50 * PX}" fill="${C.dim}" font-size="13" text-anchor="middle" letter-spacing="1.1">no API keys · no billing · the session you are already signed into</text>${shown([[boot + 2.0, CYCLE - 0.25]], CYCLE)}</g>`;
 
@@ -1013,7 +1018,7 @@ function architecture() {
   // Boxes.
   const [dx, dy, dw, dh] = B.desk;
   g += panel(dx, dy, dw, dh, 'DESKTOP', C.blue, 'Electron');
-  g += lines(dx, dy, [['renderer.js', 'panels, diffs'], ['builder.js', 'runs the steps'], ['scheduler.js', 'dependency graph'], ['main.js', 'IPC, git, keystore'], ['theme.js', 'nine themes'], ['github-safe.js', 'token redaction']], C.blue);
+  g += lines(dx, dy, [['renderer.js', 'panels, diffs'], ['builder.js', 'runs the steps'], ['scheduler.js', 'dependency graph'], ['main.js', 'IPC, git, keystore'], ['theme.js', 'eleven themes'], ['github-safe.js', 'token redaction']], C.blue);
 
   const [ux, uy, uw, uh] = B.you;
   g += panel(ux, uy, uw, uh, 'YOU', C.white);
@@ -1352,7 +1357,7 @@ function stats() {
     [180, 'END-TO-END', 'real Chromium', C.blue],
     [204, 'BROWSER CHECKS', 'npm run test:web', C.violet],
     [12, 'LANGUAGES', 'syntax + compile', C.amber],
-    [9, 'THEMES', 'one palette each', C.blue],
+    [11, 'THEMES', 'one palette each', C.blue],
     [0, 'API KEYS', 'none, ever', C.red],
   ];
   const TW = 30, TG = 3, TH = 20, TY = 3;
@@ -1377,7 +1382,7 @@ function stats() {
     fill.push([CYCLE - 0.3, '0']);
     g += `<rect x="${(x + 1) * PX}" y="${(TY + TH - 2) * PX}" height="${PX}" width="0" fill="${col}">${track('width', CYCLE, fill)}</rect>`;
   });
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" shape-rendering="crispEdges" aria-label="1432 unit tests, 180 end-to-end tests, 204 browser checks, twelve languages, nine themes, zero API keys">
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" shape-rendering="crispEdges" aria-label="1432 unit tests, 180 end-to-end tests, 204 browser checks, twelve languages, eleven themes, zero API keys">
 <title>By the numbers</title>
 <rect width="${W}" height="${H}" fill="${C.bg}"/>
 <g font-family="${MONO}">${g}</g>

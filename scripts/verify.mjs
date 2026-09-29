@@ -66,9 +66,9 @@ const readme = read('README.md');
 const site = read('docs/index.html');
 
 check('check-planner emits 12 language tags', langs.size === 12, `${langs.size}: ${[...langs].sort().join(' ')}`);
-check('theme.js registers 9 themes', themeCount === 9, String(themeCount));
+check('theme.js registers 11 themes', themeCount === 11, String(themeCount));
 check('README says twelve languages', /twelve languages/i.test(readme));
-check('README says nine themes', /[Nn]ine (built-in )?themes/.test(readme));
+check('README says eleven themes', /[Ee]leven (built-in )?themes/.test(readme));
 check('site counter says 12 languages',
   /data-count="12">[^<]*<\/span>\s*<span class="l">languages/.test(site));
 check('README does not still claim nine languages', !/nine languages/i.test(readme));

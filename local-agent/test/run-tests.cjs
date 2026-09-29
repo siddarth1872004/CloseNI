@@ -452,8 +452,10 @@ function testTheme() {
   section("theme resolution");
   const { THEMES, resolveTheme, DEFAULT_THEME } = require(path.join(__dirname, "..", "..", "desktop", "theme.js"));
 
-  check("nine themes are offered", THEMES.length === 9, String(THEMES.length));
-  check("midnight is the default", DEFAULT_THEME === "midnight");
+  check("eleven themes are offered", THEMES.length === 11, String(THEMES.length));
+  check("terminal is the default", DEFAULT_THEME === "terminal");
+  check("terminal is in the list", THEMES.some(function (t) { return t.id === "terminal"; }));
+  check("pixel is in the list", THEMES.some(function (t) { return t.id === "pixel"; }));
   check("midnight is in the list", THEMES.some(function (t) { return t.id === "midnight"; }));
   check("every theme has an id and a name", THEMES.every(function (t) { return t.id && t.name; }));
   check("ids are unique",
@@ -461,17 +463,85 @@ function testTheme() {
   // Only the themes carrying a texture are marked, so the Appearance toggle
   // knows when it is worth showing. Task 3's test proves this agrees with the
   // CSS; this one just pins the count.
-  check("five themes carry decoration",
-    THEMES.filter(function (t) { return t.decor; }).length === 5,
+  check("six themes carry decoration",
+    THEMES.filter(function (t) { return t.decor; }).length === 6,
     THEMES.filter(function (t) { return t.decor; }).map(function (t) { return t.id; }).join());
 
   check("a saved theme is honoured", resolveTheme("paper") === "paper");
-  check("nothing saved yields the default", resolveTheme(null) === "midnight");
-  check("an empty string yields the default", resolveTheme("") === "midnight");
+  check("midnight can still be chosen", resolveTheme("midnight") === "midnight");
+  check("pixel can still be chosen", resolveTheme("pixel") === "pixel");
+  check("nothing saved yields the default", resolveTheme(null) === "terminal");
+  check("an empty string yields the default", resolveTheme("") === "terminal");
   // A theme removed in a later version must not leave the app unstyled - every
   // token would go unresolved, which renders as black text on white.
-  check("an unknown theme falls back", resolveTheme("vaporwave-deluxe") === "midnight");
-  check("a non-string falls back", resolveTheme({ id: "paper" }) === "midnight");
+  check("an unknown theme falls back", resolveTheme("vaporwave-deluxe") === "terminal");
+  check("a non-string falls back", resolveTheme({ id: "paper" }) === "terminal");
+}
+
+function testFlow() {
+  section("project flow");
+  const F = require(path.join(__dirname, "..", "..", "desktop", "flow.js"));
+  const by = function (list) { const o = {}; list.forEach(function (s) { o[s.id] = s.status; }); return o; };
+
+  let s = by(F.stages({}));
+  check("five stages in order", F.stages({}).map(function (x) { return x.id; }).join() === "describe,plan,build,test,ship");
+  check("a fresh project's next step is to describe it", s.describe === "next" && s.plan === "todo");
+  check("only one stage is next", F.stages({}).filter(function (x) { return x.status === "next"; }).length === 1);
+
+  s = by(F.stages({ messages: 2 }));
+  check("a message is a description", s.describe === "done" && s.plan === "next");
+  s = by(F.stages({ plan: true }));
+  check("a plan implies a description", s.describe === "done" && s.plan === "done" && s.build === "next");
+
+  s = by(F.stages({ messages: 1, plan: true, stepsTotal: 5, stepsDone: 2, building: true }));
+  check("a running build is active, and nothing after it is next", s.build === "active" && s.test === "todo");
+  s = by(F.stages({ messages: 1, plan: true, stepsTotal: 5, stepsDone: 2, stepsFailed: 1 }));
+  check("a stopped build with a failure says so", s.build === "failed" && s.test === "todo");
+  s = by(F.stages({ messages: 1, plan: true, stepsTotal: 5, stepsDone: 5 }));
+  check("every step finished is built", s.build === "done" && s.test === "next");
+  s = by(F.stages({ messages: 1, plan: true, stepsTotal: 0, stepsDone: 0 }));
+  check("a plan with no steps is not built", s.build === "next");
+
+  s = by(F.stages({ messages: 1, plan: true, stepsTotal: 3, stepsDone: 3, tested: true, shipped: true }));
+  check("everything done", s.describe === "done" && s.ship === "done");
+  check("nothing next when everything is done", F.nextStage(F.stages({ messages: 1, plan: true, stepsTotal: 3, stepsDone: 3, tested: true, shipped: true })) === null);
+
+  s = by(F.stages({ shipped: true, tested: true }));
+  check("a push with nothing built is not a shipped project", s.ship === "todo" && s.test === "todo" && s.describe === "next");
+  check("garbage counts are ignored", by(F.stages({ plan: true, stepsTotal: "7", stepsDone: -1 })).build === "next");
+  check("each stage knows its tab", F.STAGES.every(function (x) { return ["chat", "build", "test", "push"].indexOf(x.mode) !== -1; }));
+  check("the next stage says what to do", /plan/i.test(F.nextStage(F.stages({ messages: 1 })).next));
+}
+
+function testCodeView() {
+  section("code panel vocabulary");
+  const V = require(path.join(__dirname, "..", "..", "desktop", "code-view.js"));
+  check("a slash command parses with its argument", JSON.stringify(V.parseSlash("/mode plan")) === JSON.stringify({ cmd: "/mode", arg: "plan", known: true }));
+  check("aliases resolve", V.parseSlash("/undo").cmd === "/rewind" && V.parseSlash("/reset").cmd === "/clear");
+  check("ordinary text is not a command", V.parseSlash("fix the /api route") === null && V.parseSlash("/usr/bin/env python") === null);
+  check("an unknown command is flagged", V.parseSlash("/frob").known === false);
+  check("the popup filters by prefix", V.matchCommands("/pl").map(function (c) { return c.name; }).join() === "/plan");
+  check("mode words are forgiving", V.modeFromWord("accept") === "acceptEdits" && V.modeFromWord("YOLO") === "auto" && V.modeFromWord("x") === null);
+  check("shift+tab never cycles into auto", V.nextMode("default") === "acceptEdits" && V.nextMode("acceptEdits") === "plan" && V.nextMode("plan") === "default" && V.nextMode("auto") === "default");
+  check("each mode has a label", /accept edits on/.test(V.modeLabel("acceptEdits").text) && /plan mode on/.test(V.modeLabel("plan").text) && V.modeLabel("default").text === "? for shortcuts");
+  check("tools are titled like a terminal agent's", V.toolTitle({ name: "read", input: { path: "a.py" } }).verb === "Read" && V.toolTitle({ name: "edit", input: {} }).verb === "Update" && V.toolTitle({ name: "bash", input: { command: "npm test" } }).arg === "npm test");
+  check("a search title names its pattern", /pattern: "TODO"/.test(V.toolTitle({ name: "grep", input: { pattern: "TODO" } }).arg));
+  check("summaries: read", V.toolSummary({ name: "read", status: "done", detail: { lines: 1 } }) === "Read 1 line");
+  check("summaries: edit counts changes", V.toolSummary({ name: "edit", status: "done", detail: { path: "a.py", before: "a\nb\n", after: "a\nc\nd\n" } }) === "Updated a.py with 2 additions and 1 removal");
+  check("summaries: write", V.toolSummary({ name: "write", status: "done", detail: { path: "n.py", created: true, after: "x\ny\n" } }) === "Wrote 2 lines to n.py");
+  const long = V.toolSummary({ name: "bash", status: "done", detail: { output: "1\n2\n3\n4\n5" } });
+  check("summaries: long command output is folded", /^1\n2\n3\n.*\+2 lines/.test(long), long);
+  check("summaries: declined and errors", V.toolSummary({ status: "denied", summary: "declined by the user" }) === "User declined" && /^Error: nope/.test(V.toolSummary({ status: "error", output: "Error: nope" })));
+  check("tones", V.toolTone("done") === "ok" && V.toolTone("denied") === "err" && V.toolTone("waiting") === "wait");
+  check("an edit can be allowed for the session", V.permissionOptions({ tool: "edit" }).map(function (o) { return o.key; }).join() === "allow,always,deny");
+  check("a command names what it would remember", /npm test commands/.test(V.permissionOptions({ tool: "bash", rememberAs: "npm test" })[1].label));
+  check("an always-ask command cannot be remembered", V.permissionOptions({ tool: "bash", alwaysAsk: true, rememberAs: "rm" }).length === 2);
+  check("the @ under the caret is found", JSON.stringify(V.mentionAt("see @src/ap", 11)) === JSON.stringify({ query: "src/ap", start: 4 }) && V.mentionAt("me@x.com", 8) === null);
+  const done = V.completeMention("see @src/ap now", 11, "src/app.py");
+  check("completing a mention replaces the word", done.text === "see @src/app.py  now" && done.caret === 16, JSON.stringify(done));
+  check("file ranking prefers a basename match", V.rankFiles(["lib/zapp.js", "src/app.py", "docs/apple.md"], "app", 3)[0] === "src/app.py");
+  check("elapsed reads naturally", V.elapsed(4200) === "4s" && V.elapsed(75000) === "1m 15s");
+  check("the help lists every command", V.COMMANDS.every(function (c) { return V.HELP.indexOf(c.name) !== -1; }));
 }
 
 function testLogo() {
@@ -4028,11 +4098,15 @@ function testUnittestFallback() {
   await testSkillsWiring();
   testRecentWorkspaces();
   testOnboarding();
+  testFlow();
+  testCodeView();
   // The browser-native layer's pure logic (src/web). Its browser suite is
   // run-web.cjs, which needs Chromium and is run separately.
   await require("./web-unit.cjs").run(check, section);
   // The optional structured-extraction backend (src/extract).
   await require("./extract-unit.cjs").run(check, section);
+  // The coding agent (src/agent): protocol, tools, permissions and the loop.
+  await require("./agent-unit.cjs").run(check, section);
 
   console.log("\n" + (fail === 0 ? "PASS" : "FAIL") + " — " + pass + " passed, " + fail + " failed");
   process.exit(fail === 0 ? 0 : 1);

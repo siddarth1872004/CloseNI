@@ -24,6 +24,81 @@ installed by anyone — treat it as unproven. GitHub sign-in, push, clone and
 Actions are unit-tested with an injected transport and have never made a live
 request. Qwen Studio and GLM ship gated.
 
+### A coding agent, first
+
+- **The Code panel is the new default: a coding agent.** You ask in plain words.
+  It reads and searches the project, edits files, runs commands and checks its
+  own work, turn by turn, until it has an answer. No plan is required. The
+  planned build (plan, then build step by step) is still here as a separate
+  mode: `/build`, or the Plan and Build panels.
+- **Tool calls over a chat site.** A web chat has no function-calling API, so
+  the agent's first message teaches a convention. The model replies with fenced
+  blocks naming a tool, the agent runs them and sends the results back, and a
+  reply with no tool blocks is the answer. Write and edit carry their payload
+  raw after `---`, and edits use SEARCH/REPLACE sections
+  (`local-agent/src/agent/protocol.ts`).
+- **Tools:** read, write, edit, bash, glob, grep, ls and todo. Every path is
+  confined to the project, symlinks included, and `.git` is never written.
+  Edits need one exact match, tolerating the trailing whitespace a page drops.
+  Outputs are capped.
+- **Modes and permissions.** Default asks before edits and commands. Accept
+  edits asks only before commands. Plan is read-only and ends with a plan you
+  approve. Auto runs everything. The existing safety list (sudo, package
+  managers, `rm -rf`, `curl | sh`...) always asks, in every mode. "Yes, and
+  don't ask again" remembers edits, or a command prefix such as `npm test`,
+  for the session.
+- **In the panel:**
+  - a transcript of tool lines, with results and diffs under them;
+  - permission prompts answered with 1/2/3 or esc, and "No" can say what to do
+    instead;
+  - a spinner with elapsed time, and esc to stop;
+  - queued messages, and slash commands (`/help`, `/clear`, `/plan`, `/mode`,
+    `/rewind`, `/init`, `/memory`, `/build`, `/model`, `/theme`, `/stop`);
+  - `@file` attachments with completion, shift+tab to change mode, and history
+    on up and down;
+  - a todo list above the input.
+- **Memory and rewind.** `CLOSENI.md` (or `AGENTS.md` / `CLAUDE.md`) is read at
+  the start of each conversation, and `/init` writes one. `/rewind` restores
+  every file the last turn changed and tells the model it happened.
+- **Terminal** is the new default theme: monospace, near-black and
+  monochrome, with colour only where it carries meaning (diffs, results). Eleven themes in all. A theme someone already chose is kept.
+- **One long-lived session per project** (`agent-session`). It yields the
+  browser to anything else that needs it, and reopens the same conversation on
+  the next message. `npm run agent -- "<request>" <folder> <provider> [mode]`
+  runs one request from a terminal.
+- **Tests:** 100 unit checks of the agent (a scripted model), 24 of the panel's
+  vocabulary, 14 end-to-end checks through a real browser against the mock
+  chat, and `npm run test:ui`, 46 checks driving the panel in Chromium.
+- **Not verified live.** No real provider has run the agent. The first thing to
+  measure on a signed-in machine is whether DeepSeek keeps to the tool-block
+  convention across a long session.
+
+### Pixel theme and a flow overhaul
+
+- **Pixel**, briefly the default and now one of eleven themes, is the README's look in the app. It has
+  GitHub-dark surfaces and a stepped green gradient for the wordmark, with a
+  blinking block cursor and a one-time boot sweep. The top bar has
+  window-chrome squares. Blocks are square, with hard offset shadows, and cards
+  carry the stat tiles' coloured top edge. The build bar fills in chunks. A
+  sparse starfield twinkles behind the panels.
+- The other nine themes are unchanged and still selectable. A theme someone
+  already chose is kept.
+- **Ambient motion is new, and limited to Pixel.** It was rejected for the app
+  before. Here the theme is the request, so the motion is slow and stepped. The
+  Appearance decoration toggle stops it, and so does the OS "reduce motion"
+  setting. Pixel's worst contrast is 5.07:1 (`verify:visual`).
+- **A flow bar** across the top shows Describe, Plan, Build, Test, Ship. Each
+  stage comes from real state: the conversation, the plan, step statuses, a run
+  and a successful push. A failed build reads as failed, and a later stage
+  cannot tick while an earlier one has not. The next stage is outlined, and
+  clicking a stage opens its panel (`desktop/flow.js`, unit-tested).
+- **The logs became a Console drawer.** They had taken the bottom third of every
+  panel, empty or not. Closed, the drawer counts new lines. It opens itself when
+  a build starts or an error is logged, and remembers being opened or closed.
+- **The rail is three cards**, Provider, Project and Conversation, instead of
+  one column of controls. It scrolls on short windows.
+- Screenshots regenerated. The main panels are shown in Pixel.
+
 ### Optional local extraction with Needle (off by default)
 
 - **Settings → Extraction** can add a second reader after the built-in parser:

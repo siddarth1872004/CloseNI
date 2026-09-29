@@ -239,6 +239,89 @@ async function main() {
     }
   }
 
+  // ------------------------------------------------------------ coding agent
+  // The Code panel's session, driven the way main.js drives it: JSON lines in,
+  // AGENT_EVENT lines out, through a real browser against the mock chat. The
+  // mock renders code blocks with no language label, which is the harder case
+  // for the tool-call parser.
+  section("coding agent — a session through the browser");
+  {
+    const ws = mkWorkspace();
+    fs.writeFileSync(path.join(ws, "calc.py"), "def add(a, b):\n    return a - b\n");
+    mock.setReplies([
+      "Let me read it.\n\n" + F + "\n{\"tool\": \"read\", \"path\": \"calc.py\"}\n" + F,
+      F + "\n{\"tool\": \"edit\", \"path\": \"calc.py\"}\n---\n<<<<<<< SEARCH\n    return a - b\n=======\n    return a + b\n>>>>>>> REPLACE\n" + F,
+      "Fixed: add() now adds.",
+    ]);
+    const proc = spawn(process.execPath, [AGENT, "agent-session", ws, "mock", "default"], {
+      cwd: path.join(__dirname, "..", ".."),
+      env: { ...process.env, AGENT_PROVIDER_DIR: PROVIDER_DIR },
+    });
+    const events = [];
+    let buf = "";
+    const waiters = [];
+    proc.stdout.on("data", (d) => {
+      buf += d.toString();
+      let i;
+      while ((i = buf.indexOf("\n")) !== -1) {
+        const line = buf.slice(0, i); buf = buf.slice(i + 1);
+        const m = line.match(/^AGENT_EVENT: (.*)$/);
+        if (!m) continue;
+        const ev = JSON.parse(m[1]);
+        events.push(ev);
+        waiters.slice().forEach((w) => { if (w.test(ev)) { waiters.splice(waiters.indexOf(w), 1); w.resolve(ev); } });
+      }
+    });
+    const waitFor = (test, ms) => new Promise((resolve) => {
+      const hit = events.find(test);
+      if (hit) return resolve(hit);
+      const w = { test: test, resolve: resolve };
+      waiters.push(w);
+      setTimeout(() => { const k = waiters.indexOf(w); if (k !== -1) { waiters.splice(k, 1); resolve(null); } }, ms || 90000);
+    });
+    const send = (o) => proc.stdin.write(JSON.stringify(o) + "\n");
+
+    const ready = await waitFor((e) => e.type === "ready");
+    check("the session comes up", !!ready && ready.mode === "default", JSON.stringify(events.slice(-3)));
+    send({ type: "user", text: "fix the bug in calc.py" });
+    const perm = await waitFor((e) => e.type === "permission");
+    check("the edit asks, with a diff preview", !!perm && perm.tool === "edit" && /return a \+ b/.test(perm.preview.after), JSON.stringify(perm));
+    check("the read did not ask", events.filter((e) => e.type === "permission").length === 1 &&
+      events.some((e) => e.type === "tool" && e.name === "read" && e.status === "done"));
+    if (perm) send({ type: "permission", id: perm.id, decision: "allow" });
+    const done = await waitFor((e) => e.type === "done");
+    check("the turn completes with the model's answer", !!done && done.reason === "complete" &&
+      events.some((e) => e.type === "assistant" && /add\(\) now adds/.test(e.text)), JSON.stringify(done));
+    check("the file is fixed on disk", /return a \+ b/.test(fs.readFileSync(path.join(ws, "calc.py"), "utf-8")));
+    const sent = mock.prompts();
+    check("the first message taught the tool format", sent.length === 3 && /```tool/.test(sent[0]) && /fix the bug/.test(sent[0]));
+    check("tool results went back as messages", /Tool results \(1\)/.test(sent[1]) && /return a - b/.test(sent[1]));
+
+    send({ type: "rewind" });
+    const rw = await waitFor((e) => e.type === "rewound");
+    check("rewind puts the file back", !!rw && rw.files.join() === "calc.py" && /return a - b/.test(fs.readFileSync(path.join(ws, "calc.py"), "utf-8")));
+
+    send({ type: "close" });
+    const closed = await waitFor((e) => e.type === "closed", 30000);
+    check("the session closes cleanly", !!closed);
+    try { proc.kill(); } catch (e) {}
+    fs.rmSync(ws, { recursive: true, force: true });
+  }
+
+  section("coding agent — one request from the command line, in auto mode");
+  {
+    const ws = mkWorkspace();
+    mock.setReplies([
+      F + "\n{\"tool\": \"write\", \"path\": \"hello.py\"}\n---\nprint(\"hello\")\n" + F + "\n\n" + F + "\n{\"tool\": \"bash\", \"command\": \"node -e \\\"console.log(42)\\\"\"}\n" + F,
+      "Created hello.py.",
+    ]);
+    const { result } = await runAgent(["agent", "make a hello script", ws, "mock", "auto"]);
+    check("the request completes", !!result && result.success === true && result.answer === "Created hello.py.", JSON.stringify(result));
+    check("the file was written", fs.existsSync(path.join(ws, "hello.py")) && /print\("hello"\)/.test(fs.readFileSync(path.join(ws, "hello.py"), "utf-8")));
+    check("the command's output reached the model", /42/.test(mock.prompts()[1] || ""), (mock.prompts()[1] || "").slice(0, 400));
+    fs.rmSync(ws, { recursive: true, force: true });
+  }
+
   // --------------------------------------------------------------- build mode
   section("build mode — writes files to the workspace");
   {

@@ -35,6 +35,8 @@ import { cleanError } from "./clean-error.js";
 import { rescueUnparsedPlan, explainUnparsed } from "./extract/fallback.js";
 import { closeExtractor, readExtractionSettings } from "./extract/extractor.js";
 import { NeedleClient } from "./extract/needle-client.js";
+import { AgentLoop, loadMemory, PermissionAnswer } from "./agent/loop.js";
+import { MODES, Mode } from "./agent/protocol.js";
 import { rescuePlan } from "./extract/plan-rescue.js";
 
 // Every extension the check planner knows about. A file the walker misses is a
@@ -1795,6 +1797,126 @@ async function rescuePlanMode(file: string) {
   } finally { await client.close(); }
 }
 
+/**
+ * The coding agent, as a long-lived session.
+ *
+ * One process holds the provider and the loop for as long as the Code panel
+ * is open. Messages, permission answers, mode changes, interrupts, rewinds and
+ * clears arrive on stdin as JSON lines; everything that happens goes out as
+ * AGENT_EVENT lines. The thread is resumed where it was, so closing the app
+ * does not lose the conversation - /clear is how to start over.
+ */
+function agentEvent(ev: any) {
+  console.log("AGENT_EVENT: " + JSON.stringify(ev));
+}
+
+function modeOf(m: string | undefined): Mode {
+  return MODES.indexOf(m as Mode) !== -1 ? (m as Mode) : "default";
+}
+
+async function agentSessionMode(workspace: string, providerId: string, mode: string) {
+  const { session, config } = await openChatSession(providerId, workspace);
+  const pending = new Map<string, (a: PermissionAnswer) => void>();
+  const loop = new AgentLoop({
+    session: session,
+    workspace: workspace,
+    mode: modeOf(mode),
+    emit: agentEvent,
+    // The persona, skills and MCP context chosen in Settings, as every other
+    // mode applies them.
+    wrapFirst: withPreamble,
+    askPermission: (req) => new Promise<PermissionAnswer>((resolve) => {
+      pending.set(req.id, resolve);
+      agentEvent(Object.assign({ type: "permission" }, req));
+    }),
+  });
+  const denyPending = () => {
+    for (const [, resolve] of pending) resolve({ decision: "deny" });
+    pending.clear();
+  };
+  const mem = loadMemory(workspace);
+  agentEvent({ type: "ready", provider: config.name, workspace: workspace, mode: loop.mode, memory: mem ? mem.file : null });
+
+  await new Promise<void>((resolve) => {
+    let closing = false;
+    const close = () => {
+      if (closing) return;
+      closing = true;
+      loop.interrupt();
+      denyPending();
+      // Let the reply in flight finish rather than kill the browser under it.
+      const wait = () => { if (!loop.busy) resolve(); else setTimeout(wait, 200); };
+      wait();
+    };
+    sessionLineHandler = (line: string): boolean => {
+      let msg: any;
+      try { msg = JSON.parse(line); } catch { return false; }
+      if (!msg || typeof msg !== "object" || typeof msg.type !== "string") return false;
+      if (closing) return true;
+      switch (msg.type) {
+        case "user":
+          if (loop.busy) agentEvent({ type: "error", message: "Still working on the last message - wait, or press Esc to stop it." });
+          else void loop.turn(String(msg.text || ""));
+          break;
+        case "permission": {
+          const r = pending.get(msg.id);
+          if (r) { pending.delete(msg.id); r({ decision: msg.decision === "always" || msg.decision === "allow" ? msg.decision : "deny", feedback: msg.feedback || undefined }); }
+          break;
+        }
+        case "mode": loop.setMode(modeOf(msg.mode)); break;
+        case "interrupt": loop.interrupt(); denyPending(); agentEvent({ type: "interrupting" }); break;
+        case "rewind":
+          if (loop.busy) agentEvent({ type: "error", message: "Wait for the current turn to finish before rewinding." });
+          else loop.rewind();
+          break;
+        case "clear":
+          if (loop.busy) agentEvent({ type: "error", message: "Wait for the current turn to finish before clearing." });
+          else void loop.clear().catch((e: any) => agentEvent({ type: "error", message: String(e && e.message ? e.message : e) }));
+          break;
+        case "close": close(); break;
+        default: return false;
+      }
+      return true;
+    };
+    rl.on("close", close);
+  });
+  sessionLineHandler = null;
+  await session.close();
+  agentEvent({ type: "closed" });
+}
+
+/**
+ * One request from a terminal: run it to its answer and exit.
+ *
+ *   node local-agent/dist/index.js agent "fix the failing test" ./project deepseek [mode]
+ *
+ * Permission questions are asked on stdin: y to allow, a to allow for the
+ * rest of the run, anything else to decline.
+ */
+async function agentOnceMode(prompt: string, workspace: string, providerId: string, mode: string) {
+  const { session } = await openChatSession(providerId, workspace);
+  let final = "";
+  let result: any = null;
+  const loop = new AgentLoop({
+    session: session,
+    workspace: workspace,
+    mode: modeOf(mode),
+    emit: (ev: any) => {
+      if (ev.type === "assistant") { final = ev.text; console.log("\n\u23fa " + ev.text.split("\n").join("\n  ")); }
+      else if (ev.type === "tool" && ev.status !== "running" && ev.status !== "waiting") console.log("\u23fa " + ev.title + "\n  \u23bf  " + (ev.summary || ev.status));
+      else if (ev.type === "done") result = ev;
+    },
+    askPermission: async (req) => {
+      console.log("\n? " + req.title + (req.preview && req.preview.command ? "\n    " + req.preview.command : "") + "\n  allow? [y]es / [a]lways / [n]o");
+      const answer = (await readLine()).trim().toLowerCase();
+      return { decision: answer === "a" || answer === "always" ? "always" : answer === "y" || answer === "yes" ? "allow" : "deny" };
+    },
+  });
+  try { await loop.turn(prompt); }
+  finally { await session.close(); }
+  emit({ success: !!result && result.reason === "complete", reason: result && result.reason, answer: final, error: result && result.error });
+}
+
 function resolveArg(arg: string | undefined): string {
   if (!arg) return "";
   if (!SPILL_FILE.test(arg)) return arg;
@@ -1853,6 +1975,10 @@ async function main() {
     else if (mode === "authcheck") await authCheckMode(args[1] || "deepseek", args[2] || "");
     else if (mode === "suggest") await suggestMode(args[1] || path.resolve(process.cwd()), args[2] || "deepseek", args[3] ? parseInt(args[3]) : 0, resolveArg(args[4]));
     // Positional layout: warm (optional) - also fetches the engine and weights.
+    // Positional layout: workspace, provider, mode (default|acceptEdits|plan|auto).
+    else if (mode === "agent-session") await agentSessionMode(args[1] || path.resolve(process.cwd()), args[2] || "deepseek", args[3] || "default");
+    // Positional layout like chat: prompt, workspace, provider, then mode.
+    else if (mode === "agent") await agentOnceMode(prompt, workspace, providerId, args[4] || "default");
     else if (mode === "extractor-check") await extractorCheckMode(args[1] === "warm");
     // Positional layout: a file holding a saved reply.
     else if (mode === "rescue-plan") await rescuePlanMode(args[1] || "");
