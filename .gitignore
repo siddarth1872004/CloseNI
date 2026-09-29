@@ -9,11 +9,8 @@ out/
 .DS_Store
 Thumbs.db
 local-agent/storage/runs/*
-!local-agent/storage/runs/.gitkeep
 local-agent/storage/backups/*
-!local-agent/storage/backups/.gitkeep
 local-agent/storage/browser-profiles/*
-!local-agent/storage/browser-profiles/.gitkeep
 
 # Per-machine state, not source: these hold chat thread URLs.
 local-agent/storage/sessions.json
