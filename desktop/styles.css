@@ -672,3 +672,6 @@ input:focus,textarea:focus,select:focus{transition:border-color .06s steps(1);}
 .recent-state{color:var(--mut);font-size:10px;white-space:nowrap;}
 .recent-forget{background:none;border:none;color:var(--mut);cursor:pointer;font-size:10px;padding:0 2px;line-height:1;}
 .recent-forget:hover{color:var(--txt);}
+
+/* Extraction settings: the three fields read as one column, like the selects. */
+#extract-needle input{width:100%;box-sizing:border-box;}

@@ -658,7 +658,11 @@ function testBuildConfig() {
   const agentGlobs = files.filter(function (f) { return String(f).indexOf("local-agent") === 0; });
   check("only the agent's dist and config are included",
     agentGlobs.length > 0 && agentGlobs.every(function (f) {
-      return f.indexOf("local-agent/dist") === 0 || f.indexOf("local-agent/config") === 0;
+      // The Needle bridge is named file by file, never as a glob: it sits in a
+      // directory nothing else is kept in, and must stay the only thing shipped
+      // from it.
+      return f.indexOf("local-agent/dist") === 0 || f.indexOf("local-agent/config") === 0 ||
+        f === "local-agent/python/needle_bridge.py";
     }), agentGlobs.join(" "));
   ["local-agent/storage", ".superpowers", "docs", "samples", "app", "instance", "vscode-extension"]
     .forEach(function (dir) {
@@ -2860,6 +2864,21 @@ function testSmokeReport() {
   const unsent = S.judgeSmoke({ sent: false });
   check("a prompt that never sent is critical", find(unsent, "send").health === "critical");
   check("and the report fails", unsent.ok === false);
+  {
+    const { cleanError } = require(path.join(DIST, "clean-error.js"));
+    const raw = 'page.goto: net::ERR_TUNNEL_CONNECTION_FAILED at https://chat.deepseek.com/\nCall log:\n\u001b[2m  - navigating to "https://chat.deepseek.com/", waiting until "domcontentloaded"\u001b[22m\n';
+    check("an error shown to a person loses the call log and colour codes", cleanError(raw) === "page.goto: net::ERR_TUNNEL_CONNECTION_FAILED at https://chat.deepseek.com/", JSON.stringify(cleanError(raw)));
+    check("a plain multi-line error is kept whole", cleanError("line one\nline two") === "line one\nline two");
+    check("a missing error is an empty string, not 'undefined'", cleanError(undefined) === "");
+  }
+  check("nothing after an unsent prompt is judged - it is 'not run', not a selector failure",
+    ["stopButton", "replyStream", "assistantMessage", "completion", "replyContent", "copyButton"].every((st) => find(unsent, st).health === "skipped"));
+  const offline = S.judgeSmoke({ sent: false, error: "page.goto: net::ERR_TUNNEL_CONNECTION_FAILED at https://chat.deepseek.com/" });
+  check("an unreachable site is named as the network, not as selectors",
+    /could not be reached/.test(find(offline, "send").detail) && /no selector was tested/.test(offline.summary) && !/selector is watching/.test(JSON.stringify(offline)), offline.summary);
+  const refused = S.judgeSmoke({ sent: false, error: "the composer did not take the prompt" });
+  check("a send that failed on the page is not called a network problem",
+    !/could not be reached/.test(refused.summary) && /could not be sent/.test(find(refused, "send").detail), refused.summary);
   check("empty observations do not throw", typeof S.judgeSmoke({}).summary === "string");
   check("undefined does not throw", S.judgeSmoke(undefined).ok === false);
 
@@ -4043,6 +4062,8 @@ function testUnittestFallback() {
   // The browser-native layer's pure logic (src/web). Its browser suite is
   // run-web.cjs, which needs Chromium and is run separately.
   await require("./web-unit.cjs").run(check, section);
+  // The optional structured-extraction backend (src/extract).
+  await require("./extract-unit.cjs").run(check, section);
 
   console.log("\n" + (fail === 0 ? "PASS" : "FAIL") + " — " + pass + " passed, " + fail + " failed");
   process.exit(fail === 0 ? 0 : 1);
