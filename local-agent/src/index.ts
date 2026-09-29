@@ -31,6 +31,7 @@ import { OllamaSession } from "./providers/ollama-session.js";
 import { hasSearchControl, extractSources, RESEARCH_PROMPT_PREFIX } from "./research.js";
 import { BUILD_STATE_DIR } from "./build-state.js";
 import { runLive } from "./web/live.js";
+import { cleanError } from "./clean-error.js";
 
 // Every extension the check planner knows about. A file the walker misses is a
 // file nothing ever verifies, and the run reports success on it regardless.
@@ -239,6 +240,7 @@ function workspaceResolver(workspace: string): (name: string) => string | null {
 }
 
 function emit(obj: any) {
+  if (obj && typeof obj.error === "string") obj.error = cleanError(obj.error);
   console.log("AGENT_OUTPUT_START");
   console.log(JSON.stringify(obj));
   console.log("AGENT_OUTPUT_END");
@@ -1340,6 +1342,7 @@ async function smokeMode(providerId: string) {
     }
   } catch (e: any) {
     console.log("Smoke test could not complete: " + (e && e.message ? e.message : e));
+    obs.error = String(e && e.message ? e.message : e);
   } finally {
     await controller.close();
   }

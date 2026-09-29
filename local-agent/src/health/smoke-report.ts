@@ -55,6 +55,13 @@ export interface SmokeObservations {
   /** Text read back from the provider's own Copy control, if configured. */
   copied?: string | null;
   copyConfigured?: boolean;
+  /** What stopped the run before the prompt went, if anything did. */
+  error?: string;
+}
+
+/** A failure that is the network or the site being unreachable, not the page. */
+function isUnreachable(err: string): boolean {
+  return /net::ERR_(NAME_NOT_RESOLVED|INTERNET_DISCONNECTED|TUNNEL_CONNECTION_FAILED|PROXY_CONNECTION_FAILED|CONNECTION_REFUSED|CONNECTION_RESET|CONNECTION_TIMED_OUT|ADDRESS_UNREACHABLE|BLOCKED_BY)|ENOTFOUND|EAI_AGAIN|ECONNREFUSED/i.test(err);
 }
 
 /**
@@ -80,9 +87,30 @@ export function judgeSmoke(obs: SmokeObservations): SmokeReport {
   const expect = String(o.expect || "");
   const reply = String(o.reply || "");
 
+  const err = String(o.error || "").split("\n")[0];
+  const unreachable = !o.sent && isUnreachable(err);
   findings.push(o.sent
     ? { step: "send", health: "ok", detail: "the prompt reached the composer and went" }
-    : { step: "send", health: "critical", detail: "the prompt could not be sent - nothing else below means anything" });
+    : unreachable
+      ? { step: "send", health: "critical", detail: "the site could not be reached (" + err.replace(/^page\.goto: /, "") + ") - that is the network or the site, not a selector" }
+      : { step: "send", health: "critical", detail: "the prompt could not be sent" + (err ? " (" + err + ")" : "") });
+
+  // Nothing was sent, so nothing after this point was observed. Reporting the
+  // stop button, the stream or the assistant selector as failing would blame
+  // selectors for a run that never reached them - and send someone off to
+  // re-capture a page that may be fine.
+  if (!o.sent) {
+    for (const step of ["stopButton", "replyStream", "assistantMessage", "completion", "replyContent", "copyButton"]) {
+      findings.push({ step, health: "skipped", detail: "not run - the prompt was never sent" });
+    }
+    return {
+      ok: false,
+      findings,
+      summary: unreachable
+        ? "the provider could not be reached from this machine, so no selector was tested. Check the network, a proxy or a firewall, then run it again."
+        : "the prompt could not be sent, so nothing after it was measured. Sign in, or run the passive selector check to see which control is missing.",
+    };
+  }
 
   // Only observable during generation, which is the entire reason this test
   // exists rather than the passive one.
