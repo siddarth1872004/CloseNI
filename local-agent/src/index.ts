@@ -32,6 +32,10 @@ import { hasSearchControl, extractSources, RESEARCH_PROMPT_PREFIX } from "./rese
 import { BUILD_STATE_DIR } from "./build-state.js";
 import { runLive } from "./web/live.js";
 import { cleanError } from "./clean-error.js";
+import { rescueUnparsedPlan, explainUnparsed } from "./extract/fallback.js";
+import { closeExtractor, readExtractionSettings } from "./extract/extractor.js";
+import { NeedleClient } from "./extract/needle-client.js";
+import { rescuePlan } from "./extract/plan-rescue.js";
 
 // Every extension the check planner knows about. A file the walker misses is a
 // file nothing ever verifies, and the run reports success on it regardless.
@@ -391,6 +395,20 @@ async function chatMode(prompt: string, providerId: string, workspace: string = 
   } finally { await session.close(); }
 }
 
+/**
+ * Emit a plan, or - when neither the reply nor its re-ask parsed - give the
+ * configured extractor one attempt at reading the prose before failing, and
+ * say what the reply was if that fails too. With extraction off (the default)
+ * both are no-ops and this is the old emit.
+ */
+async function emitPlanResult(plan: any, replies: string[], failure: string) {
+  if (plan && plan.steps) { emit({ success: true, plan: plan }); return; }
+  const rescued = await rescueUnparsedPlan(replies);
+  if (rescued) { emit({ success: true, plan: rescued.plan, extraction: rescued.report }); return; }
+  const why = await explainUnparsed(replies[0] || "", "plan");
+  emit({ success: false, error: why ? failure + " " + why : failure, raw: replies[0] });
+}
+
 async function planMode(transcript: string, workspace: string, providerId: string) {
   transcript = capText(transcript, 8000);
   const ctx = getProjectContext(workspace, transcript);
@@ -426,6 +444,7 @@ async function planMode(transcript: string, workspace: string, providerId: strin
     let prevContent = await controller.getLastMessageText(config);
     await controller.sendPrompt(prompt, config);
     let response = await controller.waitForResponse(config, prevCount, prevContent);
+    const first = response;
     let plan = parsePlanRobust(response);
     if (!plan) {
       console.log("Plan parse failed; asking AI to resend clean JSON...");
@@ -435,8 +454,7 @@ async function planMode(transcript: string, workspace: string, providerId: strin
       response = await controller.waitForResponse(config, prevCount, prevContent);
       plan = parsePlanRobust(response);
     }
-    if (plan && plan.steps) emit({ success: true, plan: plan });
-    else emit({ success: false, error: "Could not parse plan.", raw: response });
+    await emitPlanResult(plan, [response, first], "Could not parse plan.");
   } finally { await controller.close(); }
 }
 
@@ -516,6 +534,7 @@ async function revisePlanMode(changes: string, workspace: string, providerId: st
     let prevContent = await controller.getLastMessageText(config);
     await controller.sendPrompt(prompt, config);
     let response = await controller.waitForResponse(config, prevCount, prevContent);
+    const first = response;
     let plan = parsePlanRobust(response);
     if (!plan) {
       prevCount = await controller.countMessages(config);
@@ -524,8 +543,7 @@ async function revisePlanMode(changes: string, workspace: string, providerId: st
       response = await controller.waitForResponse(config, prevCount, prevContent);
       plan = parsePlanRobust(response);
     }
-    if (plan && plan.steps) emit({ success: true, plan: plan });
-    else emit({ success: false, error: "Could not parse revised plan.", raw: response });
+    await emitPlanResult(plan, [response, first], "Could not parse revised plan.");
   } finally { await controller.close(); }
 }
 
@@ -1026,7 +1044,10 @@ async function runBuildStep(controller: PlaywrightController, config: ProviderCo
         continue;
       }
       if (req.allowNoChanges) return { success: true, appliedFiles: [], raw: response };
-      return { success: false, error: "No file changes found in AI response.", raw: response };
+      // Never asked to find files - extraction does not write code - only to
+      // say whether the provider declined or asked something instead.
+      const why = await explainUnparsed(response, "code");
+      return { success: false, error: "No file changes found in AI response." + (why ? " " + why : ""), raw: response };
     }
 
     // Everything from here to the end of the block runs one step at a time,
@@ -1728,6 +1749,52 @@ async function researchMode(query: string, workspace: string, providerId: string
 // prompt the model receives is literally a filename.
 const SPILL_FILE = /agent-prompt-\d+-\d+\.txt$/;
 
+/**
+ * Is the configured extractor usable? For the Settings check button.
+ *
+ * Answers without touching a provider or the browser profile. With `warm` it
+ * also makes the engine fetch its weights, so the download happens when the
+ * person asked for it rather than in the middle of a build.
+ */
+async function extractorCheckMode(warm: boolean) {
+  const s = readExtractionSettings();
+  if (s.backend !== "needle") {
+    emit({ success: true, backend: "builtin", detail: "Built-in parser only." });
+    return;
+  }
+  const client = new NeedleClient({ python: s.python, weights: s.weights });
+  try {
+    const hello = await client.start();
+    if (warm) await client.warm();
+    emit({ success: true, backend: "needle", version: hello.version, python: hello.python,
+      weights: hello.weights, warmed: warm, minConfidence: s.minConfidence });
+  } catch (e: any) {
+    emit({ success: false, backend: "needle", python: s.python, error: e && e.message ? e.message : String(e) });
+  } finally { await client.close(); }
+}
+
+/**
+ * Run a saved reply through the plan parser and then, if configured, the
+ * extractor - without a browser. How a corpus of real plan replies is measured.
+ */
+async function rescuePlanMode(file: string) {
+  let reply = "";
+  try { reply = fs.readFileSync(file, "utf-8"); }
+  catch (e: any) { emit({ success: false, error: "Cannot read " + file + ": " + e.message }); return; }
+  const parsed = parsePlanRobust(reply);
+  if (parsed && parsed.steps) { emit({ success: true, via: "parser", plan: parsed }); return; }
+  const s = readExtractionSettings();
+  if (s.backend !== "needle") { emit({ success: false, via: "parser", error: "The parser could not read it, and extraction is off." }); return; }
+  const client = new NeedleClient({ python: s.python, weights: s.weights });
+  try {
+    const r = await rescuePlan(reply, client, s.minConfidence);
+    if (r) emit({ success: true, via: "extraction", plan: r.plan, extraction: r.report });
+    else emit({ success: false, via: "extraction", error: "No numbered plan the extractor could read." });
+  } catch (e: any) {
+    emit({ success: false, via: "extraction", error: e && e.message ? e.message : String(e) });
+  } finally { await client.close(); }
+}
+
 function resolveArg(arg: string | undefined): string {
   if (!arg) return "";
   if (!SPILL_FILE.test(arg)) return arg;
@@ -1785,6 +1852,10 @@ async function main() {
     // Positional layout: provider, workspace.
     else if (mode === "authcheck") await authCheckMode(args[1] || "deepseek", args[2] || "");
     else if (mode === "suggest") await suggestMode(args[1] || path.resolve(process.cwd()), args[2] || "deepseek", args[3] ? parseInt(args[3]) : 0, resolveArg(args[4]));
+    // Positional layout: warm (optional) - also fetches the engine and weights.
+    else if (mode === "extractor-check") await extractorCheckMode(args[1] === "warm");
+    // Positional layout: a file holding a saved reply.
+    else if (mode === "rescue-plan") await rescuePlanMode(args[1] || "");
     else if (mode === "ask") await askMode(args[1] || path.resolve(process.cwd()), args[2] || "deepseek", resolveArg(args[3]), resolveArg(args[4]), resolveArg(args[5]));
     else await buildMode(prompt, workspace, providerId, autonomy, stepIndex, stepDetail, goalSummary);
   } catch (e: any) {
@@ -1794,4 +1865,4 @@ async function main() {
 
 main()
   .catch((e) => emit({ success: false, error: String(e) }))
-  .finally(() => { rl.close(); });
+  .finally(() => { rl.close(); closeExtractor().catch(() => {}); });
