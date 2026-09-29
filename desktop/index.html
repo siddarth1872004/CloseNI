@@ -298,6 +298,7 @@
           <button class="settings-tab active" data-section="provider">Provider</button>
           <button class="settings-tab" data-section="permissions">Permissions</button>
           <button class="settings-tab" data-section="skills">Skills</button>
+          <button class="settings-tab" data-section="extraction">Extraction</button>
           <button class="settings-tab" data-section="appearance">Appearance</button>
           <button class="settings-tab" data-section="about">About</button>
         </div>
@@ -366,6 +367,39 @@
               into every step. An MCP server is a program this app will run.</div>
             <textarea id="mcp-config" rows="8" placeholder='{"servers":{},"calls":[]}'></textarea>
             <div class="row"><button id="mcp-save" class="btn btn-sm">Save</button></div>
+          </div>
+
+          <!-- Optional second reader for replies the parser could not read.
+               See local-agent/src/extract/extractor.ts. Off by default. -->
+          <div class="settings-section" data-section="extraction">
+            <div class="micro">Reading replies</div>
+            <div class="hint">The built-in parser reads every reply first. When a plan
+              comes back as prose, even after asking again, a small local model
+              (Needle, from cactus-compute/needle on GitHub)
+              can read the steps out of it, and say when a provider declined or asked a
+              question instead. It never writes code, and every file or command it names
+              must appear in the reply.</div>
+            <select id="extract-backend">
+              <option value="builtin">Built-in parser only</option>
+              <option value="needle">Built-in, then Needle (local model)</option>
+            </select>
+            <div id="extract-needle">
+              <div class="micro mt-2">Python</div>
+              <div class="hint">An interpreter with <code>pip install cactus-needle</code>.
+                Blank uses python3 (python on Windows).</div>
+              <input id="extract-python" placeholder="python3" spellcheck="false">
+              <div class="micro mt-2">Fine-tuned weights (optional)</div>
+              <input id="extract-weights" placeholder="path/to/model.cact" spellcheck="false">
+              <div class="micro mt-2">Minimum confidence</div>
+              <div class="hint">Answers below this are not used. 0.5 is a middle setting.</div>
+              <input id="extract-confidence" type="number" min="0" max="1" step="0.05">
+            </div>
+            <div class="row mt-1">
+              <button id="extract-save" class="btn btn-sm">Save</button>
+              <button id="extract-check" class="btn btn-sm">Check</button>
+              <button id="extract-warm" class="btn btn-sm">Download model</button>
+            </div>
+            <div id="extract-status" class="hint"></div>
           </div>
 
           <div class="settings-section" data-section="appearance">
@@ -443,6 +477,7 @@
 <script src="recent-workspaces.js"></script>
 <script src="github-safe.js"></script>
 <script src="onboarding.js"></script>
+<script src="extraction-settings.js"></script>
 <script src="renderer.js"></script>
 <script src="builder.js"></script>
 </body>

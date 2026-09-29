@@ -6,6 +6,7 @@ const { spawn } = require("child_process");
 const { hasChromium, stripAnsi, describeInstallFailure } = require("./browser-check.js");
 const GH = require("./github-safe.js");
 const GHAPI = require("./github-api.js");
+const EXTRACT = require("./extraction-settings.js");
 const { safeStorage } = require("electron");
 const https = require("https");
 
@@ -238,7 +239,9 @@ ipcMain.handle("select-folder", async function () {
  * Returns only its own keys - spawnAgent does the merging with process.env.
  */
 function agentEnv(headed, controls, preamble) {
-  const env = { AGENT_HEADED: headed };
+  // Extraction settings go to every agent, read fresh each spawn so a change in
+  // Settings applies to the next run without a restart.
+  const env = Object.assign({ AGENT_HEADED: headed }, EXTRACT.toEnv(readExtraction()));
   if (controls && Object.keys(controls).length) env.AGENT_CONTROLS = JSON.stringify(controls);
   // One environment variable, read once by the agent, exactly as controls
   // travel. A positional argument would have to be threaded through every mode.
@@ -672,6 +675,57 @@ function skillDirFor(kind) {
   return kind === "persona" ? SKILLS.personasDir(storageRoot()) : SKILLS.skillsDir(storageRoot());
 }
 function mcpConfigPath() { return path.join(storageRoot(), "mcp.json"); }
+
+function extractionPath() { return path.join(storageRoot(), "extraction.json"); }
+
+function readExtraction() {
+  try { return EXTRACT.normalize(JSON.parse(fs.readFileSync(extractionPath(), "utf-8"))); }
+  catch (e) { return EXTRACT.normalize(null); }
+}
+
+ipcMain.handle("read-extraction", function () {
+  return { ok: true, settings: readExtraction() };
+});
+
+ipcMain.handle("write-extraction", function (event, raw) {
+  try {
+    const settings = EXTRACT.normalize(raw);
+    fs.writeFileSync(extractionPath(), JSON.stringify(settings, null, 2));
+    return { ok: true, settings: settings };
+  } catch (e) { return { ok: false, error: String(e) }; }
+});
+
+/*
+ * Check the settings as typed, before they are saved. Not queued behind other
+ * agent runs: it opens no browser profile, only the Python bridge, so it cannot
+ * contend with a build. The agent bounds every step of it, the optional model
+ * download included.
+ */
+ipcMain.handle("check-extraction", function (event, payload) {
+  const settings = EXTRACT.normalize(payload && payload.settings);
+  const args = ["extractor-check"].concat(payload && payload.warm ? ["warm"] : []);
+  return new Promise(function (resolve) {
+    let proc;
+    const env = Object.assign({ CLOSENI_EXTRACTOR: "builtin" }, EXTRACT.toEnv(settings));
+    try { proc = spawnAgent(args, env); }
+    catch (e) { resolve({ success: false, error: String(e) }); return; }
+    let out = "";
+    proc.stdout.on("data", function (d) { out += d.toString(); });
+    proc.on("close", function () {
+      const start = out.indexOf("AGENT_OUTPUT_START");
+      const end = out.indexOf("AGENT_OUTPUT_END");
+      let result = null;
+      if (start !== -1 && end !== -1) {
+        const lines = out.substring(start + 18, end).split(/\r?\n/)
+          .map(function (l) { return l.trim(); })
+          .filter(function (l) { return l.indexOf("{") === 0; });
+        if (lines.length) { try { result = JSON.parse(lines[lines.length - 1]); } catch (e) {} }
+      }
+      resolve(result || { success: false, error: "no answer from the agent" });
+    });
+    proc.on("error", function (e) { resolve({ success: false, error: String(e) }); });
+  });
+});
 
 ipcMain.handle("list-skills", function () {
   return {
