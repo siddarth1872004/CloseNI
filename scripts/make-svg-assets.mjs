@@ -575,6 +575,7 @@ function divider() {
 
 function themesStrip() {
   const THEMES = [
+    ['Pixel', '#0d1117', '#56d364'],
     ['Midnight', '#0b0b0c', '#e8e8ea'],
     ['Paper', '#f7f7f5', '#1b1b1d'],
     ['Phosphor', '#020a04', '#7bffa0'],
@@ -585,7 +586,7 @@ function themesStrip() {
     ['Blueprint', '#081a2e', '#8fc4ef'],
     ['Contrast', '#000000', '#ffffff'],
   ];
-  const CYCLE = 9;
+  const CYCLE = 10;
   const SWW = 20, SWH = 13, gap = 2;
   const COLS = THEMES.length * (SWW + gap) + 6;
   const ROWS = 26;
@@ -611,8 +612,8 @@ function themesStrip() {
     g += `<g opacity="0"><text x="${(x + SWW / 2) * PX}" y="${(y + SWH + 4) * PX}" fill="${C.text}" font-size="11" text-anchor="middle" font-family="${MONO}">${esc(name)}</text>${visible(t0, t1, CYCLE)}</g>`;
   });
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" shape-rendering="crispEdges" aria-label="Nine CloseNI themes, each shown as a miniature of the interface, cycling one at a time">
-<title>Nine themes</title>
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" shape-rendering="crispEdges" aria-label="Ten CloseNI themes, each shown as a miniature of the interface, cycling one at a time">
+<title>Ten themes</title>
 <rect width="${W}" height="${H}" fill="${C.bg}"/>
 <g font-family="${MONO}">
   <text x="${3 * PX}" y="${4 * PX}" fill="${C.dim}" font-size="10.5" letter-spacing="2.2">APPEARANCE</text>
@@ -1013,7 +1014,7 @@ function architecture() {
   // Boxes.
   const [dx, dy, dw, dh] = B.desk;
   g += panel(dx, dy, dw, dh, 'DESKTOP', C.blue, 'Electron');
-  g += lines(dx, dy, [['renderer.js', 'panels, diffs'], ['builder.js', 'runs the steps'], ['scheduler.js', 'dependency graph'], ['main.js', 'IPC, git, keystore'], ['theme.js', 'nine themes'], ['github-safe.js', 'token redaction']], C.blue);
+  g += lines(dx, dy, [['renderer.js', 'panels, diffs'], ['builder.js', 'runs the steps'], ['scheduler.js', 'dependency graph'], ['main.js', 'IPC, git, keystore'], ['theme.js', 'ten themes'], ['github-safe.js', 'token redaction']], C.blue);
 
   const [ux, uy, uw, uh] = B.you;
   g += panel(ux, uy, uw, uh, 'YOU', C.white);
@@ -1352,7 +1353,7 @@ function stats() {
     [180, 'END-TO-END', 'real Chromium', C.blue],
     [204, 'BROWSER CHECKS', 'npm run test:web', C.violet],
     [12, 'LANGUAGES', 'syntax + compile', C.amber],
-    [9, 'THEMES', 'one palette each', C.blue],
+    [10, 'THEMES', 'one palette each', C.blue],
     [0, 'API KEYS', 'none, ever', C.red],
   ];
   const TW = 30, TG = 3, TH = 20, TY = 3;
@@ -1377,7 +1378,7 @@ function stats() {
     fill.push([CYCLE - 0.3, '0']);
     g += `<rect x="${(x + 1) * PX}" y="${(TY + TH - 2) * PX}" height="${PX}" width="0" fill="${col}">${track('width', CYCLE, fill)}</rect>`;
   });
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" shape-rendering="crispEdges" aria-label="1432 unit tests, 180 end-to-end tests, 204 browser checks, twelve languages, nine themes, zero API keys">
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" shape-rendering="crispEdges" aria-label="1432 unit tests, 180 end-to-end tests, 204 browser checks, twelve languages, ten themes, zero API keys">
 <title>By the numbers</title>
 <rect width="${W}" height="${H}" fill="${C.bg}"/>
 <g font-family="${MONO}">${g}</g>
