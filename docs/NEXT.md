@@ -72,7 +72,11 @@ the reply is**, which removes the DOM from the read path entirely.
   says, and guessing at a body nobody here has seen is how this project's every
   serious bug started.
 
-- **Detect a content refusal.** Still open, and now understood to be a different
+- **Detect a content refusal.** *Built as an option on 29 September:* a local
+  Needle model classifies a reply that failed to parse, and the failure message
+  quotes the refusal (`src/extract/reply-kind.ts`). It only changes a message,
+  and it is unverified against the real model. The reasoning below still
+  explains why nothing structural can do this. Still open, and now understood to be a different
   shape of problem: a provider declining something comes back as an ordinary
   successful reply whose *prose* declines - same endpoint, same status, same
   `WIP` to `FINISHED`. There is nothing structural to read, so this cannot be

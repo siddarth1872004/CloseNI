@@ -114,6 +114,13 @@ toolchains.
   pages shaped like each provider (`npm run test:web`). First live step:
   `npm run webtest -- deepseek --headed` on a signed-in machine, then
   `npm run web:report`.
+- **Needle extraction (Settings → Extraction, off by default) has never run
+  the real model.** Hugging Face was refused, so the weights never downloaded.
+  The bridge imported the real `cactus-needle` 3.0.6. Everything else ran
+  against a stand-in package (`local-agent/test/fixtures/fake-needle`). First
+  real run: `closeni extractor-check warm`. Separately, the controller's
+  reply reader drops `<ol>` numbering and text beside bold or code, which
+  limits prose-plan rescue on a live page. See `src/extract/plan-rescue.ts`.
 - **Recent bug fixes are unverified**: build resume after a failure, New Chat
   clearing the transcript, the command safety floor, and environment-setup
   failures no longer failing a step.
