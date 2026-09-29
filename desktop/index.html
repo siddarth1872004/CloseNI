@@ -9,12 +9,14 @@
      Midnight for a frame and then switch, which reads as a flicker on every
      launch. Inline and synchronous is the only way to avoid that. */
   try {
-    var t = localStorage.getItem("closeni.theme");
-    if (t) document.documentElement.setAttribute("data-theme", t);
+    // Nothing saved means the default, Pixel. Midnight is the unstyled :root,
+    // so it is the only theme that works with no attribute at all.
+    var t = localStorage.getItem("closeni.theme") || "pixel";
+    document.documentElement.setAttribute("data-theme", t);
     if (localStorage.getItem("closeni.theme.decor") === "off") {
       document.documentElement.setAttribute("data-decor", "off");
     }
-  } catch (e) { /* storage disabled: the default theme is correct anyway */ }
+  } catch (e) { document.documentElement.setAttribute("data-theme", "pixel"); }
 </script>
 </head>
 <body>
@@ -38,7 +40,8 @@
       <!-- Account. Whether the provider is signed in decides whether anything
            else in the app can work, so it is on screen rather than behind a
            settings tab. -->
-      <div class="micro">Account</div>
+      <section class="rail-card" aria-label="Provider">
+      <div class="micro rail-card-head">Provider</div>
       <div id="acct" class="acct" title="Provider sign-in status">
         <span id="acct-dot" class="acct-dot unknown"></span>
         <span id="acct-name">DeepSeek</span>
@@ -61,14 +64,19 @@
       <!-- Quick model switch. The same controls exist in Settings; this is the
            one people change between prompts, so it is one click away. -->
       <div id="rail-controls"></div>
+      </section>
 
-      <div class="micro mt-1">Workspace</div>
+      <section class="rail-card" aria-label="Project">
+      <div class="micro rail-card-head">Project</div>
       <div id="workspace-label">none selected</div>
       <!-- Projects you have opened before. Switching restores that project's
            plan, statuses and conversation; nothing runs until you ask. -->
       <div id="recent-list"></div>
       <button id="browse-btn" class="btn">Browse</button>
-      <div class="micro mt-1">Chat Session</div>
+      </section>
+
+      <section class="rail-card" aria-label="Conversation">
+      <div class="micro rail-card-head">Conversation</div>
       <select id="chat-select" class="mb-1">
         <option value="new">+ New Chat</option>
       </select>
@@ -77,11 +85,15 @@
            site. This opens that exact thread in the user's own browser. -->
       <button id="open-thread-btn" class="btn btn-sm is-hidden" title="Open this conversation on the provider's site">Open chat in browser</button>
       <div id="thread-label" class="thread-label"></div>
+      </section>
     </div>
   </aside>
   <main id="main">
     <header id="topbar">
       <span id="mode-title">CHAT</span>
+      <!-- Describe, plan, build, test, ship: where this project is, and the one
+           thing to do next. Drawn by renderer.js from desktop/flow.js. -->
+      <nav id="flow" aria-label="Project flow"></nav>
       <span id="status-line">idle</span>
     </header>
 
@@ -434,9 +446,20 @@
       </div>
     </section>
 
-    <div id="log-row">
-      <div class="log-box"><div class="micro">Agent</div><div id="log"></div></div>
-      <div class="log-box"><div class="micro">Project</div><div id="plog"></div></div>
+    <!-- The logs as a drawer. They filled the bottom third of every panel,
+         empty or not; now they open when a build starts or something fails,
+         and otherwise wait behind a bar that counts what arrived. -->
+    <div id="console" class="console collapsed">
+      <button id="console-toggle" class="console-bar" aria-expanded="false" aria-controls="log-row">
+        <span class="console-caret" aria-hidden="true"></span>
+        <span class="console-title">Console</span>
+        <span class="console-hint">agent &middot; project</span>
+        <span id="console-unread" class="console-unread"></span>
+      </button>
+      <div id="log-row">
+        <div class="log-box"><div class="micro">Agent</div><div id="log"></div></div>
+        <div class="log-box"><div class="micro">Project</div><div id="plog"></div></div>
+      </div>
     </div>
   </main>
 </div>
@@ -477,6 +500,7 @@
 <script src="recent-workspaces.js"></script>
 <script src="github-safe.js"></script>
 <script src="onboarding.js"></script>
+<script src="flow.js"></script>
 <script src="extraction-settings.js"></script>
 <script src="renderer.js"></script>
 <script src="builder.js"></script>

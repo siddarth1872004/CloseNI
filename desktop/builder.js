@@ -21,6 +21,7 @@
     show("builder-stop", mode === "running" || mode === "paused");
     show("builder-resume", mode === "paused");
     show("builder-retry", mode === "idle" && steps.some(function (s) { return s.status === "failed"; }));
+    if (CN.refreshFlow) CN.refreshFlow();
   }
 
   function renderList() {
@@ -62,6 +63,7 @@
   function setStatusOf(i, st) {
     steps[i].status = st;
     renderList();
+    if (CN.refreshFlow) CN.refreshFlow();
     if (i === selected) $("step-detail-status").textContent = st;
     saveBuildState();
   }
@@ -431,6 +433,16 @@
     }
   }
 
+  /** Counts for the flow bar. Skipped steps count as finished, as progress does. */
+  CN.buildStats = function () {
+    return {
+      total: steps.length,
+      done: steps.filter(function (s) { return s.status === "done" || s.status === "skipped"; }).length,
+      failed: steps.filter(function (s) { return s.status === "failed"; }).length,
+      running: running,
+    };
+  };
+
   CN.setPlan = function (plan) {
     if (!plan || !plan.steps) return;
     // dependsOn is carried across deliberately. Dropping it - which this line
@@ -467,6 +479,8 @@
     if (!steps.length) { CN.toast("No plan - generate one first", "err"); return; }
     if (!CN.getWorkspace()) { CN.toast("Pick a workspace", "err"); return; }
     running = true; stopRequested = false; paused = false;
+    // A build is when the logs matter, so they open for it.
+    if (CN.openConsole) CN.openConsole();
     buttons("running");
 
     // A build with steps already done is being picked up, not started. The

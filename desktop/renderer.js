@@ -12,7 +12,11 @@ let acctNow = "unknown";
 const MODE_TITLES = { chat: "CHAT", build: "BUILDER", test: "TEST", research: "RESEARCH", push: "SHIP", settings: "SETTINGS" };
 
 function $(id) { return document.getElementById(id); }
-function setStatus(t) { const el = $("status-line"); if (el) el.textContent = t; }
+function setStatus(t) {
+  const el = $("status-line"); if (el) el.textContent = t;
+  // Every status change is a moment the flow may have moved on.
+  if (typeof refreshFlow === "function") refreshFlow();
+}
 
 function toast(msg, kind) {
   const stack = $("toast-stack"); if (!stack) return;
@@ -30,12 +34,39 @@ function log(line, cls) {
   el.className = "log-line" + (cls ? " " + cls : "");
   el.textContent = line;
   box.appendChild(el); box.scrollTop = box.scrollHeight;
+  consoleArrived(cls === "err");
 }
 function plog(line) {
   const box = $("plog"); if (!box) return;
   const el = document.createElement("div");
   el.className = "log-line"; el.textContent = line;
   box.appendChild(el); box.scrollTop = box.scrollHeight;
+  consoleArrived(false);
+}
+
+/**
+ * The console drawer. Closed, it counts what arrived; an error opens it,
+ * because an error nobody sees is the failure mode the old always-open panes
+ * existed to prevent. Open or closed is remembered, as a convenience only.
+ */
+let consoleUnread = 0;
+function consoleIsOpen() { const c = $("console"); return !!c && !c.classList.contains("collapsed"); }
+function setConsole(open, remember) {
+  const c = $("console"); if (!c) return;
+  c.classList.toggle("collapsed", !open);
+  const t = $("console-toggle"); if (t) t.setAttribute("aria-expanded", open ? "true" : "false");
+  if (open) { consoleUnread = 0; paintUnread(); }
+  if (remember) { try { localStorage.setItem("closeni.console", open ? "open" : "closed"); } catch (e) {} }
+}
+function paintUnread() {
+  const u = $("console-unread"); if (!u) return;
+  u.textContent = consoleUnread ? String(consoleUnread > 99 ? "99+" : consoleUnread) : "";
+  u.classList.toggle("on", consoleUnread > 0);
+}
+function consoleArrived(isError) {
+  if (consoleIsOpen()) return;
+  if (isError) { setConsole(true, false); return; }
+  consoleUnread++; paintUnread();
 }
 
 function escapeHtml(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
@@ -99,6 +130,58 @@ function switchTab(mode) {
   // Read from disk on open: a skill created in an editor should appear without
   // restarting the app.
   if (mode === "settings" && typeof refreshSkills === "function") refreshSkills();
+  refreshFlow();
+}
+
+/**
+ * The flow bar: describe, plan, build, test, ship.
+ *
+ * Redrawn on the events that can move it - a message, a plan, a step status,
+ * a run, a push, a tab switch - never on a timer. Each stage is read from
+ * state the app already holds (see desktop/flow.js), so it cannot claim a
+ * build that failed.
+ */
+// var, not const: setStatus can run before this line has, and a const read
+// there would throw rather than draw nothing.
+var flowSeen = { tested: false, shipped: false };
+function flowSnapshot() {
+  const stats = window.CN && window.CN.buildStats ? window.CN.buildStats() : {};
+  const flow = $("chat-flow");
+  return {
+    messages: flow ? flow.querySelectorAll(".msg.user").length : 0,
+    plan: !!currentPlan,
+    stepsTotal: stats.total || 0,
+    stepsDone: stats.done || 0,
+    stepsFailed: stats.failed || 0,
+    building: !!stats.running,
+    tested: flowSeen.tested,
+    shipped: flowSeen.shipped,
+  };
+}
+function refreshFlow() {
+  const bar = $("flow");
+  if (!bar || !window.CNFlow || !flowSeen) return;
+  const list = window.CNFlow.stages(flowSnapshot());
+  const active = (document.querySelector(".nav-btn.active") || {}).dataset || {};
+  bar.innerHTML = "";
+  list.forEach(function (st, i) {
+    if (i) {
+      const sep = document.createElement("span");
+      sep.className = "flow-sep" + (list[i - 1].status === "done" ? " done" : "");
+      sep.setAttribute("aria-hidden", "true");
+      bar.appendChild(sep);
+    }
+    const b = document.createElement("button");
+    b.className = "flow-step " + st.status + (st.mode === active.mode ? " here" : "");
+    b.dataset.mode = st.mode;
+    b.title = st.status === "next" ? "Next: " + st.next : st.label + " - " + st.status;
+    const mark = document.createElement("i");
+    mark.textContent = st.status === "done" ? "\u2713" : st.status === "failed" ? "!" : String(i + 1);
+    b.appendChild(mark);
+    b.appendChild(document.createTextNode(st.label));
+    b.onclick = function () { switchTab(st.mode); };
+    bar.appendChild(b);
+  });
 }
 document.querySelectorAll(".nav-btn").forEach(function (btn) {
   btn.onclick = function () {
@@ -172,6 +255,8 @@ async function renderRecent() {
 async function openWorkspace(folder) {
   if (!folder) return;
   workspace = folder;
+  // A different project has not been run or shipped from here yet.
+  flowSeen.tested = false; flowSeen.shipped = false;
   // Truncated in the rail, so the full path lives in the tooltip.
   $("workspace-label").textContent = folder;
   $("workspace-label").title = folder;
@@ -688,6 +773,7 @@ function addBubble(who, text) {
   wrap.appendChild(label); wrap.appendChild(body);
   flow.appendChild(wrap);
   flow.scrollTop = flow.scrollHeight;
+  refreshFlow();
   return body;
 }
 
@@ -1346,7 +1432,7 @@ $("test-check").onclick = async function () {
   if (!res) { renderTestResults([], "check failed"); pushHistory("syntax check", false); return; }
   renderTestResults(res.results || [], (res.passed || 0) + " passed, " + (res.failed || 0) + " failed");
   pushHistory("syntax check · " + ((res.passed || 0) + (res.failed || 0)) + " checks", !res.failed);
-  lastRun = { command: "syntax check", output: JSON.stringify(res.results || []).slice(0, 4000) };
+  lastRun = { command: "syntax check", output: JSON.stringify(res.results || []).slice(0, 4000) }; flowSeen.tested = true; refreshFlow();
 };
 
 /*
@@ -1374,7 +1460,7 @@ $("test-behaviour").onclick = async function () {
   renderTestResults(res.results || [], summary);
   if (res.note) renderTestOutput(res.note);
   pushHistory("tests · " + summary, !failed);
-  lastRun = { command: "behaviour checks", output: JSON.stringify(res.results || []).slice(0, 4000) };
+  lastRun = { command: "behaviour checks", output: JSON.stringify(res.results || []).slice(0, 4000) }; flowSeen.tested = true; refreshFlow();
 };
 
 $("test-run").onclick = async function () {
@@ -1388,7 +1474,7 @@ $("test-run").onclick = async function () {
   renderTestResults([{ command: cmd, success: !!(r && r.success) }], (r && r.success) ? "command succeeded" : "command failed");
   renderTestOutput(r && r.output);
   pushHistory(cmd, !!(r && r.success));
-  lastRun = { command: cmd, output: (r && r.output) || "" };
+  lastRun = { command: cmd, output: (r && r.output) || "" }; flowSeen.tested = true; refreshFlow();
   if (window.CNBuilderPreview) {
     let files = [];
     try { const l = await window.api.listFiles(workspace); files = (l && l.files) || []; } catch (e) {}
@@ -1630,7 +1716,8 @@ $("git-push").onclick = async function () {
   if (!workspace) { toast("Pick a workspace", "err"); return; }
   const remote = $("remote-url").value.trim();
   if (remote) { await g(["remote", "remove", "origin"]); await g(["remote", "add", "origin", remote]); }
-  await g(["push", "-u", "origin", "main"]);
+  const r = await g(["push", "-u", "origin", "main"]);
+  if (r && r.success) { flowSeen.shipped = true; refreshFlow(); }
 };
 
 
@@ -1770,6 +1857,9 @@ window.CN = {
   // be opened before it does without the caller having to know the load order.
   restoreBuild: function () { return Promise.resolve(null); },
   notePhase: function () {},
+  buildStats: function () { return {}; },
+  openConsole: function () { setConsole(true, false); },
+  refreshFlow: function () { refreshFlow(); },
 };
 
 /**
@@ -1939,3 +2029,13 @@ $("welcome-reset").onclick = function () {
 };
 
 renderOnboarding();
+
+refreshFlow();
+
+(function () {
+  const t = $("console-toggle");
+  if (t) t.onclick = function () { setConsole(!consoleIsOpen(), true); };
+  let saved = null;
+  try { saved = localStorage.getItem("closeni.console"); } catch (e) {}
+  setConsole(saved === "open", false);
+})();
