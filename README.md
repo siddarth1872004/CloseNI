@@ -4,8 +4,8 @@
 
 # CloseNI
 
-**Free web AI chats, turned into a software engineering engine.**<br>
-It drives a chat site in a real browser, the way you would, and turns the conversation into a plan, files on your disk, compiler-checked code and repairs.
+**Free web AI chats, turned into a coding agent.**<br>
+Ask for a change and it reads your project, edits files, runs commands and checks its work, asking before anything it should. The model is a chat site driven in a real browser, the way you would use it.
 
 [![Electron](https://img.shields.io/badge/Electron-31-47848F?style=flat-square&logo=electron&logoColor=white)](https://www.electronjs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
@@ -16,7 +16,7 @@ It drives a chat site in a real browser, the way you would, and turns the conver
 
 [**Site**](https://siddarth1872004.github.io/CloseNI/) · [**How it works**](#how-it-works) · [**Architecture**](#architecture) · [**Browser layer**](#the-browser-native-layer) · [**Research**](#research) · [**Get started**](#getting-started) · [**Limitations**](#current-limitations)
 
-<img src="docs/assets/stats.svg" alt="1432 unit tests, 180 end-to-end tests, 204 browser checks, twelve languages, ten themes, zero API keys" width="100%">
+<img src="docs/assets/stats.svg" alt="1432 unit tests, 180 end-to-end tests, 204 browser checks, twelve languages, eleven themes, zero API keys" width="100%">
 
 </div>
 
@@ -26,7 +26,9 @@ It drives a chat site in a real browser, the way you would, and turns the conver
 
 Every other coding agent bills per token through an API key. CloseNI does not have one.
 
-It opens a real Chromium window and uses the session you are already signed into. It types the prompt into the page, waits for the answer to finish streaming, and reads it back out. From the model's side it is a person typing. From your side it is an agent that plans, writes files, compiles them, and repairs what it broke.
+It opens a real Chromium window and uses the session you are already signed into. It types the prompt into the page, waits for the answer to finish streaming, and reads it back out. From the model's side it is a person typing. From your side it is a coding agent working in your project folder.
+
+**The Code panel is the agent.** Ask in plain words: "fix the failing test", "add pagination to the list endpoint", "explain @src/app.py". It searches and reads the code itself, edits files, and runs commands. File changes appear as diffs, and anything it should not do unasked waits for your yes. No plan is required. When you want one, **plan mode** (shift+tab or `/plan`) keeps the agent read-only until you approve its plan. The older **planned build**, which plans a whole project and then builds it step by step with checks and repairs, is still there as a separate mode: `/build`, or the Plan and Build panels.
 
 > **Where it stands, plainly.**
 > - **DeepSeek** is driven end to end.
@@ -46,8 +48,9 @@ It opens a real Chromium window and uses the session you are already signed into
 
 | | | |
 |---|---|---|
-| [How it works](#how-it-works) | [Twelve languages](#twelve-languages) | [Safety model](#safety-model) |
-| [Architecture](#architecture) | [The browser-native layer](#the-browser-native-layer) | [Ten themes](#ten-themes) |
+| [The coding agent](#the-coding-agent) | [How it works](#how-it-works) | [Twelve languages](#twelve-languages) |
+| [Safety model](#safety-model) | | |
+| [Architecture](#architecture) | [The browser-native layer](#the-browser-native-layer) | [Eleven themes](#eleven-themes) |
 | [Providers](#providers) | [Research](#research) | [Tests and verification](#tests-and-verification) |
 | [Anatomy of a build](#anatomy-of-a-build) | [The interface](#the-interface) | [Getting started](#getting-started) |
 | [Build, check, repair](#build-check-repair) | [One conversation](#one-conversation) | [Directory tree](#directory-tree) |
@@ -57,7 +60,47 @@ Also: [CHANGELOG](CHANGELOG.md) · [Release process](docs/RELEASING.md) · [Road
 
 ---
 
+## The coding agent
+
+<img src="docs/screenshots/code.png" alt="The Code panel in the Terminal theme: a search, a read, an edit shown as a diff, a todo list, and a command waiting for permission" width="100%">
+
+A chat site has no tool-calling API, so tools are a convention written into the conversation. The agent's first message teaches the model to answer with fenced blocks whose first line names a tool. Write and edit put their payload after a `---` line, and edits use `SEARCH`/`REPLACE` sections, a format models already know. CloseNI runs each call and sends the results back as the next message. A reply with no tool blocks is the answer. Code blocks are the one thing every provider renders and returns verbatim, which is why they carry the calls (`local-agent/src/agent/protocol.ts`).
+
+| Tool | Does | Asks first? |
+|---|---|---|
+| `read` | a file, with line numbers, by range | never |
+| `glob` / `grep` / `ls` | find files, search contents, list a folder | never |
+| `todo` | the agent's own task list, shown above the input | never |
+| `edit` | exact search/replace, one match or a clear error | in default mode |
+| `write` | create or overwrite a file | in default mode |
+| `bash` | a shell command in the project folder | unless you said "don't ask again" for it |
+
+Every path is resolved inside the project and refused outside it, including through a symlink, and nothing inside `.git` is written. Outputs are capped, because they are typed back into a web page.
+
+**Modes**, cycled with shift+tab:
+
+- **Default** reads freely and asks before edits and commands.
+- **Accept edits** edits without asking and still asks before commands.
+- **Plan** is read-only and ends with a plan you can approve, which then switches mode and starts the work.
+- **Auto** (`/mode auto`) runs everything.
+
+In every mode, `sudo`, package managers, recursive deletes, piping a download into a shell and the rest of the safety list always ask. "Don't ask again" is never offered for those.
+
+**Also:**
+- `@path` attaches a file to your message.
+- `/rewind` undoes the last turn's file changes.
+- `/init` writes a `CLOSENI.md` of project instructions, which is read at the start of every conversation (`AGENTS.md` and `CLAUDE.md` are read if there is no `CLOSENI.md`).
+- Messages sent while the agent is working are queued. Esc stops it after the current reply.
+- The persona, skills and MCP context from Settings apply here too.
+- From a terminal: `npm run agent -- "fix the failing test" ./project deepseek`.
+
+It works with any provider CloseNI can talk to, including a local model through Ollama.
+
+---
+
 ## How it works
+
+This is the **planned build**: the whole project is planned up front and then built step by step, with checks and repairs. It is a separate mode now. The everyday path is [the coding agent](#the-coding-agent).
 
 <div align="center">
 
@@ -117,7 +160,7 @@ flowchart TB
         R["renderer.js<br/>panels, plans, diffs"]
         B["builder.js<br/>runs the steps"]
         S["scheduler.js<br/>dependency graph, resume"]
-        T["theme.js<br/>ten themes"]
+        T["theme.js<br/>eleven themes"]
         M["main.js<br/>IPC, git, keystore"]
         R <--> M
         B <--> M
@@ -384,13 +427,13 @@ Relevance is a set of named signals, not a single made-up "quality score". A syn
 
 ## The interface
 
-Six panels, numbered in the order you normally move through them. The bar across the top follows the project itself, not the tab: **Describe · Plan · Build · Test · Ship**. Each stage ticks off from what has actually happened (a failed build shows as failed, not done), the next one is outlined, and clicking a stage opens its panel. The rail groups everything else into three cards: **Provider**, **Project** and **Conversation**. The logs sit in a **Console** drawer at the bottom. It counts new lines while closed, and opens by itself when a build starts or something fails.
+Seven panels. **01 · Code** is the agent, described [above](#the-coding-agent). The rest are the planned build, numbered in the order you move through them. The bar across the top of those panels follows the project itself, not the tab: **Describe · Plan · Build · Test · Ship**. Each stage ticks off from what has actually happened (a failed build shows as failed, not done), the next one is outlined, and clicking a stage opens its panel. The rail groups everything else into three cards: **Provider**, **Project** and **Conversation**. The logs sit in a **Console** drawer at the bottom. It counts new lines while closed, and opens by itself when a build starts or something fails.
 
 <table>
 <tr>
 <td width="50%" valign="top">
 
-**01 · Chat.** Describe it, then read the plan.
+**02 · Plan.** Describe it, then read the plan.
 
 The prompt goes in, and a structured plan comes back: numbered steps, the files each one owns, the dependencies between them, and the command that will run the project. Nothing has been written to disk yet. Send it back for revision as many times as you like.
 
@@ -401,7 +444,7 @@ The prompt goes in, and a structured plan comes back: numbered steps, the files 
 <td width="50%"><img src="docs/screenshots/builder.png" alt="The Builder panel in the Pixel theme: the flow bar with Build in progress, step list on the left, unified diff for the running step"></td>
 <td width="50%" valign="top">
 
-**02 · Builder.** Watch it happen, step by step.
+**03 · Build.** Watch it happen, step by step.
 
 Live step status, and the exact diff for the running step. **Suggest a change to this step** steers a single step without restarting. The Console drawer holds two logs: **Agent** is the story (`step 4/7: API routes`), and **Project** is the evidence (`CHECK_RESULT: PASS`).
 
@@ -410,7 +453,7 @@ Live step status, and the exact diff for the running step. **Suggest a change to
 <tr>
 <td width="50%" valign="top">
 
-**03 · Test.** Run it, and ask about it.
+**04 · Test.** Run it, and ask about it.
 
 The run command arrives resolved, with a badge saying where it came from: `SAVED`, `FROM YOUR PLAN`, `DETECTED` or `NOT FOUND`. **Run tests** runs the project's own suite and smoke-starts its entry point. A missing runner is reported as **not run**, never as a pass.
 
@@ -421,7 +464,7 @@ The run command arrives resolved, with a badge saying where it came from: `SAVED
 <td width="50%"><img src="docs/screenshots/ship.png" alt="The Ship panel in the Blueprint theme: GitHub token entry, git init and commit, push to origin, and Actions run status"></td>
 <td width="50%" valign="top">
 
-**05 · Ship.** Commit, push, and watch CI.
+**06 · Ship.** Commit, push, and watch CI.
 
 `git init`, status, commit-all and push, plus a live list of GitHub Actions runs and a button to dispatch a workflow. The token is encrypted at rest and never written into the repository.
 
@@ -430,7 +473,7 @@ The run command arrives resolved, with a badge saying where it came from: `SAVED
 <tr>
 <td width="50%" valign="top">
 
-**04 · Research** is [above](#research). **06 · Settings** covers six areas:
+**05 · Research** is [above](#research). **07 · Settings** covers six areas:
 
 - the provider, the Chromium install and sign-in
 - autonomy (*ask each command*, *auto-allow*, *never run commands*)
@@ -442,7 +485,7 @@ The run command arrives resolved, with a badge saying where it came from: `SAVED
 The sign-in is a real browser window: you log in the way you always do, and the profile persists.
 
 </td>
-<td width="50%"><img src="docs/screenshots/settings.png" alt="The Settings panel, Appearance tab, showing all ten theme swatches"></td>
+<td width="50%"><img src="docs/screenshots/settings.png" alt="The Settings panel, Appearance tab, showing all eleven theme swatches"></td>
 </tr>
 </table>
 
@@ -505,23 +548,24 @@ An agent that writes files and runs commands on your machine has to be explicit 
 
 ---
 
-## Ten themes
+## Eleven themes
 
-Ten built-in themes, switchable from Settings. Themes style CloseNI's own chrome and never touch a project built with it.
+Eleven built-in themes, switchable from Settings. Themes style CloseNI's own chrome and never touch a project built with it.
 
 <div align="center">
 
-<img src="docs/assets/themes-strip.svg" alt="Ten CloseNI themes, each shown as a miniature of the interface, cycling one at a time" width="100%">
+<img src="docs/assets/themes-strip.svg" alt="Eleven CloseNI themes, each shown as a miniature of the interface, cycling one at a time" width="100%">
 
 </div>
 
 | Theme | Character | Theme | Character |
 |---|---|---|---|
-| **Pixel** | The default. This README as a theme: GitHub-dark, pixel wordmark, starfield. | **Cassette · Miami** | Sunset gradient, high saturation. |
+| **Terminal** | The default. A terminal coding agent's look: monospace, near-black, one coral accent. | **Cassette · Miami** | Sunset gradient, high saturation. |
 | **Paper** | Full light mode, not a dark theme with the lights up. | **Cassette · Grid** | Flat retro, no texture. |
 | **Phosphor** | Green CRT, with scanlines. | **Blueprint** | Drafting blue on a grid. |
 | **Amber** | Amber CRT, with scanlines. | **High contrast** | Maximum legibility, no decoration. |
 | **Cassette · Indigo** | Retro-futurist indigo and magenta. | **Midnight** | Near-black, low chroma. |
+| **Pixel** | This README as a theme: GitHub-dark, pixel wordmark, starfield. | | |
 
 <table>
 <tr>
@@ -576,7 +620,7 @@ npm run test:chaos        #   killed browser, closed tab, removed selector, view
 npm run webtest -- all    # the same scenarios against the live sites (never signs in)
 npm run web:report        # regenerate the provider matrix from recorded results
 npm run verify            # structural checks: claims vs code, assets, release config, packaging
-npm run verify:visual     # all ten themes rendered and contrast-checked, plus the site
+npm run verify:visual     # all eleven themes rendered and contrast-checked, plus the site
 npm run languages         # every language check against the real compiler, good and broken code
 ```
 
@@ -587,7 +631,7 @@ npm run languages         # every language check against the real compiler, good
   - every image and anchor in this file resolves;
   - no SVG carries a script or an external reference;
   - the packaged artifact contains nothing from `local-agent/storage/`.
-- **`verify-visual.mjs`.** [`scripts/verify-visual.mjs`](scripts/verify-visual.mjs) renders the app under each of the ten themes and measures the real contrast of every element that carries meaning.
+- **`verify-visual.mjs`.** [`scripts/verify-visual.mjs`](scripts/verify-visual.mjs) renders the app under each of the eleven themes and measures the real contrast of every element that carries meaning.
 
 Each verification script prints, at the end, what it does **not** cover.
 
@@ -716,6 +760,7 @@ scripts/            verification, asset generation, release and environment help
 
 Stated plainly, because a README that only lists strengths is not useful.
 
+- **The coding agent has not met a live site yet.** Its tool protocol, tools, permissions and loop are proven against a scripted model and, end to end, through a real browser against the mock chat. Whether DeepSeek follows the tool-block convention reliably over a long session is the first thing to measure on a signed-in machine.
 - **One provider is ready.** DeepSeek is driven end to end. Qwen Studio and GLM ship gated as coming soon. See [providers](#providers).
 - **The browser-native layer has never met a live site.** It passes every fixture scenario, but every live row so far is `BLOCKED` by the development machine's network, and builds still use the older controller.
 - **Chat sites change.** Provider control is per-site page automation. A redesign can break extraction until the selectors are updated, which is a JSON edit, not a code change.
