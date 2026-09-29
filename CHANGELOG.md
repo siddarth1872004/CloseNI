@@ -24,6 +24,32 @@ installed by anyone — treat it as unproven. GitHub sign-in, push, clone and
 Actions are unit-tested with an injected transport and have never made a live
 request. Qwen Studio and GLM ship gated.
 
+### Pixel theme and a flow overhaul
+
+- **Pixel**, the new default theme, is the README's look in the app. It has
+  GitHub-dark surfaces and a stepped green gradient for the wordmark, with a
+  blinking block cursor and a one-time boot sweep. The top bar has
+  window-chrome squares. Blocks are square, with hard offset shadows, and cards
+  carry the stat tiles' coloured top edge. The build bar fills in chunks. A
+  sparse starfield twinkles behind the panels.
+- The other nine themes are unchanged and still selectable. A theme someone
+  already chose is kept.
+- **Ambient motion is new, and limited to Pixel.** It was rejected for the app
+  before. Here the theme is the request, so the motion is slow and stepped. The
+  Appearance decoration toggle stops it, and so does the OS "reduce motion"
+  setting. Pixel's worst contrast is 5.07:1 (`verify:visual`).
+- **A flow bar** across the top shows Describe, Plan, Build, Test, Ship. Each
+  stage comes from real state: the conversation, the plan, step statuses, a run
+  and a successful push. A failed build reads as failed, and a later stage
+  cannot tick while an earlier one has not. The next stage is outlined, and
+  clicking a stage opens its panel (`desktop/flow.js`, unit-tested).
+- **The logs became a Console drawer.** They had taken the bottom third of every
+  panel, empty or not. Closed, the drawer counts new lines. It opens itself when
+  a build starts or an error is logged, and remembers being opened or closed.
+- **The rail is three cards**, Provider, Project and Conversation, instead of
+  one column of controls. It scrolls on short windows.
+- Screenshots regenerated. The main panels are shown in Pixel.
+
 ### Optional local extraction with Needle (off by default)
 
 - **Settings → Extraction** can add a second reader after the built-in parser:

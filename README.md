@@ -16,7 +16,7 @@ It drives a chat site in a real browser, the way you would, and turns the conver
 
 [**Site**](https://siddarth1872004.github.io/CloseNI/) · [**How it works**](#how-it-works) · [**Architecture**](#architecture) · [**Browser layer**](#the-browser-native-layer) · [**Research**](#research) · [**Get started**](#getting-started) · [**Limitations**](#current-limitations)
 
-<img src="docs/assets/stats.svg" alt="1432 unit tests, 180 end-to-end tests, 204 browser checks, twelve languages, nine themes, zero API keys" width="100%">
+<img src="docs/assets/stats.svg" alt="1432 unit tests, 180 end-to-end tests, 204 browser checks, twelve languages, ten themes, zero API keys" width="100%">
 
 </div>
 
@@ -47,7 +47,7 @@ It opens a real Chromium window and uses the session you are already signed into
 | | | |
 |---|---|---|
 | [How it works](#how-it-works) | [Twelve languages](#twelve-languages) | [Safety model](#safety-model) |
-| [Architecture](#architecture) | [The browser-native layer](#the-browser-native-layer) | [Nine themes](#nine-themes) |
+| [Architecture](#architecture) | [The browser-native layer](#the-browser-native-layer) | [Ten themes](#ten-themes) |
 | [Providers](#providers) | [Research](#research) | [Tests and verification](#tests-and-verification) |
 | [Anatomy of a build](#anatomy-of-a-build) | [The interface](#the-interface) | [Getting started](#getting-started) |
 | [Build, check, repair](#build-check-repair) | [One conversation](#one-conversation) | [Directory tree](#directory-tree) |
@@ -117,7 +117,7 @@ flowchart TB
         R["renderer.js<br/>panels, plans, diffs"]
         B["builder.js<br/>runs the steps"]
         S["scheduler.js<br/>dependency graph, resume"]
-        T["theme.js<br/>nine themes"]
+        T["theme.js<br/>ten themes"]
         M["main.js<br/>IPC, git, keystore"]
         R <--> M
         B <--> M
@@ -384,7 +384,7 @@ Relevance is a set of named signals, not a single made-up "quality score". A syn
 
 ## The interface
 
-Six panels, numbered in the order you normally move through them.
+Six panels, numbered in the order you normally move through them. The bar across the top follows the project itself, not the tab: **Describe · Plan · Build · Test · Ship**. Each stage ticks off from what has actually happened (a failed build shows as failed, not done), the next one is outlined, and clicking a stage opens its panel. The rail groups everything else into three cards: **Provider**, **Project** and **Conversation**. The logs sit in a **Console** drawer at the bottom. It counts new lines while closed, and opens by itself when a build starts or something fails.
 
 <table>
 <tr>
@@ -398,12 +398,12 @@ The prompt goes in, and a structured plan comes back: numbered steps, the files 
 <td width="50%"><img src="docs/screenshots/chat.png" alt="The Chat panel, where a plan is proposed and reviewed before any file is written"></td>
 </tr>
 <tr>
-<td width="50%"><img src="docs/screenshots/builder.png" alt="The Builder panel: step list on the left, unified diff for the running step, agent log and project check log below"></td>
+<td width="50%"><img src="docs/screenshots/builder.png" alt="The Builder panel in the Pixel theme: the flow bar with Build in progress, step list on the left, unified diff for the running step"></td>
 <td width="50%" valign="top">
 
 **02 · Builder.** Watch it happen, step by step.
 
-Live step status, and the exact diff for the running step. **Suggest a change to this step** steers a single step without restarting. Two logs: **Agent** is the story (`step 4/7: API routes`), and **Project** is the evidence (`CHECK_RESULT: PASS`).
+Live step status, and the exact diff for the running step. **Suggest a change to this step** steers a single step without restarting. The Console drawer holds two logs: **Agent** is the story (`step 4/7: API routes`), and **Project** is the evidence (`CHECK_RESULT: PASS`).
 
 </td>
 </tr>
@@ -430,17 +430,19 @@ The run command arrives resolved, with a badge saying where it came from: `SAVED
 <tr>
 <td width="50%" valign="top">
 
-**04 · Research** is [above](#research). **06 · Settings** covers four areas:
+**04 · Research** is [above](#research). **06 · Settings** covers six areas:
 
 - the provider, the Chromium install and sign-in
 - autonomy (*ask each command*, *auto-allow*, *never run commands*)
+- skills, personas and MCP
+- extraction (the optional local Needle model)
 - appearance
 - about
 
 The sign-in is a real browser window: you log in the way you always do, and the profile persists.
 
 </td>
-<td width="50%"><img src="docs/screenshots/settings.png" alt="The Settings panel, Appearance tab, showing all nine theme swatches"></td>
+<td width="50%"><img src="docs/screenshots/settings.png" alt="The Settings panel, Appearance tab, showing all ten theme swatches"></td>
 </tr>
 </table>
 
@@ -503,23 +505,23 @@ An agent that writes files and runs commands on your machine has to be explicit 
 
 ---
 
-## Nine themes
+## Ten themes
 
-Nine built-in themes, switchable from Settings. Themes style CloseNI's own chrome and never touch a project built with it.
+Ten built-in themes, switchable from Settings. Themes style CloseNI's own chrome and never touch a project built with it.
 
 <div align="center">
 
-<img src="docs/assets/themes-strip.svg" alt="Nine CloseNI themes, each shown as a miniature of the interface, cycling one at a time" width="100%">
+<img src="docs/assets/themes-strip.svg" alt="Ten CloseNI themes, each shown as a miniature of the interface, cycling one at a time" width="100%">
 
 </div>
 
 | Theme | Character | Theme | Character |
 |---|---|---|---|
-| **Midnight** | The default. Near-black, low chroma. | **Cassette · Miami** | Sunset gradient, high saturation. |
+| **Pixel** | The default. This README as a theme: GitHub-dark, pixel wordmark, starfield. | **Cassette · Miami** | Sunset gradient, high saturation. |
 | **Paper** | Full light mode, not a dark theme with the lights up. | **Cassette · Grid** | Flat retro, no texture. |
 | **Phosphor** | Green CRT, with scanlines. | **Blueprint** | Drafting blue on a grid. |
 | **Amber** | Amber CRT, with scanlines. | **High contrast** | Maximum legibility, no decoration. |
-| **Cassette · Indigo** | Retro-futurist indigo and magenta. | | |
+| **Cassette · Indigo** | Retro-futurist indigo and magenta. | **Midnight** | Near-black, low chroma. |
 
 <table>
 <tr>
@@ -574,7 +576,7 @@ npm run test:chaos        #   killed browser, closed tab, removed selector, view
 npm run webtest -- all    # the same scenarios against the live sites (never signs in)
 npm run web:report        # regenerate the provider matrix from recorded results
 npm run verify            # structural checks: claims vs code, assets, release config, packaging
-npm run verify:visual     # all nine themes rendered and contrast-checked, plus the site
+npm run verify:visual     # all ten themes rendered and contrast-checked, plus the site
 npm run languages         # every language check against the real compiler, good and broken code
 ```
 
@@ -585,7 +587,7 @@ npm run languages         # every language check against the real compiler, good
   - every image and anchor in this file resolves;
   - no SVG carries a script or an external reference;
   - the packaged artifact contains nothing from `local-agent/storage/`.
-- **`verify-visual.mjs`.** [`scripts/verify-visual.mjs`](scripts/verify-visual.mjs) renders the app under each of the nine themes and measures the real contrast of every element that carries meaning.
+- **`verify-visual.mjs`.** [`scripts/verify-visual.mjs`](scripts/verify-visual.mjs) renders the app under each of the ten themes and measures the real contrast of every element that carries meaning.
 
 Each verification script prints, at the end, what it does **not** cover.
 

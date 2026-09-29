@@ -130,12 +130,16 @@ const HELPERS = `
  * mid-cycle and it reads as a stray character. Hidden for stills only; the
  * chip's colour already carries the state.
  */
-const STILL = `.pix-spin::after{display:none!important;}`;
+// Motion frozen, so every capture is the same picture: the spinner, and
+// Pixel's boot sweep, blinking cursors and twinkling stars.
+const STILL = `.pix-spin::after{display:none!important;}
+#wordmark,#wordmark::after,#app::before,.flow-step::after{animation:none!important;}`;
 
 const shots = [
   {
     name: "chat",
-    theme: "midnight",
+    theme: "pixel",
+    flow: { plan: true },
     setup: `
       workspace(); CN.switchTab("chat");
       const flow = $("chat-flow");
@@ -158,7 +162,8 @@ const shots = [
   },
   {
     name: "builder",
-    theme: "midnight",
+    theme: "pixel",
+    flow: { plan: true, stats: { total: 7, done: 3, failed: 0, running: true } },
     setup: `
       workspace(); CN.switchTab("build");
       const s = ["done","done","done","running","running","pending","pending"]; s.selected = 3;
@@ -203,7 +208,8 @@ const shots = [
   },
   {
     name: "test",
-    theme: "midnight",
+    theme: "pixel",
+    flow: { plan: true, stats: { total: 7, done: 7, failed: 0, running: false }, tested: true },
     setup: `
       workspace(); CN.switchTab("test");
       $("test-cmd").value = "python3 src/app/server.py";
@@ -230,7 +236,8 @@ const shots = [
   },
   {
     name: "settings",
-    theme: "midnight",
+    theme: "pixel",
+    flow: { plan: true, stats: { total: 7, done: 7, failed: 0, running: false } },
     setup: `
       workspace(); CN.switchTab("settings");
       document.querySelector('.settings-tab[data-section="appearance"]').click();
@@ -239,6 +246,7 @@ const shots = [
   {
     name: "theme-paper",
     theme: "paper",
+    flow: { plan: true, stats: { total: 7, done: 3, failed: 1, running: false } },
     setup: `
       workspace(); CN.switchTab("build");
       const s = ["done","done","done","failed","blocked","blocked","blocked"]; s.selected = 3;
@@ -310,6 +318,7 @@ const shots = [
   {
     name: "ship",
     theme: "blueprint",
+    flow: { plan: true, stats: { total: 7, done: 7, failed: 0, running: false }, tested: true },
     setup: `
       workspace(); CN.switchTab("push");
       $("gh-signed-out").classList.add("is-hidden");
@@ -344,6 +353,16 @@ for (const shot of shots) {
     failures++;
     console.log("  FAILED " + shot.name + ": " + e.message.split("\n")[0]);
   }
+  // The flow bar reads live app state, which a staged scene does not have, so
+  // each scene says which stages it shows as reached.
+  await page.evaluate(`(function (f) {
+    if (f) {
+      if (f.plan && !currentPlan) currentPlan = { steps: [] };
+      if (f.stats) CN.buildStats = function () { return f.stats; };
+      flowSeen.tested = !!f.tested; flowSeen.shipped = !!f.shipped;
+    }
+    refreshFlow();
+  })(${JSON.stringify(shot.flow || null)})`);
   await page.waitForTimeout(400);
   await page.screenshot({ path: path.join(out, shot.name + ".png") });
   console.log("wrote docs/screenshots/" + shot.name + ".png" + (errors.length ? "  (page errors: " + errors.length + ")" : ""));
