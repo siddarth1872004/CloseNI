@@ -1,7 +1,7 @@
 {
   "deepseek": {
     "provider": "deepseek",
-    "at": "2026-09-26T07:46:32.623Z",
+    "at": "2026-09-29T04:24:18.699Z",
     "machine": "vm (linux)",
     "state": {
       "state": "ERROR",
@@ -93,11 +93,11 @@
         "detail": "ERROR: navigation failed: blocked - page.goto: net::ERR_TUNNEL_CONNECTION_FAILED at https://chat.deepseek.com/ (blocked)"
       }
     ],
-    "durationMs": 416
+    "durationMs": 436
   },
   "qwen": {
     "provider": "qwen",
-    "at": "2026-09-26T07:46:33.008Z",
+    "at": "2026-09-29T04:24:19.134Z",
     "machine": "vm (linux)",
     "state": {
       "state": "ERROR",
@@ -189,11 +189,11 @@
         "detail": "ERROR: navigation failed: blocked - page.goto: net::ERR_TUNNEL_CONNECTION_FAILED at https://chat.qwen.ai/ (blocked)"
       }
     ],
-    "durationMs": 384
+    "durationMs": 434
   },
   "glm": {
     "provider": "glm",
-    "at": "2026-09-26T07:46:33.405Z",
+    "at": "2026-09-29T04:24:19.599Z",
     "machine": "vm (linux)",
     "state": {
       "state": "ERROR",
@@ -285,6 +285,6 @@
         "detail": "ERROR: navigation failed: blocked - page.goto: net::ERR_TUNNEL_CONNECTION_FAILED at https://chat.z.ai/ (blocked)"
       }
     ],
-    "durationMs": 397
+    "durationMs": 464
   }
 }

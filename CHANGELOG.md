@@ -41,6 +41,19 @@ request. Qwen Studio and GLM ship gated.
   development container's network refused every provider host.
 - The reply-stream tap moved to `providers/stream-tap.ts`, shared by the
   controller and the new layer. The controller's behaviour is unchanged.
+- A full regression pass (29 September) found and fixed:
+  - **The live smoke test blamed selectors when the site was unreachable.** With
+    no network it reported the assistant selector as "watching something that
+    is not the live answer". It now says the site could not be reached, and
+    marks every check after the send as not run.
+  - **Errors shown in the app carried Playwright's call log and terminal colour
+    codes.** The agent now sends the one-line cause.
+  - **An empty reply on Qwen- and GLM-style pages was detected only by luck.**
+    Their stop control is up for milliseconds, and detection depended on a poll
+    landing inside that window. The page now counts the control's appearances
+    itself.
+  - **A reply that never started returned the previous answer's text.**
+  - **A failed or never-started wait was reported as `empty`.**
 
 ### Fixed before release
 
