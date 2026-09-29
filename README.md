@@ -16,7 +16,7 @@ It drives a chat site in a real browser, the way you would, and turns the conver
 
 [**Site**](https://siddarth1872004.github.io/CloseNI/) · [**How it works**](#how-it-works) · [**Architecture**](#architecture) · [**Browser layer**](#the-browser-native-layer) · [**Research**](#research) · [**Get started**](#getting-started) · [**Limitations**](#current-limitations)
 
-<img src="docs/assets/stats.svg" alt="1420 unit tests, 180 end-to-end tests, 199 browser checks, twelve languages, nine themes, zero API keys" width="100%">
+<img src="docs/assets/stats.svg" alt="1432 unit tests, 180 end-to-end tests, 204 browser checks, twelve languages, nine themes, zero API keys" width="100%">
 
 </div>
 
@@ -543,11 +543,11 @@ Pixel-art motion appears throughout the app, driven by `steps()` timing so the a
 ```mermaid
 flowchart LR
     subgraph unit["npm test · no browser"]
-        U1["1420 unit tests<br/>including the web layer's pure logic"]
+        U1["1432 unit tests<br/>including the web layer's pure logic"]
     end
     subgraph browser["real Chromium"]
         E2E["npm run test:e2e<br/>180 tests against a mock chat site"]
-        WEB["npm run test:web<br/>199 checks against provider-shaped fixtures"]
+        WEB["npm run test:web<br/>204 checks against provider-shaped fixtures"]
     end
     subgraph live["live sites"]
         WT["npm run webtest<br/>identical scenarios, your signed-in profile"]
@@ -579,7 +579,7 @@ npm run languages         # every language check against the real compiler, good
 ```
 
 - **End-to-end.** The end-to-end suite drives a real Chromium against a local HTTP server that imitates a chat site. Only the model's answers are faked. The page interaction, streaming detection, extraction, parsing, patch application and verification are all the production paths.
-- **Browser suite.** The browser suite found seven real defects that reading the code had not, including a stream binding that reported to the wrong object and a login that appeared after send and was read as "sent". They are listed in the [test report](docs/testing/browser-test-report.md).
+- **Browser suite.** The browser suite found ten real defects that reading the code had not, including a stream binding that reported to the wrong object and a login that appeared after send and was read as "sent". They are listed in the [test report](docs/testing/browser-test-report.md).
 - **`scripts/verify.mjs`.** [`scripts/verify.mjs`](scripts/verify.mjs) checks the things that rot silently:
   - the documentation still matches the code;
   - every image and anchor in this file resolves;

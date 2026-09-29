@@ -25,7 +25,7 @@ So:
   path that would do one.
 - **Whether each site allows guest chat is `UNKNOWN`.** It could not be observed.
 - **Everything else was proven against local fixture pages** shaped like each provider, running
-  in real Chromium: **199 checks passed, 0 failed**, plus 218 unit checks of the pure logic.
+  in real Chromium: **204 checks passed, 0 failed**, plus 224 unit checks of the pure logic.
 
 A fixture `PASS` means *the automation handles that behaviour when a page does it*. It does not
 mean the live site does it that way. The first live run should be
@@ -133,7 +133,8 @@ hands it a built context.
 
 ## Reliability
 
-- The full fixture suite passes on one run from a cold start. 199/199 checks in about four minutes.
+- The full fixture suite passes on one run from a cold start: 204/204 checks in about four minutes
+  (re-run on 29 September as part of a full regression pass).
 - Running it found real defects that reading the code had not:
   1. The stream binding reported to the first provider object on a page, so later objects never
      saw the reply stream.
@@ -146,8 +147,15 @@ hands it a built context.
      was "evidence" for a how-to question.
   7. The health check called a Copy or stop control "broken" on a page state that cannot have
      one.
+  8. An empty reply on a page with a stop control (Qwen, GLM) was detected only when a poll
+     happened to land in the few milliseconds the control was up. It passed twice, then failed
+     in the regression pass. The page now counts the control's appearances itself
+     (`stop-watcher.ts`). The suite asks for an empty reply five times in a row, per flavour.
+  9. A reply that never started returned the previous answer's text as its content.
+  10. A failed or never-started wait with nothing on the page was reported as `empty`, as if the
+      provider had answered with nothing.
 
-  All seven are fixed and have tests.
+  All ten are fixed and have tests.
 - Chaos:
   - SIGKILL of the shared browser: relaunched on next use.
   - Closed tab: recovered.

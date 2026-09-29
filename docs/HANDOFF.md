@@ -35,7 +35,7 @@ a Windows Node on `/mnt/c` cannot run from a `\\wsl.localhost\...` path.
 
 ## State
 
-- **1420 unit tests + 180 end-to-end tests, all passing**, plus the web
+- **1432 unit tests + 180 end-to-end tests, all passing**, plus the web
   layer's browser suite (`npm run test:web`, real Chromium against fixtures). Two e2e cases open
   a visible browser, so on a machine with no display run the suite under
   `xvfb-run`.
