@@ -452,8 +452,9 @@ function testTheme() {
   section("theme resolution");
   const { THEMES, resolveTheme, DEFAULT_THEME } = require(path.join(__dirname, "..", "..", "desktop", "theme.js"));
 
-  check("ten themes are offered", THEMES.length === 10, String(THEMES.length));
-  check("pixel is the default", DEFAULT_THEME === "pixel");
+  check("eleven themes are offered", THEMES.length === 11, String(THEMES.length));
+  check("terminal is the default", DEFAULT_THEME === "terminal");
+  check("terminal is in the list", THEMES.some(function (t) { return t.id === "terminal"; }));
   check("pixel is in the list", THEMES.some(function (t) { return t.id === "pixel"; }));
   check("midnight is in the list", THEMES.some(function (t) { return t.id === "midnight"; }));
   check("every theme has an id and a name", THEMES.every(function (t) { return t.id && t.name; }));
@@ -468,12 +469,13 @@ function testTheme() {
 
   check("a saved theme is honoured", resolveTheme("paper") === "paper");
   check("midnight can still be chosen", resolveTheme("midnight") === "midnight");
-  check("nothing saved yields the default", resolveTheme(null) === "pixel");
-  check("an empty string yields the default", resolveTheme("") === "pixel");
+  check("pixel can still be chosen", resolveTheme("pixel") === "pixel");
+  check("nothing saved yields the default", resolveTheme(null) === "terminal");
+  check("an empty string yields the default", resolveTheme("") === "terminal");
   // A theme removed in a later version must not leave the app unstyled - every
   // token would go unresolved, which renders as black text on white.
-  check("an unknown theme falls back", resolveTheme("vaporwave-deluxe") === "pixel");
-  check("a non-string falls back", resolveTheme({ id: "paper" }) === "pixel");
+  check("an unknown theme falls back", resolveTheme("vaporwave-deluxe") === "terminal");
+  check("a non-string falls back", resolveTheme({ id: "paper" }) === "terminal");
 }
 
 function testFlow() {
@@ -509,6 +511,37 @@ function testFlow() {
   check("garbage counts are ignored", by(F.stages({ plan: true, stepsTotal: "7", stepsDone: -1 })).build === "next");
   check("each stage knows its tab", F.STAGES.every(function (x) { return ["chat", "build", "test", "push"].indexOf(x.mode) !== -1; }));
   check("the next stage says what to do", /plan/i.test(F.nextStage(F.stages({ messages: 1 })).next));
+}
+
+function testCodeView() {
+  section("code panel vocabulary");
+  const V = require(path.join(__dirname, "..", "..", "desktop", "code-view.js"));
+  check("a slash command parses with its argument", JSON.stringify(V.parseSlash("/mode plan")) === JSON.stringify({ cmd: "/mode", arg: "plan", known: true }));
+  check("aliases resolve", V.parseSlash("/undo").cmd === "/rewind" && V.parseSlash("/reset").cmd === "/clear");
+  check("ordinary text is not a command", V.parseSlash("fix the /api route") === null && V.parseSlash("/usr/bin/env python") === null);
+  check("an unknown command is flagged", V.parseSlash("/frob").known === false);
+  check("the popup filters by prefix", V.matchCommands("/pl").map(function (c) { return c.name; }).join() === "/plan");
+  check("mode words are forgiving", V.modeFromWord("accept") === "acceptEdits" && V.modeFromWord("YOLO") === "auto" && V.modeFromWord("x") === null);
+  check("shift+tab never cycles into auto", V.nextMode("default") === "acceptEdits" && V.nextMode("acceptEdits") === "plan" && V.nextMode("plan") === "default" && V.nextMode("auto") === "default");
+  check("each mode has a label", /accept edits on/.test(V.modeLabel("acceptEdits").text) && /plan mode on/.test(V.modeLabel("plan").text) && V.modeLabel("default").text === "? for shortcuts");
+  check("tools are titled like a terminal agent's", V.toolTitle({ name: "read", input: { path: "a.py" } }).verb === "Read" && V.toolTitle({ name: "edit", input: {} }).verb === "Update" && V.toolTitle({ name: "bash", input: { command: "npm test" } }).arg === "npm test");
+  check("a search title names its pattern", /pattern: "TODO"/.test(V.toolTitle({ name: "grep", input: { pattern: "TODO" } }).arg));
+  check("summaries: read", V.toolSummary({ name: "read", status: "done", detail: { lines: 1 } }) === "Read 1 line");
+  check("summaries: edit counts changes", V.toolSummary({ name: "edit", status: "done", detail: { path: "a.py", before: "a\nb\n", after: "a\nc\nd\n" } }) === "Updated a.py with 2 additions and 1 removal");
+  check("summaries: write", V.toolSummary({ name: "write", status: "done", detail: { path: "n.py", created: true, after: "x\ny\n" } }) === "Wrote 2 lines to n.py");
+  const long = V.toolSummary({ name: "bash", status: "done", detail: { output: "1\n2\n3\n4\n5" } });
+  check("summaries: long command output is folded", /^1\n2\n3\n.*\+2 lines/.test(long), long);
+  check("summaries: declined and errors", V.toolSummary({ status: "denied", summary: "declined by the user" }) === "User declined" && /^Error: nope/.test(V.toolSummary({ status: "error", output: "Error: nope" })));
+  check("tones", V.toolTone("done") === "ok" && V.toolTone("denied") === "err" && V.toolTone("waiting") === "wait");
+  check("an edit can be allowed for the session", V.permissionOptions({ tool: "edit" }).map(function (o) { return o.key; }).join() === "allow,always,deny");
+  check("a command names what it would remember", /npm test commands/.test(V.permissionOptions({ tool: "bash", rememberAs: "npm test" })[1].label));
+  check("an always-ask command cannot be remembered", V.permissionOptions({ tool: "bash", alwaysAsk: true, rememberAs: "rm" }).length === 2);
+  check("the @ under the caret is found", JSON.stringify(V.mentionAt("see @src/ap", 11)) === JSON.stringify({ query: "src/ap", start: 4 }) && V.mentionAt("me@x.com", 8) === null);
+  const done = V.completeMention("see @src/ap now", 11, "src/app.py");
+  check("completing a mention replaces the word", done.text === "see @src/app.py  now" && done.caret === 16, JSON.stringify(done));
+  check("file ranking prefers a basename match", V.rankFiles(["lib/zapp.js", "src/app.py", "docs/apple.md"], "app", 3)[0] === "src/app.py");
+  check("elapsed reads naturally", V.elapsed(4200) === "4s" && V.elapsed(75000) === "1m 15s");
+  check("the help lists every command", V.COMMANDS.every(function (c) { return V.HELP.indexOf(c.name) !== -1; }));
 }
 
 function testLogo() {
@@ -4066,11 +4099,14 @@ function testUnittestFallback() {
   testRecentWorkspaces();
   testOnboarding();
   testFlow();
+  testCodeView();
   // The browser-native layer's pure logic (src/web). Its browser suite is
   // run-web.cjs, which needs Chromium and is run separately.
   await require("./web-unit.cjs").run(check, section);
   // The optional structured-extraction backend (src/extract).
   await require("./extract-unit.cjs").run(check, section);
+  // The coding agent (src/agent): protocol, tools, permissions and the loop.
+  await require("./agent-unit.cjs").run(check, section);
 
   console.log("\n" + (fail === 0 ? "PASS" : "FAIL") + " — " + pass + " passed, " + fail + " failed");
   process.exit(fail === 0 ? 0 : 1);

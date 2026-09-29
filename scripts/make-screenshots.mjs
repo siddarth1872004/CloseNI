@@ -67,6 +67,8 @@ const API = {
   switchChat: async () => ({}), respondApproval: () => {}, installBrowser: async () => ({ ok: true }),
   ghSignIn: async () => ({ ok: true }), ghSignOut: async () => ({ ok: true }), ghClone: async () => ({ ok: true }),
   listMcp: async () => ([]),
+  // The Code panel subscribes to its session's events; a scene replays some.
+  onCodeEvent: (cb) => { window.__codeEvent = cb; },
 };
 
 // Anything preload gains later resolves to [] instead of being undefined, so a
@@ -133,9 +135,39 @@ const HELPERS = `
 // Motion frozen, so every capture is the same picture: the spinner, and
 // Pixel's boot sweep, blinking cursors and twinkling stars.
 const STILL = `.pix-spin::after{display:none!important;}
+.code-spinner{display:none!important;}
 #wordmark,#wordmark::after,#app::before,.flow-step::after{animation:none!important;}`;
 
 const shots = [
+  {
+    name: "code",
+    theme: "terminal",
+    setup: `
+      workspace();
+      const ev = window.__codeEvent;
+      const user = (t) => { const d = el("div", "cc-user", '<span class="cc-prompt">&gt;</span><span>' + t + '</span>'); $("code-transcript").appendChild(d); };
+      $("code-cwd").textContent = "~/projects/habits";
+      $("code-need").innerHTML = "";
+      $("code-meta").textContent = "DeepSeek Chat \u00b7 habits";
+      user("the streak count is off by one when a habit is completed twice in a day - fix it and run the tests");
+      ev({ type: "turn-start" });
+      ev({ type: "assistant", text: "I'll find where streaks are computed." });
+      ev({ type: "tool", id: "t1", name: "grep", input: { pattern: "def streak", path: "src" }, status: "done", detail: { matches: 1, files: 1 } });
+      ev({ type: "tool", id: "t2", name: "read", input: { path: "src/app/store.py" }, status: "done", detail: { lines: 84 } });
+      ev({ type: "todos", items: [
+        { text: "Count each day once in the streak", status: "done" },
+        { text: "Add a regression test", status: "in_progress" },
+        { text: "Run the test suite", status: "pending" } ] });
+      ev({ type: "assistant", text: "Completions are counted per row, so two on one day extend the streak twice. Counting distinct days fixes it." });
+      ev({ type: "tool", id: "t3", name: "edit", input: { path: "src/app/store.py" }, status: "done",
+        detail: { path: "src/app/store.py", created: false,
+          before: "def streak(habit_id):\\n    rows = completions(habit_id)\\n    days = [r.day for r in rows]\\n    return run_length(days)\\n",
+          after: "def streak(habit_id):\\n    rows = completions(habit_id)\\n    days = sorted({r.day for r in rows})\\n    return run_length(days)\\n" } });
+      ev({ type: "tool", id: "t4", name: "bash", input: { command: "python3 -m pytest -q" }, status: "waiting" });
+      ev({ type: "permission", id: "t4", tool: "bash", title: "bash", input: { command: "python3 -m pytest -q" },
+        preview: { command: "python3 -m pytest -q" }, alwaysAsk: false, rememberAs: "python3 -m" });
+    `,
+  },
   {
     name: "chat",
     theme: "pixel",
