@@ -57,6 +57,8 @@ export const SMOKE_TIMEOUT_MS = 12000;
 interface TestRule {
   /** Root entry that triggers the rule. */
   file: string;
+  /** Match any root entry ending in `file` - a .csproj is named after its project. */
+  bySuffix?: boolean;
   tool: string;
   command: (tool: string) => string;
   language: string;
@@ -84,11 +86,33 @@ const TEST_RULES: TestRule[] = [
   { file: "go.mod", tool: "go", command: (t) => t + " test ./...", language: "go" },
   { file: "pom.xml", tool: "mvn", command: (t) => t + " -q test", language: "java" },
   { file: "build.gradle", tool: "gradle", command: (t) => t + " test -q", language: "java" },
+  { file: "build.gradle.kts", tool: "gradle", command: (t) => t + " test -q", language: "kotlin" },
   { file: "pytest.ini", tool: "pytest", command: (t) => t + " -q", language: "python" },
   { file: "pyproject.toml", tool: "pytest", command: (t) => t + " -q", language: "python" },
   { file: "setup.cfg", tool: "pytest", command: (t) => t + " -q", language: "python" },
   { file: "Gemfile", tool: "rspec", command: (t) => t + " --format progress", language: "ruby" },
   { file: "composer.json", tool: "phpunit", command: (t) => t, language: "php" },
+  // Each language's own runner, found by the file its toolchain insists on.
+  { file: ".sln", bySuffix: true, tool: "dotnet", command: (t) => t + " test", language: "csharp" },
+  { file: ".csproj", bySuffix: true, tool: "dotnet", command: (t) => t + " test", language: "csharp" },
+  { file: ".fsproj", bySuffix: true, tool: "dotnet", command: (t) => t + " test", language: "fsharp" },
+  { file: "Package.swift", tool: "swift", command: (t) => t + " test", language: "swift" },
+  { file: "mix.exs", tool: "mix", command: (t) => t + " test", language: "elixir" },
+  { file: "stack.yaml", tool: "stack", command: (t) => t + " test", language: "haskell" },
+  { file: ".cabal", bySuffix: true, tool: "cabal", command: (t) => t + " test", language: "haskell" },
+  { file: "build.sbt", tool: "sbt", command: (t) => t + " -batch test", language: "scala" },
+  { file: "pubspec.yaml", tool: "dart", command: (t) => t + " test", language: "dart" },
+  { file: "build.zig", tool: "zig", command: (t) => t + " build test", language: "zig" },
+  { file: "deno.json", tool: "deno", command: (t) => t + " test", language: "typescript" },
+  { file: "deno.jsonc", tool: "deno", command: (t) => t + " test", language: "typescript" },
+  { file: "project.clj", tool: "lein", command: (t) => t + " test", language: "clojure" },
+  { file: "dune-project", tool: "dune", command: (t) => t + " test", language: "ocaml" },
+  { file: "rebar.config", tool: "rebar3", command: (t) => t + " eunit", language: "erlang" },
+  { file: "shard.yml", tool: "crystal", command: (t) => t + " spec", language: "crystal" },
+  { file: "Project.toml", tool: "julia", command: (t) => t + ' --project=. -e "using Pkg; Pkg.test()"', language: "julia" },
+  { file: "DESCRIPTION", tool: "rscript", command: (t) => t + ' -e "testthat::test_local()"', language: "r" },
+  { file: "Makefile.PL", tool: "prove", command: (t) => t + " -lr t", language: "perl" },
+  { file: "cpanfile", tool: "prove", command: (t) => t + " -lr t", language: "perl" },
 ];
 
 /** Directories that mean "there are Python tests here" without a manifest. */
@@ -121,6 +145,10 @@ export function hasTestFiles(paths: string[]): boolean {
     if (/_test\.go$/i.test(name)) return true;
     if (/Test\.java$/.test(name) || /Tests\.cs$/.test(name)) return true;
     if (/_spec\.rb$/i.test(name) || /Test\.php$/.test(name)) return true;
+    if (/(Test|Tests)\.(kt|scala|fs|vb|swift)$/.test(name) || /(Spec|Suite)\.scala$/.test(name)) return true;
+    if (/(Spec|Test)\.hs$/.test(name) || /_test\.(exs|dart|clj|ts)$/i.test(name)) return true;
+    if (/_spec\.cr$/i.test(name) || /\.t$/.test(name) || /(_tests?|_SUITE)\.erl$/.test(name)) return true;
+    if (/^(runtests|test_.+)\.jl$/i.test(name) || /^test[-_].+\.r$/i.test(name)) return true;
     return false;
   });
 }
@@ -168,7 +196,10 @@ export function planBehaviourChecks(
   // --- the project's own suite, at most one ---
   let sawSuite = false;
   for (const rule of TEST_RULES) {
-    if (!present.has(rule.file)) continue;
+    const found = rule.bySuffix
+      ? (rootEntries || []).some((e) => String(e).toLowerCase().endsWith(rule.file))
+      : present.has(rule.file);
+    if (!found) continue;
     if (rule.requires && !rule.requires(readManifest(rule.file))) continue;
     sawSuite = true;
     // A missing toolchain does not fail the project - the machine not having
