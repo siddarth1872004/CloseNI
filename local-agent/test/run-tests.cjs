@@ -595,6 +595,12 @@ function testLanguageMark() {
   check("a windows path works", languageMark("src\\main.rs").token === "--lang-rs");
   check("a long extension is truncated", languageMark("a.mjsonschema").label.length <= 4);
   check("missing input is survivable", languageMark(undefined).token === "--lang-default");
+  const { languageToken } = require(path.join(__dirname, "..", "..", "desktop", "language-mark.js"));
+  check("many languages have an accent", ["main.go", "App.kt", "Main.scala", "Program.cs", "app.rb", "index.php", "init.lua", "lib.ex", "Main.hs",
+    "main.zig", "App.swift", "main.dart", "core.clj", "script.jl", "run.sh", "Main.fs", "app.ts", "page.vue"].every(function (f) { return languageMark(f).token !== "--lang-default"; }));
+  check("kin share an accent", languageMark("App.kt").token === "--lang-java" && languageMark("main.go").token === "--lang-c" && languageMark("Main.hs").token === "--lang-rs");
+  check("language names map like extensions", languageToken("Rust") === "--lang-rs" && languageToken("TypeScript") === "--lang-js" && languageToken("go") === "--lang-c" && languageToken("C#") === "--lang-java");
+  check("an unknown language name falls back", languageToken("brainfuck") === "--lang-default" && languageToken(undefined) === "--lang-default");
 }
 
 function testStoragePaths() {
@@ -1548,6 +1554,30 @@ function testBehaviourChecker() {
   // A run command is not trusted for being ours.
   check("the smoke check carries the project's own command",
     planBehaviourChecks([], noManifest, have, "python3 app.py")[0].command === "python3 app.py");
+
+  // Each language's own runner, from the file its toolchain requires.
+  const suiteOf = (entries) => (planBehaviourChecks(entries, noManifest, have, null)[0] || {}).command;
+  const runners = [
+    [["MyApp.sln"], "dotnet test"], [["Api.csproj"], "dotnet test"], [["Lib.fsproj"], "dotnet test"],
+    [["build.gradle.kts"], "gradle test -q"], [["Package.swift"], "swift test"], [["mix.exs"], "mix test"],
+    [["stack.yaml"], "stack test"], [["pkg.cabal"], "cabal test"], [["build.sbt"], "sbt -batch test"],
+    [["pubspec.yaml"], "dart test"], [["build.zig"], "zig build test"], [["deno.json"], "deno test"],
+    [["project.clj"], "lein test"], [["dune-project"], "dune test"], [["rebar.config"], "rebar3 eunit"],
+    [["shard.yml"], "crystal spec"], [["Makefile.PL"], "prove -lr t"],
+  ];
+  runners.forEach(function (r) { check(r[0][0] + " runs " + r[1], suiteOf(r[0]) === r[1]); });
+  check("Julia runs its Pkg tests", /^julia --project=\. -e "using Pkg; Pkg\.test\(\)"$/.test(suiteOf(["Project.toml"])));
+  check("R runs testthat", /testthat::test_local/.test(suiteOf(["DESCRIPTION"])));
+  check("a missing runner is reported for new languages too",
+    planBehaviourChecks(["Package.swift"], noManifest, none, null)[0].available === false);
+  check("an earlier manifest still wins", suiteOf(["Cargo.toml", "build.zig"]) === "cargo test");
+  check("a file named like a suffix rule alone does not match", suiteOf(["csproj"]) === undefined);
+
+  const { hasTestFiles } = require(path.join(DIST, "verification/behaviour-checker.js"));
+  check("test files are recognised across languages",
+    ["CalcTest.kt", "CalcSpec.scala", "calc_test.exs", "calc_test.dart", "CalcSpec.hs", "calc_spec.cr", "basic.t",
+      "calc_tests.erl", "runtests.jl", "core_test.clj", "CalcTests.swift"].every(function (f) { return hasTestFiles([f]); }));
+  check("and source files are not", !hasTestFiles(["Calc.kt", "calc.ex", "main.dart", "Main.hs", "latest.txt"]));
 }
 
 function testSearchBlockMatching() {
@@ -1838,6 +1868,9 @@ function testToolchain() {
   check("gofmt is probed bare, on an empty stdin", probeCommand("gofmt", "gofmt") === "gofmt");
   check("everything else is probed with --version", probeCommand("cargo", "cargo") === "cargo --version");
   check("a multi-word candidate keeps its words", probeCommand("mypy", "python3 -m mypy") === "python3 -m mypy --version");
+  check("tools without --version are probed their own way",
+    probeCommand("zig", "zig") === "zig version" && probeCommand("luac", "luac5.4") === "luac5.4 -v" &&
+    probeCommand("lein", "lein") === "lein version" && probeCommand("sbt", "sbt") === "sbt --script-version");
 }
 
 function testCheckPlanner() {
@@ -1901,6 +1934,35 @@ function testCheckPlanner() {
     commands(planChecks(["App.java"], ["build.gradle"], all, TMP)).join() === "gradle compileJava -q");
   check("a Makefile claims C, as a dry run rather than a build",
     commands(planChecks(["main.c"], ["Makefile"], all, TMP)).join() === "make -n");
+
+  // --- more languages
+  const one = function (file) { return commands(planChecks([file], [], all, TMP))[0]; };
+  check("Lua is parsed with luac -p", one("init.lua") === 'luac -p "init.lua"');
+  check("Perl is checked with perl -c", one("run.pl") === 'perl -c "run.pl"');
+  check("Swift is parsed without compiling", one("main.swift") === 'swiftc -parse "main.swift"');
+  check("Dart is analysed", one("main.dart") === 'dart analyze "main.dart"');
+  check("Zig is ast-checked", one("main.zig") === 'zig ast-check "main.zig"');
+  check("Haskell is type-checked without code", /^ghc -fno-code -outputdir "\/tmp\/checks" "Main\.hs"$/.test(one("Main.hs")));
+  check("Nim is checked", one("app.nim") === 'nim check --hints:off "app.nim"');
+  check("Fortran is syntax-checked", /^gfortran -fsyntax-only/.test(one("solve.f90")));
+  check("R is parsed", /^rscript -e "invisible\(parse/.test(one("model.R")));
+  check("zsh and fish are parsed by their own shells", one("x.zsh") === 'zsh -n "x.zsh"' && one("x.fish") === 'fish -n "x.fish"');
+  check("TypeScript's module extensions are checked", /^tsc /.test(one("a.mts")));
+  check("Elixir files are not run as a check", planChecks(["lib.ex"], [], all, TMP).length === 0);
+  const claims = [
+    [["Lib.kt"], ["build.gradle.kts"], "gradle classes -q"], [["A.scala"], ["build.sbt"], "sbt -batch compile"],
+    [["main.swift"], ["Package.swift"], "swift build"], [["main.dart"], ["pubspec.yaml"], "dart analyze"],
+    [["main.zig"], ["build.zig"], "zig build"], [["lib/a.ex"], ["mix.exs"], "mix compile"],
+    [["Main.hs"], ["stack.yaml"], "stack build --fast"], [["Main.hs"], ["app.cabal"], "cabal build"],
+    [["a.ml"], ["dune-project"], "dune build"], [["core.clj"], ["project.clj"], "lein check"],
+    [["a.erl"], ["rebar.config"], "rebar3 compile"], [["Lib.fs"], ["Lib.fsproj"], "dotnet build"],
+    [["Program.cs"], ["All.sln"], "dotnet build"],
+  ];
+  claims.forEach(function (c) {
+    check(c[1][0] + " claims " + c[0][0], commands(planChecks(c[0], c[1], all, TMP)).join() === c[2]);
+  });
+  check("a Java-only Gradle build still compiles Java only",
+    commands(planChecks(["App.java"], ["build.gradle.kts"], all, TMP)).join() === "gradle compileJava -q");
 
   // A manifest for one language must not silence another.
   const mixed = planChecks(["src/main.rs", "helper.c"], ["Cargo.toml"], all, TMP);
