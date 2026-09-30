@@ -2372,6 +2372,242 @@ async function testBrowserExtraction() {
   }
 }
 
+// The parsing sweep: adversarial replies through the text parsers, and a
+// pathological input for every regex path. It found real bugs when it was a
+// scratch script, so it stays.
+function testParseSweep() {
+  section("parsing sweep: fences, stray braces and slow paths");
+  const { parseFilesRobust, robustParseJson, extractStepsHeuristic } = require(path.join(DIST, "parser/json-repair.js"));
+  const { extractFencedFiles } = require(path.join(DIST, "parser/fenced-files.js"));
+  const T = "```";
+  const filesOf = (t) => { const r = parseFilesRobust(t); return r ? r.changes : []; };
+  const contentOf = (t, p) => { const c = filesOf(t).find((x) => x.filePath === p); return c ? c.newContent : undefined; };
+  const README = "# Tool\n\nInstall:\n\n" + T + "bash\nnpm i tool\n" + T + "\n\nDone.";
+
+  check("a four-backtick fence carries a README with its own fence",
+    contentOf("````markdown README.md\n" + README + "\n````", "README.md") === README + "\n");
+  check("so does a tilde fence", contentOf("~~~markdown README.md\n" + README + "\n~~~", "README.md") === README + "\n");
+  const PYSTR = 'FENCE = "' + T + '"\nprint(FENCE)';
+  check("a triple backtick mid-line does not close the block", contentOf(T + "python app.py\n" + PYSTR + "\n" + T, "app.py") === PYSTR + "\n");
+  check("a closing fence may carry trailing spaces", contentOf(T + "python a.py\nx = 1\n" + T + "   \n\nnext", "a.py") === "x = 1\n");
+  check("a closing fence may be indented up to 3 spaces", contentOf(T + "python a.py\nx = 1\n   " + T, "a.py") === "x = 1\n");
+  check("a CRLF reply reads", /x = 1/.test(contentOf(T + "python\r\n# a.py\r\nx = 1\r\n" + T + "\r\n", "a.py") || ""));
+  check("an unclosed last block (a truncated reply) is not written",
+    filesOf("**a.py**\n" + T + "python\nx=1\n" + T + "\n**b.py**\n" + T + "python\nprint(").map((c) => c.filePath).join(",") === "a.py");
+  const two = "**a.py**\n" + T + "python\nx=1\n" + T + "\n\n**README.md**\n````md\n" + README + "\n````";
+  check("two files, the second holding a fence inside a longer one",
+    filesOf(two).map((c) => c.filePath + ":" + (c.newContent === README + "\n" || c.newContent === "x=1\n")).join(",") === "a.py:true,README.md:true", JSON.stringify(filesOf(two)));
+  check("a shorter fence inside does not close a longer one", contentOf("````md docs/x.md\na\n" + T + "\nb\n````", "docs/x.md") === "a\n" + T + "\nb\n");
+  check("inline triple backticks in prose do not open a block",
+    contentOf("Use " + T + "code" + T + " spans.\n\n" + T + "python\n# a.py\nx=1\n" + T, "a.py") === "x=1\n");
+
+  check("json after a shell block with ${VAR}",
+    filesOf("Run:\n" + T + "bash\necho ${HOME}\n" + T + "\n" + T + 'json\n{"files":[{"path":"a.py","content":"x=1"}]}\n' + T).map((c) => c.filePath).join(",") === "a.py");
+  check("json after prose with a brace placeholder",
+    filesOf('Replace {name} below.\n{"files":[{"path":"a.py","content":"x=1"}]}').map((c) => c.filePath).join(",") === "a.py");
+  check("json whose content holds a fence",
+    contentOf(T + 'json\n{"files":[{"path":"README.md","content":"' + T + 'bash\\nnpm i\\n' + T + '"}]}\n' + T, "README.md") === T + "bash\nnpm i\n" + T);
+  const lead = '{"note":"x"}\n{"files":[{"path":"a.py","content":"x=1"}]}';
+  check("json with another object before the files object", filesOf(lead).map((c) => c.filePath).join(",") === "a.py", JSON.stringify(filesOf(lead)));
+  check("robustParseJson never throws on junk", [null, undefined, 3, {}, "{", "}", "{\"", T, T + "json\n{", "\\", "{\"a\":\"\\"].every((j) => {
+    try { robustParseJson(j); return true; } catch (e) { return false; }
+  }));
+  check("the patch parser never throws on junk", ["", "\"path\": \"", "\"path\":\"a\",\"mode\":\"x\",\"content\":\"", "{".repeat(50)].every((j) => {
+    try { parseMarkdownToEditPlan(j); return true; } catch (e) { return false; }
+  }));
+
+  // A quadratic path takes tens of seconds at this size (one did, on 200 KB of
+  // spaces); a linear one takes milliseconds. The limit sits far from both.
+  const N = 200000;
+  const slow = [];
+  const inputs = {
+    backticks: T.repeat(N / 3),
+    openFences: (T + "x\n").repeat(N / 5),
+    braces: "{".repeat(N),
+    quotes: '"'.repeat(N),
+    backslashes: "\\".repeat(N),
+    commas: ",".repeat(N) + " ".repeat(N),
+    keys: '{"a":' + '"x":'.repeat(N / 4),
+    spaces: "{" + " ".repeat(N) + ",",
+    titles: '"title":"'.repeat(N / 9),
+    paths: '"path":"'.repeat(N / 8),
+    pathmode: ('"path":"a","mode":"c","content":"' + "x".repeat(50)).repeat(N / 90),
+    leadins: ("x\n".repeat(50) + T + "\na\n" + T + "\n").repeat(N / 110),
+    fencedJunk: (T + "json\n{" + '"a":'.repeat(20) + "\n").repeat(N / 100),
+    objects: '{"note":"x"}\n'.repeat(N / 13),
+  };
+  const parsers = { parseFilesRobust: parseFilesRobust, extractFencedFiles: extractFencedFiles, patchParser: parseMarkdownToEditPlan, steps: extractStepsHeuristic };
+  for (const [k, v] of Object.entries(inputs)) {
+    for (const [name, fn] of Object.entries(parsers)) {
+      const t = Date.now();
+      try { fn(v); } catch (e) { slow.push(name + "/" + k + " threw " + e.message); }
+      const ms = Date.now() - t;
+      if (ms > 5000) slow.push(name + "/" + k + " " + ms + "ms");
+    }
+  }
+  check("no parser is quadratic or throws on 200 KB of pathological input", slow.length === 0, slow.join("; "));
+}
+
+// The same kind of sweep over the two DOM readers, with replies rendered the
+// way the chat sites render them.
+async function testReaderSweep() {
+  section("reader sweep: replies as the page renders them (real chromium)");
+  const { parseFilesRobust } = require(path.join(DIST, "parser/json-repair.js"));
+  let browser;
+  try {
+    browser = await require("playwright").chromium.launch();
+  } catch (e) {
+    console.log("  skip (chromium unavailable: " + String(e.message).split("\n")[0] + ")");
+    return;
+  }
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "agentic-readers-"));
+  try {
+    const page = await browser.newPage();
+    const cfg = { id: "fx", selectors: { assistantMessage: ".assistant-msg", copyButton: "" }, profileDir: path.join(root, "profiles", "fx") };
+    const c = new PlaywrightController(cfg);
+    c.attachPageForReplay(page);
+    const read = async (body) => {
+      await page.setContent('<div><div class="assistant-msg">old</div><div class="assistant-msg">' + body + "</div></div>");
+      return { flat: await c.extractLatestResponse(cfg), md: await c.getLastMessageStructured(cfg) };
+    };
+    const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+    // A block read back from the page ends in one newline either way.
+    const contentOf = (t, p) => {
+      const r = parseFilesRobust(t);
+      const f = r && r.changes.find((x) => x.filePath === p);
+      return f ? f.newContent.replace(/\n$/, "") : undefined;
+    };
+    const both = (name, r, p, want) => {
+      check("flat reader: " + name, contentOf(r.flat, p) === want, r.flat);
+      check("structured reader: " + name, contentOf(r.md, p) === want, r.md);
+    };
+
+    const README = "# Tool\n\nInstall:\n\n```bash\nnpm i tool\n```\n\nDone.";
+    let r = await read('<p><strong>README.md</strong></p><div class="md-code-block"><div class="banner"><span>markdown</span><div role="button">Copy</div></div><pre><code class="language-markdown">' + esc(README) + "</code></pre></div>");
+    both("a README holding a fence round-trips", r, "README.md", README);
+
+    r = await read('<ol><li><p>Create <code>src/app.py</code>:</p><pre><code class="language-python">import os\nprint(os.getcwd())</code></pre></li><li><p>Run it.</p></li></ol>');
+    both("code inside a list item is a block", r, "src/app.py", "import os\nprint(os.getcwd())");
+
+    const CODE = "import json\ntext\njson\nCopy\nprint(1)";
+    r = await read('<p><code>a.py</code></p><pre><code class="language-python">' + CODE + "</code></pre>");
+    both("code lines that equal label words survive", r, "a.py", CODE);
+
+    r = await read('<p>Here is <code>x.rs</code>:</p><pre><code class="language-rust">fn main() {}</code></pre>');
+    check("structured reader: the language class rides on the fence", /```rust\n/.test(r.md), r.md);
+    check("only the newest reply is read", !/^old$/m.test(r.flat) && !/^old$/m.test(r.md));
+
+    r = await read("<h3>src/b.py</h3><pre><code>y = 2</code></pre><table><tr><th>a</th><th>b</th></tr><tr><td>1</td><td>2</td></tr></table>");
+    both("a heading names the block after it", r, "src/b.py", "y = 2");
+    check("flat reader: table cells are not glued together", !/ab|12/.test(r.flat.replace(/```[\s\S]*?```/g, "")), r.flat);
+
+    // A renderer leaves a soft line break in the paragraph's text. The plan
+    // rescue splits on those lines, and a file label must stay on its own line.
+    r = await read("<p>Here is the plan.\nStep 1: setup\nStep 2: routes\n\n**src/config.py**</p><pre><code>DEBUG = True</code></pre>");
+    check("flat reader: a soft line break stays a line", /^Step 1: setup\nStep 2: routes$/m.test(r.flat), r.flat);
+    both("a label after a soft break names the block", r, "src/config.py", "DEBUG = True");
+
+    r = await read("");
+    check("an empty reply reads as empty", r.flat === "" && r.md.trim() === "", JSON.stringify(r));
+    r = await read("Just text, no markup.");
+    check("a bare text reply reads", r.flat.includes("Just text") && r.md.includes("Just text"), JSON.stringify(r));
+  } finally {
+    await browser.close();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+}
+
+// The selector sweep: every selector literal in the source and the provider
+// configs, pulled out with the TypeScript parser and checked in a real page
+// with the API it is handed to. A typo in one only shows up on the live site.
+async function testSelectorSyntax() {
+  section("selector sweep: every literal selector parses (real chromium)");
+  const ts = require("typescript");
+  const ROOT = path.join(__dirname, "..", "..");
+  const DOM_CALLS = new Set(["querySelector", "querySelectorAll", "closest", "matches", "webkitMatchesSelector"]);
+  const PW_CALLS = new Set(["locator", "waitForSelector", "$", "$$", "$eval", "$$eval", "isVisible", "click", "fill", "textContent", "innerText", "getAttribute"]);
+  const PROP_KEYS = new Set(["css", "chatInput", "sendButton", "stopButton", "assistantMessage", "copyButton", "selector", "selectors"]);
+  const walk = (dir, out) => {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (e.name === "node_modules" || e.name === "dist" || e.name.startsWith(".")) continue;
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) walk(p, out);
+      else if (/\.(ts|js|cjs|mjs)$/.test(e.name) && !/\.d\.ts$/.test(e.name)) out.push(p);
+    }
+    return out;
+  };
+  // Folds "a" + "b"; null when anything is dynamic.
+  const fold = (n) => {
+    if (ts.isStringLiteral(n) || ts.isNoSubstitutionTemplateLiteral(n)) return n.text;
+    if (ts.isBinaryExpression(n) && n.operatorToken.kind === ts.SyntaxKind.PlusToken) {
+      const a = fold(n.left), b = fold(n.right);
+      return a !== null && b !== null ? a + b : null;
+    }
+    if (ts.isParenthesizedExpression(n)) return fold(n.expression);
+    return null;
+  };
+  // kind: "dom" goes to querySelector; "pw" to Playwright; "shared" is a config
+  // or property value, which may reach either.
+  const found = [];
+  for (const f of walk(path.join(ROOT, "local-agent", "src"), []).concat(walk(path.join(ROOT, "desktop"), []))) {
+    const sf = ts.createSourceFile(f, fs.readFileSync(f, "utf8"), ts.ScriptTarget.Latest, true, f.endsWith(".ts") ? ts.ScriptKind.TS : ts.ScriptKind.JS);
+    const at = (n) => path.relative(ROOT, f) + ":" + (sf.getLineAndCharacterOfPosition(n.getStart()).line + 1);
+    (function visit(n) {
+      if (ts.isCallExpression(n) && n.arguments.length) {
+        const callee = n.expression;
+        const name = ts.isPropertyAccessExpression(callee) ? callee.name.text : ts.isIdentifier(callee) ? callee.text : null;
+        const s = name && (DOM_CALLS.has(name) || PW_CALLS.has(name)) ? fold(n.arguments[0]) : null;
+        // The Playwright names are common words; count them only when the
+        // argument looks like a selector.
+        if (s !== null && (DOM_CALLS.has(name) || (/[#.\[\]:>=]|^[a-z]+(,|$)/i.test(s) &&
+            !(["click", "fill", "textContent", "innerText", "getAttribute", "isVisible"].includes(name) && !/[#.\[\]:]/.test(s))))) {
+          found.push({ at: at(n), sel: s, kind: DOM_CALLS.has(name) ? "dom" : "pw" });
+        }
+      }
+      if (ts.isPropertyAssignment(n) && PROP_KEYS.has(n.name.getText(sf).replace(/["']/g, ""))) {
+        const s = fold(n.initializer);
+        if (s) found.push({ at: at(n), sel: s, kind: "shared" });
+      }
+      ts.forEachChild(n, visit);
+    })(sf);
+  }
+  const cfgDir = path.join(ROOT, "local-agent", "config", "providers");
+  for (const f of fs.readdirSync(cfgDir)) {
+    const c = JSON.parse(fs.readFileSync(path.join(cfgDir, f), "utf8"));
+    for (const [k, v] of Object.entries(c.selectors || {})) {
+      if (k.startsWith("_") || k === "streamUrlPattern" || typeof v !== "string" || !v) continue;
+      found.push({ at: "config/providers/" + f + " " + k, sel: v, kind: "shared" });
+    }
+  }
+
+  let browser;
+  try {
+    browser = await require("playwright").chromium.launch();
+  } catch (e) {
+    console.log("  skip (chromium unavailable: " + String(e.message).split("\n")[0] + ")");
+    return;
+  }
+  const bad = [];
+  try {
+    const page = await browser.newPage();
+    await page.setContent("<main><textarea placeholder=x></textarea></main>");
+    for (const r of found) {
+      let err = null;
+      if (r.kind === "dom") {
+        err = await page.evaluate((s) => { try { document.querySelectorAll(s); return null; } catch (e) { return String(e.message).split("\n")[0]; } }, r.sel);
+      } else {
+        try { await page.locator(r.sel).count(); } catch (e) { err = String(e.message).split("\n")[0]; }
+        if (!err && r.kind === "shared" && /:has-text|:text|>>|^text=|^xpath=|:visible|:nth-match/.test(r.sel)) err = "Playwright-only syntax in a value that may reach querySelector";
+      }
+      if (err) bad.push(r.at + " " + JSON.stringify(r.sel) + ": " + err);
+    }
+  } finally {
+    await browser.close();
+  }
+  check("the sweep found the selectors", found.length > 50, String(found.length));
+  check("every literal selector parses where it is used", bad.length === 0, bad.join("\n"));
+}
+
 function testApplyFollowUp() {
   section("a failed patch is retried with a different tactic");
   const { buildApplyFollowUp } = require(path.join(DIST, "follow-up.js"));
@@ -4318,6 +4554,9 @@ function testUnittestFallback() {
   testRelevance();
   testPatchApplier();
   await testBrowserExtraction();
+  testParseSweep();
+  await testReaderSweep();
+  await testSelectorSyntax();
   testApplyFollowUp();
   testSchedulerGraph();
   testBuildState();

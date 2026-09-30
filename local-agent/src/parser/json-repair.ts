@@ -344,9 +344,18 @@ export function parseFilesRobust(text: string): { changes: any[]; commands: stri
 }
 
 function parseFilesFromJson(text: string): { changes: any[]; commands: string[] } | null {
-  const parsed = robustParseJson(text);
+  const filesOf = (o: any) => (o && (o.files || o.changes)) || null;
+  let parsed = robustParseJson(text);
   if (!parsed) return null;
-  const files = parsed.files || parsed.changes || null;
+  // A reply may open with another object - a note, its reasoning as JSON - and
+  // put the files in a second one. The first parse stops at the first.
+  if (!Array.isArray(filesOf(parsed))) {
+    for (const at of topLevelObjectStarts(text).slice(0, 64)) {
+      const later = robustParseJson(text.substring(at));
+      if (Array.isArray(filesOf(later)) && filesOf(later).length) { parsed = later; break; }
+    }
+  }
+  const files = filesOf(parsed);
   if (!files || !Array.isArray(files) || files.length === 0) return null;
   const changes: any[] = [];
   for (const f of files) {
