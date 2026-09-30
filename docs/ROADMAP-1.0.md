@@ -248,11 +248,21 @@ never inside a real project.
 | 11 | A TypeScript project (`tsc`, `npm test`) | a non-Python toolchain |
 | 12 | Stop mid-turn (esc), then continue | cancellation, and the state after it |
 
-- [ ] **1.13 Write the suite as a script** (M). Promote the scratch
+- [x] **1.13 Write the suite as a script** (M). Promote the scratch
       `drive.cjs` into `scripts/agent-live.mjs`: it drives the app over CDP,
       sends the prompt, and records the transcript, tool counts, malformed
       blocks, wall time and final test status. A person answers permission
       prompts, or the run uses auto mode in a disposable folder.
+      *Done:* `node scripts/agent-live.mjs [n...] [--auto] [--record]`. The
+      twelve scenarios are in the script, and each launches the app in its own
+      temp folder. It never answers a permission prompt; it waits for a person.
+      It reads tools, turn ends and `AGENT_DRIFT` from the app's stdout, then
+      saves the transcript and runs the project's tests (in its own venv with
+      pytest when the project made none). A turn that doesn't end as expected
+      fails the scenario. `--record` appends the table to
+      `docs/testing/agent-live.md`. Tried live in auto mode: 3 and 12 passed.
+      9's plan approval and 10's `/rewind` step are still unproven, because
+      DeepSeek signed out partway through.
 - [ ] **1.14 Run the suite twice**, and fix whatever falls apart between runs (L,
       open-ended).
 
