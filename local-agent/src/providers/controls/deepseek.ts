@@ -8,7 +8,9 @@
  *   <div aria-pressed="true" class="ds-toggle-button"><span>Deep thinking</span></div>
  *
  * Everything is on the page already and reports its own state, so each control
- * is one read and at most one click.
+ * is one read and at most one click. The radiogroup has since left the site and
+ * the config no longer declares a mode; the branch below stays for a config
+ * that does.
  */
 import { ControlApplier, ControlResult } from "./types.js";
 import { guard, setFlagByText, setFlagByValue } from "./helpers.js";
