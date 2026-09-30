@@ -1086,7 +1086,10 @@ export class PlaywrightController {
         // Inline code keeps its backticks: "Create `src/app.py`:" is how the
         // fenced-file reader tells which file the next block is.
         const inline = (nodes: any[]): string => nodes.map((n: any): string => {
-          if (n.nodeType === 3) return String(n.textContent || "").replace(/\s+/g, " ");
+          // Newlines stay, as the structured reader keeps them: a renderer
+          // leaves a soft line break in the text, and "Step 1: ..." lines are
+          // what the plan rescue splits on.
+          if (n.nodeType === 3) return String(n.textContent || "").replace(/[ \t\f\v\r]+/g, " ");
           if (n.nodeType !== 1 || isControl(n)) return "";
           const tag = tagOf(n);
           if (tag === "br") return "\n";
