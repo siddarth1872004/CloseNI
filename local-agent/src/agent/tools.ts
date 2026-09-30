@@ -249,7 +249,7 @@ async function doBash(c: ToolCall, ctx: ToolContext): Promise<AgentOutcome> {
   const command = String(c.input.command || "").trim();
   if (!command) throw new ToolError("bash needs a command");
   const secs = Math.max(1, Math.min(600, parseInt(c.input.timeout, 10) || 60));
-  const run = ctx.run || ((cmd: string, cwd: string, t: number) => runCommand(cmd, cwd, t));
+  const run = ctx.run || ((cmd: string, cwd: string, t: number) => runCommand(cmd, cwd, t, { pipefail: true }));
   const r = await run(command, ctx.workspace, secs * 1000);
   const output = cap(r.output || "");
   return {

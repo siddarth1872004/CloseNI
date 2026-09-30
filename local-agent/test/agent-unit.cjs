@@ -153,6 +153,12 @@ async function run(check, section) {
   check("bash runs in the workspace", o.ok && o.output === "ran echo hi in " + path.basename(ws) && o.summary === "exit 0");
   o = await Tl.runTool(call({ tool: "bash", command: "node -e \"process.stdout.write('real'); process.exit(3)\"" }), ctx);
   check("a real failing command reports its output and failure", !o.ok && /real/.test(o.output) && o.summary === "failed", JSON.stringify(o));
+  if (process.platform !== "win32" && fs.existsSync("/bin/bash")) {
+    o = await Tl.runTool(call({ tool: "bash", command: "node -e \"process.exit(2)\" | cat" }), ctx);
+    check("a failing stage fails the whole pipeline", !o.ok && o.summary === "failed", JSON.stringify(o));
+    o = await Tl.runTool(call({ tool: "bash", command: "yes | head -n 1" }), ctx);
+    check("a stage stopped early by head is not a failure", o.ok && o.output === "y", JSON.stringify(o));
+  }
   o = await Tl.runTool(call({ tool: "bash", command: "  " }), ctx);
   check("an empty command is an error", !o.ok);
 
