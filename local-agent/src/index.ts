@@ -1979,6 +1979,7 @@ async function agentSessionMode(workspace: string, providerId: string, mode: str
     // A reply that stops short of what it said it would do gets one more
     // message instead of ending the turn.
     checkFinal: async (reply) => stoppedShort(reply),
+    budgetChars: budgetFor(config.contextBudgetChars),
     askPermission: (req) => new Promise<PermissionAnswer>((resolve) => {
       pending.set(req.id, resolve);
       agentEvent(Object.assign({ type: "permission" }, req));
@@ -2032,6 +2033,12 @@ async function agentSessionMode(workspace: string, providerId: string, mode: str
           if (loop.busy) agentEvent({ type: "error", message: "Wait for the current turn to finish before clearing." });
           else void loop.clear().catch((e: any) => agentEvent({ type: "error", message: String(e && e.message ? e.message : e) }));
           break;
+        case "compact":
+          if (loop.busy) agentEvent({ type: "error", message: "Wait for the current turn to finish before compacting." });
+          else void loop.compact()
+            .then((ok) => { if (!ok) agentEvent({ type: "error", message: "This provider cannot start a new conversation." }); })
+            .catch((e: any) => agentEvent({ type: "error", message: String(e && e.message ? e.message : e) }));
+          break;
         case "close": close(); break;
         default: return false;
       }
@@ -2053,7 +2060,7 @@ async function agentSessionMode(workspace: string, providerId: string, mode: str
  * rest of the run, anything else to decline.
  */
 async function agentOnceMode(prompt: string, workspace: string, providerId: string, mode: string) {
-  const { session } = await openChatSession(providerId, workspace);
+  const { session, config } = await openChatSession(providerId, workspace);
   let final = "";
   let result: any = null;
   const loop = new AgentLoop({
@@ -2061,6 +2068,7 @@ async function agentOnceMode(prompt: string, workspace: string, providerId: stri
     workspace: workspace,
     mode: modeOf(mode),
     checkFinal: async (reply) => stoppedShort(reply),
+    budgetChars: budgetFor(config.contextBudgetChars),
     emit: (ev: any) => {
       if (ev.type === "assistant") { final = ev.text; console.log("\n\u23fa " + ev.text.split("\n").join("\n  ")); }
       else if (ev.type === "tool" && ev.status !== "running" && ev.status !== "waiting") console.log("\u23fa " + ev.title + "\n  \u23bf  " + (ev.summary || ev.status));

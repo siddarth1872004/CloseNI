@@ -16,6 +16,7 @@
  * comes out shaped like that implementation. Hence a second one, against Ollama,
  * in the same change: an abstraction with one implementor is a rename.
  */
+import { ConversationSize, addTurn } from "../context-budget.js";
 
 export type TransportKind = "browser" | "ollama";
 
@@ -51,6 +52,12 @@ export interface ChatSession {
 
   /** Abandon the current conversation and begin an empty one. */
   reset(): Promise<void>;
+
+  /**
+   * What the conversation holds so far, counted from our own traffic, when
+   * the transport keeps that count - across restarts, for a saved thread.
+   */
+  size?(): ConversationSize;
 
   close(): Promise<void>;
 }
@@ -121,11 +128,20 @@ export class BrowserChatSession implements ChatSession {
       answer = await this.controller.getLastMessageStructured(this.config);
       if (answer.trim().length < 2) answer = await this.controller.getLastMessageInnerText(this.config);
     }
+    // Counted into the same per-project size the planned build rolls over
+    // on: chat, plan, build and the agent share the thread, so all of it fills.
+    this.controller.saveConversationSize(addTurn(this.controller.getConversationSize(), prompt.length, answer.length));
     return answer;
   }
 
+  size(): ConversationSize {
+    return this.controller.getConversationSize();
+  }
+
   async reset(): Promise<void> {
-    await this.controller.navigateFresh(this.config);
+    // Not a bare navigation: the saved thread, the build ledger and the size
+    // describe the conversation being left, and would otherwise outlive it.
+    await this.controller.startFreshConversation(this.config);
   }
 
   async close(): Promise<void> {

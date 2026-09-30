@@ -431,6 +431,32 @@ async function run(check, section) {
   await h.l.clear();
   await h.l.turn("y");
   check("clear starts a new thread with the preamble again", s.resets === 1 && /You are CloseNI/.test(s.prompts[1]));
+
+  // A thread past its budget continues in a new chat, mid-turn or between turns.
+  const ws6 = tmp();
+  fs.writeFileSync(path.join(ws6, "a.txt"), "alpha\n");
+  s = script([tool({ tool: "read", path: "a.txt" }), tool({ tool: "write", path: "b.txt" }, "beta"), "SUMMARY: copying a to b", "Done."]);
+  h = loop(s, { ws: ws6, budgetChars: 1000 });
+  await h.l.turn("copy a to b");
+  check("a thread past its budget asks for a summary, mid-turn", s.prompts.length === 4 && /too long to continue/.test(s.prompts[2]), s.prompts.length);
+  check("then starts a new chat", s.resets === 1 && type(h.events, "compacted").length === 1);
+  check("seeded with the preamble, the summary and the files changed",
+    /You are CloseNI/.test(s.prompts[3]) && /SUMMARY: copying a to b/.test(s.prompts[3]) && /Files you changed: b\.txt/.test(s.prompts[3]), s.prompts[3].slice(-600));
+  check("and carrying the results it was about to send", /b\.txt/.test(s.prompts[3].split("Files you changed")[1] || "") && /wrote|created|write/i.test(s.prompts[3].split("Read a file again")[1] || ""), s.prompts[3].slice(-300));
+  check("the turn finishes in the new chat", type(h.events, "done").pop().reason === "complete" && fs.readFileSync(path.join(ws6, "b.txt"), "utf-8").trim() === "beta");
+
+  s = script([tool({ tool: "read", path: "a.txt" }), "Read it.", "SUMMARY: read a", "Done again."]);
+  h = loop(s, { ws: ws6, budgetChars: 1000 });
+  await h.l.turn("read a");
+  await h.l.turn("and again");
+  check("between turns, the next message opens the new chat", s.resets === 1 && /too long to continue/.test(s.prompts[2]) &&
+    /You are CloseNI/.test(s.prompts[3]) && /SUMMARY: read a/.test(s.prompts[3]) && /User request:\nand again/.test(s.prompts[3]), s.prompts[3] && s.prompts[3].slice(-300));
+  s = script(["ok", "ok", "ok"]);
+  h = loop(s, { ws: ws6, budgetChars: 1000 });
+  await h.l.turn("one");
+  await h.l.turn("two");
+  check("a new chat is not rolled over on its first message alone", s.resets === 0 && s.prompts.length === 2);
+  check("a transport with no new chat cannot compact", (await new AgentLoop({ session: { ask: async () => "x" }, workspace: ws6, emit: () => {}, askPermission: async () => ({ decision: "allow" }) }).compact()) === false);
   check("an @ that is not a project path stays as typed", expandMentions("mail me@example.com or use @decorator", ws4).attached.length === 0);
 
   s = script([tool({ tool: "todo", items: [{ text: "one", status: "in_progress" }, { text: "two" }] }), "ok"]);

@@ -329,6 +329,12 @@ export function preamble(o: PreambleOptions): string {
   return parts.join("\n");
 }
 
+/** Asked in a thread about to be abandoned for a new one; the answer seeds the new one. */
+export const COMPACT_REQUEST = "This conversation is too long to continue, and the work will carry on in a new chat that sees none of it. " +
+  "Write a summary for yourself to pick up from: the user's goal and any instructions or constraints they gave; what is done; " +
+  "what is left, including anything half-finished; decisions made and why; and what you learned about the project (commands that work, pitfalls). " +
+  "Plain prose and short lists, under 400 words. No ```tool blocks - nothing will be run.";
+
 /** Said with every user message: web models drift from a convention over a long thread. */
 export const TURN_REMINDER = "(Act with ```tool blocks; a reply without them is your final answer.)";
 

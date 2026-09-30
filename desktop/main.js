@@ -511,6 +511,7 @@ ipcMain.handle("code-mode", function (event, mode) { return codeSend({ type: "mo
 ipcMain.handle("code-interrupt", function () { return codeSend({ type: "interrupt" }); });
 ipcMain.handle("code-rewind", function () { return codeSend({ type: "rewind" }); });
 ipcMain.handle("code-clear", function () { return codeSend({ type: "clear" }); });
+ipcMain.handle("code-compact", function () { return codeSend({ type: "compact" }); });
 ipcMain.handle("code-end", function () { return releaseCode(); });
 
 let sessionProc = null;
