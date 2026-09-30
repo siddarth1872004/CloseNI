@@ -197,6 +197,22 @@ protocol. This is the product, and everything else is secondary.
       timeout: check it's killed when the session ends, on app quit, and on
       `/stop`, on both Linux and Windows. Orphaned servers holding ports are a
       certainty otherwise.
+      *Linux done; Windows written but not run.* It was worse than orphans.
+      A timeout killed only the shell, and whatever it had started kept the
+      output pipe open, so the call never came back. That covered
+      `sleep 20; echo x`, any pipeline, and `npm run dev &`. Now:
+  - Each command runs in its own process group. A timeout kills the group
+    with TERM, then KILL after 2s. On Windows it uses `taskkill /T /F`.
+  - A call returns when its shell exits. Anything still in the group was put
+    in the background on purpose, so it keeps running, and its output is
+    drained so it doesn't die of a broken pipe.
+  - Esc (`interrupt`) stops the command in flight. Closing the session stops
+    the background servers too.
+  - Process exit and SIGTERM, SIGINT or SIGHUP kill everything. That covers
+    app quit, because the desktop sends `close` and then kills the process.
+  - The bash tool tells the model how to background a server.
+  - Still open: Windows can't find a background child once its `cmd.exe` has
+    exited, and a SIGKILL of the agent itself orphans everything.
 
 ### 1C · The live scenario suite
 

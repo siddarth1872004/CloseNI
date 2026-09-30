@@ -2057,7 +2057,7 @@ async function testCommandTimeout() {
   // calling that a failure would break `python -m http.server`. Unchanged.
   const asServer = await runCommand(sleeper, os.tmpdir(), 1500);
   check("a quiet long-running command still counts as a server", asServer.success === true);
-  check("and says so", asServer.output.indexOf("Assuming") !== -1);
+  check("and says so", /taken to be a server and stopped/.test(asServer.output));
 
   // A syntax check is supposed to terminate. One that does not has told us
   // nothing, and reporting that as a pass is worse than reporting the timeout.

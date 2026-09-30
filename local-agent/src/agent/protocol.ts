@@ -308,7 +308,7 @@ export function preamble(o: PreambleOptions): string {
     "- read {path, offset?, limit?}: a file with line numbers.",
     "- write {path} + payload: create or overwrite a whole file.",
     "- edit {path} + SEARCH/REPLACE sections: each SEARCH must match the file exactly, once. Several sections may follow each other.",
-    "- bash {command, timeout?}: run a shell command in the working directory (timeout in seconds, default 60).",
+    "- bash {command, timeout?}: run a shell command in the working directory (timeout in seconds, default 60). A command still running at its timeout is stopped; to keep a server up for later commands, start it in the background with its output to a file: npm run dev > server.log 2>&1 &",
     "- glob {pattern}: files matching a pattern such as src/**/*.ts.",
     "- grep {pattern, path?, glob?, ignore_case?}: search file contents with a regular expression.",
     "- ls {path?}: list a directory.",

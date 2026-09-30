@@ -6,7 +6,7 @@ import { parsePlanRobust } from "./parser/json-repair.js";
 import { applyPatch } from "./patch/patch-applier.js";
 import { PlaywrightController, ProviderConfig } from "./providers/playwright-controller.js";
 import { ProviderRegistry } from "./providers/provider-registry.js";
-import { runCommand, normalizeCommand } from "./verification/command-runner.js";
+import { runCommand, normalizeCommand, stopRunning, stopBackground } from "./verification/command-runner.js";
 import { planChecksForWorkspace } from "./verification/check-planner.js";
 import { needsConfirmation, isEnvironmentSetup, isGeneratedFile, GENERATED_FILES } from "./verification/command-policy.js";
 import { createMutex, createPool } from "./async-pool.js";
@@ -1994,6 +1994,9 @@ async function agentSessionMode(workspace: string, providerId: string, mode: str
       closing = true;
       loop.interrupt();
       denyPending();
+      // A command in flight stops now; a server it left running dies with the session.
+      stopRunning();
+      stopBackground();
       // Let the reply in flight finish rather than kill the browser under it.
       const wait = () => { if (!loop.busy) resolve(); else setTimeout(wait, 200); };
       wait();
@@ -2014,7 +2017,9 @@ async function agentSessionMode(workspace: string, providerId: string, mode: str
           break;
         }
         case "mode": loop.setMode(modeOf(msg.mode)); break;
-        case "interrupt": loop.interrupt(); denyPending(); agentEvent({ type: "interrupting" }); break;
+        // Esc stops the command in flight too, rather than waiting out its
+        // timeout; servers from earlier commands keep running until close.
+        case "interrupt": loop.interrupt(); denyPending(); stopRunning(); agentEvent({ type: "interrupting" }); break;
         case "rewind":
           if (loop.busy) agentEvent({ type: "error", message: "Wait for the current turn to finish before rewinding." });
           else loop.rewind();
