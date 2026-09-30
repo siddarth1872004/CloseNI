@@ -1,4 +1,5 @@
 ﻿import { spawn, spawnSync } from "child_process";
+import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { resolveTool } from "./toolchain.js";
@@ -18,7 +19,15 @@ export interface RunOptions {
    * model suggested may legitimately be a server that never exits.
    */
   timeoutIsFailure?: boolean;
+  /**
+   * Fail a pipeline when any stage fails. /bin/sh reports only the last stage,
+   * so `pytest | tail` said "exit 0" over failing tests. Needs bash; where there
+   * is none (Windows, a bare container) the command runs as before.
+   */
+  pipefail?: boolean;
 }
+
+const BASH = process.platform === "win32" ? undefined : ["/bin/bash", "/usr/bin/bash", "/usr/local/bin/bash"].find((p) => fs.existsSync(p));
 
 export function runCommand(
   command: string,
@@ -44,7 +53,10 @@ export function runCommand(
       if (!env.PYTHONPYCACHEPREFIX) env.PYTHONPYCACHEPREFIX = path.join(os.tmpdir(), "closeni-pycache");
     }
 
-    const proc = spawn(command, { cwd: cwd, shell: true, env: env });
+    const bash = options.pipefail ? BASH : undefined;
+    const proc = bash
+      ? spawn(bash, ["-o", "pipefail", "-c", command], { cwd: cwd, env: env })
+      : spawn(command, { cwd: cwd, shell: true, env: env });
 
     const timer = setTimeout(() => {
       timedOut = true;
@@ -86,7 +98,9 @@ export function runCommand(
 
       resolve({ 
         command: command, 
-        success: code === 0 && !timedOut, 
+        // 141 is a stage killed by SIGPIPE: `cat log | head` stopping early,
+        // which pipefail would otherwise call a failure.
+        success: (code === 0 || (bash !== undefined && code === 141)) && !timedOut, 
         output: output, 
         timedOut: timedOut 
       });
