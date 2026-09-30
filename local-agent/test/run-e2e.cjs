@@ -1071,13 +1071,13 @@ async function main() {
     let r = await applyProviderControls(page, "deepseek", ds, {
       "mode": "expert", "deep-thinking": true, "smart-search": true,
     });
-    check("deepseek switches mode", byId(r, "mode").action === "clicked", JSON.stringify(r));
     check("deepseek leaves an already-on toggle alone", byId(r, "deep-thinking").action === "already-set", JSON.stringify(r));
     check("deepseek turns on a toggle that was off", byId(r, "smart-search").action === "clicked", JSON.stringify(r));
-    check("the mode actually changed",
-      (await page.getAttribute('[data-model-type="expert"]', "aria-checked")) === "true");
-    check("the previous mode was released",
-      (await page.getAttribute('[data-model-type="default"]', "aria-checked")) === "false");
+    // The site dropped its mode radiogroup, and the config with it. A saved
+    // mode from before is not applied, and the mock's radiogroup is untouched.
+    check("deepseek no longer sets a mode", byId(r, "mode").action === "missing", JSON.stringify(r));
+    check("so the page's mode is left as it was",
+      (await page.getAttribute('[data-model-type="default"]', "aria-checked")) === "true");
 
     // Applying the same settings again must be all reads and no clicks. This is
     // what makes it safe to run on every conversation open.
