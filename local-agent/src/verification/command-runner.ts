@@ -29,6 +29,63 @@ export interface RunOptions {
 
 const BASH = process.platform === "win32" ? undefined : ["/bin/bash", "/usr/bin/bash", "/usr/local/bin/bash"].find((p) => fs.existsSync(p));
 
+/** How much of each end of a stream is kept; a runaway log is not held whole. */
+export const KEEP_PER_END = 512 * 1024;
+
+/** The one wording for a cut, so a later cut can add up what earlier ones dropped. */
+export function omittedNote(lines: number, chars: number): string {
+  return "\n\n[... " + lines + " line" + (lines === 1 ? "" : "s") + ", " + chars + " characters omitted ...]\n\n";
+}
+export const OMITTED_NOTE = /\n*\[\.\.\. (\d+) lines?, (\d+) characters omitted \.\.\.\]\n*/g;
+
+function newlines(s: string): number {
+  let n = 0;
+  for (let i = s.indexOf("\n"); i !== -1; i = s.indexOf("\n", i + 1)) n++;
+  return n;
+}
+
+/**
+ * The start and the end of a stream, and a count of what fell between. `cat`
+ * of a 5 GB log, or a test run stuck printing, used to be buffered whole until
+ * the agent ran out of memory - only to be cut to 24 KB for the model anyway.
+ */
+export class KeptOutput {
+  private head = "";
+  private tail = "";
+  private droppedChars = 0;
+  private droppedLines = 0;
+  constructor(private readonly keep: number = KEEP_PER_END) {}
+
+  add(s: string): void {
+    if (this.head.length < this.keep) {
+      const n = this.keep - this.head.length;
+      this.head += s.slice(0, n);
+      s = s.slice(n);
+    }
+    if (!s) return;
+    this.tail += s;
+    // Trim only once the tail is twice its size, so a flood of small chunks
+    // is not re-sliced on every one.
+    if (this.tail.length > this.keep * 2) {
+      const gone = this.tail.length - this.keep;
+      this.droppedChars += gone;
+      this.droppedLines += newlines(this.tail.slice(0, gone));
+      this.tail = this.tail.slice(gone);
+    }
+  }
+
+  text(): string {
+    if (!this.droppedChars) return this.head + this.tail;
+    // Cut on line ends, as cap() does, so the count is of whole lines.
+    let head = this.head, tail = this.tail, lines = this.droppedLines, chars = this.droppedChars;
+    const h = head.lastIndexOf("\n");
+    if (h !== -1) { chars += head.length - h - 1; head = head.slice(0, h); }
+    const t = tail.indexOf("\n");
+    if (t !== -1) { chars += t + 1; lines += 1; tail = tail.slice(t + 1); }
+    return head + omittedNote(lines, chars) + tail;
+  }
+}
+
 export function runCommand(
   command: string,
   cwd: string,
@@ -36,8 +93,8 @@ export function runCommand(
   options: RunOptions = {},
 ): Promise<CommandResult> {
   return new Promise((resolve) => {
-    let stdout = "";
-    let stderr = "";
+    const stdout = new KeptOutput();
+    const stderr = new KeptOutput();
     let timedOut = false;
     let finished = false;
     let hasErrorOutput = false;
@@ -63,13 +120,15 @@ export function runCommand(
       proc.kill();
     }, timeoutMs);
 
-    proc.stdout.on("data", (d) => { 
-      const text = d.toString();
-      stdout += text; 
+    // Decoded by the stream, so a character split across two chunks survives.
+    proc.stdout.setEncoding("utf8");
+    proc.stderr.setEncoding("utf8");
+    proc.stdout.on("data", (text: string) => {
+      stdout.add(text);
       if (/error|traceback|exception|cannot find module|syntaxerror/i.test(text)) hasErrorOutput = true;
     });
-    proc.stderr.on("data", (d) => { 
-      stderr += d.toString(); 
+    proc.stderr.on("data", (text: string) => {
+      stderr.add(text);
       hasErrorOutput = true;
     });
 
@@ -84,7 +143,7 @@ export function runCommand(
       if (finished) return;
       finished = true;
       clearTimeout(timer);
-      const output = (stdout + "\n" + stderr).trim();
+      const output = (stdout.text() + "\n" + stderr.text()).trim();
       
       if (timedOut && !hasErrorOutput && !options.timeoutIsFailure) {
         resolve({ 

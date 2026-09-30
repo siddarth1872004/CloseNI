@@ -14,11 +14,12 @@
  */
 import * as fs from "fs";
 import * as path from "path";
-import { runCommand } from "../verification/command-runner.js";
+import { runCommand, omittedNote, OMITTED_NOTE } from "../verification/command-runner.js";
 import { ToolCall, BadCall, ToolOutcome, EditSection, isBad } from "./protocol.js";
 
 export const MAX_OUTPUT = 24000;
 export const MAX_READ_LINES = 2000;
+const MAX_READ_BYTES = 64 * 1024 * 1024;
 const SKIP_DIRS = new Set([".git", "node_modules", "__pycache__", ".venv", "venv", ".closeni", ".agent-backups", ".mypy_cache", ".pytest_cache", ".next", ".cache"]);
 const MAX_WALK = 20000;
 
@@ -71,12 +72,30 @@ function refuseGitInternals(workspace: string, abs: string): void {
   if (rel === ".git" || rel.startsWith(".git/")) throw new ToolError("files inside .git are not edited directly; use git through bash");
 }
 
-/** Head and tail of long output: errors are usually at the end, context at the start. */
+/**
+ * Head and tail of long output: errors are usually at the end, context at the
+ * start. The cut falls on line ends where one is near, and the note says how
+ * many lines went, counting any earlier cut inside what was dropped - the
+ * model is told "40 lines" once, not "40 lines" of a log that was 90000.
+ */
 export function cap(text: string, max: number = MAX_OUTPUT): string {
   if (text.length <= max) return text;
-  const head = Math.floor(max * 0.4);
-  const tail = max - head;
-  return text.slice(0, head) + "\n\n[... " + (text.length - max) + " characters omitted ...]\n\n" + text.slice(text.length - tail);
+  let head = Math.floor(max * 0.4);
+  let tail = text.length - (max - head);
+  const h = text.lastIndexOf("\n", head);
+  if (h > head / 2) head = h + 1;
+  const t = text.indexOf("\n", tail);
+  if (t !== -1 && t - tail < (text.length - tail) / 2) tail = t + 1;
+  const middle = text.slice(head, tail);
+  let lines = middle.split("\n").length - 1;
+  let chars = middle.length;
+  // A note stands for the line end before it plus what it counted.
+  middle.replace(OMITTED_NOTE, (note: string, l: string, c: string) => {
+    lines += Number(l) + 1 - (note.split("\n").length - 1);
+    chars += Number(c) + 1 - note.length;
+    return note;
+  });
+  return text.slice(0, head).replace(/\n+$/, "") + omittedNote(lines, chars) + text.slice(tail);
 }
 
 function isBinary(buf: Buffer): boolean {
@@ -136,14 +155,26 @@ async function doRead(c: ToolCall, ctx: ToolContext): Promise<AgentOutcome> {
   const abs = resolveInside(ctx.workspace, c.input.path);
   if (!fs.existsSync(abs)) throw new ToolError(c.input.path + " does not exist");
   if (fs.statSync(abs).isDirectory()) throw new ToolError(c.input.path + " is a directory; use ls");
+  const size = fs.statSync(abs).size;
+  if (size > MAX_READ_BYTES) throw new ToolError(c.input.path + " is " + Math.round(size / 1048576) + " MB; search it with grep, or print part of it with bash (sed -n '100,200p', tail -n 200)");
   const buf = fs.readFileSync(abs);
   if (isBinary(buf)) return { call: c, ok: true, summary: "binary file, " + buf.length + " bytes", output: "" };
   const lines = buf.toString("utf-8").split("\n");
   if (lines.length && lines[lines.length - 1] === "") lines.pop();
   const offset = Math.max(1, parseInt(c.input.offset, 10) || 1);
   const limit = Math.max(1, Math.min(MAX_READ_LINES, parseInt(c.input.limit, 10) || MAX_READ_LINES));
-  const slice = lines.slice(offset - 1, offset - 1 + limit);
-  const body = slice.map((l, k) => String(offset + k).padStart(6, " ") + "\t" + (l.length > 2000 ? l.slice(0, 2000) + " [line truncated]" : l)).join("\n");
+  // Whole lines up to the output budget. Capping afterwards cut out the middle
+  // of the read, and "read again with offset N" then skipped what was cut.
+  const slice: string[] = [];
+  let used = 0;
+  for (let k = 0; k < limit && offset - 1 + k < lines.length; k++) {
+    const l = lines[offset - 1 + k];
+    const row = String(offset + k).padStart(6, " ") + "\t" + (l.length > 2000 ? l.slice(0, 2000) + " [line truncated]" : l);
+    if (slice.length && used + row.length + 1 > MAX_OUTPUT - 200) break;
+    slice.push(row);
+    used += row.length + 1;
+  }
+  const body = slice.join("\n");
   const more = offset - 1 + slice.length < lines.length
     ? "\n[file continues: " + lines.length + " lines in total; read again with offset " + (offset + slice.length) + "]" : "";
   return {

@@ -179,9 +179,14 @@ protocol. This is the product, and everything else is secondary.
       had malformed or missing tool blocks, and log the count. If drift rises
       with length, send `TURN_REMINDER` more strongly, or re-send the tool list
       every N turns.
-- [ ] **1.10 Big outputs** (S). Results are capped at 6000 characters for display.
+- [x] **1.10 Big outputs** (S). Results are capped at 6000 characters for display.
       Check what the *model* receives for a 5 MB test log or a huge `read`, and
       make sure the cap is the same and says so ("…truncated, N lines omitted").
+      *Done:* the model gets 24 KB, head and tail, cut on line ends, with
+      "[... N lines, M characters omitted ...]". The command runner keeps only
+      512 KB of each end of a stream (a flood used to be held whole), and a
+      second cut adds up the first's count. `read` stops at a whole line inside
+      the budget so its "offset N" is right, and refuses files over 64 MB.
 - [ ] **1.11 Windows commands** (M). `shell: true` on Windows means `cmd.exe`,
       but the tool is called `bash` and the model writes bash. Choose one:
   - tell the model the real shell in the preamble (Platform is already sent; add "commands run in cmd.exe");
