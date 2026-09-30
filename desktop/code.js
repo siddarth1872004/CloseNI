@@ -584,6 +584,8 @@
         note(ev.files.length ? "Rewound " + ev.files.length + " file" + (ev.files.length === 1 ? "" : "s") + ": " + ev.files.join(", ") : "Nothing to rewind");
         break;
       case "cleared": transcript.innerHTML = ""; S.tools = {}; onTodos([]); note("Started a new conversation", "dim"); break;
+      case "compacting": note("Conversation at " + ev.size + " - summarising it to continue in a new one", "dim"); break;
+      case "compacted": note("Continuing in a new conversation" + (ev.summary ? ", with a summary of the last" : " (no summary could be read)"), ev.summary ? "dim" : "warn"); break;
       case "error": note(ev.message, "err"); break;
       case "done": {
         setBusy(false);
@@ -656,6 +658,10 @@
         if (!m) { note("Modes: default, accept, plan, build, test, research, ship, auto", "dim"); return; }
         setMode(m); note("Mode: " + V.modeLabel(m).text.replace(/\s*\(shift\+tab to cycle\)/, ""), "dim"); return;
       }
+      case "/compact":
+        if (S.busy) { note("Wait for the current turn to finish, or press esc.", "err"); return; }
+        if (!S.up) { note("Nothing to compact yet", "dim"); return; }
+        window.api.codeCompact(); return;
       case "/rewind":
         if (!S.up) { note("Nothing to rewind yet", "dim"); return; }
         window.api.codeRewind(); return;

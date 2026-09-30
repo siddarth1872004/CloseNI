@@ -14,6 +14,7 @@
   var COMMANDS = [
     { name: "/help", desc: "Commands and shortcuts" },
     { name: "/clear", desc: "Start a new conversation" },
+    { name: "/compact", desc: "Continue in a new conversation, carried over by a summary" },
     { name: "/plan", desc: "Toggle plan mode: read-only, answers with a plan" },
     { name: "/build", desc: "Toggle build mode: breaks the work into steps, then builds and checks each" },
     { name: "/test", desc: "Toggle test mode; enter on an empty line runs the project's tests" },

@@ -175,6 +175,15 @@ protocol. This is the product, and everything else is secondary.
     preamble, `CLOSENI.md`, the todo list, a list of the files touched, and a
     short summary the model writes on request. This is `/compact`. The
     context-limit detection from `NEXT.md` §3 is where the trigger comes from.
+      *Mechanism done; the measurement is still open.* Each chat's size is
+      tracked (per project for DeepSeek). Past 80% of the budget
+      (`contextBudgetChars`, default 150k characters), the agent asks the
+      model for a summary under 400 words, starts a new chat, and seeds it
+      with the preamble, that summary, the todo list and the files it changed.
+      That happens between turns or between steps; a chat's first message is
+      never rolled over. `/compact` does it by hand. `/clear` now also resets
+      the size and the ledger. The budget is a guess until the measurement
+      above is made.
 - [x] **1.9 Tool-convention drift** (M). Count, per session, how many replies
       had malformed or missing tool blocks, and log the count. If drift rises
       with length, send `TURN_REMINDER` more strongly, or re-send the tool list

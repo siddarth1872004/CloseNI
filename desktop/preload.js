@@ -31,6 +31,7 @@ contextBridge.exposeInMainWorld("api", {
   codeInterrupt: function () { return ipcRenderer.invoke("code-interrupt"); },
   codeRewind: function () { return ipcRenderer.invoke("code-rewind"); },
   codeClear: function () { return ipcRenderer.invoke("code-clear"); },
+  codeCompact: function () { return ipcRenderer.invoke("code-compact"); },
   codeEnd: function () { return ipcRenderer.invoke("code-end"); },
   onCodeEvent: function (cb) { ipcRenderer.on("code-event", function (e, ev) { cb(ev); }); },
   readExtraction: function () { return ipcRenderer.invoke("read-extraction"); },
