@@ -31,6 +31,12 @@ export interface LoopOptions {
   run?: ToolContext["run"];
   /** Wraps the first message of a thread - persona, skills and MCP context. */
   wrapFirst?: (text: string) => string;
+  /**
+   * Given a reply with no tool blocks, a message sending the model back to
+   * work if it stopped short of what it said it would do, or "". Asked at
+   * most once a turn, and never in plan mode, where prose is the answer.
+   */
+  checkFinal?: (reply: string) => Promise<string>;
 }
 
 const MEMORY_FILES = ["CLOSENI.md", "AGENTS.md", "CLAUDE.md"];
@@ -207,6 +213,7 @@ export class AgentLoop {
     let prompt = this.compose(userText);
     let reason = "complete";
     let errorText = "";
+    let nudged = false;
     try {
       for (let step = 0; ; step++) {
         if (step >= this.maxSteps) { reason = "step-limit"; break; }
@@ -216,7 +223,15 @@ export class AgentLoop {
         if (!reply || !reply.trim()) { reason = "error"; errorText = "No reply could be read from the provider."; break; }
         const parsed = parseReply(reply);
         if (parsed.text) this.o.emit({ type: "assistant", text: parsed.text });
-        if (!parsed.calls.length) break;
+        if (!parsed.calls.length) {
+          if (!nudged && this.o.checkFinal && this.mode !== "plan" && !this.stopRequested) {
+            nudged = true;
+            let nudge = "";
+            try { nudge = await this.o.checkFinal(reply); } catch { /* the reply stands as the answer */ }
+            if (nudge && !this.stopRequested) { prompt = nudge; continue; }
+          }
+          break;
+        }
         if (this.stopRequested) { reason = "interrupted"; break; }
 
         const outcomes: AgentOutcome[] = [];

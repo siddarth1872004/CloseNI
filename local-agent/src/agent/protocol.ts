@@ -269,6 +269,8 @@ export function preamble(o: PreambleOptions): string {
     ">>>>>>> REPLACE",
     T,
     "",
+    "If the payload itself contains " + T + " lines (a README, Markdown docs), open and close the block with four backticks instead: " + T + "`tool ... " + T + "`. Otherwise the first inner " + T + " ends the block and the rest of the file is lost.",
+    "",
     "Tools:",
     "- read {path, offset?, limit?}: a file with line numbers.",
     "- write {path} + payload: create or overwrite a whole file.",
@@ -296,6 +298,48 @@ export function preamble(o: PreambleOptions): string {
 
 /** Said with every user message: web models drift from a convention over a long thread. */
 export const TURN_REMINDER = "(Act with ```tool blocks; a reply without them is your final answer.)";
+
+const NEXT_ACTION = /(?:^|[.!?]\s+|\n)\s*(?:(?:now|next|first|then|so|ok(?:ay)?)[,:]?\s+)?(?:let me|let's|i'll|i will|i'm going to|i am going to)\s+(?:now\s+|first\s+|also\s+|go ahead and\s+)?(?:read|check|look|open|inspect|view|examine|update|edit|fix|write|create|add|change|modify|patch|run|execute|test|install|search|grep|list|apply|make|implement|refactor|remove|delete|rename|verify)\b[^.!?\n]*[.!:]?\s*$/i;
+const CODE_FILE = /(?:^|[\s`'"(])[\w./-]*\w\.(?:py|js|mjs|cjs|ts|tsx|jsx|java|kt|go|rs|rb|php|c|cc|cpp|h|hpp|cs|swift|html|css|scss|json|ya?ml|toml|sh|sql|md)\b/i;
+
+/**
+ * A message sending the model back to work when a reply with no tool blocks
+ * stopped short of what it said it would do, or "" for a real answer.
+ *
+ * Web models drift from the tool convention in two ways the loop would
+ * otherwise take as the end of the turn: announcing the next step and stopping
+ * ("Now I'll update main.py:"), or pasting a file's new contents as a plain
+ * code block. Both are read from the reply's shape, not guessed at: the last
+ * line announcing an action, or a sizeable code block beside a file name.
+ * Only ever asked once a turn, so a model that meant it gets its answer back.
+ */
+export function stoppedShort(reply: string): string {
+  const text = typeof reply === "string" ? reply : "";
+  const blocks = fences(text);
+  const lines = text.split(/\r?\n/);
+  const inFence = new Set<number>();
+  for (const f of blocks) for (let i = f.start; i <= f.end; i++) inFence.add(i);
+  const prose = lines.filter((_, i) => !inFence.has(i));
+  const last = prose.map((l) => l.trim()).filter(Boolean).pop() || "";
+  const tail = prose.join("\n").trim().split(/\n\s*\n/).pop() || "";
+  const lastFenceEnd = blocks.length ? blocks[blocks.length - 1].end : -1;
+  const endsInProse = lines.slice(lastFenceEnd + 1).some((l) => l.trim());
+
+  if (endsInProse && (/:\s*$/.test(last) || NEXT_ACTION.test(tail))) {
+    return "Your last reply had no ```tool block, so nothing was run - it ended with: “" + last.slice(0, 200) +
+      "”. If there is more to do, send the tool blocks now. If the task is finished, reply with a short summary and no tool blocks.";
+  }
+  // A block opening at a shell prompt ("$ python3 todo.py list") is a
+  // terminal session being shown, not a file: no file starts with one.
+  const pasted = blocks.some((f) => f.body.split("\n").filter((l) => l.trim()).length >= 5 && !/^\s*\$ /.test(f.body) &&
+    (CODE_FILE.test(f.info) || CODE_FILE.test(f.body.split("\n")[0] || "") || CODE_FILE.test(lines.slice(Math.max(0, f.start - 3), f.start).join("\n"))));
+  if (pasted) {
+    return "Your last reply showed code as plain code blocks, so no file was changed. " +
+      "To create or change a file, send a ```tool block with write (whole file) or edit (SEARCH/REPLACE). " +
+      "If the code was only an example, reply with a short summary and no tool blocks.";
+  }
+  return "";
+}
 
 export interface ToolOutcome {
   call: ToolCall | BadCall;

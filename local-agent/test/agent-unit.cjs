@@ -38,6 +38,7 @@ function tool(obj, payload) {
 
 async function run(check, section) {
   const P = require(path.join(DIST, "agent/protocol.js"));
+  const { stoppedShort } = P;
   const Tl = require(path.join(DIST, "agent/tools.js"));
   const Pm = require(path.join(DIST, "agent/permissions.js"));
   const { AgentLoop, expandMentions, loadMemory } = require(path.join(DIST, "agent/loop.js"));
@@ -78,6 +79,7 @@ async function run(check, section) {
   check("results name the call and fence its output safely", /\[1\] bash `npm test` - failed/.test(msg) && msg.indexOf("````\nboom") !== -1);
   const pre = P.preamble({ workspace: "/w", platform: "linux", mode: "plan", memory: "Use tabs." });
   check("the preamble teaches the format, the mode and the memory", /```tool/.test(pre) && /PLAN MODE/.test(pre) && /Use tabs\./.test(pre));
+  check("the preamble says to lengthen the fence around a payload with its own fences", /four backticks instead: ````tool/.test(pre));
 
   section("agent: tools stay inside the project");
   const ws = tmp();
@@ -284,6 +286,42 @@ async function run(check, section) {
   h = loop(s, { ws: ws4 });
   await h.l.turn("hello");
   check("a transport failure ends the turn with its reason", type(h.events, "done").pop().error === "browser closed" && !h.l.busy);
+
+  section("agent: a reply that stopped short");
+  check("an announced next step is caught", /nothing was run/.test(stoppedShort("I read the file. Now I'll update src/ball.py to fix the bounce:")));
+  check("so is 'let me' without a colon", /nothing was run/.test(stoppedShort("The tests fail on collisions.\n\nLet me check the tests to see why.")));
+  check("the nudge quotes the last line", /update src\/ball\.py/.test(stoppedShort("Now I'll update src/ball.py:")));
+  check("a finished summary is left alone", stoppedShort("Done. I fixed the bounce in src/ball.py and all 42 tests now pass.") === "");
+  check("'let me know' is not an action", stoppedShort("Fixed it. Let me know if you want the speed changed.") === "");
+  check("a question is left alone", stoppedShort("Should the paddle speed scale with the level?") === "");
+  check("a colon inside a code block does not count", stoppedShort("Run it with:\n```\n./run.sh\n```") === "");
+  const pastedFile = "Here is the corrected src/ball.py:\n```python\nclass Ball:\n    def __init__(self):\n        self.dy = 1\n    def bounce(self):\n        self.dy = -self.dy\n```\nThis fixes the bounce.";
+  check("a file pasted as a plain block is nudged toward write/edit", /write \(whole file\)/.test(stoppedShort(pastedFile)));
+  check("a short snippet is not", stoppedShort("Use `self.dy = -self.dy` in ball.py:\n```python\nself.dy = -self.dy\n```\nThat is all.") === "");
+  check("a terminal session naming a file is not", stoppedShort("Demo output\n```\n$ python3 todo.py add \"buy milk\"\nAdded: buy milk\n\n$ python3 todo.py list\n1. [ ] buy milk\n2. [x] write report\n```\nAll working.") === "");
+  check("a long block with no file name is not",stoppedShort("Example:\n```\na\nb\nc\nd\ne\n```\nThat's it.") === "");
+
+  const ws5 = tmp();
+  s = script(["Now I'll create hello.py:", tool({ tool: "write", path: "hello.py" }, "print(1)"), "Done.", "Done."]);
+  let finals = [];
+  h = loop(s, { ws: ws5, answer: () => ({ decision: "allow" }), checkFinal: async (r) => { finals.push(r); return stoppedShort(r); } });
+  await h.l.turn("make hello");
+  check("an unfinished reply gets one nudge instead of ending the turn", /nothing was run/.test(s.prompts[1]) && fs.existsSync(path.join(ws5, "hello.py")));
+  check("the answer after the tools is not nudged again", finals.length === 1 && type(h.events, "done").pop().reason === "complete" && s.prompts.length === 3);
+  s = script(["I'll do it:", "I'll do it:", "I'll do it:"]);
+  finals = [];
+  h = loop(s, { ws: ws5, checkFinal: async (r) => { finals.push(r); return "go on"; } });
+  await h.l.turn("x");
+  check("the nudge is sent at most once a turn", finals.length === 1 && s.prompts.length === 2 && type(h.events, "done").pop().reason === "complete");
+  s = script(["Plan:\n1. I'll edit a.py", "x"]);
+  finals = [];
+  h = loop(s, { ws: ws5, mode: "plan", checkFinal: async (r) => { finals.push(r); return "go on"; } });
+  await h.l.turn("plan");
+  check("plan mode's prose answer is never nudged", finals.length === 0 && s.prompts.length === 1);
+  s = script(["I'll do it:", "x"]);
+  h = loop(s, { ws: ws5, checkFinal: async () => { throw new Error("broken check"); } });
+  await h.l.turn("x");
+  check("a failing check leaves the reply as the answer", s.prompts.length === 1 && type(h.events, "done").pop().reason === "complete");
 
   s = script([T + "tool\nnot json\n" + T, "ok"]);
   h = loop(s, { ws: ws4 });

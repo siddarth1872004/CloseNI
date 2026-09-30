@@ -36,7 +36,7 @@ import { rescueUnparsedPlan, explainUnparsed } from "./extract/fallback.js";
 import { closeExtractor, readExtractionSettings } from "./extract/extractor.js";
 import { NeedleClient } from "./extract/needle-client.js";
 import { AgentLoop, loadMemory, PermissionAnswer } from "./agent/loop.js";
-import { MODES, Mode } from "./agent/protocol.js";
+import { MODES, Mode, stoppedShort } from "./agent/protocol.js";
 import { rescuePlan } from "./extract/plan-rescue.js";
 
 // Every extension the check planner knows about. A file the walker misses is a
@@ -1843,6 +1843,9 @@ async function agentSessionMode(workspace: string, providerId: string, mode: str
     // The persona, skills and MCP context chosen in Settings, as every other
     // mode applies them.
     wrapFirst: withPreamble,
+    // A reply that stops short of what it said it would do gets one more
+    // message instead of ending the turn.
+    checkFinal: async (reply) => stoppedShort(reply),
     askPermission: (req) => new Promise<PermissionAnswer>((resolve) => {
       pending.set(req.id, resolve);
       agentEvent(Object.assign({ type: "permission" }, req));
@@ -1919,6 +1922,7 @@ async function agentOnceMode(prompt: string, workspace: string, providerId: stri
     session: session,
     workspace: workspace,
     mode: modeOf(mode),
+    checkFinal: async (reply) => stoppedShort(reply),
     emit: (ev: any) => {
       if (ev.type === "assistant") { final = ev.text; console.log("\n\u23fa " + ev.text.split("\n").join("\n  ")); }
       else if (ev.type === "tool" && ev.status !== "running" && ev.status !== "waiting") console.log("\u23fa " + ev.title + "\n  \u23bf  " + (ev.summary || ev.status));
