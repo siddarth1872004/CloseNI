@@ -87,7 +87,7 @@ three days or more.
 
 **Goal:** a clean `main` with every current fix in it, and CI that runs tests.
 
-- [ ] **0.1 Commit the uncommitted work** on `fix/venv-rewrite-and-empty-reply`
+- [x] **0.1 Commit the uncommitted work** on `fix/venv-rewrite-and-empty-reply`
       in logical commits (S):
   - parser: CommonMark `fencedBlocks`, JSON-repair linear passes (`fenced-files.ts`, `json-repair.ts`)
   - controller: DOM readers keep list items, inline code and tables (`playwright-controller.ts`)
@@ -96,16 +96,19 @@ three days or more.
   - new files: `context/defined-names.ts`, `step-prompt.ts`, `test/fixtures/chat-labelled.html`
 - [ ] **0.2 Sign in `gh`** (`gh auth login`; `gh` lives in `~/.local/bin`). Open a
       PR into `main` and merge it (S).
-- [ ] **0.3 Add a test workflow** `.github/workflows/test.yml`. It runs on every
+- [x] **0.3 Add a test workflow** `.github/workflows/test.yml`. It runs on every
       push and PR: `npm ci`, `npm run build`, `npm test`, `npm run verify`,
       and `npm run test:web` and `npm run test:ui` under `xvfb-run`. Today only
-      `release.yml` exists, so nothing checks a PR (M).
+      `release.yml` exists, so nothing checks a PR (M). **Still to do:** it
+      has not run on GitHub yet; the first push is its first run.
 - [ ] **0.4 Decide whether e2e runs in CI.** It takes about 15 minutes. Recommended:
       nightly and on tags, not on every push (S).
-- [ ] **0.5 Move the parse-sweep and selector-sweep checks into the suite.** The
+- [x] **0.5 Move the parse-sweep and selector-sweep checks into the suite.** The
       scratch scripts found real bugs: parse-sweep was 29/30, and its one known
       failure is a JSON object that comes before the files object. They should
-      become permanent cases in `local-agent/test/run-tests.cjs` (M).
+      become permanent cases in `local-agent/test/run-tests.cjs` (M). Done:
+      the parsing, reader and selector sweeps are sections of the unit suite,
+      and the leading-object case is fixed.
 
 **Exit:** `main` is green in CI, and no work exists only in a working tree.
 
@@ -124,29 +127,33 @@ protocol. This is the product, and everything else is secondary.
       four backticks when the payload contains fences
       (`local-agent/src/agent/protocol.ts`). **Still to do:** confirm it on a
       live run that writes a Markdown file.
-- [ ] **1.2 Guard against silent truncation anyway** (S–M). The prompt rule
+- [x] **1.2 Guard against silent truncation anyway** (S–M). The prompt rule
       is advice, not a guarantee. In `readBlock` (`protocol.ts`), refuse a
       `write` whose payload opens a fence and never closes it, and whose
       block was followed by prose that looks like the rest of the file. Send
       back a `BadCall` asking for a resend with ```` ```` ````. The same
       check applies to an `edit` whose REPLACE is unterminated. It should
-      error back to the model, never guess.
+      error back to the model, never guess. Done, without the prose test: an
+      open fence alone is enough for a `write`. For an `edit`, the open fence
+      must be in a last section that has no closing marker, because a SEARCH
+      may quote half a code block.
 - [x] **1.3 False "pasted code" nudge.** A `$ command` demo block triggered an
       extra round trip. It is fixed, with a test. **Still to do:** confirm it
       live.
-- [ ] **1.4 Bash results hide pipeline failures** (S). `pytest | tail`
+- [x] **1.4 Bash results hide pipeline failures** (S). `pytest | tail`
       reports "exit 0" while pytest fails. `runCommand`
       (`verification/command-runner.ts`) spawns with `shell: true`, which is
       `/bin/sh`. For the agent's bash tool only, use `bash -o pipefail -c` where
       bash exists, and fall back to `sh` otherwise. The model sees the output
-      either way, but the UI's "exit 0" misleads the user.
+      either way, but the UI's "exit 0" misleads the user. Done. Exit 141 (a stage
+      stopped by SIGPIPE, as in `cat log | head`) still counts as success.
 - [ ] **1.5 DeepSeek `sendButton`** (S). It matches only `<button>`, and
       DeepSeek's send control is a div, so every prompt logs "No send button
       found". Re-capture it with `node scripts/capture-provider-ui.mjs deepseek`
       and update `config/providers/deepseek.json`. Or, if the only stable
       selector is a hashed class, drop `sendButton` and make Enter the
       documented path. That is the "need fewer selectors" rule in `NEXT.md`.
-- [ ] **1.6 DeepSeek Mode control does nothing** (S). The
+- [x] **1.6 DeepSeek Mode control does nothing** (S). The
       `[role="radiogroup"] [data-model-type]` selector points at UI DeepSeek
       no longer has. Remove `controls[0]` and `controlSelectors.modeOption`,
       and make the smoke test report it absent rather than broken.
