@@ -1968,7 +1968,11 @@ async function agentSessionMode(workspace: string, providerId: string, mode: str
     session: session,
     workspace: workspace,
     mode: modeOf(mode),
-    emit: agentEvent,
+    emit: (ev: any) => {
+      // Into the app's log, where a long session's drift can be read back.
+      if (ev.type === "done" && ev.drift && (ev.drift.malformed || ev.drift.missing)) console.log("AGENT_DRIFT: " + JSON.stringify(ev.drift));
+      agentEvent(ev);
+    },
     // The persona, skills and MCP context chosen in Settings, as every other
     // mode applies them.
     wrapFirst: withPreamble,
@@ -2070,7 +2074,7 @@ async function agentOnceMode(prompt: string, workspace: string, providerId: stri
   });
   try { await loop.turn(prompt); }
   finally { await session.close(); }
-  emit({ success: !!result && result.reason === "complete", reason: result && result.reason, answer: final, error: result && result.error });
+  emit({ success: !!result && result.reason === "complete", reason: result && result.reason, answer: final, error: result && result.error, drift: result && result.drift });
 }
 
 function resolveArg(arg: string | undefined): string {

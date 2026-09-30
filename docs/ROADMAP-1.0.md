@@ -175,10 +175,14 @@ protocol. This is the product, and everything else is secondary.
     preamble, `CLOSENI.md`, the todo list, a list of the files touched, and a
     short summary the model writes on request. This is `/compact`. The
     context-limit detection from `NEXT.md` §3 is where the trigger comes from.
-- [ ] **1.9 Tool-convention drift** (M). Count, per session, how many replies
+- [x] **1.9 Tool-convention drift** (M). Count, per session, how many replies
       had malformed or missing tool blocks, and log the count. If drift rises
       with length, send `TURN_REMINDER` more strongly, or re-send the tool list
       every N turns.
+      *Counting done:* the loop counts replies, malformed calls and nudged
+      replies, and which reply number each was. The count goes out with
+      `done`, and the agent logs `AGENT_DRIFT` when either is non-zero. Whether
+      drift rises with length is for the 20+ turn scenario (1C, row 8).
 - [x] **1.10 Big outputs** (S). Results are capped at 6000 characters for display.
       Check what the *model* receives for a 5 MB test log or a huge `read`, and
       make sure the cap is the same and says so ("…truncated, N lines omitted").

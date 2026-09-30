@@ -392,6 +392,16 @@ async function run(check, section) {
   await h.l.turn("make hello");
   check("an unfinished reply gets one nudge instead of ending the turn", /nothing was run/.test(s.prompts[1]) && fs.existsSync(path.join(ws5, "hello.py")));
   check("the answer after the tools is not nudged again", finals.length === 1 && type(h.events, "done").pop().reason === "complete" && s.prompts.length === 3);
+  s = script(["Now I'll create hello.py:", tool({ tool: "write", path: "hello.py" }, "print(1)"), "Done.", T + "tool\nnot json\n" + T, "Done."]);
+  h = loop(s, { ws: ws5, answer: () => ({ decision: "allow" }), checkFinal: async (r) => stoppedShort(r) });
+  await h.l.turn("make hello");
+  await h.l.turn("again");
+  (function () {
+    const d = type(h.events, "done").pop().drift;
+    check("each turn reports how often replies broke the tool convention, and where", d && d.replies === 5 && d.missing === 1 && d.malformed === 1 && JSON.stringify(d.at) === "[1,4]", JSON.stringify(d));
+  })();
+  await h.l.clear();
+  check("a new conversation starts the count again", h.l.drift.replies === 0 && h.l.drift.at.length === 0);
   s = script(["I'll do it:", "I'll do it:", "I'll do it:"]);
   finals = [];
   h = loop(s, { ws: ws5, checkFinal: async (r) => { finals.push(r); return "go on"; } });

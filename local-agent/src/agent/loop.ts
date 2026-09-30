@@ -95,6 +95,14 @@ export class AgentLoop {
   private notes: string[] = [];
   private checkpoints: Array<Map<string, string | null>> = [];
   private maxSteps: number;
+  /**
+   * How often this thread's replies broke the tool convention: a block that
+   * would not parse, or none where one was due (the reply that earned a
+   * nudge). `at` is which reply each happened on, counted from the start of
+   * the thread, so a rise with length shows up - which is the question
+   * before re-sending the tool list or starting a fresh chat.
+   */
+  readonly drift = { replies: 0, malformed: 0, missing: 0, at: [] as number[] };
 
   constructor(private o: LoopOptions) {
     this.mode = o.mode || "default";
@@ -118,6 +126,8 @@ export class AgentLoop {
     if (this.o.session.reset) await this.o.session.reset();
     this.started = false;
     this.lastSentMode = null;
+    this.drift.replies = this.drift.malformed = this.drift.missing = 0;
+    this.drift.at.length = 0;
     this.notes = [];
     this.todos.length = 0;
     this.o.emit({ type: "todos", items: [] });
@@ -222,12 +232,15 @@ export class AgentLoop {
         this.started = true;
         if (!reply || !reply.trim()) { reason = "error"; errorText = "No reply could be read from the provider."; break; }
         const parsed = parseReply(reply);
+        this.drift.replies++;
+        if (parsed.calls.some(isBad)) { this.drift.malformed++; this.drift.at.push(this.drift.replies); }
         if (parsed.text) this.o.emit({ type: "assistant", text: parsed.text });
         if (!parsed.calls.length) {
           if (!nudged && this.o.checkFinal && this.mode !== "plan" && !this.stopRequested) {
             nudged = true;
             let nudge = "";
             try { nudge = await this.o.checkFinal(reply); } catch { /* the reply stands as the answer */ }
+            if (nudge) { this.drift.missing++; this.drift.at.push(this.drift.replies); }
             if (nudge && !this.stopRequested) { prompt = nudge; continue; }
           }
           break;
@@ -298,7 +311,8 @@ export class AgentLoop {
     } finally {
       this.running = false;
       if (!checkpoint.size) this.checkpoints.pop();
-      this.o.emit({ type: "done", reason: reason, error: errorText || undefined, canRewind: this.checkpoints.some((c) => c.size > 0) });
+      this.o.emit({ type: "done", reason: reason, error: errorText || undefined, canRewind: this.checkpoints.some((c) => c.size > 0),
+        drift: { replies: this.drift.replies, malformed: this.drift.malformed, missing: this.drift.missing, at: this.drift.at.slice() } });
     }
   }
 }
