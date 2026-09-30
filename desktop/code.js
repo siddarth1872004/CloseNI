@@ -18,6 +18,9 @@
     history: [], hIndex: -1, queue: [], tools: {}, permission: null,
     spinnerTimer: null, turnStart: 0, step: 0, verbSeed: 0, files: null, popup: null,
     lastWasPlan: false,
+    // Mode actions: a test or research run in flight, the build's todo list
+    // for its progress bar, and which sources research searches.
+    running: false, todos: [], research: { web: true, gh: true }, modebarSeq: 0,
   };
 
   const transcript = $("code-transcript");
@@ -54,6 +57,7 @@
     node.textContent = m.text;
     node.className = "code-mode " + m.cls;
     $("code-box").dataset.mode = S.mode;
+    renderModebar();
   }
 
   function showMeta() {
@@ -151,6 +155,8 @@
   }
 
   function onTodos(items) {
+    S.todos = items || [];
+    if (S.mode === "build") renderModebar();
     const box = $("code-todos");
     if (!items || !items.length || items.every(function (i) { return i.status === "done"; })) { box.classList.add("hidden"); box.innerHTML = ""; return; }
     box.innerHTML = todoHtml(items);
@@ -220,6 +226,7 @@
   function offerPlan() {
     const box = add(el("div", "cc-perm cc-plan-offer"));
     const opts = [
+      { label: "Yes, in build mode: steps, edits and checks", mode: "build" },
       { label: "Yes, and auto-accept edits", mode: "acceptEdits" },
       { label: "Yes, and manually approve edits", mode: "default" },
       { label: "No, keep planning", mode: null },
@@ -237,6 +244,309 @@
         send("Go ahead and implement the plan.");
       };
     });
+  }
+
+  // ------------------------------------------------------------------- modes
+  //
+  // One window, one transcript. Each mode puts a strip above the prompt that
+  // says what it is for and carries the actions its old tab had; what those
+  // actions find comes back into the transcript as a card, so the conversation
+  // stays the one record of what happened.
+
+  function langMark(language) {
+    if (!language) return "";
+    const L = window.CNLang;
+    const token = L && L.languageToken ? L.languageToken(language) : "--lang-default";
+    return '<span class="lang-mark" style="color:var(' + token + ')">' + esc(language) + "</span>";
+  }
+
+  function card(kind, title, summary) {
+    const c = add(el("div", "cc-card " + kind,
+      '<div class="cc-card-head"><span class="cc-card-kind">' + esc(title) + '</span><span class="cc-card-sum">' + esc(summary || "") + "</span></div>" +
+      '<div class="cc-card-body"></div>'));
+    return { node: c, sum: c.querySelector(".cc-card-sum"), body: c.querySelector(".cc-card-body") };
+  }
+
+  function mbtn(label, onclick, title, cls) {
+    const b = el("button", "btn btn-sm" + (cls ? " " + cls : ""));
+    b.textContent = label;
+    if (title) b.title = title;
+    b.onclick = function () { onclick(); input.focus(); };
+    return b;
+  }
+
+  // The one-shot runs borrow the browser profile, and the agent's session
+  // yields it to them - which would cut a turn off mid-reply.
+  function freeForRun() {
+    if (S.busy || S.starting || S.running) { note("Wait for the current turn to finish, or press esc.", "err"); return false; }
+    if (!CN.getWorkspace()) { note("Choose a project folder first - every mode works inside one.", "err"); refreshWelcome(); return false; }
+    return true;
+  }
+
+  function runStart(verb, status) {
+    S.running = true;
+    S.turnStart = Date.now();
+    spinnerOn(verb);
+    if (CN.setStatus) CN.setStatus(status);
+    renderModebar();
+  }
+  function runEnd() {
+    S.running = false;
+    spinnerOff();
+    if (CN.setStatus) CN.setStatus("idle");
+    renderModebar();
+    if (S.queue.length && !S.busy) { const next = S.queue.shift(); setTimeout(function () { send(next.text, next.shownAs); }, 50); }
+  }
+
+  function outputBlock(parent, text, open) {
+    if (!text) return;
+    const wrap = el("div", "cc-card-out" + (open ? "" : " folded"));
+    const head = el("div", "cc-card-toggle", open ? "hide output" : "show output");
+    const pre = el("pre", "cc-out");
+    pre.textContent = String(text).slice(-20000);
+    head.onclick = function () {
+      wrap.classList.toggle("folded");
+      head.textContent = wrap.classList.contains("folded") ? "show output" : "hide output";
+    };
+    wrap.appendChild(head); wrap.appendChild(pre);
+    parent.appendChild(wrap);
+  }
+
+  function testRows(parent, rows) {
+    (rows || []).forEach(function (r) {
+      const skipped = /^(skipped|not run)\b/i.test(r.detail || "") && !r.success;
+      const row = el("div", "cc-test-row " + (r.success ? "pass" : skipped ? "skip" : "fail"));
+      row.innerHTML = '<span class="cc-verdict">' + (r.success ? "✓" : skipped ? "–" : "✗") + "</span>" +
+        langMark(r.language) + '<span class="cc-test-cmd">' + esc(r.command || "") + "</span>" +
+        (r.detail ? '<span class="cc-test-detail">' + esc(String(r.detail).split("\n")[0].slice(0, 160)) + "</span>" : "");
+      parent.appendChild(row);
+      if (r.detail && String(r.detail).indexOf("\n") !== -1) outputBlock(parent, r.detail, false);
+    });
+  }
+
+  /** Tests ("behaviour") or syntax checks ("testall"), as a card. */
+  function runChecks(kind) {
+    if (!freeForRun()) return;
+    const ws = CN.getWorkspace();
+    const syntax = kind === "testall";
+    const c = card("test", syntax ? "Syntax check" : "Tests", "running…");
+    runStart(syntax ? "Checking every file" : "Running the tests", syntax ? "testing" : "running tests");
+    const args = syntax ? ["testall", "x", ws, CN.getProvider()] : ["behaviour", ws, ws, CN.getProvider()];
+    CN.runAgent(args).then(function (res) {
+      if (!res) { c.sum.textContent = "could not run"; c.node.classList.add("fail"); return; }
+      const passed = res.passed || 0, failed = res.failed || 0, skipped = res.skipped || 0;
+      let sum = passed + " passed, " + failed + " failed";
+      if (skipped) sum += ", " + skipped + " not run";
+      if (!passed && !failed && !skipped) sum = res.note || res.error || "nothing to run";
+      c.sum.textContent = sum;
+      c.node.classList.add(failed ? "fail" : passed ? "pass" : "none");
+      testRows(c.body, res.results);
+      if (res.note && (passed || failed || skipped)) c.body.appendChild(el("div", "cc-card-hint", esc(res.note)));
+      if (failed) {
+        const fix = mbtn("Ask the agent to fix it", function () {
+          const failing = (res.results || []).filter(function (r) { return !r.success; })
+            .map(function (r) { return "- " + r.command + (r.detail ? ": " + String(r.detail).slice(0, 600) : ""); }).join("\n");
+          send(V.modePrompt("test", "These checks failed. Find out why and fix the code:\n" + failing), "fix the failing checks");
+        });
+        c.body.appendChild(el("div", "cc-card-actions")).appendChild(fix);
+      }
+      if (CN.markTested) CN.markTested();
+    }, function (e) { c.sum.textContent = String(e); c.node.classList.add("fail"); }).then(runEnd);
+  }
+
+  /** The project's own run command, run once, output in the card. */
+  function runCommand() {
+    if (!freeForRun()) return;
+    const ws = CN.getWorkspace();
+    (CN.resolveRunCommand ? CN.resolveRunCommand() : Promise.resolve({ command: "" })).then(function (rc) {
+      if (!rc || !rc.command) { note("No run command found - the Runner panel (/runner) can set one", "warn"); return; }
+      const c = card("test", "Run", rc.command);
+      runStart("Running " + rc.command, "running");
+      window.api.runCommand({ command: rc.command, cwd: ws }).then(function (r) {
+        const ok = !!(r && r.success);
+        c.node.classList.add(ok ? "pass" : "fail");
+        c.body.appendChild(el("div", "cc-test-row " + (ok ? "pass" : "fail"),
+          '<span class="cc-verdict">' + (ok ? "✓" : "✗") + '</span><span class="cc-test-cmd">' + esc(ok ? "exited cleanly" : "failed") + "</span>"));
+        outputBlock(c.body, r && r.output, !ok);
+        if (CN.markTested) CN.markTested();
+      }, function (e) { c.sum.textContent = String(e); c.node.classList.add("fail"); }).then(runEnd);
+    });
+  }
+
+  /** Web answer and GitHub repositories for `q`, as one card. */
+  function research(q) {
+    const want = S.research;
+    if (!want.web && !want.gh) { note("Turn on Web or GitHub in the research bar first", "err"); return; }
+    if (!freeForRun()) return;
+    const ws = CN.getWorkspace();
+    const c = card("research", "Research", q);
+    const webBox = want.web ? c.body.appendChild(el("div", "cc-res-web", '<div class="cc-card-hint">searching the web…</div>')) : null;
+    const ghBox = want.gh ? c.body.appendChild(el("div", "cc-res-gh", '<div class="cc-card-hint">searching GitHub…</div>')) : null;
+    runStart("Researching", "researching");
+    // Together, not in series: GitHub answers in milliseconds, the provider in seconds.
+    const web = want.web ? CN.runAgent(["research", q, ws, CN.getProvider()]) : Promise.resolve(null);
+    const gh = want.gh ? window.api.ghCall("searchRepos", [q, 8]).catch(function (e) { return { ok: false, error: String(e) }; }) : Promise.resolve(null);
+
+    gh.then(function (r) {
+      if (!ghBox) return;
+      ghBox.innerHTML = '<div class="cc-res-title">GitHub</div>';
+      if (!r || !r.ok) { ghBox.appendChild(el("div", "cc-card-hint", esc((r && r.error) || "GitHub search unavailable - sign in with /github"))); return; }
+      if (!(r.result || []).length) { ghBox.appendChild(el("div", "cc-card-hint", "no repositories matched")); return; }
+      r.result.forEach(function (repo) {
+        const row = el("div", "cc-repo",
+          '<a href="' + esc(repo.url) + '" target="_blank">' + esc(repo.fullName) + "</a>" +
+          '<span class="cc-repo-meta">★ ' + (repo.stars || 0) + (repo.language ? " · " : "") + "</span>" + langMark(repo.language) +
+          (repo.description ? '<div class="cc-repo-desc">' + esc(repo.description) + "</div>" : ""));
+        const acts = row.appendChild(el("div", "cc-card-actions"));
+        acts.appendChild(mbtn("Use as reference", function () { CN.useAsReference({ url: repo.url }); }, "Pull its README and file list into the next plan"));
+        acts.appendChild(mbtn("Clone", function () { CN.cloneRepo({ url: repo.url, title: repo.fullName }); }));
+        ghBox.appendChild(row);
+      });
+      stick();
+    });
+
+    web.then(function (res) {
+      if (!webBox) return;
+      webBox.innerHTML = "";
+      if (!res || !res.success) { webBox.appendChild(el("div", "cc-card-hint", esc((res && res.error) || "the web search failed"))); return; }
+      const answer = webBox.appendChild(el("div", "cc-res-answer md"));
+      answer.innerHTML = typeof renderMarkdown === "function" ? renderMarkdown(res.answer || "") : esc(res.answer || "");
+      const sources = res.sources || [];
+      if (sources.length) {
+        const list = webBox.appendChild(el("div", "cc-res-sources", '<div class="cc-res-title">Sources' + (res.via ? " · via " + esc(res.via) : "") + "</div>"));
+        sources.forEach(function (u, i) {
+          list.appendChild(el("div", "cc-source", '<span class="n">[' + (i + 1) + ']</span> <a href="' + esc(u) + '" target="_blank">' + esc(u) + "</a>"));
+        });
+      } else webBox.appendChild(el("div", "cc-card-hint", "The provider cited no sources for this answer."));
+      const acts = webBox.appendChild(el("div", "cc-card-actions"));
+      acts.appendChild(mbtn("Plan with this", function () {
+        setMode("plan");
+        send("Using this research, plan how to apply it to this project:\n\n" + (res.answer || "").slice(0, 6000), "plan with this research");
+      }, "Switch to plan mode and hand the answer to the agent"));
+      stick();
+    });
+
+    Promise.all([web, gh]).then(runEnd, runEnd);
+  }
+
+  function diffPre(text) {
+    const pre = el("pre", "cc-out cc-gitdiff");
+    pre.innerHTML = String(text).slice(0, 40000).split("\n").map(function (l) {
+      const cls = /^\+(?!\+\+)/.test(l) ? "add" : /^-(?!--)/.test(l) ? "del" : /^@@/.test(l) ? "hunk" : /^(diff|index|\+\+\+|---) /.test(l) ? "meta" : "";
+      return cls ? '<span class="' + cls + '">' + esc(l) + "</span>" : esc(l);
+    }).join("\n");
+    return pre;
+  }
+
+  /** One git command, its output in a card. */
+  function gitCard(title, args) {
+    if (!CN.getWorkspace()) { note("Choose a project folder first", "err"); return; }
+    const c = card("git", title, "git " + args.join(" "));
+    CN.git(args).then(function (r) {
+      const out = (r && r.output) || "";
+      if (!r || !r.success) c.node.classList.add("fail");
+      if (!out.trim()) { c.body.appendChild(el("div", "cc-card-hint", r && r.success ? "nothing to show" : "git failed")); return; }
+      c.body.appendChild(args[0] === "diff" || args[0] === "show" ? diffPre(out) : el("pre", "cc-out", esc(out.slice(0, 20000))));
+      stick();
+    }).then(function () { renderModebar(); });
+  }
+
+  // What the strip above the prompt says and offers, per mode.
+  const MODEBAR = {
+    plan: {
+      glyph: "⏸", name: "Plan",
+      info: "Read-only. The agent looks around and answers with a plan; approve it to start building.",
+      actions: function () { return [mbtn("Step-by-step builder", function () { CN.switchTab("chat"); }, "The planned, step-at-a-time build (/steps)")]; },
+    },
+    build: {
+      glyph: "⚒", name: "Build",
+      info: function () {
+        const t = S.todos || [];
+        if (!t.length) return "Say what to build. It plans steps, edits without asking and runs each step with the project's toolchain.";
+        const done = t.filter(function (i) { return i.status === "done"; }).length;
+        const now = t.find(function (i) { return i.status === "in_progress"; });
+        return done + "/" + t.length + " steps done" + (now ? " · now: " + now.text : "");
+      },
+      progress: function () { const t = S.todos || []; return t.length ? t.filter(function (i) { return i.status === "done"; }).length / t.length : null; },
+      actions: function () { return [mbtn("Step-by-step builder", function () { CN.switchTab("chat"); }, "The planned, step-at-a-time build (/steps)")]; },
+    },
+    test: {
+      glyph: "✓", name: "Test",
+      info: "Finding how this project runs…",
+      load: function () {
+        return CN.resolveRunCommand ? CN.resolveRunCommand().then(function (rc) {
+          return rc && rc.command ? "run: " + rc.command + (rc.source ? "  (" + rc.source + ")" : "") : "No run command yet. Type what to test, or run the suite.";
+        }) : null;
+      },
+      actions: function () {
+        return [
+          mbtn("Run tests ⏎", function () { runChecks("behaviour"); }, "The project's own test suite, then a smoke run (enter on an empty line)", "primary"),
+          mbtn("Syntax-check", function () { runChecks("testall"); }, "Compile or parse every source file"),
+          mbtn("Run", runCommand, "Run the project's run command once"),
+          mbtn("Runner…", function () { CN.switchTab("test"); }, "The full runner panel (/runner)"),
+        ];
+      },
+    },
+    research: {
+      glyph: "⌕", name: "Research",
+      info: "Enter searches. Nothing in the project changes.",
+      actions: function () {
+        return [["web", "Web"], ["gh", "GitHub"]].map(function (k) {
+          const b = mbtn((S.research[k[0]] ? "● " : "○ ") + k[1], function () { S.research[k[0]] = !S.research[k[0]]; renderModebar(); },
+            "Search " + k[1] + " too", S.research[k[0]] ? "on" : "off");
+          return b;
+        });
+      },
+    },
+    ship: {
+      glyph: "⇡", name: "Ship",
+      info: "Reading git…",
+      load: function () {
+        if (!CN.getWorkspace()) return null;
+        return CN.git(["status", "--short", "--branch"]).then(function (r) {
+          if (!r || !r.success) return "Not a git repository yet - ask the agent to set one up, or use /github.";
+          const lines = String(r.output || "").split("\n").filter(Boolean);
+          const head = (lines[0] || "").replace(/^##\s*/, "");
+          const branch = head.split("...")[0] || "detached";
+          const ahead = (head.match(/ahead (\d+)/) || [])[1], behind = (head.match(/behind (\d+)/) || [])[1];
+          const changed = lines.length - 1;
+          return "on " + branch + (ahead ? " ↑" + ahead : "") + (behind ? " ↓" + behind : "") + " · " +
+            (changed ? changed + " changed file" + (changed === 1 ? "" : "s") : "clean") + ". Enter on an empty line reviews, tests and commits.";
+        });
+      },
+      actions: function () {
+        return [
+          mbtn("Commit ⏎", function () { send(""); }, "Review, run the tests, then commit (enter on an empty line)", "primary"),
+          mbtn("Status", function () { gitCard("Status", ["status", "--short", "--branch"]); }),
+          mbtn("Diff", function () { gitCard("Diff", ["diff", "HEAD"]); }),
+          mbtn("Log", function () { gitCard("Log", ["log", "--oneline", "-n", "15"]); }),
+          mbtn("GitHub…", function () { CN.switchTab("push"); }, "Sign in, export a branch, open a pull request (/github)"),
+        ];
+      },
+    },
+  };
+
+  function renderModebar() {
+    const bar = $("code-modebar");
+    if (!bar) return;
+    const spec = MODEBAR[S.mode];
+    bar.className = "code-modebar" + (spec ? " " + S.mode : " hidden");
+    bar.innerHTML = "";
+    if (!spec) return;
+    const seq = S.modebarSeq = (S.modebarSeq || 0) + 1;
+    const info = typeof spec.info === "function" ? spec.info() : spec.info;
+    bar.innerHTML = '<span class="cm-name"><span class="cm-glyph">' + spec.glyph + "</span>" + esc(spec.name) + '</span><span class="cm-info"></span><span class="cm-actions"></span>';
+    const infoNode = bar.querySelector(".cm-info");
+    infoNode.textContent = info;
+    const acts = bar.querySelector(".cm-actions");
+    spec.actions().forEach(function (b) { b.disabled = !!S.running && S.mode !== "research"; acts.appendChild(b); });
+    const pr = spec.progress ? spec.progress() : null;
+    if (pr !== null && pr !== undefined) {
+      const bar2 = bar.appendChild(el("span", "cm-progress"));
+      bar2.style.width = Math.round(pr * 100) + "%";
+    }
+    const p = spec.load && spec.load();
+    if (p) p.then(function (text) { if (seq === S.modebarSeq && text) infoNode.textContent = text; }, function () {});
   }
 
   // ------------------------------------------------------------------ events
@@ -266,7 +576,9 @@
       case "permission": onPermission(ev); break;
       case "todos": onTodos(ev.items); break;
       case "attached": note("Attached " + ev.files.map(function (f) { return "@" + f; }).join(", "), "dim"); break;
-      case "mode": S.mode = ev.mode; showMode(); break;
+      // The agent only knows its permission mode; build, test, research and
+      // ship ride on one of those, so their own echo must not undo them.
+      case "mode": if (ev.mode !== V.agentModeOf(S.mode)) { S.mode = ev.mode; showMode(); } break;
       case "interrupting": spinnerOn("Stopping after this reply"); break;
       case "rewound":
         note(ev.files.length ? "Rewound " + ev.files.length + " file" + (ev.files.length === 1 ? "" : "s") + ": " + ev.files.join(", ") : "Nothing to rewind");
@@ -282,7 +594,8 @@
         else if (ev.reason === "error") note(ev.error || "Something went wrong", "err");
         else if (ev.reason === "complete" && S.mode === "plan") offerPlan();
         CN.setStatus && CN.setStatus("idle");
-        if (S.queue.length) { const next = S.queue.shift(); setTimeout(function () { send(next); }, 50); }
+        if (S.mode === "ship" || S.mode === "test") renderModebar();
+        if (S.queue.length && !S.running) { const next = S.queue.shift(); setTimeout(function () { send(next.text, next.shownAs); }, 50); }
         break;
       }
       case "closed":
@@ -304,7 +617,7 @@
     S.turnStart = Date.now();
     S.starting = (CN.buildPreamble ? CN.buildPreamble() : Promise.resolve({})).catch(function () { return {}; }).then(function (preamble) {
       return window.api.codeStart({
-        workspace: ws, provider: CN.getProvider(), mode: S.mode,
+        workspace: ws, provider: CN.getProvider(), mode: V.agentModeOf(S.mode),
         headed: CN.isHeaded(), controls: CN.getControls ? CN.getControls() : {}, preamble: preamble,
       });
     }).then(function (r) {
@@ -320,7 +633,14 @@
   function setMode(mode) {
     S.mode = mode;
     showMode();
-    if (S.up) window.api.codeMode(mode);
+    if (S.up) window.api.codeMode(V.agentModeOf(mode));
+  }
+
+  // /build, /test, /research and /ship switch on and off like /plan.
+  function toggleMode(mode) {
+    setMode(S.mode === mode ? "default" : mode);
+    if (S.mode === mode) note(V.modeLabel(mode).text.replace(/\s*\(shift\+tab to cycle\)/, ""), "dim");
+    else note(mode.charAt(0).toUpperCase() + mode.slice(1) + " mode off", "dim");
   }
 
   function slash(p) {
@@ -333,7 +653,7 @@
       case "/plan": setMode(S.mode === "plan" ? "default" : "plan"); note(S.mode === "plan" ? "Plan mode on: read-only, answers with a plan" : "Plan mode off", "dim"); return;
       case "/mode": {
         const m = V.modeFromWord(p.arg);
-        if (!m) { note("Modes: default, accept, plan, auto", "dim"); return; }
+        if (!m) { note("Modes: default, accept, plan, build, test, research, ship, auto", "dim"); return; }
         setMode(m); note("Mode: " + V.modeLabel(m).text.replace(/\s*\(shift\+tab to cycle\)/, ""), "dim"); return;
       }
       case "/rewind":
@@ -350,7 +670,21 @@
         }, function () { note("No CLOSENI.md yet - /init writes one", "dim"); });
         return;
       }
-      case "/build": CN.switchTab("chat"); return;
+      case "/build": case "/test": case "/research": case "/ship": {
+        // "/test add a case for x" switches and does it; bare, it toggles.
+        const m = p.cmd.slice(1);
+        if (!p.arg) { toggleMode(m); return; }
+        if (S.mode !== m) setMode(m);
+        if (m === "research") research(p.arg);
+        else send(V.modePrompt(m, p.arg), p.arg);
+        return;
+      }
+      // The step-by-step builder, the runner and the GitHub screen keep their
+      // full panels; these open them, and the Agent button comes back.
+      case "/steps": CN.switchTab("chat"); return;
+      case "/runner": CN.switchTab("test"); return;
+      case "/github": CN.switchTab("push"); return;
+      case "/settings": CN.switchTab("settings"); return;
       case "/model": CN.switchTab("settings"); { const t = document.querySelector('.settings-tab[data-section="provider"]'); if (t) t.click(); } return;
       case "/theme": CN.switchTab("settings"); { const t = document.querySelector('.settings-tab[data-section="appearance"]'); if (t) t.click(); } return;
       case "/stop": interrupt(); return;
@@ -358,24 +692,40 @@
     }
   }
 
+  function userLine(text, cls) {
+    return add(el("div", "cc-user" + (cls ? " " + cls : ""), '<span class="cc-prompt">&gt;</span><span>' + esc(text) + "</span>"));
+  }
+
   function send(text, shownAs) {
     const t = String(text || "").trim();
-    if (!t) return;
-    const p = V.parseSlash(t);
+    const p = t ? V.parseSlash(t) : null;
     if (p && !shownAs) {
-      add(el("div", "cc-user", '<span class="cc-prompt">&gt;</span><span>' + esc(t) + "</span>"));
+      userLine(t);
       slash(p);
       return;
     }
-    if (S.busy || S.starting) {
-      S.queue.push(t);
-      add(el("div", "cc-user queued", '<span class="cc-prompt">&gt;</span><span>' + esc(shownAs || t) + '</span><span class="cc-queued">queued</span>'));
+    // Enter on an empty line is the mode's own action: run the tests, or ship.
+    if (!t && S.mode === "test") { userLine("run the tests"); runChecks("behaviour"); return; }
+    if (S.mode === "research" && !shownAs) {
+      if (!t) return;
+      userLine(t);
+      research(t);
       return;
     }
-    add(el("div", "cc-user", '<span class="cc-prompt">&gt;</span><span>' + esc(shownAs || t) + "</span>"));
+    // What the agent receives: the mode's job above the user's words. The
+    // transcript shows only the words.
+    const wire = shownAs ? t : V.modePrompt(S.mode, t);
+    if (!wire) return;
+    const shown = shownAs || t || "review, test and commit";
+    if (S.busy || S.starting || S.running) {
+      S.queue.push({ text: wire, shownAs: shown });
+      add(el("div", "cc-user queued", '<span class="cc-prompt">&gt;</span><span>' + esc(shown) + '</span><span class="cc-queued">queued</span>'));
+      return;
+    }
+    userLine(shown);
     ensureSession().then(function (ok) {
       if (!ok) return;
-      window.api.codeSend(t).then(function (r) {
+      window.api.codeSend(wire).then(function (r) {
         if (r && r.ok === false) note("Could not send: " + (r.error || "no session"), "err");
       });
     });
@@ -466,7 +816,11 @@
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       const t = input.value;
-      if (!t.trim()) return;
+      if (!t.trim()) {
+        // Test and ship have something to do with nothing typed.
+        if (S.mode === "test" || S.mode === "ship") send("");
+        return;
+      }
       S.history.push(t); S.hIndex = -1;
       input.value = ""; autosize(); closePopup();
       send(t);
@@ -509,6 +863,7 @@
     if (S.up) { window.api.codeEnd(); S.up = false; }
     refreshWelcome();
     showMeta();
+    renderModebar();
   };
   CN.focusCode = function () { input.focus(); };
 
