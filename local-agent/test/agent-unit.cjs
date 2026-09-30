@@ -58,6 +58,14 @@ async function run(check, section) {
   check("and the payload is not left in the input", r.calls[0].input.content === undefined);
   r = P.parseReply("````tool\n{\"tool\":\"write\",\"path\":\"README.md\"}\n---\n# Title\n\n```sh\nnpm start\n```\n````");
   check("a longer fence carries code fences inside it", r.calls.length === 1 && r.calls[0].content.indexOf("```sh") !== -1);
+  r = P.parseReply(tool({ tool: "write", path: "README.md" }, "# Title\n\n```sh\nnpm start") + "\n\nThen open the browser.\n```");
+  check("a write cut short by its own inner fence is refused, not written", P.isBad(r.calls[0]) && /README\.md/.test(r.calls[0].error) && /four backticks/.test(r.calls[0].error), JSON.stringify(r.calls[0]));
+  r = P.parseReply(tool({ tool: "write", path: "a.md" }, "```\none\n```\n\n````js\ntwo\n````\n```not a ``` fence"));
+  check("balanced inner fences, and a line that is not a fence, pass", r.calls.length === 1 && !P.isBad(r.calls[0]), JSON.stringify(r.calls[0]));
+  r = P.parseReply(tool({ tool: "edit", path: "README.md" }, "<<<<<<< SEARCH\nold\n=======\n## Run\n\n```sh\nnpm start"));
+  check("an edit whose REPLACE was cut short the same way is refused", P.isBad(r.calls[0]) && /four backticks/.test(r.calls[0].error), JSON.stringify(r.calls[0]));
+  r = P.parseReply(tool({ tool: "edit", path: "README.md" }, "<<<<<<< SEARCH\n```sh\nnpm start\n=======\n```sh\nnpm run dev\n>>>>>>> REPLACE"));
+  check("an edit quoting half a code block is fine", r.calls.length === 1 && !P.isBad(r.calls[0]) && r.calls[0].edits[0].replace === "```sh\nnpm run dev", JSON.stringify(r.calls[0]));
   r = P.parseReply(tool({ tool: "edit", path: "a.py" }, "<<<<<<< SEARCH\nx = 1\n=======\nx = 2\n>>>>>>> REPLACE\n<<<<<<< SEARCH\ny = 1\n=======\ny = 3\n>>>>>>> REPLACE"));
   check("edit reads several search/replace sections", r.calls[0].edits.length === 2 && r.calls[0].edits[1].replace === "y = 3");
   r = P.parseReply(tool({ tool: "str_replace", path: "a.py", old_string: "a", new_string: "b" }));

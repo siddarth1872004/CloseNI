@@ -145,6 +145,26 @@ export function parseEditSections(payload: string): EditSection[] {
   return out;
 }
 
+/**
+ * Whether these lines leave a backtick fence open. A payload cut short by its
+ * own inner fence ends exactly this way: the inner block's closing line closed
+ * the tool block instead, so the payload stops after the inner opener and the
+ * rest of the file lands in the prose.
+ */
+function leavesFenceOpen(lines: string[]): boolean {
+  let open = "";
+  for (const l of lines) {
+    const m = l.match(/^\s{0,3}(`{3,})(.*)$/);
+    if (!m) continue;
+    if (!open) { if (m[2].indexOf("`") === -1) open = m[1]; }
+    else if (!m[2].trim() && m[1].length >= open.length) open = "";
+  }
+  return open !== "";
+}
+
+const CUT_SHORT = "the payload stops inside a ``` code block it opened, so the block's end was probably taken for the end of the tool block and the rest was lost. " +
+  "Send it again inside a fence of four backticks (````tool ... ````).";
+
 function str(v: any): string | undefined {
   return typeof v === "string" ? v : undefined;
 }
@@ -169,11 +189,24 @@ export function readBlock(f: Fence): ToolCall | BadCall | null {
   if (tool === "write") {
     const content = payload !== null ? payload : (str(input.content) ?? str(input.text) ?? str(input.contents));
     if (content === undefined) return { error: "write needs the file content after a line containing only ---", raw: f.body.slice(0, 300) };
+    if (leavesFenceOpen(content.split("\n"))) return { error: "write " + (str(input.path) || "") + ": " + CUT_SHORT, raw: f.body.slice(0, 300) };
     call.content = content;
     delete input.content; delete input.text; delete input.contents;
   }
   if (tool === "edit") {
     let edits: EditSection[] = payload !== null ? parseEditSections(payload) : [];
+    // A SEARCH may quote half a code block, so an open fence alone proves
+    // nothing here; one in a last section that never reached its closing
+    // marker does.
+    if (payload !== null) {
+      const lines = payload.split("\n");
+      let last = -1;
+      lines.forEach((l, n) => { if (/^<{5,9}\s*(SEARCH|ORIGINAL|OLD)?\s*$/i.test(l.trim())) last = n; });
+      const tail = last === -1 ? [] : lines.slice(last + 1);
+      if (last !== -1 && !tail.some((l) => /^>{5,9}\s*(REPLACE|UPDATED|NEW)?\s*$/i.test(l.trim())) && leavesFenceOpen(tail)) {
+        return { error: "edit " + (str(input.path) || "") + ": " + CUT_SHORT, raw: f.body.slice(0, 300) };
+      }
+    }
     if (!edits.length) {
       const old = str(input.old) ?? str(input.old_string) ?? str(input.search) ?? str(input.find);
       const neu = str(input.new) ?? str(input.new_string) ?? str(input.replace) ?? str(input.replacement);
