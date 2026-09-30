@@ -159,6 +159,23 @@ async function run(check, section) {
     o = await Tl.runTool(call({ tool: "bash", command: "yes | head -n 1" }), ctx);
     check("a stage stopped early by head is not a failure", o.ok && o.output === "y", JSON.stringify(o));
   }
+  // What the model receives for a flood: both ends, and an honest count of
+  // the lines between, across the runner's cut and the tool's.
+  o = await Tl.runTool(call({ tool: "bash", command: "node -e \"for (let i = 0; i < 200000; i++) console.log('line ' + i)\"" }), ctx);
+  (function () {
+    const m = /\[\.\.\. (\d+) lines, \d+ characters omitted \.\.\.\]/.exec(o.output);
+    const shown = o.output.split("\n").filter((l) => /^line \d+$/.test(l)).length;
+    check("a flood of output keeps its first and last lines", o.ok && /^line 0\n/.test(o.output) && /\nline 199999$/.test(o.output), o.output.slice(-80));
+    check("and says how many lines it left out, in total", !!m && Number(m[1]) + shown === 200000, m && m[0] + " + " + shown);
+    check("and fits the model's budget", o.output.length <= Tl.MAX_OUTPUT + 100, o.output.length);
+    const CR = require(path.join(DIST, "verification/command-runner.js"));
+    const kept = new CR.KeptOutput(200);
+    for (let i = 0; i < 1000; i++) kept.add("n " + i + "\n");
+    const k = kept.text();
+    const km = /\[\.\.\. (\d+) lines/.exec(k);
+    const kshown = k.split("\n").filter((l) => /^n \d+$/.test(l)).length;
+    check("the runner keeps whole lines at both ends of a stream and counts the rest", !!km && Number(km[1]) + kshown === 1000 && /^n 0\n/.test(k) && /\nn 999\n$/.test(k), k.slice(0, 60) + " ... " + k.slice(-60));
+  })();
   o = await Tl.runTool(call({ tool: "bash", command: "  " }), ctx);
   check("an empty command is an error", !o.ok);
 
@@ -184,6 +201,31 @@ async function run(check, section) {
   o = await Tl.runTool({ error: "bad json", raw: "{" }, ctx);
   check("a bad block becomes an error outcome", !o.ok && /bad json/.test(o.output));
   check("cap keeps both ends", (function () { const c = Tl.cap("a".repeat(5000) + "END", 1000); return c.length < 1200 && c.endsWith("END") && /omitted/.test(c); })());
+  (function () {
+    const text = Array.from({ length: 100 }, (_, i) => "row " + i + " " + "x".repeat(40)).join("\n");
+    const c = Tl.cap(text, 1000);
+    const m = /\[\.\.\. (\d+) lines, \d+ characters omitted/.exec(c);
+    const rows = c.split("\n").filter((l) => /^row \d+ x+$/.test(l)).length;
+    check("cap cuts on line ends and counts the lines it drops", !!m && Number(m[1]) + rows === 100, c);
+    const again = Tl.cap(c, 400);
+    const m2 = /\[\.\.\. (\d+) lines/.exec(again);
+    const rows2 = again.split("\n").filter((l) => /^row \d+ x+$/.test(l)).length;
+    check("a second cut adds up what the first dropped", !!m2 && Number(m2[1]) + rows2 === 100, again);
+  })();
+  fs.writeFileSync(path.join(ws, "wide.txt"), Array.from({ length: 2000 }, (_, i) => "w".repeat(100) + i).join("\n") + "\n");
+  o = await Tl.runTool(call({ tool: "read", path: "wide.txt" }), ctx);
+  (function () {
+    const next = /read again with offset (\d+)/.exec(o.output);
+    const last = /^\s*(\d+)\t/.exec(o.output.split("\n").filter((l) => /^\s*\d+\t/.test(l)).pop() || "");
+    check("a long read stops at a whole line, not in the middle", o.ok && !/omitted/.test(o.output) && o.output.length <= Tl.MAX_OUTPUT, o.output.length);
+    check("and its next offset follows the last line shown", !!next && !!last && Number(next[1]) === Number(last[1]) + 1 && o.detail.lines === Number(last[1]), next && next[0]);
+  })();
+  const huge = path.join(ws, "huge.log");
+  fs.closeSync(fs.openSync(huge, "w"));
+  fs.truncateSync(huge, 65 * 1024 * 1024);
+  o = await Tl.runTool(call({ tool: "read", path: "huge.log" }), ctx);
+  check("a file too big to load points at grep and sed", !o.ok && /grep/.test(o.output) && /sed -n/.test(o.output), o.output);
+  fs.unlinkSync(huge);
 
   section("agent: permissions");
   const rules = Pm.emptyRules();
