@@ -319,6 +319,8 @@ A manifest claims its language. If the workspace has a `Cargo.toml`, Rust files 
 
 `make -n` is a dry run on purpose. It proves the Makefile parses and its targets resolve, without dropping object files into your workspace. A check should not build.
 
+The checker also knows 16 more languages: Kotlin, Scala, Swift, Dart, Zig, Elixir, Erlang, Haskell, OCaml, F#, Clojure, Lua, Perl, Nim, Fortran and R. It runs their compilers and test runners the same way. None of these checks has yet been run against the real toolchain, and neither has C#'s. The other eleven above have been.
+
 A manifest claims its extensions whether or not the tool is installed. So a Rust project on a machine without `cargo` reports a missing toolchain, instead of silently falling through to a weaker per-file check.
 
 ---
