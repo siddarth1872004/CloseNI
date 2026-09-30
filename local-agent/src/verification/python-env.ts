@@ -275,3 +275,21 @@ export function mergeGitignore(existing: string | null | undefined, entries?: st
   return head + (text ? "\n" : "") + "# Added by CloseNI: build artefacts, not project history\n" +
     missing.join("\n") + "\n";
 }
+
+/**
+ * The sentence that says why an install failed, out of pip's hundred lines.
+ *
+ * What was logged before was the first 300 characters - "Collecting
+ * pygame==2.5.2 ... Downloading ..." - which is the part that worked. The
+ * lines that say what broke come last and start with ERROR: or "Failed to".
+ */
+export function summarizeInstallFailure(output: string | null | undefined): string {
+  const lines = String(output || "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const key = lines.filter((l) =>
+    /^(ERROR:|error:|Failed to build|Could not|No matching distribution|npm ERR!)/.test(l) &&
+    !/subprocess-exited-with-error/.test(l) &&
+    !/^ERROR: Command errored out/.test(l));
+  const picked = Array.from(new Set(key)).slice(0, 4);
+  const text = picked.length ? picked.join(" ") : (lines[lines.length - 1] || "no output");
+  return text.length > 300 ? text.slice(0, 297) + "..." : text;
+}

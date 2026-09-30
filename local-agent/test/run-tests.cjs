@@ -3927,6 +3927,132 @@ function testStreamStatus() {
     S.describeStreamFailure(200) === null);
 }
 
+function testStepSafety() {
+  section("a step cannot silently drop names, and repairs see the files");
+  const D = require(path.join(DIST, "context/defined-names.js"));
+  const FU = require(path.join(DIST, "follow-up.js"));
+  const R = require(path.join(DIST, "context/relevance.js"));
+  const SP = require(path.join(DIST, "step-prompt.js"));
+  const E = require(path.join(DIST, "verification/python-env.js"));
+
+  // --- what a module defines ---
+  const settings = "import os\n\nWIDTH = 800\nBRICK_SCORE: int = 10\n__all__ = []\n" +
+    "class Colors:\n    RED = 1\n\ndef load():\n    return 1\nif WIDTH == 800:\n    pass\n";
+  const names = D.topLevelNames(settings, "src/settings.py");
+  check("python constants, classes and defs are names",
+    ["WIDTH", "BRICK_SCORE", "Colors", "load"].every((n) => names.includes(n)), names.join(","));
+  check("dunders and comparisons are not", !names.includes("__all__") && !names.includes("if"), names.join(","));
+  check("a class attribute is not top-level", !names.includes("RED"), names.join(","));
+  const js = D.topLevelNames("export const A = 1;\nexport async function b() {}\nmodule.exports = { c, d: 2 };\n", "x.js");
+  check("js exports are names", ["A", "b", "c", "d"].every((n) => js.includes(n)), js.join(","));
+
+  // --- the settings.py regression ---
+  const after = "WIDTH = 800\nclass Colors:\n    RED = 1\n\ndef load():\n    return 1\n";
+  const others = [
+    { path: "src/game.py", content: "from src import settings\nprint(settings.BRICK_SCORE, settings.WIDTH)\n" },
+    { path: "src/other.py", content: "import json\nBRICK_SCORE = 3\n" },
+  ];
+  const dropped = D.findDroppedNames("src/settings.py", settings, after, others);
+  check("a dropped constant a caller uses is reported",
+    dropped.length === 1 && dropped[0].name === "BRICK_SCORE" && dropped[0].usedIn.join() === "src/game.py",
+    JSON.stringify(dropped));
+  check("a file that does not import the module is not a caller",
+    !dropped.some((d) => d.usedIn.includes("src/other.py")));
+  const renamed = D.findDroppedNames("src/settings.py", settings, after.replace("WIDTH", "SCREEN_WIDTH"),
+    [{ path: "src/game.py", content: "from src.settings import SCREEN_WIDTH, BRICK_SCORE_V2\n" }]);
+  check("a rename with its callers updated is not flagged", renamed.length === 0, JSON.stringify(renamed));
+  const commented = D.findDroppedNames("src/settings.py", settings, after,
+    [{ path: "src/game.py", content: "from src import settings\n# used to use BRICK_SCORE\n" }]);
+  check("a comment is not a use", commented.length === 0, JSON.stringify(commented));
+  check("a new file has nothing to drop", D.findDroppedNames("a.py", null, "x = 1\n", others).length === 0);
+  check("unknown languages are left alone", D.findDroppedNames("a.rb", "X = 1\n", "", others).length === 0);
+  check("the description names file and caller",
+    /src\/settings\.py[\s\S]*BRICK_SCORE \(used in src\/game\.py\)/.test(D.describeDroppedNames("src/settings.py", dropped)));
+
+  // --- failure output keeps its summary ---
+  const dump = "HEAD" + "x".repeat(8000) + "FAILED tests/test_level.py::test_x - AttributeError";
+  const clipped = FU.clipOutput(dump, 2000);
+  check("clipped output keeps the head", clipped.startsWith("HEAD"));
+  check("and the pytest summary at the end", /FAILED tests\/test_level\.py::test_x/.test(clipped), clipped.slice(-200));
+  check("and says how much was cut", /characters omitted/.test(clipped));
+  check("short output is untouched", FU.clipOutput("abc", 10) === "abc");
+
+  const named = FU.filesNamedInOutput(
+    "tests/test_level.py:12: in test_x\nAttributeError: module 'src.settings' has no attribute 'BRICK_GAP'\n" +
+    "tests/test_level.py:40: AttributeError",
+    ["src/settings.py", "tests/test_level.py", "main.py"]);
+  check("files are found by path and by module name",
+    named.join() === "tests/test_level.py,src/settings.py", named.join());
+
+  const rendered = FU.renderFiles([{ path: "a.py", content: "x = 1" }, { path: "big.py", content: "y".repeat(50) }], 20);
+  check("rendered files use the reply's fence shape", /```python a\.py\nx = 1\n```/.test(rendered), rendered);
+  check("files over budget are named, not cut", /Not shown, too large: big\.py/.test(rendered) && !/yyyy/.test(rendered));
+
+  // --- the repair prompts ---
+  const dn = FU.buildDroppedNamesFollowUp([{ path: "src/settings.py", names: dropped }],
+    [{ path: "src/settings.py", content: settings }]);
+  check("the dropped-names repair lists name and caller", /src\/settings\.py: BRICK_SCORE \(used in src\/game\.py\)/.test(dn), dn);
+  check("and quotes the file as it was", /```python src\/settings\.py\n[\s\S]*BRICK_SCORE: int = 10/.test(dn));
+  check("and restates the reply format", dn.includes(FU.REPLY_FORMAT_REMINDER));
+
+  const tf = FU.buildTestFollowUp("AttributeError", ["src/settings.py"], [{ path: "src/settings.py", content: "WIDTH = 1\n" }]);
+  check("the test repair quotes the implicated file", /```python src\/settings\.py\nWIDTH = 1/.test(tf), tf);
+  check("and says to keep existing names", /Keep every name/.test(tf));
+  const cf = FU.buildCommandFollowUp("python -m py_compile a.py", "SyntaxError: bad", ["a.py"], [{ path: "a.py", content: "def f(:\n" }]);
+  check("the command repair carries command, error and file",
+    /py_compile a\.py/.test(cf) && /SyntaxError: bad/.test(cf) && /```python a\.py/.test(cf), cf);
+  check("the command repair caps its output",
+    FU.buildCommandFollowUp("x", "e".repeat(20000), []).length < 4500);
+
+  // --- the step prompt ---
+  const wf = [
+    { path: "src/settings.py", content: settings, mtimeMs: 1 },
+    { path: "src/game.py", content: "x = 1\n", mtimeMs: 2 },
+  ];
+  const toEdit = R.selectFilesToEdit(wf, "Execute ONLY this step: levels. Expected files: src/settings.py, src/levels.py");
+  check("expected files that exist are sent in full",
+    toEdit.length === 1 && toEdit[0].path === "src/settings.py" && toEdit[0].content === settings, JSON.stringify(toEdit));
+  check("no expected files, nothing in full", R.selectFilesToEdit(wf, "no list here").length === 0);
+  check("the edit budget is respected", R.selectFilesToEdit(wf, "Expected files: src/settings.py", 10).length === 0);
+
+  const sig = R.extractSignatures(settings, "src/settings.py");
+  check("a python outline keeps module constants", /BRICK_SCORE: int = 10/.test(sig), sig);
+  check("and a def that follows a class", /def load\(\)/.test(sig), sig);
+
+  const first = SP.buildStepPrompt({
+    task: "Overall: breakout. Execute ONLY this step: levels.",
+    tree: "src/\n  settings.py", toEdit: toEdit,
+    outlines: [{ path: "src/settings.py", content: sig }, { path: "src/game.py", content: "x = 1" }],
+    newFiles: ["src/settings.py"], isFirstStep: true, testable: true,
+    environmentNotes: ["requirements.txt FAILS here"], generatedFiles: ["README.md"],
+  });
+  check("the first prompt has the full format spec", /FORMAT A/.test(first) && /FORMAT B/.test(first));
+  check("it says to keep names", first.includes(SP.KEEP_NAMES_RULE));
+  check("the file being changed is quoted in full", /### Files this step changes[\s\S]*```python src\/settings\.py/.test(first));
+  check("and not repeated as an outline", !/src\/settings\.py \(outline\)/.test(first));
+  check("other files are labelled as outlines", /src\/game\.py \(outline\)/.test(first) && /NOT the full files/.test(first));
+  check("environment notes are passed on", /### Environment on this machine\n- requirements\.txt FAILS here/.test(first));
+  check("generated files are off limits", /DO NOT create or edit README\.md/.test(first));
+  check("the task comes last", /### User request\nOverall: breakout\. Execute ONLY this step: levels\.$/.test(first));
+  const next = SP.buildStepPrompt({ task: "do it", tree: "", toEdit: [], outlines: [], newFiles: ["b.py"], isFirstStep: false });
+  check("a later prompt is short but keeps the rule",
+    !/FORMAT A/.test(next) && next.includes(SP.KEEP_NAMES_RULE) && /### New files since the last step\n[\s\S]*- b\.py/.test(next), next);
+  check("a later prompt ends with the step", /### Step\ndo it$/.test(next));
+
+  // --- a pip failure, reduced to what matters ---
+  const pip = [
+    "Collecting pygame==2.5.2", "  error: subprocess-exited-with-error",
+    "  × Getting requirements to build wheel did not run successfully.",
+    "ERROR: Failed to build 'pygame' when getting requirements to build wheel",
+    "ERROR: Failed to build 'pygame' when getting requirements to build wheel",
+  ].join("\n");
+  const sum = E.summarizeInstallFailure(pip);
+  check("the pip summary keeps the real error", /Failed to build 'pygame'/.test(sum), sum);
+  check("once", sum.split("Failed to build").length === 2, sum);
+  check("without the subprocess noise", !/subprocess-exited-with-error/.test(sum), sum);
+  check("an empty install log does not throw", typeof E.summarizeInstallFailure("") === "string");
+}
+
 function testPythonEnv() {
   section("a build makes its own venv and installs into it");
   const E = require(path.join(DIST, "verification/python-env.js"));
@@ -4205,6 +4331,7 @@ function testUnittestFallback() {
   testStreamStatus();
   testUnittestFallback();
   testPythonEnv();
+  testStepSafety();
   await testSkillsWiring();
   testRecentWorkspaces();
   testOnboarding();
