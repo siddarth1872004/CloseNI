@@ -26,6 +26,35 @@ export function extractBalanced(text: string): string | null {
   return null;
 }
 
+/**
+ * Where each top-level "{" that could open a JSON object sits - `{"` or `{}` -
+ * skipping braces nested inside an earlier object, so a truncated reply's
+ * inner file entries are not mistaken for the reply itself.
+ */
+function topLevelObjectStarts(text: string): number[] {
+  const out: number[] = [];
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === "{") {
+      if (depth === 0 && /^\{\s*["}]/.test(text.substring(i, i + 64))) out.push(i);
+      depth++;
+    } else if (depth > 0) {
+      if (ch === '"') inString = true;
+      else if (ch === "}") depth--;
+    }
+  }
+  return out;
+}
+
 export function stripTrailingCommas(json: string): string {
   return json.replace(/,(\s*[}\]])/g, "$1");
 }
@@ -57,6 +86,35 @@ export function fixStringControls(json: string): string {
     out += ch;
   }
   return out;
+}
+
+/**
+ * `s` without a trailing `, "key":` - what /,?\s*"(?:[^"\\]|\\.)*"\s*:\s*$/
+ * removes, found by walking back from the end. The regex retried from every
+ * position, which is quadratic over a long run of whitespace.
+ */
+function dropDanglingKey(s: string): string {
+  const isWs = (c: string) => /\s/.test(c);
+  let i = s.length - 1;
+  while (i >= 0 && isWs(s[i])) i--;
+  if (i < 0 || s[i] !== ":") return s;
+  i--;
+  while (i >= 0 && isWs(s[i])) i--;
+  if (i < 0 || s[i] !== '"') return s;
+  const escaped = (q: number) => { let k = q - 1; while (k >= 0 && s[k] === "\\") k--; return (q - 1 - k) % 2 === 1; };
+  // The key's opening quote: the nearest unescaped quote before it.
+  let j = i - 1;
+  while (j >= 0 && !(s[j] === '"' && !escaped(j))) j--;
+  // Anything the backward walk cannot be sure of - an escaped closing quote, a
+  // backslash before a line break - goes to the exact regex, now only reached
+  // on replies that already end in `":`.
+  if (j < 0 || escaped(i) || !/^"(?:[^"\\]|\\.)*"$/.test(s.substring(j, i + 1))) {
+    return s.replace(/,?\s*"(?:[^"\\]|\\.)*"\s*:\s*$/, "");
+  }
+  let start = j;
+  while (start > 0 && isWs(s[start - 1])) start--;
+  if (start > 0 && s[start - 1] === ",") start--;
+  return s.substring(0, start);
 }
 
 /**
@@ -107,7 +165,7 @@ export function salvageTruncatedJson(text: string): string[] {
   const closed = inString ? body + '"' : body;
 
   // 1. Drop the whole half-written last element.
-  const noDanglingKey = closed.replace(/,?\s*"(?:[^"\\]|\\.)*"\s*:\s*$/, "");
+  const noDanglingKey = dropDanglingKey(closed);
   const lastComma = noDanglingKey.lastIndexOf(",");
   if (lastComma > 0) out.push(shut(noDanglingKey.substring(0, lastComma)));
   // 2. Drop only a dangling "key": that never got a value.
@@ -134,25 +192,49 @@ export function robustParseJson(input: string): any {
   const openFence = text.match(/\`\`\`(?:json)?\s*\n([\s\S]*)$/);
   if (openFence) candidates.push(openFence[1]);
   candidates.push(text);
+  // Every honest reading before any salvage. A fence inside a JSON string cuts
+  // the first candidate short, and salvaging that cut used to win - a files
+  // entry with its content dropped - before the whole reply, which parses as
+  // it stands, was ever tried.
   for (const cand of candidates) {
-    const balanced = extractBalanced(cand);
-    const raws = balanced ? [balanced, cand] : [cand];
-    for (const raw of raws) {
-      const variants = [
-        raw,
-        stripTrailingCommas(raw),
-        fixStringControls(raw),
-        fixStringControls(stripTrailingCommas(raw)),
-      ];
-      for (const v of variants) {
-        try { return JSON.parse(v); } catch (e) { /* try next variant */ }
-      }
-    }
-    // Only once the honest readings have failed: rebuild a truncated object.
+    const parsed = honestParse(cand, true);
+    if (parsed !== null) return parsed;
+  }
+  // extractBalanced starts at the first "{", and prose often has one before the
+  // JSON - "replace {name}", a ${VAR} in a shell line - which balanced into a
+  // non-object and hid the real reply behind it. Only openings that can begin
+  // a JSON object are tried, and only so many, so a reply full of code braces
+  // costs a bounded number of passes.
+  const first = text.indexOf("{");
+  const starts = topLevelObjectStarts(text).filter((at) => at !== first).slice(0, 64);
+  for (const at of starts) {
+    const parsed = honestParse(text.substring(at), false);
+    if (parsed !== null) return parsed;
+  }
+  // Only once the honest readings have failed: rebuild a truncated object.
+  for (const cand of candidates) {
     for (const salvaged of salvageTruncatedJson(cand)) {
       for (const v of [salvaged, stripTrailingCommas(salvaged), fixStringControls(stripTrailingCommas(salvaged))]) {
         try { return JSON.parse(v); } catch (e) { /* try next variant */ }
       }
+    }
+  }
+  return null;
+}
+
+/** The balanced object in a candidate, and optionally the candidate whole, with each repair. */
+function honestParse(cand: string, whole: boolean): any {
+  const balanced = extractBalanced(cand);
+  const raws = balanced ? (whole ? [balanced, cand] : [balanced]) : (whole ? [cand] : []);
+  for (const raw of raws) {
+    const variants = [
+      raw,
+      stripTrailingCommas(raw),
+      fixStringControls(raw),
+      fixStringControls(stripTrailingCommas(raw)),
+    ];
+    for (const v of variants) {
+      try { return JSON.parse(v); } catch (e) { /* try next variant */ }
     }
   }
   return null;

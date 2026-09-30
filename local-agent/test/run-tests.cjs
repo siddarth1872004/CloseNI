@@ -2276,6 +2276,23 @@ async function testBrowserExtraction() {
     c.resetBuildRunForWorkspace();
     check("starting a build preserves the conversation",
       readStore()["/my/ws"].activeChat === "https://example.test/a/chat-1");
+
+    // DeepSeek's markup: the language label sits beside the <pre> in a
+    // banner, and inline code splits a paragraph into text nodes and elements.
+    c.setWorkspace("/my/ws-labelled");
+    const labelled = { ...cfg, baseUrl: "file://" + path.join(__dirname, "fixtures", "chat-labelled.html") };
+    await c.navigateFresh(labelled);
+    const reply = await c.extractLatestResponse(labelled);
+    check("a paragraph with inline code keeps its words", reply.includes("Now I'll update `src/x.py`:"), reply);
+    check("a code block's label rides on its fence, not as prose",
+      reply.includes("```tool\n{") && !/^tool$/m.test(reply), reply);
+    check("a one-word paragraph beside a block is kept", /^Done\.$/m.test(reply) && /^Fixed$/m.test(reply), reply);
+    // The coding agent reads the structured view, not the one above.
+    const structured = await c.getLastMessageStructured(labelled);
+    check("structured view: the label rides on the fence",
+      structured.includes("```tool\n{") && !/^\s*tool\s*$/m.test(structured), structured);
+    check("structured view: the paragraph and its inline code survive", structured.includes("Now I'll update `src/x.py`:"), structured);
+    check("structured view: a one-word paragraph beside a block is kept", /^Fixed$/m.test(structured), structured);
   } finally {
     await c.close();
     fs.rmSync(root, { recursive: true, force: true });
