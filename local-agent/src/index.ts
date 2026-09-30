@@ -12,13 +12,16 @@ import { needsConfirmation, isEnvironmentSetup, isGeneratedFile, GENERATED_FILES
 import { createMutex, createPool } from "./async-pool.js";
 import { decideApproval } from "./verification/approval-policy.js";
 import { getProjectContext } from "./context/context-engine.js";
-import { selectRelevantFiles, WorkspaceFile } from "./context/relevance.js";
+import { selectRelevantFiles, selectFilesToEdit, WorkspaceFile } from "./context/relevance.js";
+import { findDroppedNames, describeDroppedNames, DroppedName, SourceFile } from "./context/defined-names.js";
 import { computeDelta, nextLedger } from "./context/delta.js";
-import { buildApplyFollowUp, buildTestFollowUp } from "./follow-up.js";
+import { buildApplyFollowUp, buildTestFollowUp, buildCommandFollowUp, buildDroppedNamesFollowUp,
+  filesNamedInOutput } from "./follow-up.js";
+import { buildStepPrompt, StepPromptInput } from "./step-prompt.js";
 import { planBehaviourChecks, judge as judgeBehaviour, hasTestFiles, looksLikeMissingDependency } from "./verification/behaviour-checker.js";
 import { resolveTool } from "./verification/toolchain.js";
 import { VENV_DIR, venvPython, findManifests, planEnvironmentSetup,
-  describePythonUnavailable, rewriteForVenv, mergeGitignore } from "./verification/python-env.js";
+  describePythonUnavailable, rewriteForVenv, mergeGitignore, summarizeInstallFailure } from "./verification/python-env.js";
 import { MANIFEST_NAME } from "./run-manifest.js";
 import { defaultStorageRoot } from "./storage-paths.js";
 import { composePrompt } from "./prompt-compose.js";
@@ -102,6 +105,12 @@ interface EnvState {
   installedNodeDirs: string[];
   /** This machine cannot create a virtualenv at all; say so once, not per step. */
   pythonUnavailable?: boolean;
+  /**
+   * Manifests whose install failed, by the content hash that failed. Retried
+   * only once the file changes: a real build recompiled pygame from source,
+   * and failed, on every one of nine steps.
+   */
+  failedInstalls?: Record<string, { hash: string; summary: string }>;
 }
 
 function envStatePath(workspace: string): string {
@@ -115,6 +124,7 @@ function readEnvState(workspace: string): EnvState {
       installedHashes: raw.installedHashes || {},
       installedNodeDirs: Array.isArray(raw.installedNodeDirs) ? raw.installedNodeDirs : [],
       pythonUnavailable: !!raw.pythonUnavailable,
+      failedInstalls: raw.failedInstalls && typeof raw.failedInstalls === "object" ? raw.failedInstalls : {},
     };
   } catch {
     return { installedHashes: {}, installedNodeDirs: [] };
@@ -131,6 +141,61 @@ function writeEnvState(workspace: string, state: EnvState): void {
 function fileHash(file: string): string | null {
   try { return require("crypto").createHash("sha1").update(fs.readFileSync(file)).digest("hex"); }
   catch { return null; }
+}
+
+/**
+ * Is this `pip install -r <file>` one the environment step already ran against
+ * the file as it is now - successfully or not?
+ */
+function alreadyInstalled(workspace: string, cmd: string): boolean {
+  const m = cmd.match(/\bpip3?(?:\.exe)?["']?\s+install\s+(?:--?\S+\s+)*-r\s+["']?([^\s"']+)["']?\s*$/);
+  if (!m) return false;
+  const rel = m[1].replace(/\\/g, "/").replace(/^\.\//, "");
+  const now = fileHash(path.join(workspace, rel));
+  if (!now) return false;
+  const state = readEnvState(workspace);
+  return state.installedHashes[rel] === now || failedHashes(state)[rel] === now;
+}
+
+/** "Python 3.14.7", from the venv - the reason a pin with no wheel for it fails. */
+function pythonVersionIn(workspace: string): string {
+  const vp = venvPython(workspace);
+  if (!vp || !fs.existsSync(vp)) return "";
+  try {
+    return String(require("child_process").execFileSync(vp, ["--version"],
+      { encoding: "utf-8", timeout: 5000 })).trim();
+  } catch { return ""; }
+}
+
+function failedHashes(state: EnvState): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const k of Object.keys(state.failedInstalls || {})) out[k] = state.failedInstalls![k].hash;
+  return out;
+}
+
+/**
+ * What the next prompt should know about this machine.
+ *
+ * A failed install used to be logged and forgotten. The model went on writing
+ * code against a package that was never installed, and the first it heard of
+ * it was an ImportError steps later - or never, while tests did not import it.
+ */
+function environmentNotes(workspace: string): string[] {
+  const state = readEnvState(workspace);
+  const notes: string[] = [];
+  if (state.pythonUnavailable) notes.push("Python packages cannot be installed here (no working venv/pip).");
+  for (const manifest of Object.keys(state.failedInstalls || {})) {
+    const f = state.failedInstalls![manifest];
+    let current: string | null = null;
+    try { current = fileHash(path.join(workspace, manifest)); } catch { current = null; }
+    if (current !== f.hash) continue;
+    const version = pythonVersionIn(workspace);
+    notes.push("Installing " + manifest + " FAILS on this machine" +
+      (version ? " (" + version + ")" : "") + ": " + f.summary +
+      " Fix " + manifest + " (a version that installs here, or a maintained alternative) " +
+      "if this step needs those packages. Until then nothing that imports them can run.");
+  }
+  return notes;
 }
 
 /** Does this project want pytest, or is the standard library enough? */
@@ -184,7 +249,8 @@ async function ensureEnvironment(workspace: string): Promise<void> {
     manifests: manifests,
     installedNodeDirs: state.installedNodeDirs,
     needsPytest: wantsPytest(workspace) && manifests.some((m) => m.file === "requirements.txt"),
-    installedHashes: state.installedHashes,
+    // A manifest that failed at this exact content counts as handled until it changes.
+    installedHashes: Object.assign({}, state.installedHashes, failedHashes(state)),
     hashes: hashes,
   });
 
@@ -206,12 +272,20 @@ async function ensureEnvironment(workspace: string): Promise<void> {
         state.pythonUnavailable = true;
       } else {
         console.log("ENVIRONMENT_COMMAND_SKIPPED: " + c.command);
-        projLog("Could not " + c.label + ", continuing: " + r.output.slice(0, 300));
+        const summary = summarizeInstallFailure(r.output);
+        projLog("Could not finish " + c.label + ", continuing: " + summary);
+        if (c.manifest && c.kind === "pip" && hashes[c.manifest]) {
+          state.failedInstalls = Object.assign({}, state.failedInstalls,
+            { [c.manifest]: { hash: hashes[c.manifest], summary: summary } });
+        }
       }
       continue;
     }
     if (c.kind === "npm") state.installedNodeDirs = state.installedNodeDirs.concat([c.cwd]);
-    else if (c.manifest) state.installedHashes[c.manifest] = hashes[c.manifest] || "";
+    else if (c.manifest) {
+      state.installedHashes[c.manifest] = hashes[c.manifest] || "";
+      if (state.failedInstalls) delete state.failedInstalls[c.manifest];
+    }
   }
   writeEnvState(workspace, state);
 }
@@ -721,113 +795,88 @@ function withPreamble(base: string): string {
   return composed.text;
 }
 
-function buildPrompt(userPrompt: string, tree: string, relevantFiles: { path: string; content: string }[], priorFiles: string[], isFirstStep: boolean, testable?: boolean): string {
-  let contextStr = "";
-  // Asked for only where the plan said there is behaviour to assert. Requesting
-  // tests on a scaffolding step produces a test that the config file says what
-  // it says, which costs tokens and teaches everyone to skip the test output.
-  if (testable) {
-    contextStr += "\n\nThis step has behaviour worth testing, so include tests for it " +
-      "in the same reply, as ordinary files alongside the code. Use the project's own " +
-      "convention - test_<name>.py for Python, <name>.test.ts for TypeScript, and so on. " +
-      "Test what the step is supposed to DO, including the edge cases; do not write a " +
-      "test that only restates a constant. They will be run, and a failure will come " +
-      "back to you.";
-  }
-  if (tree) contextStr += "\n\nProject Structure:\n" + tree;
-  if (relevantFiles.length > 0) {
-    contextStr += "\n\nRelevant Existing Files (use 'overwrite' mode with FULL content to modify them):\n";
-    for (const f of relevantFiles) contextStr += "\n--- " + f.path + " ---\n" + f.content + "\n";
-  }
-  if (priorFiles.length > 0) {
-    // After the first step the thread already holds the earlier listing, so only
-    // what appeared since is worth the tokens.
-    contextStr += isFirstStep
-      ? "\n\nFiles ALREADY in the workspace (DO NOT recreate or collapse into these):\n"
-      : "\n\nNew files since the last step (DO NOT recreate or collapse into these):\n";
-    for (const f of priorFiles) contextStr += "- " + f + "\n";
-  }
-  // The format specification runs to about two thousand characters and used to
-  // be repeated on every single step, because each step was talking to a thread
-  // that had never seen it. In one conversation it is said once and then
-  // referred back to, which is most of why a step prompt is now a fraction of
-  // what it was. A one-line reminder still goes with each step: models drift,
-  // and re-stating the shape is cheaper than a re-ask.
-  if (!isFirstStep) {
-    return withPreamble("Next step. Same reply format as before - either the " +
-      "{\"files\":[{\"path\",\"mode\",\"content\"}]} JSON block, or one code block per " +
-      "file with the path on the fence line. Write every file completely; no " +
-      "ellipses and no '... rest unchanged'." +
-      contextStr +
-      "\n\nStep:\n" + userPrompt);
-  }
-
-  return withPreamble("You are an autonomous coding agent assistant.\n" +
-    "Reply with the file changes. There are two accepted formats. Pick ONE.\n" +
-    "\n" +
-    "FORMAT A - JSON (preferred, and required if you need commands or search_replace):\n" +
-    "{\n  \"files\": [\n    {\n      \"path\": \"src/hello.py\",\n      \"mode\": \"create\",\n      \"content\": \"def greet():\\n    return 'Hello'\\n\"\n    }\n  ],\n  \"commands\": [\"python src/hello.py\"]\n}\n" +
-    "Wrap it in one \`\`\`json code block. No prose before or after it.\n" +
-    "Inside \"content\": literal \\n for newlines, exact whitespace preserved,\n" +
-    "and mode must be one of create, overwrite, search_replace.\n" +
-    "\n" +
-    // Escaping a few hundred lines of code into a JSON string is where these
-    // replies break, and a model that cannot manage it produces something
-    // unparseable rather than asking for another way. Naming the alternative
-    // is what stops that: this format is read natively, not as a rescue.
-    "FORMAT B - one code block per file, when the code is long enough that JSON\n" +
-    "escaping would be error-prone. Put the path on the fence line itself:\n" +
-    "\`\`\`python src/hello.py\n" +
-    "def greet():\n" +
-    "    return 'Hello'\n" +
-    "\`\`\`\n" +
-    "One block per file, the complete file in each, no JSON at all.\n" +
-    "\n" +
-    "RULES THAT APPLY TO BOTH:\n" +
-    "- Write every file COMPLETELY. Never abbreviate with '# ... rest unchanged',\n" +
-    "  '// existing code here', ellipses, or a comment standing in for real code.\n" +
-    "  A partial file overwrites the real one and destroys work.\n" +
-    "- Do not mix the two formats in one reply.\n" +
-    "- If the step is too large to write out fully, write fewer files completely\n" +
-    "  rather than all of them partially.\n" +
-    "CRITICAL ARCHITECTURE RULE:\n" +
-    "- Follow clean separation of concerns. Each file has a single responsibility.\n" +
-    "- DO NOT collapse multiple modules into one file.\n" +
-    "- DO NOT reuse or overwrite files that are not related to the current step.\n" +
-    // Deliberately last and deliberately four lines. This prompt is terse
-    // because unparseable replies have cost whole builds before; more prose
-    // means more chance the model explains itself outside the code fence.
-    "CODE QUALITY:\n" +
-    "- Handle errors and validate input. Do not write happy-path-only code.\n" +
-    "- Docstrings on public functions. Comments explain why, not what.\n" +
-    "- Avoid needless passes, quadratic loops over large inputs, and repeated I/O.\n" +
-    "- The project must be runnable: keep requirements.txt / package.json in step with what the code imports.\n" +
-    "- DO NOT create or edit " + GENERATED_FILES.join(", ") + " — the app generates those.\n" +
-    "- Do not add commands that create virtualenvs or install packages unless the step is specifically about that.\n" +
-    contextStr +
-    "\n\nUser request:\n" + userPrompt);
+function buildPrompt(input: StepPromptInput): string {
+  return withPreamble(buildStepPrompt(Object.assign({ generatedFiles: GENERATED_FILES }, input)));
 }
 
-function buildFollowUp(command: string, output: string, priorFiles: string[]): string {
+/** The "command" a failed names check reports as, so the follow-up can route on it. */
+const CHECK_NAMES = "check names";
+
+/** What went wrong with an attempt, as the repair loop passes it around. */
+interface StepFailure {
+  command: string;
+  output: string;
+  /** For "check names": what each rewritten file dropped that others still use. */
+  dropped?: { path: string; names: DroppedName[] }[];
+}
+
+function readWorkspaceFiles(workspace: string, rels: string[]): SourceFile[] {
+  const out: SourceFile[] = [];
+  for (const rel of rels) {
+    try { out.push({ path: rel, content: fs.readFileSync(path.join(workspace, rel), "utf-8") }); } catch { /* gone */ }
+  }
+  return out;
+}
+
+/**
+ * Top-level names this step's overwrites removed while other files still use
+ * them. Compared with the file as it was before the step, not before this
+ * attempt: a name the step itself added and then dropped broke nothing that
+ * existed.
+ */
+function checkDroppedNames(workspace: string, checkpoint: Checkpoint | null, changed: string[],
+  knownPaths: string[]): { path: string; names: DroppedName[] }[] {
+  if (!checkpoint) return [];
+  const rels = Array.from(new Set(knownPaths.map((p) => p.replace(/\\/g, "/"))));
+  const others = readWorkspaceFiles(workspace, rels);
+  const out: { path: string; names: DroppedName[] }[] = [];
+  for (const raw of Array.from(new Set(changed))) {
+    const rel = raw.replace(/\\/g, "/");
+    const entry = checkpoint.files[raw] || checkpoint.files[rel];
+    if (!entry || entry.tooLarge || typeof entry.prior !== "string") continue;
+    let now: string | null = null;
+    try { now = fs.readFileSync(path.join(workspace, rel), "utf-8"); } catch { now = null; }
+    const names = findDroppedNames(rel, entry.prior, now, others);
+    if (names.length) out.push({ path: rel, names: names });
+  }
+  return out;
+}
+
+/** Each touched file as it was before the step, from its checkpoint. */
+function priorsOf(checkpoint: Checkpoint | null): Record<string, string | null> {
+  const out: Record<string, string | null> = {};
+  if (!checkpoint) return out;
+  for (const p of Object.keys(checkpoint.files)) out[p.replace(/\\/g, "/")] = checkpoint.files[p].prior;
+  return out;
+}
+
+/**
+ * The repair prompt for a failed attempt.
+ *
+ * `priors` holds each touched file as it was before the step, which is what a
+ * dropped-names repair needs to put things back. Everything else is shown the
+ * files the failure names as they are on disk now - a model repairing a file
+ * from its memory of it is how one missing constant became twelve.
+ */
+function buildFollowUp(failed: StepFailure, priorFiles: string[], workspace: string,
+  knownPaths: string[], priors: Record<string, string | null>): string {
   // A patch that would not apply is not a test that failed; it needs a
   // different tactic rather than a louder version of the same request.
-  if (command === "apply patch") return buildApplyFollowUp(output, priorFiles);
+  if (failed.command === "apply patch") return buildApplyFollowUp(failed.output, priorFiles);
+  if (failed.command === CHECK_NAMES) {
+    const before: SourceFile[] = [];
+    for (const d of failed.dropped || []) {
+      const prior = priors[d.path];
+      if (typeof prior === "string") before.push({ path: d.path, content: prior });
+    }
+    return buildDroppedNamesFollowUp(failed.dropped || [], before);
+  }
+  const current = readWorkspaceFiles(workspace, filesNamedInOutput(failed.output, knownPaths).slice(0, 4));
   // Nor is a failing test the same as a failing compiler. The model wrote the
   // assertion as well as the code, so which of the two is wrong is the question
-  // - and the generic wording below answers it for the model, incorrectly.
-  if (command === "run tests") return buildTestFollowUp(output, priorFiles);
-
-  let priorNote = "";
-  if (priorFiles.length > 0) {
-    priorNote = "\nNote: existing files in this project are: " + priorFiles.join(", ") + ". Fix the bug in the appropriate file - do not collapse everything into one file.\n";
-  }
-  return "Your previous code failed when tested.\n" +
-    "Command that was run:\n" + command + "\n" +
-    "Error output:\n" + output.slice(0, 3000) + "\n" +
-    "IMPORTANT: Fix the ROOT CAUSE of the error. Do not silence it with try/except, and do not merge unrelated files into one.\n" +
-    priorNote +
-    "Please fix the code and reply again with the same JSON format (files array, optional commands).\n" +
-    "Wrap the JSON in a \`\`\`json code block. Allowed modes: create, overwrite, search_replace.";
+  // - and the generic wording answers it for the model, incorrectly.
+  if (failed.command === "run tests") return buildTestFollowUp(failed.output, priorFiles, current);
+  return buildCommandFollowUp(failed.command, failed.output, priorFiles, current);
 }
 
 
@@ -925,6 +974,46 @@ function writeCheckpoint(workspace: string, checkpoint: Checkpoint | null): void
 }
 
 /**
+ * Undo a step that failed for good: every file it touched goes back to what it
+ * was, and what it created is removed. The attempt itself is copied to
+ * .agent-backups first, so nothing the model wrote is lost.
+ *
+ * Files too large to have been checkpointed are left as they are and reported;
+ * the checkpoint is then kept so they can still be dealt with by hand.
+ */
+function restoreFailedStep(workspace: string, checkpoint: Checkpoint | null, stepIndex: number):
+  { saved: string; unrestorable: string[] } {
+  const result = { saved: "", unrestorable: [] as string[] };
+  if (!checkpoint || !Object.keys(checkpoint.files).length) return result;
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const saveRel = path.join(".agent-backups", "failed-step-" + (stepIndex + 1) + "-" + stamp);
+  const saveDir = path.join(workspace, saveRel);
+  const undone: string[] = [];
+  for (const rel of Object.keys(checkpoint.files).sort()) {
+    const entry = checkpoint.files[rel];
+    const abs = path.join(workspace, rel);
+    try {
+      if (fs.existsSync(abs)) {
+        fs.mkdirSync(path.dirname(path.join(saveDir, rel)), { recursive: true });
+        fs.copyFileSync(abs, path.join(saveDir, rel));
+        result.saved = saveRel;
+      }
+    } catch { /* a copy that failed must not stop the restore */ }
+    if (entry.tooLarge) { result.unrestorable.push(rel); continue; }
+    try {
+      if (entry.prior === null) { if (fs.existsSync(abs)) fs.unlinkSync(abs); }
+      else fs.writeFileSync(abs, entry.prior);
+      undone.push(rel);
+    } catch { result.unrestorable.push(rel); }
+  }
+  console.log("STEP_ROLLED_BACK: " + JSON.stringify({ step: stepIndex + 1, files: undone,
+    kept: result.unrestorable, savedTo: result.saved }));
+  projLog("Step " + (stepIndex + 1) + " failed, so its changes were undone (" + undone.length +
+    " file(s)). The failed attempt is saved in " + (result.saved || "(nothing to save)") + ".");
+  return result;
+}
+
+/**
  * One build step against an already-open browser and thread. Returns its outcome
  * rather than emitting, so a long-lived session can call it repeatedly without
  * the caller having to parse stdout.
@@ -1002,7 +1091,10 @@ async function runBuildStep(controller: PlaywrightController, config: ProviderCo
   const ledger = needsFullContext ? {} : controller.getLedger();
   const delta = computeDelta(allFiles, ledger);
   const relevant = selectRelevantFiles({ files: delta.candidates, stepDetail: stepDetail, prompt: prompt });
-  controller.saveLedger(nextLedger(ledger, allFiles, relevant.map((r) => r.path), stepIndex));
+  // Sent in full whatever the ledger says: the step is about to replace them.
+  const toEdit = selectFilesToEdit(allFiles, stepDetail);
+  controller.saveLedger(nextLedger(ledger, allFiles, relevant.map((r) => r.path).concat(toEdit.map((f) => f.path)), stepIndex));
+  const envNotes = environmentNotes(workspace);
 
   const filtered = allFiles
     .map(function (f) { return f.path; })
@@ -1011,7 +1103,8 @@ async function runBuildStep(controller: PlaywrightController, config: ProviderCo
 
   console.log("Step " + (stepIndex + 1) + ": including " + relevant.length + " files (signatures)" +
     (needsFullContext ? "" : ", skipped " + delta.unchangedCount + " the thread already has") +
-    (relevant.length ? " (" + relevant.map(f => f.path + ":" + f.content.length + "c").join(", ") + ")" : ""));
+    (relevant.length ? " (" + relevant.map(f => f.path + ":" + f.content.length + "c").join(", ") + ")" : "") +
+    (toEdit.length ? "; in full: " + toEdit.map((f) => f.path).join(", ") : ""));
 
   // Would this exchange outgrow the conversation?
   //
@@ -1024,7 +1117,10 @@ async function runBuildStep(controller: PlaywrightController, config: ProviderCo
   // sends the plan, the tree and the files, and the reset ledger makes the
   // delta describe the new conversation rather than the abandoned one.
   const budget = budgetFor(config.contextBudgetChars);
-  let promptText = buildPrompt(effectivePrompt, needsFullContext ? ctx.tree : "", relevant, filtered, needsFullContext, req.testable);
+  let promptText = buildPrompt({
+    task: effectivePrompt, tree: needsFullContext ? ctx.tree : "", toEdit: toEdit, outlines: relevant,
+    newFiles: filtered, isFirstStep: needsFullContext, testable: req.testable, environmentNotes: envNotes,
+  });
   if (shouldRollOver(controller.getConversationSize(), budget, promptText.length)) {
     console.log("This conversation is nearly full (" +
       describeSize(controller.getConversationSize(), budget) +
@@ -1033,9 +1129,12 @@ async function runBuildStep(controller: PlaywrightController, config: ProviderCo
     // Rebuild against an empty ledger: the new thread has been shown nothing.
     const freshDelta = computeDelta(allFiles, {});
     const freshRelevant = selectRelevantFiles({ files: freshDelta.candidates, stepDetail: stepDetail, prompt: prompt });
-    controller.saveLedger(nextLedger({}, allFiles, freshRelevant.map((r) => r.path), stepIndex));
-    promptText = buildPrompt(effectivePrompt, ctx.tree,
-      freshRelevant, allFiles.map((f) => f.path).slice(0, 40), true, req.testable);
+    controller.saveLedger(nextLedger({}, allFiles, freshRelevant.map((r) => r.path).concat(toEdit.map((f) => f.path)), stepIndex));
+    promptText = buildPrompt({
+      task: effectivePrompt, tree: ctx.tree, toEdit: toEdit, outlines: freshRelevant,
+      newFiles: allFiles.map((f) => f.path).slice(0, 40), isFirstStep: true, testable: req.testable,
+      environmentNotes: envNotes,
+    });
   }
 
   let prevCount = await controller.countMessages(config);
@@ -1093,7 +1192,7 @@ async function runBuildStep(controller: PlaywrightController, config: ProviderCo
       capturePrior(workspace, plan.changes.map((c) => c.filePath)),
       { title: (req.title || stepDetail).slice(0, 80) });
     const applyResult = applyPatch(workspace, plan);
-    let failed: { command: string; output: string } | null = null;
+    let failed: StepFailure | null = null;
 
     // The model authored these files, so the thread already knows their
     // contents. The pre-step scan cannot capture them — it runs before the
@@ -1117,8 +1216,22 @@ async function runBuildStep(controller: PlaywrightController, config: ProviderCo
       }
     }
 
+    let dropped: { path: string; names: DroppedName[] }[] = [];
+    if (applyResult.success) {
+      dropped = checkDroppedNames(workspace, checkpoint, plan.changes.map((c) => c.filePath),
+        allFiles.map((f) => f.path).concat(applyResult.appliedFiles));
+    }
+
     if (!applyResult.success) {
       failed = { command: "apply patch", output: applyResult.errors.join("\n") };
+    } else if (dropped.length) {
+      // Before the tests, which would only report an AttributeError in some other
+      // file and leave the model to guess which name, in which file, went where.
+      const summary = dropped.map((d) => describeDroppedNames(d.path, d.names)).join("\n");
+      console.log("NAMES_DROPPED: " + dropped.map((d) => d.path + " -> " +
+        d.names.map((n) => n.name).join(", ")).join("; "));
+      projLog(summary);
+      failed = { command: CHECK_NAMES, output: summary, dropped: dropped };
     } else {
       // Before anything is checked: the venv exists and holds what the project
       // declares, so `python` below means the interpreter that can see flask.
@@ -1197,6 +1310,13 @@ async function runBuildStep(controller: PlaywrightController, config: ProviderCo
           // guaranteed not to see what the venv holds.
           const cmd = rewriteForVenv(normalizeCommand(suggested), venvForCommands(workspace), venvScripts);
           if (cmd !== suggested) console.log("NORMALIZED_COMMAND: " + suggested + "  ->  " + cmd);
+          if (alreadyInstalled(workspace, cmd)) {
+            // ensureEnvironment already ran exactly this against the same file,
+            // this step or an earlier one. Running it again only repeats the
+            // result - which, for a failed build from source, costs a minute.
+            console.log("SKIPPED_ALREADY_HANDLED: " + cmd);
+            continue;
+          }
           console.log("REQUESTING_COMMAND: " + cmd);
           // Auto-allow means "do not interrupt me for pytest". It was never
           // meant to mean "install system packages as root" or "pipe a
@@ -1239,15 +1359,24 @@ async function runBuildStep(controller: PlaywrightController, config: ProviderCo
     attempt++;
     console.log("TEST_FAILED: " + failed.command);
     if (attempt > maxFollowUps) {
-      // A failed step still wrote files. Without this the one step most worth
-      // undoing would be the only one that could not be.
-      writeCheckpoint(workspace, checkpoint);
-      return { success: false, error: "Still failing after " + maxFollowUps + " fix attempts.", lastError: failed.output };
+      // Put the workspace back the way the step found it. Left in place, a
+      // failed step's files became every later step's failure: a real build
+      // failed steps 8 and 9 on step 7's broken settings module, and each spent
+      // both its repairs on an error it had not caused. What the step wrote is
+      // kept in .agent-backups, and the step can be run again.
+      const restored = await applyLock.run(async () => restoreFailedStep(workspace, checkpoint, stepIndex));
+      // Only what could not be put back still needs undoing by hand.
+      if (restored.unrestorable.length) writeCheckpoint(workspace, checkpoint);
+      return { success: false, error: "Still failing after " + maxFollowUps + " fix attempts." +
+        (restored.saved ? " Its changes were undone; the failed attempt is in " + restored.saved + "." : ""),
+        lastError: failed.output };
     }
     console.log("FOLLOW_UP: sending error back to AI (attempt " + attempt + ")");
     prevCount = await controller.countMessages(config);
     prevContent = await controller.getLastMessageText(config);
-    const followUp = buildFollowUp(failed.command, failed.output, filtered);
+    const followUp = buildFollowUp(failed, filtered, workspace,
+      allFiles.map((f) => f.path).concat(plan.changes.map((c) => c.filePath.replace(/\\/g, "/"))),
+      priorsOf(checkpoint));
     await controller.sendPrompt(followUp, config);
     response = await controller.waitForResponse(config, prevCount, prevContent);
     // A repair is a turn too. A step that needed two of them added three
