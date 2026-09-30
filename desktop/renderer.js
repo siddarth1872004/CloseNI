@@ -125,6 +125,8 @@ function switchTab(mode) {
   const panel = $("panel-" + mode);
   if (panel) panel.classList.add("active");
   $("mode-title").textContent = MODE_TITLES[mode] || "";
+  // Every panel but the agent is somewhere you visit: say how to get back.
+  const back = $("back-to-code"); if (back) back.classList.toggle("is-hidden", mode === "code");
   // The run bar reads the manifest from disk, so it must refresh on open
   // rather than only after a build.
   if (mode === "test" && typeof refreshRunBar === "function") refreshRunBar();
@@ -187,6 +189,7 @@ function refreshFlow() {
     bar.appendChild(b);
   });
 }
+$("back-to-code").onclick = function () { switchTab("code"); };
 document.querySelectorAll(".nav-btn").forEach(function (btn) {
   btn.onclick = function () {
     // A gated tab says so rather than doing nothing. Silent buttons read as
@@ -1302,17 +1305,13 @@ function renderTestResults(rows, summary) {
   const box = $("test-results");
   if (!box) return;
   box.innerHTML = "";
-  // Language tokens, keyed the same way desktop/language-mark.js keys them, so a
-  // check row is marked by what it checked. The row's own text is a command and
-  // has nothing to derive this from.
-  const LANG_TOKEN = {
-    python: "--lang-py", javascript: "--lang-js", rust: "--lang-rs",
-    java: "--lang-java", c: "--lang-c", cpp: "--lang-c",
-  };
+  // Language tokens from desktop/language-mark.js, so a check row is marked by
+  // what it checked. The row's own text is a command and has nothing to derive
+  // this from.
   (rows || []).forEach(function (r) {
     const el = document.createElement("div");
     el.className = "test-row " + (r.success ? "pass" : "fail");
-    const token = LANG_TOKEN[r.language];
+    const token = r.language && window.CNLang ? window.CNLang.languageToken(r.language) : null;
     const mark = token
       ? '<span class="lang-mark" style="color:var(' + token + ')">' + escapeHtml(r.language) + "</span>"
       : "";
@@ -1398,20 +1397,24 @@ const RUN_LABELS = {
   none: ["NOT FOUND", "type a command, or build a project and one gets saved"],
 };
 
+/** The run command and where it came from: what you saved, the plan's, or detected. */
+async function resolveRunCommand() {
+  if (!workspace) return { command: null, source: "none" };
+  const manifest = await window.api.readManifest(workspace).catch(function () { return null; });
+  const detected = await detectCommand();
+  if (manifest && String(manifest.run || "").trim()) return { command: manifest.run.trim(), source: "manifest" };
+  if (currentPlan && String(currentPlan.runCommand || "").trim()) return { command: currentPlan.runCommand.trim(), source: "plan" };
+  if (detected) return { command: detected, source: "detected" };
+  return { command: null, source: "none" };
+}
+
 async function refreshRunBar() {
   const box = $("test-cmd");
   const badge = $("run-source");
   const hint = $("run-hint");
   if (!box || !badge || !workspace) return;
 
-  const manifest = await window.api.readManifest(workspace).catch(function () { return null; });
-  const detected = await detectCommand();
-
-  let command = null;
-  let source = "none";
-  if (manifest && String(manifest.run || "").trim()) { command = manifest.run.trim(); source = "manifest"; }
-  else if (currentPlan && String(currentPlan.runCommand || "").trim()) { command = currentPlan.runCommand.trim(); source = "plan"; }
-  else if (detected) { command = detected; source = "detected"; }
+  const { command, source } = await resolveRunCommand();
 
   box.value = command || "";
   badge.textContent = RUN_LABELS[source][0];
@@ -1872,6 +1875,13 @@ window.CN = {
   },
   openConsole: function () { setConsole(true, false); },
   refreshFlow: function () { refreshFlow(); },
+  // For the modes in the Code panel: the same actions the old panels ran.
+  resolveRunCommand: function () { return resolveRunCommand(); },
+  useAsReference: function (r) { return useAsReference(r); },
+  cloneRepo: function (r) { return cloneRepo(r); },
+  git: function (args) { return workspace ? g(args) : Promise.resolve({ success: false, output: "No project folder chosen" }); },
+  markTested: function () { flowSeen.tested = true; refreshFlow(); },
+  markShipped: function () { flowSeen.shipped = true; refreshFlow(); },
 };
 
 /**

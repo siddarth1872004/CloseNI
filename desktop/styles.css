@@ -1036,6 +1036,73 @@ input:focus,textarea:focus,select:focus{transition:border-color .06s steps(1);}
 .cc-sug.sel .k{color:var(--accent);}
 [data-decor="off"] .cc-tool.run .cc-dot{animation:none;}
 
+/* Modes: one accent each, carried by the prompt box, the mode line, the strip
+   above the prompt and the cards the mode leaves in the transcript. */
+.code-box[data-mode="build"],.code-modebar.build,.cc-card.build{--mode:var(--lang-rs);}
+.code-box[data-mode="test"],.code-modebar.test,.cc-card.test{--mode:var(--ok);}
+.code-box[data-mode="research"],.code-modebar.research,.cc-card.research{--mode:var(--lang-js);}
+.code-box[data-mode="ship"],.code-modebar.ship,.cc-card.git{--mode:var(--lang-java);}
+.code-modebar.plan{--mode:var(--lang-py);}
+.code-box[data-mode="build"],.code-box[data-mode="test"],.code-box[data-mode="research"],.code-box[data-mode="ship"]{border-color:var(--mode);}
+.code-mode.build{color:var(--lang-rs);}
+.code-mode.test{color:var(--ok);}
+.code-mode.research{color:var(--lang-js);}
+.code-mode.ship{color:var(--lang-java);}
+
+.code-modebar{position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;margin:0 0 8px;padding:6px 10px;
+  border:1px solid var(--line);border-left:2px solid var(--mode,var(--accent));border-radius:var(--r-md);background:var(--surface);
+  font-size:11px;overflow:hidden;}
+.code-modebar.hidden{display:none;}
+.cm-name{color:var(--mode,var(--accent));font-weight:700;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap;}
+.cm-glyph{display:inline-block;width:2ch;}
+.cm-info{flex:1;min-width:20ch;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.cm-actions{display:flex;flex-wrap:wrap;gap:6px;}
+.cm-actions .btn.primary{border-color:var(--mode);color:var(--mode);}
+.cm-actions .btn.off{color:var(--mut);border-color:var(--line);}
+.cm-actions .btn.on{color:var(--mode);border-color:var(--mode);}
+.cm-progress{position:absolute;left:0;bottom:0;height:2px;background:var(--mode);transition:width .3s;}
+
+.cc-card{margin:8px 0 8px 2ch;border:1px solid var(--line);border-left:2px solid var(--mode,var(--line-strong));border-radius:var(--r-md);
+  background:var(--panel);padding:8px 12px;}
+.cc-card.pass{border-left-color:var(--ok);}
+.cc-card.fail{border-left-color:var(--err);}
+.cc-card-head{display:flex;gap:1.5ch;align-items:baseline;}
+.cc-card-kind{color:var(--mode,var(--txt));font-weight:700;font-size:11px;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap;}
+.cc-card-sum{color:var(--dim);overflow:hidden;text-overflow:ellipsis;}
+.cc-card.pass .cc-card-sum{color:var(--ok);}
+.cc-card.fail .cc-card-sum{color:var(--err);}
+.cc-card-body{display:flex;flex-direction:column;gap:4px;margin-top:6px;}
+.cc-card-body:empty{display:none;}
+.cc-card-hint{color:var(--mut);}
+.cc-card-actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;}
+.cc-card-toggle{color:var(--mut);cursor:pointer;font-size:11px;}
+.cc-card-toggle:hover{color:var(--txt);}
+.cc-card-out.folded .cc-out{display:none;}
+.cc-card .cc-out{max-height:320px;overflow:auto;white-space:pre-wrap;}
+.cc-test-row{display:flex;gap:1ch;align-items:baseline;}
+.cc-test-row .cc-verdict{width:2ch;flex:none;}
+.cc-test-row.pass .cc-verdict{color:var(--ok);}
+.cc-test-row.fail .cc-verdict{color:var(--err);}
+.cc-test-row.skip .cc-verdict,.cc-test-row.skip .cc-test-cmd{color:var(--mut);}
+.cc-test-cmd{color:var(--txt);word-break:break-all;}
+.cc-test-detail{color:var(--mut);margin-left:auto;text-align:right;}
+.cc-res-web,.cc-res-gh{display:flex;flex-direction:column;gap:6px;}
+.cc-res-gh{border-top:1px solid var(--line);padding-top:8px;margin-top:4px;}
+.cc-res-title{color:var(--mut);font-size:10px;letter-spacing:.1em;text-transform:uppercase;}
+.cc-res-answer{color:var(--txt);}
+.cc-source{color:var(--dim);font-size:11px;word-break:break-all;}
+.cc-source .n{color:var(--mode);}
+.cc-source a,.cc-repo a{color:var(--txt);}
+.cc-repo{padding:6px 0;border-bottom:1px dashed var(--line);}
+.cc-repo:last-child{border-bottom:none;}
+.cc-repo a{font-weight:600;margin-right:1ch;}
+.cc-repo-meta{color:var(--mut);font-size:11px;}
+.cc-repo-desc{color:var(--dim);margin-top:2px;}
+.cc-gitdiff .add{color:var(--ok);}
+.cc-gitdiff .del{color:var(--err);}
+.cc-gitdiff .hunk{color:var(--mode);}
+.cc-gitdiff .meta{color:var(--txt);font-weight:600;}
+
 /* Terminal: the whole app in monospace, flat and quiet, monochrome except
    where colour carries meaning. */
 :root[data-theme="terminal"] body{font-family:ui-monospace,"Cascadia Mono","SF Mono",Consolas,monospace;font-size:13px;}
