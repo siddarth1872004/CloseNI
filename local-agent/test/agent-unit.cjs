@@ -159,6 +159,35 @@ async function run(check, section) {
     o = await Tl.runTool(call({ tool: "bash", command: "yes | head -n 1" }), ctx);
     check("a stage stopped early by head is not a failure", o.ok && o.output === "y", JSON.stringify(o));
   }
+  const CR = require(path.join(DIST, "verification/command-runner.js"));
+  if (process.platform !== "win32") {
+    // A command is stopped whole - not just its shell, which left the rest
+    // running and holding the pipe, so the call never came back.
+    const gone = (pid) => { try { process.kill(-pid, 0); return false; } catch { return true; } };
+    const settle = () => new Promise((r) => setTimeout(r, 200));
+    let t0 = Date.now();
+    o = await Tl.runTool(call({ tool: "bash", command: "echo $$ > group.pid; sleep 30 | cat", timeout: 1 }), ctx);
+    const g1 = Number(fs.readFileSync(path.join(ws, "group.pid"), "utf-8"));
+    await settle();
+    check("a pipeline past its timeout comes back on time", o.detail.timedOut && Date.now() - t0 < 5000 && /^stopped after 1s/.test(o.summary), (Date.now() - t0) + "ms " + o.summary);
+    check("and nothing it started is left running", gone(g1));
+    t0 = Date.now();
+    o = await Tl.runTool(call({ tool: "bash", command: "echo $$ > group.pid; sleep 30 & echo started" }), ctx);
+    const g2 = Number(fs.readFileSync(path.join(ws, "group.pid"), "utf-8"));
+    check("a command that backgrounds a server returns when its shell does", o.ok && o.output === "started" && Date.now() - t0 < 3000, (Date.now() - t0) + "ms " + JSON.stringify(o.output));
+    check("and the server keeps running for later commands", !gone(g2));
+    check("closing the session stops it", CR.stopBackground() === 1 && (await settle(), gone(g2)));
+    t0 = Date.now();
+    const pending = Tl.runTool(call({ tool: "bash", command: "echo $$ > group.pid; echo partial; sleep 30" }), ctx);
+    await settle();
+    check("Esc stops the command in flight", CR.stopRunning() === 1);
+    o = await pending;
+    const g3 = Number(fs.readFileSync(path.join(ws, "group.pid"), "utf-8"));
+    await settle();
+    check("which returns what it printed, as a failure, straight away", !o.ok && /partial/.test(o.output) && /stopped by the user/.test(o.output) && Date.now() - t0 < 3000, (Date.now() - t0) + "ms " + o.output);
+    check("and leaves nothing behind", gone(g3));
+    fs.unlinkSync(path.join(ws, "group.pid"));
+  }
   // What the model receives for a flood: both ends, and an honest count of
   // the lines between, across the runner's cut and the tool's.
   o = await Tl.runTool(call({ tool: "bash", command: "node -e \"for (let i = 0; i < 200000; i++) console.log('line ' + i)\"" }), ctx);
@@ -168,7 +197,6 @@ async function run(check, section) {
     check("a flood of output keeps its first and last lines", o.ok && /^line 0\n/.test(o.output) && /\nline 199999$/.test(o.output), o.output.slice(-80));
     check("and says how many lines it left out, in total", !!m && Number(m[1]) + shown === 200000, m && m[0] + " + " + shown);
     check("and fits the model's budget", o.output.length <= Tl.MAX_OUTPUT + 100, o.output.length);
-    const CR = require(path.join(DIST, "verification/command-runner.js"));
     const kept = new CR.KeptOutput(200);
     for (let i = 0; i < 1000; i++) kept.add("n " + i + "\n");
     const k = kept.text();

@@ -285,7 +285,7 @@ async function doBash(c: ToolCall, ctx: ToolContext): Promise<AgentOutcome> {
   const output = cap(r.output || "");
   return {
     call: c, ok: r.success,
-    summary: r.timedOut ? "still running after " + secs + "s (left running as a server)" : r.success ? "exit 0" : "failed",
+    summary: r.timedOut ? "stopped after " + secs + "s" + (r.success ? " (no errors, taken to be a server)" : "") : r.success ? "exit 0" : "failed",
     output: output || "(no output)",
     detail: { command: command, output: output, ok: r.success, timedOut: r.timedOut },
   };
