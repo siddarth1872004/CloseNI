@@ -292,9 +292,11 @@ not a wrong result.
       selectors, so it's worth offering to the agent even if plan/build stay
       browser-only. Test with a 7–14B coder model, and expect more protocol
       drift (item 1.9).
-- [ ] **2.4 HuggingChat and Open WebUI** (S). Configs exist in
+- [x] **2.4 HuggingChat and Open WebUI** (S). Configs exist in
       `config/providers/`. Confirm whether they're offered anywhere. Either test
       them or delete the configs.
+      *Done:* both were `enabled: false` with no selectors, and the registry hid
+      them, so nothing offered them. Configs and the README row deleted.
 - [ ] **2.5 Provider health on startup, live** (S). Run `npm run smoke deepseek`
       against the real site and fix every "degraded" row, or explain why it's
       skipped.

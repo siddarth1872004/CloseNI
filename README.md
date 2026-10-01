@@ -16,7 +16,7 @@ Ask for a change and it reads your project, edits files, runs commands and check
 
 [**Site**](https://siddarth1872004.github.io/CloseNI/) · [**How it works**](#how-it-works) · [**Architecture**](#architecture) · [**Browser layer**](#the-browser-native-layer) · [**Research**](#research) · [**Get started**](#getting-started) · [**Limitations**](#current-limitations)
 
-<img src="docs/assets/stats.svg" alt="1937 unit tests, 200 end-to-end tests, 204 browser checks, twelve languages, eleven themes, zero API keys" width="100%">
+<img src="docs/assets/stats.svg" alt="1935 unit tests, 200 end-to-end tests, 204 browser checks, twelve languages, eleven themes, zero API keys" width="100%">
 
 </div>
 
@@ -226,7 +226,6 @@ CloseNI drives a chat site the way a person does, so each site needs its own pag
 | **Qwen Studio** | ![coming soon](https://img.shields.io/badge/-coming%20soon-e3b341?style=flat-square) | Page control works against the live site: the input is found, long prompts are pasted via the clipboard, and send and completion detection are both confirmed. It is gated because a build-sized prompt (~9k characters) outruns the 120 s completion wait while the model is still thinking. |
 | **GLM (Z.ai)** | ![coming soon](https://img.shields.io/badge/-coming%20soon-e3b341?style=flat-square) | The live site declines the build prompts, and the model and thinking controls were not found on the page. Selectors have never been confirmed. |
 | **Ollama (local)** | ![chat-only](https://img.shields.io/badge/-chat--only-79c0ff?style=flat-square) | The first provider that is not a web page: no selectors, no login, no rate limit. Chat works. Plan and build still need a browser provider, and it says so if you try. |
-| HuggingChat, Open WebUI | not implemented | Config stubs only, `enabled: false`, no selectors. |
 
 Gated providers appear in Settings, so it is clear they are planned rather than missing, but they cannot be selected. `getUsableProvider` refuses them in the agent too, so a preference saved before the gate cannot start a session on one.
 
@@ -594,7 +593,7 @@ Pixel-art motion appears throughout the app, driven by `steps()` timing so the a
 ```mermaid
 flowchart LR
     subgraph unit["npm test · no browser"]
-        U1["1937 unit tests<br/>including the web layer's pure logic"]
+        U1["1935 unit tests<br/>including the web layer's pure logic"]
     end
     subgraph browser["real Chromium"]
         E2E["npm run test:e2e<br/>200 tests against a mock chat site"]
