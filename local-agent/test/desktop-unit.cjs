@@ -201,6 +201,8 @@ function testCodeView() {
   check("plain modes send the words as typed", V.modePrompt("default", " fix it ") === "fix it" && V.modePrompt("plan", "x") === "x");
   check("an empty line is nothing, except in ship", V.modePrompt("default", "") === null && V.modePrompt("build", "  ") === null && /commit/.test(V.modePrompt("ship", "")));
   check("build starts the program, headless when it has a window", /start the program itself/.test(V.modePrompt("build", "x")) && /SDL_VIDEODRIVER=dummy/.test(V.modePrompt("build", "x")));
+  check("an order to make a thing reads as a build", ["build me a snake game with pygame", "Make a todo app in React", "please create a simple calculator", "can you write a script that renames my photos", "i want you to build a website for my bakery", "can you build me a snake game?"].every(V.looksLikeBuild));
+  check("a question about building does not", !["how do I build a game in pygame?", "what is the best way to make an app", "build the project and fix the errors", "write a summary of the diff", "commit the snake game"].some(V.looksLikeBuild));
   check("the test directive never weakens tests", /never weaken or delete a test/.test(V.modePrompt("test", "x")));
   check("ship never force-pushes", /Never force-push/.test(V.modePrompt("ship", "x")));
   check("the old tabs are commands", ["/build", "/test", "/research", "/ship", "/steps", "/runner", "/github", "/settings"].every(function (c) { return V.parseSlash(c).known; }));

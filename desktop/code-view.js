@@ -137,6 +137,16 @@
     return DIRECTIVES[mode] ? DIRECTIVES[mode] + "\n\n" + t : t;
   }
 
+  // "build me a snake game" typed while Research or Ship was still on from
+  // earlier: research only answers, and ship told the agent to commit what
+  // was there, so it twice reported nothing to ship before building anyway.
+  // An order to make a thing, not a question about one.
+  var BUILD_ASK = /^(?:(?:please|pls|now|ok(?:ay)?|can you|could you|i want(?: you)? to|i'd like(?: you)? to|let's)[,\s]+)*(?:build|make|create|write|code|develop|implement|program)\s+(?:me\s+|us\s+)?(?:a|an|the|my|this|our|simple|small|basic|full)?\b[^?]*?\b(?:game|app|application|website|site|web ?page|program|script|tool|cli|bot|api|server|clone|calculator|extension|plugin|dashboard)s?\b[^?]*\??$/i;
+
+  function looksLikeBuild(text) {
+    return BUILD_ASK.test(String(text || "").trim());
+  }
+
   function clip(s, n) { s = String(s == null ? "" : s); return s.length > n ? s.slice(0, n - 1) + "…" : s; }
 
   /** Read(src/app.py), Bash(npm test), Update(calc.py) ... */
@@ -301,7 +311,7 @@
   var api = {
     COMMANDS: COMMANDS, MODES: MODES, INIT_PROMPT: INIT_PROMPT, HELP: HELP, AUTO_WARNING: AUTO_WARNING,
     parseSlash: parseSlash, matchCommands: matchCommands, modeFromWord: modeFromWord,
-    nextMode: nextMode, modeLabel: modeLabel, agentModeOf: agentModeOf, modePrompt: modePrompt,
+    nextMode: nextMode, modeLabel: modeLabel, agentModeOf: agentModeOf, modePrompt: modePrompt, looksLikeBuild: looksLikeBuild,
     toolTitle: toolTitle, toolSummary: toolSummary,
     toolTone: toolTone, permissionOptions: permissionOptions, permissionQuestion: permissionQuestion,
     spinnerVerb: spinnerVerb, GLYPHS: GLYPHS, elapsed: elapsed, mentionAt: mentionAt,
