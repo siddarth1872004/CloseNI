@@ -460,6 +460,11 @@ throwaway GitHub account or repo.
       the "twelve languages" claim.
 - [ ] **8.7 Dependency audit** (S). Run `npm audit`. Check that Electron and
       Playwright are current, and pin versions CI builds with.
+      *30 Sep:* CI already builds from the lockfile (`npm ci`). `local-agent`
+      and `desktop` audit clean. The root has 13 findings, all in Electron
+      31.7.7 (out of support; 44 is current) and electron-builder 24 (26 is
+      current), whose `tar`, `xmldom` and `extract-zip` run only at build
+      time. Playwright is 1.62.1 (1.63.0 is current).
 - [ ] **8.8 Dead code sweep** (M). Once Phases 3–5 decide what stays, remove
       what didn't: unused provider configs, the `legacy/` samples, whichever web
       layer lost, and Needle if it's cut.
