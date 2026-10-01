@@ -23,7 +23,6 @@
   "workspaces": [
     "shared",
     "local-agent",
-    "vscode-extension",
     "desktop"
   ],
   "scripts": {

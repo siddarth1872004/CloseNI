@@ -746,10 +746,6 @@ local-agent/        the TypeScript core
   config/providers/   one JSON file per provider, read at runtime
   test/               unit, end-to-end and browser suites, plus the fixture web
 
-vscode-extension/   a 97-line VS Code prototype that runs the agent against the open
-                    workspace. It compiles and is kept, but it predates the desktop app
-                    and is not the supported interface.
-
 shared/             shared type definitions and schemas
 build/              brand assets and icons
 docs/               architecture, audit, testing results, plans, screenshots, the site

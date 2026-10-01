@@ -147,7 +147,7 @@ check('the roadmap records the concurrency reversal',
 // this - the first version of this check flagged them and was wrong.
 const MOJIBAKE = /Ã[-ÿ]|â€|â€™|ðŸ|Â[ -¿]|Å’|Å¸/;
 const mojibakeTargets = ['local-agent/src/index.ts', 'desktop/renderer.js', 'desktop/main.js',
-  'desktop/builder.js', 'vscode-extension/src/extension.ts', 'README.md'];
+  'desktop/builder.js', 'README.md'];
 const garbled = mojibakeTargets.filter((f) => MOJIBAKE.test(read(f)));
 check('no mojibake in source', garbled.length === 0, garbled.join(', '));
 

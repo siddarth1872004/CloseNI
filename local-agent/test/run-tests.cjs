@@ -752,7 +752,7 @@ function testBuildConfig() {
       return f.indexOf("local-agent/dist") === 0 || f.indexOf("local-agent/config") === 0 ||
         f === "local-agent/python/needle_bridge.py";
     }), agentGlobs.join(" "));
-  ["local-agent/storage", ".superpowers", "docs", "samples", "app", "instance", "vscode-extension"]
+  ["local-agent/storage", ".superpowers", "docs", "samples", "app", "instance"]
     .forEach(function (dir) {
       check("nothing includes " + dir,
         files.every(function (f) { return String(f).indexOf(dir) !== 0; }), dir);
