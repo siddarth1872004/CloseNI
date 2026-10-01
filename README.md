@@ -660,7 +660,7 @@ cd desktop && npm start
 
 **Requirements:**
 
-- Node.js 18 or newer.
+- Node.js 22.12 or newer.
 - Around 650 MB of disk for the Playwright Chromium download.
 - Windows 10+, or a Linux desktop with a keyring available for encrypted token storage.
 
