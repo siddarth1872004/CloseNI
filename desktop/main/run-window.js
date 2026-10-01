@@ -1,0 +1,111 @@
+/*
+ * "Run this project": the program in a CloseNI window of its own, full screen.
+ *
+ * One run window at a time. Asking to run again while it is open restarts the
+ * program in it rather than stacking windows, each with its own process.
+ */
+const fs = require("fs");
+const path = require("path");
+const { spawn, spawnSync } = require("child_process");
+const { app, BrowserWindow, ipcMain } = require("electron");
+const { venvCommand, looksGraphical } = require("../run-target.js");
+
+const VENVS = [".venv", "venv", "env"];
+const SOURCE = /\.(py|js|mjs|ts|rb|go|rs|c|cpp|java|lua)$/;
+
+/** The project's venv interpreter, or null. */
+function venvPython(cwd) {
+  for (const d of VENVS) {
+    const p = path.join(cwd, d, process.platform === "win32" ? "Scripts\\python.exe" : "bin/python");
+    if (fs.existsSync(p)) return p;
+  }
+  return null;
+}
+
+/** The project's top-level and src/ sources, enough to tell a game from a script. */
+function sources(cwd) {
+  const out = [];
+  for (const dir of [cwd, path.join(cwd, "src")]) {
+    let names = [];
+    try { names = fs.readdirSync(dir); } catch (e) { continue; }
+    for (const n of names) {
+      if (!SOURCE.test(n) || out.length >= 40) continue;
+      try { out.push(fs.readFileSync(path.join(dir, n), "utf-8").slice(0, 20000)); } catch (e) { /* unreadable: skip */ }
+    }
+  }
+  return out;
+}
+
+/** Registers the handlers. Needs nothing from main.js. */
+module.exports = function runWindow() {
+  let win = null;
+  let proc = null;
+  let job = null;
+
+  function send(channel, data) {
+    if (win && !win.isDestroyed()) win.webContents.send(channel, data);
+  }
+
+  // The whole process group: a shell running `python3 game.py` is two
+  // processes, and killing only the shell leaves the game on screen.
+  function stop() {
+    const p = proc;
+    if (!p) return;
+    proc = null;
+    if (process.platform === "win32") { try { spawnSync("taskkill", ["/pid", String(p.pid), "/T", "/F"]); } catch (e) {} return; }
+    try { process.kill(-p.pid, "SIGTERM"); } catch (e) {}
+    setTimeout(function () { try { process.kill(-p.pid, "SIGKILL"); } catch (e) {} }, 3000).unref();
+  }
+
+  function start() {
+    stop();
+    const command = venvCommand(job.command, venvPython(job.cwd));
+    send("run-started", { command: command, cwd: job.cwd, gui: job.gui });
+    const p = spawn(command, {
+      cwd: job.cwd, shell: true, detached: process.platform !== "win32",
+      // Unbuffered, or a Python program's prints arrive only when it exits.
+      env: Object.assign({}, process.env, { PYTHONUNBUFFERED: "1" }),
+    });
+    proc = p;
+    p.stdout.on("data", function (d) { send("run-output", { stream: "out", text: d.toString() }); });
+    p.stderr.on("data", function (d) { send("run-output", { stream: "err", text: d.toString() }); });
+    p.on("error", function (e) { send("run-output", { stream: "err", text: String(e) + "\n" }); });
+    p.on("close", function (code, signal) {
+      if (proc === p) proc = null;
+      send("run-exit", { code: code, signal: signal });
+    });
+  }
+
+  ipcMain.handle("open-run-window", function (event, payload) {
+    const command = String((payload && payload.command) || "").trim();
+    const cwd = payload && payload.cwd;
+    if (!command || !cwd) return { ok: false, error: "nothing to run" };
+    job = { command: command, cwd: cwd, gui: looksGraphical(sources(cwd)) };
+    if (win && !win.isDestroyed()) { win.focus(); start(); return { ok: true }; }
+    win = new BrowserWindow({
+      fullscreen: true,
+      backgroundColor: "#0b0b0c",
+      title: "Run - " + path.basename(cwd),
+      autoHideMenuBar: true,
+      webPreferences: { preload: path.join(__dirname, "..", "run-preload.js"), contextIsolation: true, nodeIntegration: false, webviewTag: true },
+    });
+    win.loadFile(path.join(__dirname, "..", "run.html"));
+    win.webContents.once("did-finish-load", start);
+    win.on("closed", function () { stop(); win = null; });
+    return { ok: true };
+  });
+
+  ipcMain.handle("run-window-restart", function () { if (job) start(); });
+  ipcMain.handle("run-window-stop", function () { stop(); });
+  ipcMain.handle("run-window-input", function (event, text) {
+    if (proc && proc.stdin.writable) proc.stdin.write(String(text));
+  });
+  ipcMain.handle("run-window-fullscreen", function (event, on) {
+    if (win && !win.isDestroyed()) win.setFullScreen(!!on);
+  });
+  ipcMain.handle("run-window-close", function () {
+    if (win && !win.isDestroyed()) win.close();
+  });
+
+  app.on("before-quit", stop);
+};

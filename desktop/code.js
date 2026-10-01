@@ -18,6 +18,9 @@
     history: [], hIndex: -1, queue: [], tools: {}, permission: null,
     spinnerTimer: null, turnStart: 0, step: 0, verbSeed: 0, files: null, popup: null,
     lastWasPlan: false,
+    // Whether this turn wrote or edited a file: only then is there something
+    // new to offer to run.
+    changed: false, runOffer: null,
     // Mode actions: a test or research run in flight, the build's todo list
     // for its progress bar, and which sources research searches.
     running: false, todos: [], research: { web: true, gh: true }, modebarSeq: 0,
@@ -132,6 +135,7 @@
     node.querySelector(".cc-sum").textContent = V.toolSummary(ev);
     const more = node.querySelector(".cc-tool-more");
     const d = ev.detail || {};
+    if ((ev.name === "edit" || ev.name === "write") && ev.status === "done") S.changed = true;
     if ((ev.name === "edit" || ev.name === "write") && ev.status === "done" && d.after !== undefined) {
       more.innerHTML = '<div class="cc-diff">' + diffHtml(d.before, d.after) + "</div>";
       // An edit's diff is the point of the line: shown, as a terminal agent does.
@@ -373,6 +377,38 @@
     });
   }
 
+  /** The project in a full-screen window of its own: its output, its page, or its game. */
+  function runInWindow(command) {
+    closeRunOffer();
+    const ws = CN.getWorkspace();
+    if (!ws) { note("Choose a project folder first.", "err"); return; }
+    window.api.openRunWindow({ command: command, cwd: ws }).then(function (r) {
+      if (!r || !r.ok) note("Could not open the run window: " + ((r && r.error) || "unknown error"), "err");
+    });
+  }
+
+  function closeRunOffer() {
+    if (S.runOffer) { S.runOffer.remove(); S.runOffer = null; }
+  }
+
+  /** After a turn that changed files, offer to run what was built, when there is a command for it. */
+  function offerRun() {
+    if (!CN.resolveRunCommand) return;
+    CN.resolveRunCommand().then(function (rc) {
+      if (!rc || !rc.command || S.busy) return;
+      closeRunOffer();
+      const box = document.body.appendChild(el("div", "run-offer",
+        '<div class="run-offer-title">▶ Ready to run</div>' +
+        '<div class="run-offer-cmd"></div>' +
+        '<div class="run-offer-acts"></div>'));
+      box.querySelector(".run-offer-cmd").textContent = rc.command;
+      const acts = box.querySelector(".run-offer-acts");
+      acts.appendChild(mbtn("Run this project", function () { runInWindow(rc.command); }, "Opens it full screen in a CloseNI window", "primary"));
+      acts.appendChild(mbtn("Not now", closeRunOffer));
+      S.runOffer = box;
+    });
+  }
+
   /** Web answer and GitHub repositories for `q`, as one card. */
   function research(q) {
     const want = S.research;
@@ -483,6 +519,12 @@
           mbtn("Run tests ⏎", function () { runChecks("behaviour"); }, "The project's own test suite, then a smoke run (enter on an empty line)", "primary"),
           mbtn("Syntax-check", function () { runChecks("testall"); }, "Compile or parse every source file"),
           mbtn("Run", runCommand, "Run the project's run command once"),
+          mbtn("Run in window", function () {
+            CN.resolveRunCommand().then(function (rc) {
+              if (rc && rc.command) runInWindow(rc.command);
+              else note("No run command found - the Runner panel (/runner) can set one", "warn");
+            });
+          }, "Run it full screen in a CloseNI window"),
           mbtn("Runner…", function () { CN.switchTab("test"); }, "The full runner panel (/runner)"),
         ];
       },
@@ -565,7 +607,7 @@
         showMeta();
         if (ev.memory) note("Using " + ev.memory + " from the project", "dim");
         break;
-      case "turn-start": setBusy(true); break;
+      case "turn-start": setBusy(true); S.changed = false; closeRunOffer(); break;
       case "thinking": S.step = ev.step; spinnerOn(V.spinnerVerb(ev.step, S.verbSeed)); break;
       case "assistant": {
         const m = add(el("div", "cc-msg", '<span class="cc-dot">⏺</span><div class="cc-body md"></div>'));
@@ -595,6 +637,7 @@
         else if (ev.reason === "step-limit") note("Stopped after the step limit. Say \"continue\" to let it keep going.", "warn");
         else if (ev.reason === "error") note(ev.error || "Something went wrong", "err");
         else if (ev.reason === "complete" && S.mode === "plan") offerPlan();
+        else if (ev.reason === "complete" && S.changed) offerRun();
         CN.setStatus && CN.setStatus("idle");
         if (S.mode === "ship" || S.mode === "test") renderModebar();
         if (S.queue.length && !S.running) { const next = S.queue.shift(); setTimeout(function () { send(next.text, next.shownAs); }, 50); }

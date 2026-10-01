@@ -215,6 +215,19 @@ function testRunManifest() {
   check("quotes survive", quoted.indexOf('python3 -c "print(1)"') !== -1, quoted);
 }
 
+function testRunTarget() {
+  section("run target");
+  const { venvCommand, looksGraphical } = require(path.join(__dirname, "..", "..", "desktop", "run-target.js"));
+  check("python runs from the project's venv", venvCommand("python3 game.py", "/p/.venv/bin/python") === "/p/.venv/bin/python game.py");
+  check("a path with spaces is quoted", venvCommand("python main.py", "/my p/.venv/bin/python") === '"/my p/.venv/bin/python" main.py');
+  check("no venv leaves the command alone", venvCommand("python3 game.py", null) === "python3 game.py");
+  check("nor does a command that is not python", venvCommand("npm start", "/p/.venv/bin/python") === "npm start");
+  check("python3x is not python3", venvCommand("python3x a.py", "/v") === "python3x a.py");
+  check("a pygame program opens a window", looksGraphical(["import sys\nimport pygame\n"]));
+  check("so does a tkinter one", looksGraphical(["from tkinter import ttk"]));
+  check("a console program does not", !looksGraphical(["import sys\nprint('pygame')\n"]));
+}
+
 function testPreviewTarget() {
   section("preview target");
   const { previewTarget } = require(path.join(__dirname, "..", "..", "desktop", "preview-target.js"));
@@ -1171,6 +1184,7 @@ async function run(c, s, sk) {
   await testAsyncPool();
   testRunManifest();
   testPreviewTarget();
+  testRunTarget();
   await testAgentQueue();
   testSchedulerGraph();
   testBuildState();
