@@ -44,6 +44,21 @@ function systemPython(platform: string): { version: string; managed: boolean } |
   }
 }
 
+/**
+ * Whether sudo would stop for a password. The bash tool has no terminal to
+ * type one into, so such a command only fails, after the model has already
+ * chosen system packages over the project's own venv.
+ */
+function sudoNeedsPassword(platform: string): boolean {
+  if (platform === "win32" || !onPath("sudo", platform)) return false;
+  try {
+    const r = spawnSync("sudo", ["-n", "true"], { stdio: "ignore", timeout: 5000 });
+    return r.status !== 0;
+  } catch {
+    return false;
+  }
+}
+
 let cached: string | undefined;
 
 /** One line for the preamble, or "" when there is nothing worth saying. */
@@ -62,6 +77,10 @@ export function describeMachine(platform: string = process.platform): string {
       : "") +
       " If pip has to build a package from source (no wheel for Python " + py.version + "), that can take many minutes and fail on missing system libraries:" +
       " retry with --only-binary=:all: and pick an alternative that has a wheel (pygame-ce for pygame).");
+  }
+  if (sudoNeedsPassword(platform)) {
+    facts.push("sudo needs a password, which you cannot type: do not run sudo. Install into the project (a venv, node_modules) instead," +
+      " or tell the user the exact system command to run themselves.");
   }
   const line = facts.join(" ");
   if (platform === process.platform) cached = line;
