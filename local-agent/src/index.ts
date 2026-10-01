@@ -1575,6 +1575,7 @@ async function healthMode(providerId: string, workspace: string) {
     const report = judgeSelectors(await controller.probeSelectors(config), {
       conversationResumed: resumed,
       configured: {
+        sendButton: !!config.selectors.sendButton,
         assistantMessage: !!config.selectors.assistantMessage,
         copyButton: !!config.selectors.copyButton,
       },
@@ -1729,6 +1730,7 @@ async function buildSessionMode(workspace: string, providerId: string, autonomy:
     const report = judgeSelectors(await controller.probeSelectors(config), {
       conversationResumed: resumed,
       configured: {
+        sendButton: !!config.selectors.sendButton,
         assistantMessage: !!config.selectors.assistantMessage,
         copyButton: !!config.selectors.copyButton,
       },

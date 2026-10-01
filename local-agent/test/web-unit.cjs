@@ -257,6 +257,7 @@ async function run(check, section) {
   section("web: adapters record what is and is not known");
   const allStrategies = (spec) => Object.values(spec.chains).flatMap((c) => c.strategies);
   check("DeepSeek has no stop chain - measured not to exist", A.DEEPSEEK.chains.stop.strategies.length === 0 && A.DEEPSEEK.knowledge["stop control"] === "NOT_APPLICABLE");
+  check("DeepSeek sends with Enter - it has no send chain to click", A.DEEPSEEK.chains.send.strategies.length === 0 && A.DEEPSEEK.knowledge["send button"] === "NOT_APPLICABLE");
   check("DeepSeek's reply stream is the measured endpoint", A.DEEPSEEK.streamUrlPattern === "/api/v0/chat/completion");
   check("GLM claims nothing as MEASURED", !allStrategies(A.GLM).some((s) => s.provenance === "MEASURED"));
   check("no adapter claims a stream endpoint it never measured", !A.QWEN.streamUrlPattern && !A.GLM.streamUrlPattern);
