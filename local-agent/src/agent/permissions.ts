@@ -2,7 +2,7 @@
  * Whether a tool call may run, must ask, or is refused.
  *
  * Four modes, cycled from the input box:
- *   default      reading is free; edits and commands ask
+ *   default      reading is free (bar .env files and keys); edits and commands ask
  *   acceptEdits  edits run; commands still ask
  *   plan         read-only - edits and commands are refused, not asked
  *   auto         everything runs
@@ -14,7 +14,7 @@
  */
 import { needsConfirmation } from "../verification/command-policy.js";
 import { Mode, ToolCall } from "./protocol.js";
-import { isReadOnly } from "./tools.js";
+import { isReadOnly, isSecretFile } from "./tools.js";
 
 export interface SessionRules {
   /** Every edit and write this session, after "yes, and don't ask again". */
@@ -56,6 +56,9 @@ function allowedByRules(command: string, rules: SessionRules): boolean {
 }
 
 export function decide(call: ToolCall, mode: Mode, rules: SessionRules): Decision {
+  // A .env or a key goes to the chat site once read, so it is the user's call
+  // in every mode, auto and plan included.
+  if ((call.tool === "read" || call.tool === "grep") && isSecretFile(String(call.input.path || ""))) return { action: "ask", alwaysAsk: true };
   if (isReadOnly(call.tool)) return { action: "allow" };
 
   if (mode === "plan") {

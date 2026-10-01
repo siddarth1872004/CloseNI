@@ -656,7 +656,10 @@
       case "/mode": {
         const m = V.modeFromWord(p.arg);
         if (!m) { note("Modes: default, accept, plan, build, test, research, ship, auto", "dim"); return; }
-        setMode(m); note("Mode: " + V.modeLabel(m).text.replace(/\s*\(shift\+tab to cycle\)/, ""), "dim"); return;
+        const was = S.mode;
+        setMode(m); note("Mode: " + V.modeLabel(m).text.replace(/\s*\(shift\+tab to cycle\)/, ""), "dim");
+        if (m === "auto" && was !== "auto") note(V.AUTO_WARNING, "warn");
+        return;
       }
       case "/compact":
         if (S.busy) { note("Wait for the current turn to finish, or press esc.", "err"); return; }
