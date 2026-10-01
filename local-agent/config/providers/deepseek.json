@@ -40,7 +40,7 @@
     "toggle": "[aria-pressed], [role=\"switch\"], button[aria-checked], .ds-toggle-button",
     "deepThinkingText": "Think",
     "smartSearchText": "Search",
-    "_note": "toggle keys off aria-pressed rather than a class: setFlagByText reads that attribute anyway, and .ds-toggle-button stopped matching after a DeepSeek redesign. Unconfirmed against the live site - if the toggles still report unavailable, the run log now prints the page's pressable controls to copy from."
+    "_note": "toggle keys off aria-pressed rather than a class: setFlagByText reads that attribute anyway, and .ds-toggle-button stopped matching after a DeepSeek redesign. Confirmed live 2026-10-01 from DeepSeek's own message records: research turns went out with thinking and search on, agent turns with thinking off. If the toggles ever report unavailable, the run log prints the page's pressable controls to copy from."
   },
   "profileDir": "local-agent/storage/browser-profiles/deepseek",
   "contextBudgetChars": 150000,
