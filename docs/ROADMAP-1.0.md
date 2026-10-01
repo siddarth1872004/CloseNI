@@ -472,9 +472,13 @@ throwaway GitHub account or repo.
   - or rebuild it as a thin client of `agent-session`, so the agent runs inside VS Code. That's a real feature, so it may belong after 1.0.
       *Done:* deleted, with its workspace entry and the references in verify,
       the packaging test and the README. Rebuilding it is listed after 1.0.
-- [ ] **8.6 C# language check** (S). It's the one language never run, because
+- [x] **8.6 C# language check** (S). It's the one language never run, because
       there's no .NET. Install .NET and run `npm run languages`, or drop C# from
       the "twelve languages" claim.
+      *1 Oct, done:* `npm run languages` had no C# case at all. Added one: a
+      two-file .csproj project that must build, and the same with a type error
+      across files that must fail. Both pass with .NET SDK 10.0.401, installed
+      to `~/.dotnet`.
 - [x] **8.7 Dependency audit** (S). Run `npm audit`. Check that Electron and
       Playwright are current, and pin versions CI builds with.
       *30 Sep:* CI already builds from the lockfile (`npm ci`). `local-agent`

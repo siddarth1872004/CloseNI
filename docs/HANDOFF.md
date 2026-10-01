@@ -102,11 +102,11 @@ toolchains.
   Enter, which works) and its Deep thinking / Smart Search toggles report
   not-found. Re-capture with
   `node scripts/capture-provider-ui.mjs deepseek`.
-- **C# is the one language check never run** - no .NET on any machine it has
-  been tried on. The other eleven ran on 24 September against a working and a
-  broken sample each (`npm run languages`), which found Go had been silently
-  skipped everywhere (the probe used `go --version`) and Java in packages
-  failing on correct code. Both fixed.
+- **All twelve language checks have run** against a working and a broken
+  sample each (`npm run languages`): eleven on 24 September, which found Go
+  had been silently skipped everywhere (the probe used `go --version`) and
+  Java in packages failing on correct code, both fixed; C# on 1 October, with
+  .NET 10 building a net8.0 project.
 - **The UI has barely been looked at.** Nine themes, the Test panel, the
   frontend preview and the pixel motion have never been seen by a person.
   The Linux build has been packed and launched headless under Xvfb: the
