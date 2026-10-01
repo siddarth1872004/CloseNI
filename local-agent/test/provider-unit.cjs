@@ -316,6 +316,13 @@ async function testReaderSweep() {
     check("flat reader: a soft line break stays a line", /^Step 1: setup\nStep 2: routes$/m.test(r.flat), r.flat);
     both("a label after a soft break names the block", r, "src/config.py", "DEBUG = True");
 
+    const CITE = '<p>pygame-ce ships a wheel<a href="https://x"><span class="ds-markdown-cite"><span style="opacity:0">-</span><span>15</span></span></a>, so use it.</p>';
+    r = await read(CITE);
+    check("structured reader: without a selector a citation badge reads as text", /wheel-15,/.test(r.md), r.md);
+    await page.setContent('<div class="assistant-msg">' + CITE + "</div>");
+    const cited = await c.getLastMessageStructured({ ...cfg, selectors: { ...cfg.selectors, citation: ".ds-markdown-cite" } });
+    check("structured reader: a citation badge is left out", /ships a wheel, so use it\./.test(cited) && !/15/.test(cited), cited);
+
     r = await read("");
     check("an empty reply reads as empty", r.flat === "" && r.md.trim() === "", JSON.stringify(r));
     r = await read("Just text, no markup.");

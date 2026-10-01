@@ -9,6 +9,8 @@
     "_sendButtonNote": "Empty on purpose: prompts are sent with Enter, which carried every live build. The old value matched only a <button> and DeepSeek's send control is a div, so it never matched and every prompt logged \"No send button found\". That control is also the stop control and is told apart only by hashed classes (_stopButtonNote), so there is no stable selector to give it.",
     "assistantMessage": "div[class*=\"ds-markdown\"], [data-testid=\"assistant-message\"], .markdown-body",
     "copyButton": "div[role=\"button\"]:has(span.code-info-button-text)",
+    "citation": ".ds-markdown-cite",
+    "_citationNote": "Smart Search's source badges: <a><span class=\"ds-markdown-cite\"><span style=\"opacity:0\">-</span><span>15</span></span></a>, read as \"-15\" mid-sentence. Seen in DeepSeek's own replies, 2026-10-01.",
     "_copyButtonNote": "Matches the code-block toolbar buttons; the caller filters by the label so Download is not clicked. .code-info-button-text is the only unhashed class on that control - the rest (ds-button--capsule etc.) are design-system modifiers and the surrounding path is entirely build hashes.",
     "_assistantNote": "ds-markdown first: it is the container DeepSeek renders assistant content into. The previous value led with [data-testid] and [class*=message][class*=assistant], which matched three nodes that never update while a reply streams - a build step sat at messages=3, chars=9019 for the full 300s wait because the node being watched was the PREVIOUS answer.",
     "streamUrlPattern": "/api/v0/chat/completion",
