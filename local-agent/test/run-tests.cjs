@@ -333,6 +333,10 @@ function testControlDecisions() {
   check("malformed JSON yields nothing", Object.keys(d.parseDesiredControls("{oops")).length === 0);
   check("missing value yields nothing", Object.keys(d.parseDesiredControls(undefined)).length === 0);
   check("an array yields nothing", Object.keys(d.parseDesiredControls("[1,2]")).length === 0);
+  const forced = JSON.parse(d.withControl('{"deep-thinking":true,"smart-search":true}', "deep-thinking", false));
+  check("a control forced for one run overrides the saved one and keeps the rest",
+    forced["deep-thinking"] === false && forced["smart-search"] === true, JSON.stringify(forced));
+  check("a control can be forced with nothing saved", d.withControl(undefined, "smart-search", true) === '{"smart-search":true}');
   check("non-scalar values are dropped", Object.keys(d.parseDesiredControls('{"a":{"b":1}}')).length === 0);
 
   // A provider with no module has no controls rather than an error.

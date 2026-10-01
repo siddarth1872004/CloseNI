@@ -162,10 +162,12 @@ protocol. This is the product, and everything else is secondary.
       `[role="radiogroup"] [data-model-type]` selector points at UI DeepSeek
       no longer has. Remove `controls[0]` and `controlSelectors.modeOption`,
       and make the smoke test report it absent rather than broken.
-- [ ] **1.7 Deep thinking timeouts** (S). Deep thinking on large prompts has hit
+- [x] **1.7 Deep thinking timeouts** (S). Deep thinking on large prompts has hit
       the 300s wait. Either raise the wait while the reply stream is still open
       (the stream says the model is working), or default Deep thinking off for
       agent turns. **Decided (D1):** off for agent turns.
+      *Done:* both agent modes force it off for their own process, as research
+      forces search on, so Chat keeps your saved choice. Not yet seen live.
 
 ### 1B · Things that will break on longer sessions (not yet seen, but certain)
 
