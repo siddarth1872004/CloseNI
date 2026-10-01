@@ -22,12 +22,36 @@ export interface RunOptions {
   /**
    * Fail a pipeline when any stage fails. /bin/sh reports only the last stage,
    * so `pytest | tail` said "exit 0" over failing tests. Needs bash; where there
-   * is none (Windows, a bare container) the command runs as before.
+   * is none (Windows without Git, a bare container) the command runs as before.
    */
   pipefail?: boolean;
 }
 
-const BASH = process.platform === "win32" ? undefined : ["/bin/bash", "/usr/bin/bash", "/usr/local/bin/bash"].find((p) => fs.existsSync(p));
+/**
+ * The bash a pipefail command runs in. The agent's tool is called bash and the
+ * model writes bash, so on Windows that is Git Bash when it is installed. Never
+ * System32's bash.exe: that is WSL, which sees the project under other paths.
+ */
+export function findBash(platform: string = process.platform, env: NodeJS.ProcessEnv = process.env,
+                         exists: (p: string) => boolean = fs.existsSync): string | undefined {
+  if (platform !== "win32") return ["/bin/bash", "/usr/bin/bash", "/usr/local/bin/bash"].find((p) => exists(p));
+  const w = path.win32;
+  const roots = [env.ProgramFiles, env["ProgramFiles(x86)"], env.LOCALAPPDATA && w.join(env.LOCALAPPDATA, "Programs")]
+    .filter((r): r is string => !!r).map((r) => w.join(r, "Git"));
+  // A Git installed anywhere else puts <root>\cmd or <root>\bin on PATH.
+  for (const dir of String(env.PATH || env.Path || "").split(";")) {
+    if (dir && exists(w.join(dir, "git.exe"))) roots.push(w.dirname(dir));
+  }
+  return roots.map((r) => w.join(r, "bin", "bash.exe")).find((p) => exists(p));
+}
+
+const BASH = findBash();
+
+/** The shell the agent's bash tool really runs in, named for the preamble. */
+export function agentShell(platform: string = process.platform, bash: string | null | undefined = BASH): string {
+  if (bash) return platform === "win32" ? "Git Bash" : "bash";
+  return platform === "win32" ? "cmd.exe" : "sh";
+}
 
 /** How much of each end of a stream is kept; a runaway log is not held whole. */
 export const KEEP_PER_END = 512 * 1024;
@@ -180,8 +204,8 @@ export function runCommand(
     hookExit();
     const bash = options.pipefail ? BASH : undefined;
     const proc = bash
-      ? spawn(bash, ["-o", "pipefail", "-c", command], { cwd: cwd, env: env, detached: GROUPS })
-      : spawn(command, { cwd: cwd, shell: true, env: env, detached: GROUPS });
+      ? spawn(bash, ["-o", "pipefail", "-c", command], { cwd: cwd, env: env, detached: GROUPS, windowsHide: true })
+      : spawn(command, { cwd: cwd, shell: true, env: env, detached: GROUPS, windowsHide: true });
     const pid = proc.pid;
 
     const stop = () => { stopped = true; killTree(pid); };

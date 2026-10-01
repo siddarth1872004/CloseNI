@@ -6,6 +6,7 @@ import { parsePlanRobust } from "./parser/json-repair.js";
 import { applyPatch } from "./patch/patch-applier.js";
 import { PlaywrightController, ProviderConfig } from "./providers/playwright-controller.js";
 import { ProviderRegistry } from "./providers/provider-registry.js";
+import { withControl } from "./providers/controls/decisions.js";
 import { runCommand, normalizeCommand, stopRunning, stopBackground } from "./verification/command-runner.js";
 import { planChecksForWorkspace } from "./verification/check-planner.js";
 import { needsConfirmation, isEnvironmentSetup, isGeneratedFile, GENERATED_FILES } from "./verification/command-policy.js";
@@ -1574,6 +1575,7 @@ async function healthMode(providerId: string, workspace: string) {
     const report = judgeSelectors(await controller.probeSelectors(config), {
       conversationResumed: resumed,
       configured: {
+        sendButton: !!config.selectors.sendButton,
         assistantMessage: !!config.selectors.assistantMessage,
         copyButton: !!config.selectors.copyButton,
       },
@@ -1728,6 +1730,7 @@ async function buildSessionMode(workspace: string, providerId: string, autonomy:
     const report = judgeSelectors(await controller.probeSelectors(config), {
       conversationResumed: resumed,
       configured: {
+        sendButton: !!config.selectors.sendButton,
         assistantMessage: !!config.selectors.assistantMessage,
         copyButton: !!config.selectors.copyButton,
       },
@@ -1849,11 +1852,21 @@ async function buildMode(prompt: string, workspace: string, providerId: string, 
  * rather than writing to the user's saved settings - researching once must not
  * silently change what every later chat does.
  */
-function forceSearchControl(): void {
-  let desired: Record<string, any> = {};
-  try { desired = JSON.parse(process.env.AGENT_CONTROLS || "{}") || {}; } catch { desired = {}; }
-  desired["smart-search"] = true;
-  process.env.AGENT_CONTROLS = JSON.stringify(desired);
+function forceControl(id: string, value: string | boolean): void {
+  process.env.AGENT_CONTROLS = withControl(process.env.AGENT_CONTROLS, id, value);
+}
+
+/**
+ * Deep thinking off for the coding agent, the same way and for the same reason
+ * as research forces search: for this process only, so Chat keeps the user's
+ * choice. Agent turns are many and short, and a thinking turn on a large prompt
+ * spent the whole 300s wait reasoning (roadmap 1.7, D1). Search off too: left
+ * on from research, it searched the web on fix turns and filled replies with
+ * citation badges, while the agent's facts come from its tools.
+ */
+function agentControls(): void {
+  forceControl("deep-thinking", false);
+  forceControl("smart-search", false);
 }
 
 async function researchMode(query: string, workspace: string, providerId: string) {
@@ -1874,7 +1887,7 @@ async function researchMode(query: string, workspace: string, providerId: string
     return;
   }
 
-  forceSearchControl();
+  forceControl("smart-search", true);
   let session: ChatSession | null = null;
   try {
     const opened = await openChatSession(providerId, workspace);
@@ -1962,6 +1975,7 @@ function modeOf(m: string | undefined): Mode {
 }
 
 async function agentSessionMode(workspace: string, providerId: string, mode: string) {
+  agentControls();
   const { session, config } = await openChatSession(providerId, workspace);
   const pending = new Map<string, (a: PermissionAnswer) => void>();
   const loop = new AgentLoop({
@@ -2060,6 +2074,7 @@ async function agentSessionMode(workspace: string, providerId: string, mode: str
  * rest of the run, anything else to decline.
  */
 async function agentOnceMode(prompt: string, workspace: string, providerId: string, mode: string) {
+  agentControls();
   const { session, config } = await openChatSession(providerId, workspace);
   let final = "";
   let result: any = null;

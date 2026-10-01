@@ -16,7 +16,7 @@ Ask for a change and it reads your project, edits files, runs commands and check
 
 [**Site**](https://siddarth1872004.github.io/CloseNI/) · [**How it works**](#how-it-works) · [**Architecture**](#architecture) · [**Browser layer**](#the-browser-native-layer) · [**Research**](#research) · [**Get started**](#getting-started) · [**Limitations**](#current-limitations)
 
-<img src="docs/assets/stats.svg" alt="1935 unit tests, 200 end-to-end tests, 204 browser checks, twelve languages, eleven themes, zero API keys" width="100%">
+<img src="docs/assets/stats.svg" alt="1946 unit tests, 200 end-to-end tests, 204 browser checks, twelve languages, eleven themes, zero API keys" width="100%">
 
 </div>
 
@@ -91,7 +91,7 @@ In every mode, `sudo`, package managers, recursive deletes, piping a download in
 - `/rewind` undoes the last turn's file changes.
 - `/init` writes a `CLOSENI.md` of project instructions, which is read at the start of every conversation (`AGENTS.md` and `CLAUDE.md` are read if there is no `CLOSENI.md`).
 - Messages sent while the agent is working are queued. Esc stops it after the current reply.
-- The persona, skills and MCP context from Settings apply here too.
+- The persona, skills and MCP context from Settings apply here too, and so do the provider's controls, except Deep thinking, which is off for agent turns: they are many and short, and a thinking turn on a large prompt can outlast the wait.
 - From a terminal: `npm run agent -- "fix the failing test" ./project deepseek`.
 
 It works with any provider CloseNI can talk to, including a local model through Ollama.
@@ -157,7 +157,7 @@ Nothing is written before you approve the plan, and every step reports what it t
 ```mermaid
 flowchart TB
     subgraph desktop["desktop/ · Electron host"]
-        R["renderer.js<br/>panels, plans, diffs"]
+        R["renderer/<br/>panels, plans, diffs"]
         B["builder.js<br/>runs the steps"]
         S["scheduler.js<br/>dependency graph, resume"]
         T["theme.js<br/>eleven themes"]
@@ -593,7 +593,7 @@ Pixel-art motion appears throughout the app, driven by `steps()` timing so the a
 ```mermaid
 flowchart LR
     subgraph unit["npm test · no browser"]
-        U1["1935 unit tests<br/>including the web layer's pure logic"]
+        U1["1946 unit tests<br/>including the web layer's pure logic"]
     end
     subgraph browser["real Chromium"]
         E2E["npm run test:e2e<br/>200 tests against a mock chat site"]
@@ -660,9 +660,9 @@ cd desktop && npm start
 
 **Requirements:**
 
-- Node.js 18 or newer.
+- Node.js 22.12 or newer.
 - Around 650 MB of disk for the Playwright Chromium download.
-- Windows 10+, or a Linux desktop with a keyring available for encrypted token storage.
+- Windows 10+, or a Linux desktop with a keyring available for encrypted token storage. On a desktop Chromium does not recognise (Hyprland, sway, i3), CloseNI asks for the Secret Service (gnome-keyring, KeePassXC); pass `--password-store=` to choose another.
 
 #### Downloads
 
@@ -725,8 +725,9 @@ The packaged `files` list is an explicit allow-list. Widening it to a glob would
 
 ```
 desktop/            Electron UI host, IPC handlers, and renderer
-  main.js             process host: IPC, git, credentials, agent lifecycle
-  renderer.js         panels, plan review, diff rendering
+  main.js             process host: window, agent lifecycle, sessions, sign-in
+  main/               IPC by domain: GitHub, git, build state, settings, files
+  renderer/           one script per panel, loaded in order; startup.js last
   builder.js          step orchestration
   scheduler.js        dependency graph, runnable set, resume state
   theme.js            theme registry and persistence
@@ -745,10 +746,6 @@ local-agent/        the TypeScript core
     research/           planner, search, fetcher, page model, evidence, conflicts, context, agent
   config/providers/   one JSON file per provider, read at runtime
   test/               unit, end-to-end and browser suites, plus the fixture web
-
-vscode-extension/   a 97-line VS Code prototype that runs the agent against the open
-                    workspace. It compiles and is kept, but it predates the desktop app
-                    and is not the supported interface.
 
 shared/             shared type definitions and schemas
 build/              brand assets and icons

@@ -113,10 +113,10 @@ export const DEEPSEEK: AdapterSpec = {
     // textarea[placeholder] is the first alternative of the configured chatInput,
     // which carried every live build on 11 August.
     composer: genericComposer([{ kind: "css", css: "textarea[placeholder]", provenance: "MEASURED" }]),
-    // The configured send selectors are known to MISS on the live site - the
-    // controller falls back to Enter, which works (docs/HANDOFF.md). Kept first
-    // so a diagnosis shows the miss; Enter remains the real path.
-    send: genericSend([{ kind: "css", css: 'button[type="submit"], button[data-testid="send-button"]', provenance: "UNVERIFIED" }]),
+    // Empty on purpose: Enter is the send path. The send control is a div that
+    // doubles as the stop control, told apart only by hashed classes, so no
+    // selector or heuristic here could be trusted to mean "send".
+    send: { name: "send", visibleOnly: true, strategies: [] },
     // MEASURED to not exist: the stop control IS the send control, told apart
     // only by hashed classes (config _stopButtonNote). Empty on purpose.
     stop: { name: "stop", visibleOnly: true, strategies: [] },
@@ -138,7 +138,7 @@ export const DEEPSEEK: AdapterSpec = {
   timing: { ...DEFAULT_TIMING },
   knowledge: {
     "composer": "MEASURED",
-    "send button": "UNVERIFIED",
+    "send button": "NOT_APPLICABLE",
     "send via Enter": "MEASURED",
     "stop control": "NOT_APPLICABLE",
     "assistant container": "MEASURED",

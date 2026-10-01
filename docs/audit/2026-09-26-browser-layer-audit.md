@@ -60,7 +60,7 @@ scripts/capture-provider-ui.mjs  interactive selector capture (headed, signed-in
 
 | Area | Status | Evidence |
 |---|---|---|
-| DeepSeek: launch, resume thread, send, wait, extract, build | `MEASURED` | 3-step and 9-step live builds, 11 Aug (docs/NEXT.md) |
+| DeepSeek: launch, resume thread, send, wait, extract, build | `MEASURED` | 3-step and 9-step live builds, 11 Aug (docs/archive/NEXT.md) |
 | DeepSeek reply-stream end signal (XHR `/api/v0/chat/completion`) | `MEASURED` | config `_streamNote`; completion 15.1s → 8.7s |
 | DeepSeek code via its own Copy button | `MEASURED` | config `_copyButtonNote`, replay fixture |
 | HTTP 429/401/403/5xx on the reply request stops the wait | `FIXTURE` + reasoning | stream-status.ts |
@@ -144,7 +144,7 @@ build path once it has been run live.
   native setter, and every `_note` in the provider configs: each encodes a
   measured fix.
 - `storage-paths.ts` (profiles keyed by provider id).
-- The rules in docs/HANDOFF.md: no token outside the ASKPASS helper, git with
+- The rules in docs/archive/HANDOFF.md: no token outside the ASKPASS helper, git with
   `shell: false`, storage never packaged.
 
 ## 8 · Unknowns carried into the new work

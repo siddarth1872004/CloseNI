@@ -1,6 +1,6 @@
 # Keeping a build inside its conversation
 
-Design, 11 August 2026. Section 3 of `docs/NEXT.md`.
+Design, 11 August 2026. Section 3 of `docs/archive/NEXT.md`.
 
 ## What §3 actually turned out to be
 

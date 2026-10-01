@@ -1,6 +1,6 @@
 # A provider that is not a web page
 
-Design, 11 August 2026. Section 5 of `docs/NEXT.md`.
+Design, 11 August 2026. Section 5 of `docs/archive/NEXT.md`.
 
 ## The claim in NEXT.md was false
 

@@ -582,7 +582,12 @@ async function main() {
     const mp = await sm.get("provider:qwen").page();
     await mp.page.close();
     const r2 = await p.ask("TOKEN-two");
-    check("the next ask reopens the conversation and answers", /ACK two/.test(r2.content.text), r2.content.text);
+    // Fails only on CI so far; say what the ask did, not just that it was empty.
+    if (!check("the next ask reopens the conversation and answers", /ACK two/.test(r2.content.text),
+      r2.status + " " + JSON.stringify(r2.extraction_metadata.warnings) + " " + JSON.stringify(r2.content.text))) {
+      const trace = fs.readFileSync(path.join(tmp, "trace.jsonl"), "utf8").trim().split("\n").slice(-15);
+      console.log(trace.map((l) => "         | " + l.slice(0, 300)).join("\n"));
+    }
     record("chaos", "Tab closed", /ACK two/.test(r2.content.text) ? "PASS" : "FAIL");
 
     section("chaos: the expected selector disappears mid-conversation");

@@ -5,7 +5,7 @@
 <title>CloseNI</title>
 <link rel="stylesheet" href="styles.css">
 <script>
-  /* Before first paint. Applying the theme from renderer.js instead would show
+  /* Before first paint. Applying the theme from renderer/settings.js instead would show
      Midnight for a frame and then switch, which reads as a flicker on every
      launch. Inline and synchronous is the only way to avoid that. */
   try {
@@ -93,7 +93,7 @@
       <button id="back-to-code" class="btn btn-sm is-hidden" title="Back to the agent">&larr; Agent</button>
       <span id="mode-title">CODE</span>
       <!-- Describe, plan, build, test, ship: where this project is, and the one
-           thing to do next. Drawn by renderer.js from desktop/flow.js. -->
+           thing to do next. Drawn by renderer/core.js from desktop/flow.js. -->
       <nav id="flow" aria-label="Project flow" style="display:none"></nav>
       <span id="status-line">idle</span>
     </header>
@@ -534,7 +534,17 @@
 <script src="flow.js"></script>
 <script src="code-view.js"></script>
 <script src="extraction-settings.js"></script>
-<script src="renderer.js"></script>
+<script src="renderer/core.js"></script>
+<script src="renderer/workspace.js"></script>
+<script src="renderer/providers.js"></script>
+<script src="renderer/account.js"></script>
+<script src="renderer/plan.js"></script>
+<script src="renderer/skills.js"></script>
+<script src="renderer/test.js"></script>
+<script src="renderer/ship.js"></script>
+<script src="renderer/chats.js"></script>
+<script src="renderer/settings.js"></script>
+<script src="renderer/startup.js"></script>
 <script src="builder.js"></script>
 <script src="code.js"></script>
 </body>

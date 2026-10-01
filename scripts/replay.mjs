@@ -4,7 +4,7 @@
  *
  *   npm run replay
  *
- * docs/NEXT.md asked for record-and-replay of a real session's network traffic.
+ * docs/archive/NEXT.md asked for record-and-replay of a real session's network traffic.
  * That turned out to be unusable: a HAR of a signed-in DeepSeek session is 4.1MB
  * carrying live cookies on 13 requests and Authorization on 11, so it is a
  * credential file and can never be committed. A scrubber that misses one field

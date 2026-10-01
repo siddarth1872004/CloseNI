@@ -23,7 +23,6 @@
   "workspaces": [
     "shared",
     "local-agent",
-    "vscode-extension",
     "desktop"
   ],
   "scripts": {
@@ -37,6 +36,7 @@
     "test": "node local-agent/test/run-tests.cjs",
     "test:e2e": "node local-agent/test/run-e2e.cjs",
     "assets": "node scripts/make-svg-assets.mjs && node scripts/make-screenshots.mjs",
+    "site": "node scripts/make-site.mjs",
     "trial": "node scripts/trial-build.mjs",
     "edge": "node scripts/edge-cases.mjs",
     "verify:all": "npm run verify && npm run edge && npm test",
@@ -61,12 +61,13 @@
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
-    "typescript": "^5.5.4",
-    "electron": "^31.0.0",
-    "electron-builder": "^24.13.3"
+    "electron": "^44.5.1",
+    "electron-builder": "^26.15.3",
+    "marked": "^18.0.14",
+    "typescript": "^5.5.4"
   },
   "dependencies": {
-    "playwright": "^1.62.1"
+    "playwright": "^1.63.0"
   },
   "build": {
     "appId": "com.siddarth.closeni",

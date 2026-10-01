@@ -1,6 +1,6 @@
 # Reviewing a step before the next one builds on it
 
-Design, 11 August 2026. Section 4 of `docs/NEXT.md`, last of three items.
+Design, 11 August 2026. Section 4 of `docs/archive/NEXT.md`, last of three items.
 
 ## Mostly wiring, because the parts existed
 
