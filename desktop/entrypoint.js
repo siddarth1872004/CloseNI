@@ -65,6 +65,13 @@
       if (set[fileRules[i].file]) return fileRules[i].command;
     }
 
+    // One Python file at the root besides its tests is the program, whatever
+    // it is called: a game the agent wrote as game.py found nothing to run.
+    var scripts = Object.keys(set).filter(function (k) {
+      return /^[^/]+\.py$/.test(k) && !/^(test_.*|.*_test|conftest|setup|__init__)\.py$/.test(k);
+    });
+    if (scripts.length === 1) return py + " " + scripts[0];
+
     // A static site has nothing to execute, so it gets served. Opening a file://
     // page is not the same thing: relative fetches and modules fail there, so
     // the page would appear broken for a reason that is not the project's
