@@ -94,6 +94,7 @@ async function run(check, section) {
   check("the distribution is read from os-release", M.osName("NAME=\"Arch Linux\"\nPRETTY_NAME=\"Arch Linux\"\nID=arch\n") === "Arch Linux" && M.osName("NAME=Fedora\n") === "Fedora");
   check("the machine line reaches the preamble", /System package manager: pacman\./.test(P.preamble({ workspace: "/w", platform: "linux", mode: "default", machine: "OS: Arch Linux. System package manager: pacman." })));
   check("describing this machine does not throw", typeof M.describeMachine() === "string");
+  check("sudo is only ever ruled out, never offered", !/sudo/.test(M.describeMachine()) || /do not run sudo/.test(M.describeMachine()));
   check("with a system Python, a source build is steered to a wheel", !/System Python/.test(M.describeMachine()) || /--only-binary=:all:/.test(M.describeMachine()));
   const pre = P.preamble({ workspace: "/w", platform: "linux", mode: "plan", memory: "Use tabs." });
   check("the preamble teaches the format, the mode and the memory", /```tool/.test(pre) && /PLAN MODE/.test(pre) && /Use tabs\./.test(pre));
