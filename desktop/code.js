@@ -21,6 +21,9 @@
     // Whether this turn wrote or edited a file: only then is there something
     // new to offer to run.
     changed: false, runOffer: null,
+    // Whether this turn is fixing a failed run: the fix may be an install
+    // rather than an edit, and either way the next step is to run it again.
+    fixing: false,
     // Mode actions: a test or research run in flight, the build's todo list
     // for its progress bar, and which sources research searches.
     running: false, todos: [], research: { web: true, gh: true }, modebarSeq: 0,
@@ -299,7 +302,7 @@
     spinnerOff();
     if (CN.setStatus) CN.setStatus("idle");
     renderModebar();
-    if (S.queue.length && !S.busy) { const next = S.queue.shift(); setTimeout(function () { send(next.text, next.shownAs); }, 50); }
+    if (S.queue.length && !S.busy) { const next = S.queue.shift(); setTimeout(function () { send(next.text, next.shownAs, next.fix); }, 50); }
   }
 
   function outputBlock(parent, text, open) {
@@ -408,6 +411,13 @@
       S.runOffer = box;
     });
   }
+
+  // "Fix errors" in the run window: its failed run, as a turn for the agent here.
+  if (window.api.onRunFix) window.api.onRunFix(function (d) {
+    CN.switchTab("code");
+    if (d.cwd !== CN.getWorkspace()) { note("The run window ran " + d.cwd + ", not the open project. Open that folder to fix it here.", "err"); return; }
+    send(d.prompt, "fix the errors from " + d.command, true);
+  });
 
   /** Web answer and GitHub repositories for `q`, as one card. */
   function research(q) {
@@ -637,10 +647,10 @@
         else if (ev.reason === "step-limit") note("Stopped after the step limit. Say \"continue\" to let it keep going.", "warn");
         else if (ev.reason === "error") note(ev.error || "Something went wrong", "err");
         else if (ev.reason === "complete" && S.mode === "plan") offerPlan();
-        else if (ev.reason === "complete" && S.changed) offerRun();
+        else if (ev.reason === "complete" && (S.changed || S.fixing)) offerRun();
         CN.setStatus && CN.setStatus("idle");
         if (S.mode === "ship" || S.mode === "test") renderModebar();
-        if (S.queue.length && !S.running) { const next = S.queue.shift(); setTimeout(function () { send(next.text, next.shownAs); }, 50); }
+        if (S.queue.length && !S.running) { const next = S.queue.shift(); setTimeout(function () { send(next.text, next.shownAs, next.fix); }, 50); }
         break;
       }
       case "closed":
@@ -748,7 +758,7 @@
     return add(el("div", "cc-user" + (cls ? " " + cls : ""), '<span class="cc-prompt">&gt;</span><span>' + esc(text) + "</span>"));
   }
 
-  function send(text, shownAs) {
+  function send(text, shownAs, fix) {
     const t = String(text || "").trim();
     const p = t ? V.parseSlash(t) : null;
     if (p && !shownAs) {
@@ -770,11 +780,12 @@
     if (!wire) return;
     const shown = shownAs || t || "review, test and commit";
     if (S.busy || S.starting || S.running) {
-      S.queue.push({ text: wire, shownAs: shown });
+      S.queue.push({ text: wire, shownAs: shown, fix: fix });
       add(el("div", "cc-user queued", '<span class="cc-prompt">&gt;</span><span>' + esc(shown) + '</span><span class="cc-queued">queued</span>'));
       return;
     }
     userLine(shown);
+    S.fixing = !!fix;
     ensureSession().then(function (ok) {
       if (!ok) return;
       window.api.codeSend(wire).then(function (r) {

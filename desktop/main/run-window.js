@@ -8,10 +8,12 @@ const fs = require("fs");
 const path = require("path");
 const { spawn, spawnSync } = require("child_process");
 const { app, BrowserWindow, ipcMain } = require("electron");
-const { venvCommand, looksGraphical } = require("../run-target.js");
+const { venvCommand, looksGraphical, fixPrompt } = require("../run-target.js");
 
 const VENVS = [".venv", "venv", "env"];
 const SOURCE = /\.(py|js|mjs|ts|rb|go|rs|c|cpp|java|lua)$/;
+// Output kept for "Fix errors": the end is where the error is.
+const KEEP = 20000;
 
 /** The project's venv interpreter, or null. */
 function venvPython(cwd) {
@@ -41,6 +43,10 @@ module.exports = function runWindow() {
   let win = null;
   let proc = null;
   let job = null;
+  // The window that asked for the run: "Fix errors" goes back to its agent.
+  let opener = null;
+  // This run's command as started, the end of its output, and how it ended.
+  let last = null;
 
   function send(channel, data) {
     if (win && !win.isDestroyed()) win.webContents.send(channel, data);
@@ -60,6 +66,8 @@ module.exports = function runWindow() {
   function start() {
     stop();
     const command = venvCommand(job.command, venvPython(job.cwd));
+    last = { command: command, output: "", code: null, signal: null };
+    const run = last;
     send("run-started", { command: command, cwd: job.cwd, gui: job.gui });
     const p = spawn(command, {
       cwd: job.cwd, shell: true, detached: process.platform !== "win32",
@@ -67,11 +75,16 @@ module.exports = function runWindow() {
       env: Object.assign({}, process.env, { PYTHONUNBUFFERED: "1" }),
     });
     proc = p;
-    p.stdout.on("data", function (d) { send("run-output", { stream: "out", text: d.toString() }); });
-    p.stderr.on("data", function (d) { send("run-output", { stream: "err", text: d.toString() }); });
-    p.on("error", function (e) { send("run-output", { stream: "err", text: String(e) + "\n" }); });
+    function output(stream, text) {
+      run.output = (run.output + text).slice(-KEEP);
+      send("run-output", { stream: stream, text: text });
+    }
+    p.stdout.on("data", function (d) { output("out", d.toString()); });
+    p.stderr.on("data", function (d) { output("err", d.toString()); });
+    p.on("error", function (e) { output("err", String(e) + "\n"); });
     p.on("close", function (code, signal) {
       if (proc === p) proc = null;
+      run.code = code; run.signal = signal;
       send("run-exit", { code: code, signal: signal });
     });
   }
@@ -81,6 +94,7 @@ module.exports = function runWindow() {
     const cwd = payload && payload.cwd;
     if (!command || !cwd) return { ok: false, error: "nothing to run" };
     job = { command: command, cwd: cwd, gui: looksGraphical(sources(cwd)) };
+    opener = event.sender;
     if (win && !win.isDestroyed()) { win.focus(); start(); return { ok: true }; }
     win = new BrowserWindow({
       fullscreen: true,
@@ -102,6 +116,18 @@ module.exports = function runWindow() {
   });
   ipcMain.handle("run-window-fullscreen", function (event, on) {
     if (win && !win.isDestroyed()) win.setFullScreen(!!on);
+  });
+  // The failed run, as a request to the agent in the window that started it.
+  ipcMain.handle("run-window-fix", function () {
+    if (!last || !job) return { ok: false, error: "nothing has run" };
+    if (!opener || opener.isDestroyed()) return { ok: false, error: "the CloseNI window is closed" };
+    opener.send("run-fix", {
+      cwd: job.cwd, command: job.command,
+      prompt: fixPrompt(Object.assign({ gui: job.gui }, last)),
+    });
+    const host = BrowserWindow.fromWebContents(opener);
+    if (host) host.focus();
+    return { ok: true };
   });
   ipcMain.handle("run-window-close", function () {
     if (win && !win.isDestroyed()) win.close();
