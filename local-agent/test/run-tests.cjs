@@ -1163,6 +1163,12 @@ function testGitHubSafe() {
   // never made and leave a credential in a predictable path.
   check("encryption unavailable means memory only", s.shouldPersistToken(false) === false);
   check("an unknown state is treated as unavailable", s.shouldPersistToken(undefined) === false);
+  check("a desktop Chromium does not recognise is pointed at the keyring",
+    s.linuxPasswordStore("linux", "Hyprland", false) === "gnome-libsecret" && s.linuxPasswordStore("linux", undefined, false) === "gnome-libsecret");
+  check("a desktop Chromium recognises keeps its own choice",
+    s.linuxPasswordStore("linux", "ubuntu:GNOME", false) === null && s.linuxPasswordStore("linux", "KDE", false) === null);
+  check("a --password-store the user passed wins", s.linuxPasswordStore("linux", "sway", true) === null);
+  check("only Linux is touched", s.linuxPasswordStore("win32", "", false) === null);
 }
 
 /**
