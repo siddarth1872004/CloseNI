@@ -91,7 +91,7 @@ In every mode, `sudo`, package managers, recursive deletes, piping a download in
 - `/rewind` undoes the last turn's file changes.
 - `/init` writes a `CLOSENI.md` of project instructions, which is read at the start of every conversation (`AGENTS.md` and `CLAUDE.md` are read if there is no `CLOSENI.md`).
 - Messages sent while the agent is working are queued. Esc stops it after the current reply.
-- The persona, skills and MCP context from Settings apply here too.
+- The persona, skills and MCP context from Settings apply here too, and so do the provider's controls, except Deep thinking, which is off for agent turns: they are many and short, and a thinking turn on a large prompt can outlast the wait.
 - From a terminal: `npm run agent -- "fix the failing test" ./project deepseek`.
 
 It works with any provider CloseNI can talk to, including a local model through Ollama.
