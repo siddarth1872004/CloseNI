@@ -546,9 +546,12 @@ throwaway GitHub account or repo.
   - CHANGELOG `[1.0.0]`;
   - the landing page (`docs/index.html`) and screenshots regenerated with the shipped theme set;
   - GitHub Pages enabled (Settings → Pages → `main` / `/docs`).
-- [ ] **10.7 Issue templates** (S). Add a bug template that asks for the
+- [x] **10.7 Issue templates** (S). Add a bug template that asks for the
       provider, the OS, and the console drawer's last 50 lines. Selector breakage
       will be the most common report, so make it easy to file.
+      *Done:* `.github/ISSUE_TEMPLATE/bug.yml`, a form: provider, where it
+      broke (a provider not sending, finishing or being read comes first), OS,
+      version and install type, and the Agent and Project panes' last 50 lines.
 
 **Exit:** `v1.0.0` tagged, with installers that were each installed by a person,
 and the README true.
