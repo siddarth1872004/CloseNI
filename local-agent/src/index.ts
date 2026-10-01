@@ -1860,10 +1860,13 @@ function forceControl(id: string, value: string | boolean): void {
  * Deep thinking off for the coding agent, the same way and for the same reason
  * as research forces search: for this process only, so Chat keeps the user's
  * choice. Agent turns are many and short, and a thinking turn on a large prompt
- * spent the whole 300s wait reasoning (roadmap 1.7, D1).
+ * spent the whole 300s wait reasoning (roadmap 1.7, D1). Search off too: left
+ * on from research, it searched the web on fix turns and filled replies with
+ * citation badges, while the agent's facts come from its tools.
  */
 function agentControls(): void {
   forceControl("deep-thinking", false);
+  forceControl("smart-search", false);
 }
 
 async function researchMode(query: string, workspace: string, providerId: string) {
