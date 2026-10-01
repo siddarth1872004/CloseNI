@@ -697,6 +697,10 @@ source scripts/wsl-env.sh
 
 This sets up the display and library paths Electron and Chromium need under WSL2.
 
+#### Reporting a bug
+
+[Open an issue](https://github.com/siddarth1872004/CloseNI/issues/new/choose) with the bug report form. It asks for the provider, your OS, the version and the last 50 lines of the Console bar, which usually name the selector that failed. Check those lines for anything private before posting.
+
 ---
 
 ## Distribution builds
