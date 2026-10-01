@@ -475,13 +475,17 @@ throwaway GitHub account or repo.
 - [ ] **8.6 C# language check** (S). It's the one language never run, because
       there's no .NET. Install .NET and run `npm run languages`, or drop C# from
       the "twelve languages" claim.
-- [ ] **8.7 Dependency audit** (S). Run `npm audit`. Check that Electron and
+- [x] **8.7 Dependency audit** (S). Run `npm audit`. Check that Electron and
       Playwright are current, and pin versions CI builds with.
       *30 Sep:* CI already builds from the lockfile (`npm ci`). `local-agent`
       and `desktop` audit clean. The root has 13 findings, all in Electron
       31.7.7 (out of support; 44 is current) and electron-builder 24 (26 is
       current), whose `tar`, `xmldom` and `extract-zip` run only at build
       time. Playwright is 1.62.1 (1.63.0 is current).
+      *1 Oct, done:* Electron 44.5.1, electron-builder 26.15.3 and Playwright
+      1.63.0. `npm audit` finds nothing. Electron 44 needs Node 22.12 to
+      install, so CI and the README moved to Node 22. Build, every suite, the
+      packaged app and a launch all pass.
 - [ ] **8.8 Dead code sweep** (M). Once Phases 3–5 decide what stays, remove
       what didn't: unused provider configs, the `legacy/` samples, whichever web
       layer lost, and Needle if it's cut.

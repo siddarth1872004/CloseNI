@@ -60,12 +60,12 @@
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
-    "typescript": "^5.5.4",
-    "electron": "^31.0.0",
-    "electron-builder": "^24.13.3"
+    "electron": "^44.5.1",
+    "electron-builder": "^26.15.3",
+    "typescript": "^5.5.4"
   },
   "dependencies": {
-    "playwright": "^1.62.1"
+    "playwright": "^1.63.0"
   },
   "build": {
     "appId": "com.siddarth.closeni",
