@@ -13,6 +13,7 @@ import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { renderSite } from './make-site.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const QUICK = process.argv.includes('--quick');
@@ -72,6 +73,9 @@ const themeJs = read('desktop/theme.js');
 const themeCount = [...themeJs.matchAll(/\{ id: "/g)].length;
 const readme = read('README.md');
 const site = read('docs/index.html');
+// The site is the README, rendered. Every claim checked against the README
+// below holds for the site because of this one.
+check('the site is generated from the current README', site === renderSite(readme), 'run npm run site');
 
 // The twelve the README's table documents. The planner knows more, and the
 // README must say how many of those are unproven.
@@ -82,8 +86,6 @@ check('README counts the unproven languages', readme.includes(`${langs.size - do
 check('theme.js registers 11 themes', themeCount === 11, String(themeCount));
 check('README says twelve languages', /twelve languages/i.test(readme));
 check('README says eleven themes', /[Ee]leven (built-in )?themes/.test(readme));
-check('site counter says 12 languages',
-  /data-count="12">[^<]*<\/span>\s*<span class="l">languages/.test(site));
 check('README does not still claim nine languages', !/nine languages/i.test(readme));
 
 // Every theme in theme.js must have a block in styles.css, and vice versa.
@@ -120,10 +122,6 @@ for (const p of chatOnly) {
 check('every gated provider records why it is gated',
   gated.every((p) => typeof p._comingSoonReason === 'string' && p._comingSoonReason.length > 40),
   gated.map((p) => p.id).join(', ') || 'none gated');
-const counter = site.match(/data-count="(\d+)">[^<]*<\/span>\s*<span class="l">provider ready/);
-check('site "provider ready" counter matches the registry',
-  !!counter && Number(counter[1]) === ready.length,
-  counter ? `site says ${counter[1]}, registry has ${ready.length}` : 'counter not found');
 for (const p of gated) {
   check(`README marks ${p.id} as coming soon`, /coming soon/i.test(readme) &&
     readme.includes(p.name.split(' (')[0]), p.name);
@@ -144,8 +142,6 @@ check('the changelog does not promise parallel steps',
   !/execute in parallel|in its own chat tab/i.test(read('CHANGELOG.md')));
 check('README does not promise parallel steps',
   !/steps? .{0,20}(run|execute).{0,20}in parallel|Concurrent Step Execution/i.test(readme));
-check('the site does not promise parallel steps',
-  !/run <strong>at the same time<\/strong>/.test(site));
 check('the roadmap records the concurrency reversal',
   /BUILT, THEN DELIBERATELY REVERSED/.test(read('docs/ROADMAP.md')));
 
@@ -324,8 +320,6 @@ const researchGated = /data-mode="research"[^>]*data-gated/.test(indexHtml);
 check('the docs agree with whether Research is gated',
   researchGated === /Research (panel )?is gated|Research — gated/.test(readme),
   researchGated ? 'gated in markup' : 'live in markup');
-check('the site agrees too',
-  researchGated === /Research panel is unfinished/.test(site));
 // Research must not scrape a search engine. That is the trap the whole project
 // is written against, and it would be an easy thing to reach for later.
 const research = read('local-agent/src/index.ts');
