@@ -229,8 +229,8 @@ function testRunTarget() {
   const crash = fixPrompt({ command: "python game.py", output: "Traceback\nNameError: x\n\n", code: 1, signal: null, gui: false });
   check("a fix request names the command and how it ended", crash.indexOf("`python game.py` exited with code 1") !== -1, crash);
   check("and carries the error", crash.indexOf("```\nTraceback\nNameError: x\n```") !== -1, crash);
-  check("a console program may be rerun to check", crash.indexOf("do not run it") === -1);
-  check("a windowed one may not", fixPrompt({ command: "p", output: "", code: 1, gui: true }).indexOf("do not run it yourself") !== -1);
+  check("a console program is rerun as it is", crash.indexOf("headless") === -1);
+  check("a windowed one is checked headless and time-limited", /SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy timeout 5 python game\.py/.test(fixPrompt({ command: "python game.py", output: "", code: 1, gui: true })));
   const long = fixPrompt({ command: "p", output: "BANNER\n" + "line\n".repeat(3000) + "KeyError: 'end'\n", code: 1 });
   check("long output keeps its end", long.indexOf("KeyError: 'end'") !== -1 && long.indexOf("BANNER") === -1 && long.length < 7000, long.length);
   check("from a line start", long.indexOf("```\n...\nline\n") !== -1);

@@ -49,7 +49,9 @@
     return "Running the project with `" + run.command + "` " + how + ". The end of its output:\n\n" +
       "```\n" + out.replace(/\s+$/, "") + "\n```\n\n" +
       "Find the cause and fix it, in the code or in the project's environment, whichever is at fault." +
-      (run.gui ? " The program opens its own window, so do not run it yourself to check; the user will run it again." : "");
+      (run.gui ? " The program opens its own window, which would hold a plain run until its timeout: to check a fix, start it " +
+        "headless and time-limited, such as SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy timeout 5 " + run.command +
+        ", where exit code 124 means it stayed up. The user will run it for real." : "");
   }
 
   var api = { venvCommand: venvCommand, looksGraphical: looksGraphical, fixPrompt: fixPrompt };
