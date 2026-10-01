@@ -295,10 +295,23 @@ async function doEdit(c: ToolCall, ctx: ToolContext): Promise<AgentOutcome> {
   };
 }
 
+/**
+ * A package install: pip building a wheel or npm fetching a tree runs for
+ * minutes. At the usual 60s it was stopped half done, and the model took to
+ * backgrounding it and polling with sleep loops.
+ */
+const INSTALL = /(?:^|[\s;&|(])(?:\S*\/)?(?:pip3?|uv(?:\s+pip)?|python3?\s+-m\s+pip|npm|pnpm|yarn|bun|cargo|gem|bundle|composer|poetry|conda|mamba|go)\s+(?:install|add|ci|sync|get|i)\b/;
+export const INSTALL_SECS = 900;
+
+export function bashTimeout(command: string, asked: unknown): number {
+  const secs = Math.max(1, Math.min(600, parseInt(String(asked), 10) || 60));
+  return INSTALL.test(command) ? Math.max(secs, INSTALL_SECS) : secs;
+}
+
 async function doBash(c: ToolCall, ctx: ToolContext): Promise<AgentOutcome> {
   const command = String(c.input.command || "").trim();
   if (!command) throw new ToolError("bash needs a command");
-  const secs = Math.max(1, Math.min(600, parseInt(c.input.timeout, 10) || 60));
+  const secs = bashTimeout(command, c.input.timeout);
   // A command still running at its timeout did not finish: a quiet pip
   // install killed at 180s is not a server. The model is told to start
   // servers in the background, which returns at once.

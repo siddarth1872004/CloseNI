@@ -196,6 +196,8 @@ async function run(check, section) {
   o = await Tl.runTool(call({ tool: "bash", command: "echo hi" }), Object.assign({}, ctx, {
     run: async (cmd, cwd) => ({ success: true, output: "ran " + cmd + " in " + path.basename(cwd), timedOut: false }),
   }));
+  check("an install gets minutes, whatever was asked", Tl.bashTimeout(".venv/bin/pip install pygame-ce", 180) === Tl.INSTALL_SECS && Tl.bashTimeout("cd a && npm install", undefined) === Tl.INSTALL_SECS && Tl.bashTimeout("python3 -m pip install -r requirements.txt", 0) === Tl.INSTALL_SECS);
+  check("other commands keep their timeout", Tl.bashTimeout("npm test", 30) === 30 && Tl.bashTimeout("ls", 9999) === 600);
   check("bash runs in the workspace", o.ok && o.output === "ran echo hi in " + path.basename(ws) && o.summary === "exit 0");
   o = await Tl.runTool(call({ tool: "bash", command: "node -e \"process.stdout.write('real'); process.exit(3)\"" }), ctx);
   check("a real failing command reports its output and failure", !o.ok && /real/.test(o.output) && o.summary === "failed", JSON.stringify(o));
