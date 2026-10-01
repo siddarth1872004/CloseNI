@@ -165,6 +165,24 @@ function leavesFenceOpen(lines: string[]): boolean {
 const CUT_SHORT = "the payload stops inside a ``` code block it opened, so the block's end was probably taken for the end of the tool block and the rest was lost. " +
   "Send it again inside a fence of four backticks (````tool ... ````).";
 
+/**
+ * Tool blocks opened inside a payload. A block whose closing ``` is missing
+ * runs on into the next call, so that call's opener lands in this payload and
+ * it is never run on its own.
+ */
+function toolOpeners(payload: string | null): number {
+  if (payload === null) return 0;
+  return payload.split("\n").filter((l) => /^\s{0,3}`{3,}\s*tool\b/i.test(l)).length;
+}
+
+function runsOn(n: number): string {
+  return "the payload runs on into another ```tool block, so this block is missing its closing ``` and the " +
+    (n === 1 ? "call" : n + " calls") + " after it " + (n === 1 ? "was" : "were") + " never run. " +
+    "End each tool block with a line of only ``` and send them again.";
+}
+
+const SWALLOWED = "this call was inside the unclosed tool block before it, so it was not run; send it again.";
+
 function str(v: any): string | undefined {
   return typeof v === "string" ? v : undefined;
 }
@@ -186,6 +204,8 @@ export function readBlock(f: Fence): ToolCall | BadCall | null {
   if (!tool) return { error: "unknown tool \"" + rawName + "\". Tools: " + TOOL_NAMES.join(", "), raw: f.body.slice(0, 300) };
   const input = argsOf(obj);
   const call: ToolCall = { tool: tool, input: input };
+  const inner = toolOpeners(payload);
+  if (inner && (tool === "write" || tool === "edit")) return { error: tool + " " + (str(input.path) || "") + ": " + runsOn(inner), raw: f.body.slice(0, 300) };
   if (tool === "write") {
     const content = payload !== null ? payload : (str(input.content) ?? str(input.text) ?? str(input.contents));
     if (content === undefined) return { error: "write needs the file content after a line containing only ---", raw: f.body.slice(0, 300) };
@@ -233,6 +253,12 @@ export function parseReply(reply: string): ParsedReply {
     const c = readBlock(f);
     if (!c) continue;
     calls.push(c);
+    // One result per call the model sent, so a swallowed call is not silently
+    // missing from the results.
+    if (isBad(c)) {
+      const n = toolOpeners(splitHeader(f.body).payload);
+      for (let k = 0; k < n; k++) calls.push({ error: SWALLOWED, raw: "" });
+    }
     for (let i = f.start; i <= f.end; i++) drop.add(i);
   }
   const visible = lines.filter((_, i) => !drop.has(i)).join("\n").replace(/\n{3,}/g, "\n\n").trim();
@@ -271,6 +297,8 @@ export interface PreambleOptions {
   date?: string;
   /** What the bash tool really runs in; the model writes bash unless told otherwise. */
   shell?: string;
+  /** The distribution, package manager and system Python: what installing needs. */
+  machine?: string;
 }
 
 function shellNote(shell?: string): string {
@@ -283,7 +311,7 @@ export function preamble(o: PreambleOptions): string {
   const T = "```";
   const parts = [
     "You are CloseNI, a coding agent working inside the user's project on their machine.",
-    "Working directory: " + o.workspace + " (paths are relative to it). Platform: " + o.platform + "." + shellNote(o.shell) + (o.date ? " Date: " + o.date + "." : ""),
+    "Working directory: " + o.workspace + " (paths are relative to it). Platform: " + o.platform + "." + shellNote(o.shell) + (o.date ? " Date: " + o.date + "." : "") + (o.machine ? "\n" + o.machine : ""),
     "You cannot see files or run anything yourself. You act through tools: CloseNI runs them and sends the results back as the next message.",
     "",
     "To call a tool, reply with a fenced block whose first line is a JSON object naming it:",

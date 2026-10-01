@@ -62,6 +62,11 @@ async function run(check, section) {
   check("a write cut short by its own inner fence is refused, not written", P.isBad(r.calls[0]) && /README\.md/.test(r.calls[0].error) && /four backticks/.test(r.calls[0].error), JSON.stringify(r.calls[0]));
   r = P.parseReply(tool({ tool: "write", path: "a.md" }, "```\none\n```\n\n````js\ntwo\n````\n```not a ``` fence"));
   check("balanced inner fences, and a line that is not a fence, pass", r.calls.length === 1 && !P.isBad(r.calls[0]), JSON.stringify(r.calls[0]));
+  // A write missing its closing fence, as the Copy button hands it over: the
+  // next call sits inside its payload.
+  r = P.parseReply("````tool\n{\"tool\":\"write\",\"path\":\"requirements.txt\"}\n---\npygame\n```tool\n{\"tool\":\"write\",\"path\":\".gitignore\"}\n---\n.venv/\n````");
+  check("a write that runs on into the next tool block says its closing fence is missing", P.isBad(r.calls[0]) && /requirements\.txt/.test(r.calls[0].error) && /missing its closing/.test(r.calls[0].error) && !/four backticks/.test(r.calls[0].error), JSON.stringify(r.calls[0]));
+  check("and the call it swallowed gets a result of its own", r.calls.length === 2 && P.isBad(r.calls[1]) && /not run/.test(r.calls[1].error), JSON.stringify(r.calls));
   r = P.parseReply(tool({ tool: "edit", path: "README.md" }, "<<<<<<< SEARCH\nold\n=======\n## Run\n\n```sh\nnpm start"));
   check("an edit whose REPLACE was cut short the same way is refused", P.isBad(r.calls[0]) && /four backticks/.test(r.calls[0].error), JSON.stringify(r.calls[0]));
   r = P.parseReply(tool({ tool: "edit", path: "README.md" }, "<<<<<<< SEARCH\n```sh\nnpm start\n=======\n```sh\nnpm run dev\n>>>>>>> REPLACE"));
@@ -85,6 +90,10 @@ async function run(check, section) {
   check("a fence outgrows backticks in its content", P.fenceFor("a ``` b") === "````" && P.fenceFor("plain") === "```");
   const msg = P.formatResults([{ call: { tool: "bash", input: { command: "npm test" } }, ok: false, summary: "failed", output: "boom ``` x" }]);
   check("results name the call and fence its output safely", /\[1\] bash `npm test` - failed/.test(msg) && msg.indexOf("````\nboom") !== -1);
+  const M = require(path.join(DIST, "agent/machine.js"));
+  check("the distribution is read from os-release", M.osName("NAME=\"Arch Linux\"\nPRETTY_NAME=\"Arch Linux\"\nID=arch\n") === "Arch Linux" && M.osName("NAME=Fedora\n") === "Fedora");
+  check("the machine line reaches the preamble", /System package manager: pacman\./.test(P.preamble({ workspace: "/w", platform: "linux", mode: "default", machine: "OS: Arch Linux. System package manager: pacman." })));
+  check("describing this machine does not throw", typeof M.describeMachine() === "string");
   const pre = P.preamble({ workspace: "/w", platform: "linux", mode: "plan", memory: "Use tabs." });
   check("the preamble teaches the format, the mode and the memory", /```tool/.test(pre) && /PLAN MODE/.test(pre) && /Use tabs\./.test(pre));
   check("the preamble says to lengthen the fence around a payload with its own fences", /four backticks instead: ````tool/.test(pre));
@@ -206,6 +215,9 @@ async function run(check, section) {
     await settle();
     check("a pipeline past its timeout comes back on time", o.detail.timedOut && Date.now() - t0 < 5000 && /^stopped after 1s/.test(o.summary), (Date.now() - t0) + "ms " + o.summary);
     check("and nothing it started is left running", gone(g1));
+    // A quiet command killed at its timeout did not finish; calling it a
+    // server let a half-done pip install pass as a success.
+    check("a quiet command past its timeout is a failure, not a server", o.ok === false && /did not finish/.test(o.summary), o.summary);
     t0 = Date.now();
     o = await Tl.runTool(call({ tool: "bash", command: "echo $$ > group.pid; sleep 30 & echo started" }), ctx);
     const g2 = Number(fs.readFileSync(path.join(ws, "group.pid"), "utf-8"));
