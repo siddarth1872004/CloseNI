@@ -1,6 +1,6 @@
 # One real round trip, judged strictly
 
-Design, 11 August 2026. Section 8 of `docs/NEXT.md`.
+Design, 11 August 2026. Section 8 of `docs/archive/NEXT.md`.
 
 ## Why the passive check was not enough
 

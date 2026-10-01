@@ -1,5 +1,7 @@
 # Next session — plan
 
+> Archived 1 October 2026. What is still open is in [`docs/ROADMAP-1.0.md`](../ROADMAP-1.0.md); this is kept as the record of how the project got here.
+
 Six areas, ordered so that what unblocks other work happens first, and the one
 task with dead time starts before anything that has to wait on it.
 

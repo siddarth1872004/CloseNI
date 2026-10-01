@@ -1,6 +1,6 @@
 # CloseNI Roadmap
 
-28 items, grouped into 10 sub-projects — 9 from the original plan plus one added after using the app. **All 10 complete.** What is left is verification that needs a live provider account, a GitHub token or a Windows machine — see `NEXT-SESSION.md`. Each sub-project gets its own design spec
+28 items, grouped into 10 sub-projects — 9 from the original plan plus one added after using the app. **All 10 complete.** What is left is verification that needs a live provider account, a GitHub token or a Windows machine — see `archive/NEXT-SESSION.md`, now superseded by `ROADMAP-1.0.md`. Each sub-project gets its own design spec
 and implementation plan under `docs/superpowers/`, and is expected to leave the
 application working on its own.
 

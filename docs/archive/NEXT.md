@@ -1,5 +1,7 @@
 # Where CloseNI goes next
 
+> Archived 1 October 2026. What is still open is in [`docs/ROADMAP-1.0.md`](../ROADMAP-1.0.md); this is kept as the record of how the project got here.
+
 Written 11 August 2026, after a day of running the app against a live provider
 rather than against tests. Ordered by what a real run actually stumbles over,
 not by what is most interesting to build.

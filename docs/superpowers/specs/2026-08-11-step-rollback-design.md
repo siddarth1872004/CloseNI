@@ -1,6 +1,6 @@
 # Rolling a step back
 
-Design, 11 August 2026. Item 2.4 of `docs/NEXT.md`.
+Design, 11 August 2026. Item 2.4 of `docs/archive/NEXT.md`.
 
 ## Why the existing backups were not enough
 

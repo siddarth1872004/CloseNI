@@ -1,6 +1,6 @@
 # Where a build's time went
 
-Design, 11 August 2026. Section 7 of `docs/NEXT.md`.
+Design, 11 August 2026. Section 7 of `docs/archive/NEXT.md`.
 
 ## There is no cost
 

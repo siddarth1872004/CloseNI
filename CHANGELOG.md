@@ -114,7 +114,7 @@ request. Qwen Studio and GLM ship gated.
   appear in the reply is dropped. A rescued plan runs its steps in order.
 - **It also says what a reply was.** "Could not parse plan" and "No file changes
   found" now say when the provider declined (quoting it) or asked a question
-  instead. This is the content-refusal detection `docs/NEXT.md` left open. It
+  instead. This is the content-refusal detection `docs/archive/NEXT.md` left open. It
   only changes the message, never what runs.
 - **What it never does:** write or repair code, or change how a reply that
   parses is read. If the bridge is missing, slow or crashes, extraction logs

@@ -1,10 +1,10 @@
 # Resuming a build across app restarts
 
-Design, 11 August 2026. Item 2.3 of `docs/NEXT.md`.
+Design, 11 August 2026. Item 2.3 of `docs/archive/NEXT.md`.
 
 ## The problem, corrected
 
-`docs/NEXT.md` records this as *"the ledger already survives; the builder does
+`docs/archive/NEXT.md` records this as *"the ledger already survives; the builder does
 not use it on startup."* That is wrong, and the correction is the design.
 
 The build ledger records **which files the conversation has been shown**
