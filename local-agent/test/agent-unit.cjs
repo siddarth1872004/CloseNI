@@ -62,6 +62,11 @@ async function run(check, section) {
   check("a write cut short by its own inner fence is refused, not written", P.isBad(r.calls[0]) && /README\.md/.test(r.calls[0].error) && /four backticks/.test(r.calls[0].error), JSON.stringify(r.calls[0]));
   r = P.parseReply(tool({ tool: "write", path: "a.md" }, "```\none\n```\n\n````js\ntwo\n````\n```not a ``` fence"));
   check("balanced inner fences, and a line that is not a fence, pass", r.calls.length === 1 && !P.isBad(r.calls[0]), JSON.stringify(r.calls[0]));
+  // A write missing its closing fence, as the Copy button hands it over: the
+  // next call sits inside its payload.
+  r = P.parseReply("````tool\n{\"tool\":\"write\",\"path\":\"requirements.txt\"}\n---\npygame\n```tool\n{\"tool\":\"write\",\"path\":\".gitignore\"}\n---\n.venv/\n````");
+  check("a write that runs on into the next tool block says its closing fence is missing", P.isBad(r.calls[0]) && /requirements\.txt/.test(r.calls[0].error) && /missing its closing/.test(r.calls[0].error) && !/four backticks/.test(r.calls[0].error), JSON.stringify(r.calls[0]));
+  check("and the call it swallowed gets a result of its own", r.calls.length === 2 && P.isBad(r.calls[1]) && /not run/.test(r.calls[1].error), JSON.stringify(r.calls));
   r = P.parseReply(tool({ tool: "edit", path: "README.md" }, "<<<<<<< SEARCH\nold\n=======\n## Run\n\n```sh\nnpm start"));
   check("an edit whose REPLACE was cut short the same way is refused", P.isBad(r.calls[0]) && /four backticks/.test(r.calls[0].error), JSON.stringify(r.calls[0]));
   r = P.parseReply(tool({ tool: "edit", path: "README.md" }, "<<<<<<< SEARCH\n```sh\nnpm start\n=======\n```sh\nnpm run dev\n>>>>>>> REPLACE"));
@@ -85,9 +90,32 @@ async function run(check, section) {
   check("a fence outgrows backticks in its content", P.fenceFor("a ``` b") === "````" && P.fenceFor("plain") === "```");
   const msg = P.formatResults([{ call: { tool: "bash", input: { command: "npm test" } }, ok: false, summary: "failed", output: "boom ``` x" }]);
   check("results name the call and fence its output safely", /\[1\] bash `npm test` - failed/.test(msg) && msg.indexOf("````\nboom") !== -1);
+  const M = require(path.join(DIST, "agent/machine.js"));
+  check("the distribution is read from os-release", M.osName("NAME=\"Arch Linux\"\nPRETTY_NAME=\"Arch Linux\"\nID=arch\n") === "Arch Linux" && M.osName("NAME=Fedora\n") === "Fedora");
+  check("the machine line reaches the preamble", /System package manager: pacman\./.test(P.preamble({ workspace: "/w", platform: "linux", mode: "default", machine: "OS: Arch Linux. System package manager: pacman." })));
+  check("describing this machine does not throw", typeof M.describeMachine() === "string");
+  check("sudo is only ever ruled out, never offered", !/sudo/.test(M.describeMachine()) || /do not run sudo/.test(M.describeMachine()));
+  check("with a system Python, a source build is steered to a wheel", !/System Python/.test(M.describeMachine()) || /--only-binary=:all:/.test(M.describeMachine()));
   const pre = P.preamble({ workspace: "/w", platform: "linux", mode: "plan", memory: "Use tabs." });
   check("the preamble teaches the format, the mode and the memory", /```tool/.test(pre) && /PLAN MODE/.test(pre) && /Use tabs\./.test(pre));
   check("the preamble says to lengthen the fence around a payload with its own fences", /four backticks instead: ````tool/.test(pre));
+  check("the preamble tells the model to write cmd syntax when there is no bash",
+    /Commands run in cmd\.exe, not bash/.test(P.preamble({ workspace: "C:\\w", platform: "win32", mode: "default", shell: "cmd.exe" })));
+  check("the preamble names Git Bash when commands run in it",
+    /Commands run in Git Bash\./.test(P.preamble({ workspace: "C:\\w", platform: "win32", mode: "default", shell: "Git Bash" })));
+
+  section("agent: the shell on Windows");
+  const CRw = require(path.join(DIST, "verification/command-runner.js"));
+  const onDisk = (files) => (p) => files.indexOf(p) !== -1;
+  const pf = "C:\\Program Files";
+  check("Git Bash is found where the installer puts it",
+    CRw.findBash("win32", { ProgramFiles: pf, PATH: "" }, onDisk([pf + "\\Git\\bin\\bash.exe"])) === pf + "\\Git\\bin\\bash.exe");
+  check("Git Bash is found next to a git on PATH",
+    CRw.findBash("win32", { Path: "D:\\tools\\Git\\cmd;C:\\Windows\\System32" }, onDisk(["D:\\tools\\Git\\cmd\\git.exe", "D:\\tools\\Git\\bin\\bash.exe"])) === "D:\\tools\\Git\\bin\\bash.exe");
+  check("WSL's bash.exe is never taken for Git Bash",
+    CRw.findBash("win32", { PATH: "C:\\Windows\\System32" }, onDisk(["C:\\Windows\\System32\\bash.exe"])) === undefined);
+  check("with no Git Bash, commands run in cmd.exe and the shell says so",
+    CRw.agentShell("win32", null) === "cmd.exe" && CRw.agentShell("win32", "C:\\Git\\bin\\bash.exe") === "Git Bash" && CRw.agentShell("linux", "/bin/bash") === "bash");
 
   section("agent: tools stay inside the project");
   const ws = tmp();
@@ -168,6 +196,8 @@ async function run(check, section) {
   o = await Tl.runTool(call({ tool: "bash", command: "echo hi" }), Object.assign({}, ctx, {
     run: async (cmd, cwd) => ({ success: true, output: "ran " + cmd + " in " + path.basename(cwd), timedOut: false }),
   }));
+  check("an install gets minutes, whatever was asked", Tl.bashTimeout(".venv/bin/pip install pygame-ce", 180) === Tl.INSTALL_SECS && Tl.bashTimeout("cd a && npm install", undefined) === Tl.INSTALL_SECS && Tl.bashTimeout("python3 -m pip install -r requirements.txt", 0) === Tl.INSTALL_SECS);
+  check("other commands keep their timeout", Tl.bashTimeout("npm test", 30) === 30 && Tl.bashTimeout("ls", 9999) === 600);
   check("bash runs in the workspace", o.ok && o.output === "ran echo hi in " + path.basename(ws) && o.summary === "exit 0");
   o = await Tl.runTool(call({ tool: "bash", command: "node -e \"process.stdout.write('real'); process.exit(3)\"" }), ctx);
   check("a real failing command reports its output and failure", !o.ok && /real/.test(o.output) && o.summary === "failed", JSON.stringify(o));
@@ -189,6 +219,9 @@ async function run(check, section) {
     await settle();
     check("a pipeline past its timeout comes back on time", o.detail.timedOut && Date.now() - t0 < 5000 && /^stopped after 1s/.test(o.summary), (Date.now() - t0) + "ms " + o.summary);
     check("and nothing it started is left running", gone(g1));
+    // A quiet command killed at its timeout did not finish; calling it a
+    // server let a half-done pip install pass as a success.
+    check("a quiet command past its timeout is a failure, not a server", o.ok === false && /did not finish/.test(o.summary), o.summary);
     t0 = Date.now();
     o = await Tl.runTool(call({ tool: "bash", command: "echo $$ > group.pid; sleep 30 & echo started" }), ctx);
     const g2 = Number(fs.readFileSync(path.join(ws, "group.pid"), "utf-8"));

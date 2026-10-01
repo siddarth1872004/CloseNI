@@ -77,9 +77,13 @@ export function judgeSelectors(counts: ProbeCounts, context: ProbeContext): Heal
 
   // Optional in practice: sendPrompt falls back to pressing Enter, and that has
   // always worked. Worth reporting, never worth blocking.
-  findings.push(n(c.sendButton) > 0
-    ? { selector: "sendButton", matched: n(c.sendButton), health: "ok", note: "" }
-    : { selector: "sendButton", matched: 0, health: "degraded", note: "no send button - prompts will be sent with Enter, which normally works" });
+  if (!has("sendButton")) {
+    findings.push({ selector: "sendButton", matched: 0, health: "skipped", note: "not configured for this provider - prompts are sent with Enter" });
+  } else {
+    findings.push(n(c.sendButton) > 0
+      ? { selector: "sendButton", matched: n(c.sendButton), health: "ok", note: "" }
+      : { selector: "sendButton", matched: 0, health: "degraded", note: "no send button - prompts will be sent with Enter, which normally works" });
+  }
 
   // The one that matters, and the one a fresh-page probe cannot judge.
   if (!has("assistantMessage")) {

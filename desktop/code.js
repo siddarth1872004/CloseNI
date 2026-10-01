@@ -1,7 +1,7 @@
 /*
  * The Code panel: a coding agent in the style of a terminal one.
  *
- * Loaded after renderer.js (it uses window.CN, renderMarkdown, CNDiff and
+ * Loaded after the renderer/ scripts (it uses window.CN, renderMarkdown, CNDiff and
  * CNCode). The agent lives in a long-lived process started on the first
  * message; this file only draws what it reports and sends what the user
  * types. Everything it shows comes from an event - nothing here guesses at
@@ -18,6 +18,12 @@
     history: [], hIndex: -1, queue: [], tools: {}, permission: null,
     spinnerTimer: null, turnStart: 0, step: 0, verbSeed: 0, files: null, popup: null,
     lastWasPlan: false,
+    // Whether this turn wrote or edited a file: only then is there something
+    // new to offer to run.
+    changed: false, runOffer: null,
+    // Whether this turn is fixing a failed run: the fix may be an install
+    // rather than an edit, and either way the next step is to run it again.
+    fixing: false,
     // Mode actions: a test or research run in flight, the build's todo list
     // for its progress bar, and which sources research searches.
     running: false, todos: [], research: { web: true, gh: true }, modebarSeq: 0,
@@ -132,6 +138,7 @@
     node.querySelector(".cc-sum").textContent = V.toolSummary(ev);
     const more = node.querySelector(".cc-tool-more");
     const d = ev.detail || {};
+    if ((ev.name === "edit" || ev.name === "write") && ev.status === "done") S.changed = true;
     if ((ev.name === "edit" || ev.name === "write") && ev.status === "done" && d.after !== undefined) {
       more.innerHTML = '<div class="cc-diff">' + diffHtml(d.before, d.after) + "</div>";
       // An edit's diff is the point of the line: shown, as a terminal agent does.
@@ -295,7 +302,7 @@
     spinnerOff();
     if (CN.setStatus) CN.setStatus("idle");
     renderModebar();
-    if (S.queue.length && !S.busy) { const next = S.queue.shift(); setTimeout(function () { send(next.text, next.shownAs); }, 50); }
+    if (S.queue.length && !S.busy) { const next = S.queue.shift(); setTimeout(function () { send(next.text, next.shownAs, next.fix); }, 50); }
   }
 
   function outputBlock(parent, text, open) {
@@ -372,6 +379,68 @@
       }, function (e) { c.sum.textContent = String(e); c.node.classList.add("fail"); }).then(runEnd);
     });
   }
+
+  /** The project in a full-screen window of its own: its output, its page, or its game. */
+  function runInWindow(command) {
+    closeRunOffer();
+    const ws = CN.getWorkspace();
+    if (!ws) { note("Choose a project folder first.", "err"); return; }
+    window.api.openRunWindow({ command: command, cwd: ws }).then(function (r) {
+      if (!r || !r.ok) note("Could not open the run window: " + ((r && r.error) || "unknown error"), "err");
+    });
+  }
+
+  function closeRunOffer() {
+    if (S.runOffer) { S.runOffer.remove(); S.runOffer = null; }
+  }
+
+  /**
+   * After a turn that changed files, offer to run what was built, when there
+   * is a command for it. A program with a window is first started unseen for
+   * a few seconds; one that crashes on start is offered to the agent instead.
+   */
+  function offerRun() {
+    if (!CN.resolveRunCommand) return;
+    CN.resolveRunCommand().then(function (rc) {
+      if (!rc || !rc.command || S.busy) return;
+      closeRunOffer();
+      const box = document.body.appendChild(el("div", "run-offer",
+        '<div class="run-offer-title">Checking that it starts…</div>' +
+        '<div class="run-offer-cmd"></div>' +
+        '<div class="run-offer-acts"></div>'));
+      box.querySelector(".run-offer-cmd").textContent = rc.command;
+      const acts = box.querySelector(".run-offer-acts");
+      acts.appendChild(mbtn("Not now", closeRunOffer));
+      S.runOffer = box;
+      const check = window.api.checkRun
+        ? window.api.checkRun({ command: rc.command, cwd: CN.getWorkspace() }).catch(function () { return null; })
+        : Promise.resolve(null);
+      check.then(function (r) {
+        if (S.runOffer !== box) return;
+        const title = box.querySelector(".run-offer-title");
+        const later = acts.firstChild;
+        if (r && r.checked && !r.ok) {
+          box.classList.add("fail");
+          title.textContent = "✗ Crashed on start";
+          acts.insertBefore(mbtn("Fix errors", function () {
+            closeRunOffer();
+            send(r.prompt, "fix the crash on start of " + rc.command, true);
+          }, "Sends the error to the agent", "primary"), later);
+          acts.insertBefore(mbtn("Run anyway", function () { runInWindow(rc.command); }), later);
+          return;
+        }
+        title.textContent = "▶ Ready to run";
+        acts.insertBefore(mbtn("Run this project", function () { runInWindow(rc.command); }, "Opens it full screen in a CloseNI window", "primary"), later);
+      });
+    });
+  }
+
+  // "Fix errors" in the run window: its failed run, as a turn for the agent here.
+  if (window.api.onRunFix) window.api.onRunFix(function (d) {
+    CN.switchTab("code");
+    if (d.cwd !== CN.getWorkspace()) { note("The run window ran " + d.cwd + ", not the open project. Open that folder to fix it here.", "err"); return; }
+    send(d.prompt, "fix the errors from " + d.command, true);
+  });
 
   /** Web answer and GitHub repositories for `q`, as one card. */
   function research(q) {
@@ -483,6 +552,12 @@
           mbtn("Run tests ⏎", function () { runChecks("behaviour"); }, "The project's own test suite, then a smoke run (enter on an empty line)", "primary"),
           mbtn("Syntax-check", function () { runChecks("testall"); }, "Compile or parse every source file"),
           mbtn("Run", runCommand, "Run the project's run command once"),
+          mbtn("Run in window", function () {
+            CN.resolveRunCommand().then(function (rc) {
+              if (rc && rc.command) runInWindow(rc.command);
+              else note("No run command found - the Runner panel (/runner) can set one", "warn");
+            });
+          }, "Run it full screen in a CloseNI window"),
           mbtn("Runner…", function () { CN.switchTab("test"); }, "The full runner panel (/runner)"),
         ];
       },
@@ -565,7 +640,7 @@
         showMeta();
         if (ev.memory) note("Using " + ev.memory + " from the project", "dim");
         break;
-      case "turn-start": setBusy(true); break;
+      case "turn-start": setBusy(true); S.changed = false; closeRunOffer(); break;
       case "thinking": S.step = ev.step; spinnerOn(V.spinnerVerb(ev.step, S.verbSeed)); break;
       case "assistant": {
         const m = add(el("div", "cc-msg", '<span class="cc-dot">⏺</span><div class="cc-body md"></div>'));
@@ -595,9 +670,10 @@
         else if (ev.reason === "step-limit") note("Stopped after the step limit. Say \"continue\" to let it keep going.", "warn");
         else if (ev.reason === "error") note(ev.error || "Something went wrong", "err");
         else if (ev.reason === "complete" && S.mode === "plan") offerPlan();
+        else if (ev.reason === "complete" && (S.changed || S.fixing)) offerRun();
         CN.setStatus && CN.setStatus("idle");
         if (S.mode === "ship" || S.mode === "test") renderModebar();
-        if (S.queue.length && !S.running) { const next = S.queue.shift(); setTimeout(function () { send(next.text, next.shownAs); }, 50); }
+        if (S.queue.length && !S.running) { const next = S.queue.shift(); setTimeout(function () { send(next.text, next.shownAs, next.fix); }, 50); }
         break;
       }
       case "closed":
@@ -705,7 +781,7 @@
     return add(el("div", "cc-user" + (cls ? " " + cls : ""), '<span class="cc-prompt">&gt;</span><span>' + esc(text) + "</span>"));
   }
 
-  function send(text, shownAs) {
+  function send(text, shownAs, fix) {
     const t = String(text || "").trim();
     const p = t ? V.parseSlash(t) : null;
     if (p && !shownAs) {
@@ -715,6 +791,12 @@
     }
     // Enter on an empty line is the mode's own action: run the tests, or ship.
     if (!t && S.mode === "test") { userLine("run the tests"); runChecks("behaviour"); return; }
+    // A build request in a mode that cannot build goes to Build instead.
+    let switched = "";
+    if ((S.mode === "research" || S.mode === "ship") && !shownAs && V.looksLikeBuild(t)) {
+      switched = "That asks for something to be built, so Build mode is on (it was " + S.mode + "; shift+tab to change)";
+      setMode("build");
+    }
     if (S.mode === "research" && !shownAs) {
       if (!t) return;
       userLine(t);
@@ -727,11 +809,14 @@
     if (!wire) return;
     const shown = shownAs || t || "review, test and commit";
     if (S.busy || S.starting || S.running) {
-      S.queue.push({ text: wire, shownAs: shown });
+      S.queue.push({ text: wire, shownAs: shown, fix: fix });
       add(el("div", "cc-user queued", '<span class="cc-prompt">&gt;</span><span>' + esc(shown) + '</span><span class="cc-queued">queued</span>'));
+      if (switched) note(switched, "dim");
       return;
     }
     userLine(shown);
+    if (switched) note(switched, "dim");
+    S.fixing = !!fix;
     ensureSession().then(function (ok) {
       if (!ok) return;
       window.api.codeSend(wire).then(function (r) {

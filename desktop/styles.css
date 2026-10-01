@@ -1115,3 +1115,15 @@ input:focus,textarea:focus,select:focus{transition:border-color .06s steps(1);}
 :root[data-theme="terminal"] .rail-card{background:none;}
 .theme-swatch[data-theme="terminal"] .theme-swatch-chip{border-color:var(--accent);}
 .cc-perm-feedback.hidden,.cc-tool-more.hidden,.code-suggest.hidden,.code-spinner.hidden,.code-todos.hidden{display:none;}
+
+/* "Run this project": offered after a turn that changed files. */
+.run-offer{position:fixed;right:var(--sp-6);bottom:var(--sp-6);z-index:50;min-width:280px;max-width:440px;
+  background:var(--panel);border:1px solid var(--line-strong);border-left:2px solid var(--accent);
+  box-shadow:var(--shadow-2);padding:var(--sp-4) var(--sp-5);border-radius:var(--r-lg);}
+.run-offer-title{color:var(--accent);font-weight:700;font-size:11px;letter-spacing:.12em;text-transform:uppercase;}
+.run-offer-cmd{font-family:monospace;font-size:12px;color:var(--dim);margin:var(--sp-2) 0 var(--sp-4);word-break:break-all;}
+.run-offer-acts{display:flex;gap:var(--sp-3);}
+.run-offer .btn.primary{border-color:var(--accent);color:var(--accent);}
+.run-offer.fail{border-left-color:var(--err);}
+.run-offer.fail .run-offer-title{color:var(--err);}
+.run-offer.fail .btn.primary{border-color:var(--err);color:var(--err);}

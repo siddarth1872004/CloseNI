@@ -1,6 +1,6 @@
 # Checking a provider's selectors still match
 
-Design, 11 August 2026. Section 5 of `docs/NEXT.md`.
+Design, 11 August 2026. Section 5 of `docs/archive/NEXT.md`.
 
 ## The premise in NEXT.md was wrong
 

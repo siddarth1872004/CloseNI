@@ -69,3 +69,11 @@ export function parseDesiredControls(raw: string | undefined | null): DesiredCon
   }
   return out;
 }
+
+/**
+ * One control forced for a single run over the saved settings, keeping the
+ * rest: search on for research, Deep thinking off for the coding agent.
+ */
+export function withControl(raw: string | undefined | null, id: string, value: string | boolean): string {
+  return JSON.stringify(Object.assign(parseDesiredControls(raw), { [id]: value }));
+}

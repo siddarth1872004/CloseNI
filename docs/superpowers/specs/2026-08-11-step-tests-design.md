@@ -1,6 +1,6 @@
 # Tests the model wrote, run while it can still fix them
 
-Design, 11 August 2026. Section 4 of `docs/NEXT.md`, second of three items.
+Design, 11 August 2026. Section 4 of `docs/archive/NEXT.md`, second of three items.
 
 ## What was already there
 

@@ -1,8 +1,8 @@
 # CloseNI — roadmap to 1.0
 
 Written 30 September 2026, after the first live runs of the coding agent against
-DeepSeek. It replaces the open parts of `NEXT.md`, `NEXT-SESSION.md` and
-`HANDOFF.md` as the single list of what is left. `ROADMAP.md` stays as the record
+DeepSeek. It replaces the open parts of `archive/NEXT.md`, `archive/NEXT-SESSION.md` and
+`archive/HANDOFF.md` as the single list of what is left. `ROADMAP.md` stays as the record
 of what was built.
 
 ---
@@ -40,7 +40,7 @@ Anything not needed for those six goes to [After 1.0](#after-10).
 | Unit tests | 1830 passing (`npm test`) |
 | Coding agent, live | **Worked** on a first DeepSeek run: wrote a todo CLI, built a venv, 13/13 pytest, then ran the demo. Five defects were found along the way (see Phase 1). |
 | Planned build, live | Worked on 11 August (3/3 steps). A 15-step Flask build later exposed venv failures, which are fixed but not re-verified. |
-| DeepSeek | Works. `sendButton` misses (Enter is used instead), and the Mode control does nothing. |
+| DeepSeek | Works. Prompts are sent with Enter by design. The broken Mode control is gone. |
 | Qwen Studio | Gated: completion wait too short for a thinking model |
 | GLM | Gated: selectors never confirmed, and the site declines build prompts |
 | Ollama | Works for Chat only. Refused by plan and build. |
@@ -152,20 +152,30 @@ protocol. This is the product, and everything else is secondary.
       bash exists, and fall back to `sh` otherwise. The model sees the output
       either way, but the UI's "exit 0" misleads the user. Done. Exit 141 (a stage
       stopped by SIGPIPE, as in `cat log | head`) still counts as success.
-- [ ] **1.5 DeepSeek `sendButton`** (S). It matches only `<button>`, and
+- [x] **1.5 DeepSeek `sendButton`** (S). It matches only `<button>`, and
       DeepSeek's send control is a div, so every prompt logs "No send button
       found". Re-capture it with `node scripts/capture-provider-ui.mjs deepseek`
       and update `config/providers/deepseek.json`. Or, if the only stable
       selector is a hashed class, drop `sendButton` and make Enter the
-      documented path. That is the "need fewer selectors" rule in `NEXT.md`.
+      documented path. That is the "need fewer selectors" rule in `archive/NEXT.md`.
+      *1 Oct, done: dropped.* The 11 August measurement already showed the
+      send control is also the stop control, told apart only by hashed classes,
+      so no re-capture could find a stable selector. (The saved profile was
+      signed out on 1 Oct, too.) `sendButton` is now empty for DeepSeek, and
+      the config says why. The controller sends with Enter without logging a
+      miss. The health check reports an unconfigured send button as skipped,
+      not degraded. The browser layer's send chain is empty, so no heuristic can
+      click the stop control by mistake.
 - [x] **1.6 DeepSeek Mode control does nothing** (S). The
       `[role="radiogroup"] [data-model-type]` selector points at UI DeepSeek
       no longer has. Remove `controls[0]` and `controlSelectors.modeOption`,
       and make the smoke test report it absent rather than broken.
-- [ ] **1.7 Deep thinking timeouts** (S). Deep thinking on large prompts has hit
+- [x] **1.7 Deep thinking timeouts** (S). Deep thinking on large prompts has hit
       the 300s wait. Either raise the wait while the reply stream is still open
       (the stream says the model is working), or default Deep thinking off for
       agent turns. **Decided (D1):** off for agent turns.
+      *Done:* both agent modes force it off for their own process, as research
+      forces search on, so Chat keeps your saved choice. Not yet seen live.
 
 ### 1B · Things that will break on longer sessions (not yet seen, but certain)
 
@@ -179,7 +189,7 @@ protocol. This is the product, and everything else is secondary.
   - Then: when a thread passes a budget, start a new chat. Seed it with the
     preamble, `CLOSENI.md`, the todo list, a list of the files touched, and a
     short summary the model writes on request. This is `/compact`. The
-    context-limit detection from `NEXT.md` §3 is where the trigger comes from.
+    context-limit detection from `archive/NEXT.md` §3 is where the trigger comes from.
       *Mechanism done; the measurement is still open.* Each chat's size is
       tracked (per project for DeepSeek). Past 80% of the budget
       (`contextBudgetChars`, default 150k characters), the agent asks the
@@ -211,6 +221,12 @@ protocol. This is the product, and everything else is secondary.
   - or use PowerShell;
   - or use Git Bash when it's present.
   Test on Windows.
+  *Written, not run on Windows (D12).* The bash tool runs in Git Bash when it
+  is installed (found under Program Files, LocalAppData or beside a `git.exe`
+  on PATH, never System32's WSL `bash.exe`), else in `cmd.exe`, and the
+  preamble names the shell, telling the model to write cmd syntax in
+  `cmd.exe`. Build and verify commands keep the platform shell. Commands no
+  longer open a console window. Still to do: run both cases on Windows.
 - [ ] **1.12 Long-running commands** (S). A dev server "left running" after its
       timeout: check it's killed when the session ends, on app quit, and on
       `/stop`, on both Linux and Windows. Orphaned servers holding ports are a
@@ -349,7 +365,7 @@ labelled as secondary.
 The app is agent-first now. The planned build is still reachable through
 `/build` and the Plan and Build panels.
 
-- [ ] **4.1 Re-verify the four unverified fixes** (M), from `NEXT-SESSION.md` §2:
+- [ ] **4.1 Re-verify the four unverified fixes** (M), from `archive/NEXT-SESSION.md` §2:
   - `sudo` and `apt` prompt;
   - a build gets past step 1 on the venv;
   - New Chat clears the transcript and the plan;
@@ -447,31 +463,62 @@ throwaway GitHub account or repo.
 
 **Goal:** someone other than you, human or agent, can pick this up in an hour.
 
-- [ ] **8.1 One planning document** (S). Fold what's still true from `NEXT.md`,
+- [x] **8.1 One planning document** (S). Fold what's still true from `NEXT.md`,
       `NEXT-SESSION.md` and `HANDOFF.md` into this file. Move the three into
       `docs/archive/`. Keep `ROADMAP.md` as the history of what was built.
+      *1 Oct, done:* their open items were already the phases above; the two
+      rules this file lacked are now under "Rules that still hold". The three
+      are in `docs/archive/` with a note pointing here, and every link to them
+      follows.
 - [ ] **8.2 Split `local-agent/src/index.ts`** (L). At 2145 lines it holds about
       eleven CLI modes. Give each mode its own module under `src/modes/`, keeping
       `index.ts` as the dispatcher. Do this only after Phase 4's decision, since
       the planned build may shrink.
-- [ ] **8.3 Split `desktop/renderer.js` and `desktop/main.js`** (L), at 2063 and
+- [x] **8.3 Split `desktop/renderer.js` and `desktop/main.js`** (L), at 2063 and
       1625 lines, along panel lines and IPC domains. Keep the UMD pattern, since
       there's no bundler.
-- [ ] **8.4 Split `test/run-tests.cjs`** (M). It's 4364 lines. Split it by area,
+      *1 Oct, done:* `renderer.js` is now eleven classic scripts in
+      `desktop/renderer/`, one per panel, still sharing one global scope.
+      `index.html` loads them in their old order, and `startup.js` runs last.
+      Launch work moved there: the provider picker's start resumes after an
+      await, and from its old place it could reach `account.js` before that
+      file had loaded. A unit check (`load-order.cjs`) now fails any load-time
+      call into a later script. `main.js` keeps the window, the agent and
+      session processes and provider sign-in, about 760 lines. GitHub,
+      settings, build state, git, the browser install and file reads moved to
+      `desktop/main/`. Each is a function that takes what `main.js` owns and
+      returns what another needs. Checked with the unit suite, verify (with a
+      repacked app), `test:ui`, and the real app calling every moved handler.
+- [x] **8.4 Split `test/run-tests.cjs`** (M). It's 4364 lines. Split it by area,
       with a runner that keeps the single `PASS — N passed` line.
-- [ ] **8.5 The VS Code extension** (S–L). **Decided (D7): delete.** The options were:
+      *1 Oct, done:* five new area files (`parse-`, `build-`, `checks-`,
+      `provider-` and `desktop-unit.cjs`) join the existing web, extract and
+      agent ones. `run-tests.cjs` is now a 56-line runner. It runs the same
+      1946 checks, in area order, and still names the Chromium sections it
+      skips.
+- [x] **8.5 The VS Code extension** (S–L). **Decided (D7): delete.** The options were:
   - delete it: it's 97 lines, named "Agentic Web Coder", and predates the agent;
   - or rebuild it as a thin client of `agent-session`, so the agent runs inside VS Code. That's a real feature, so it may belong after 1.0.
-- [ ] **8.6 C# language check** (S). It's the one language never run, because
+      *Done:* deleted, with its workspace entry and the references in verify,
+      the packaging test and the README. Rebuilding it is listed after 1.0.
+- [x] **8.6 C# language check** (S). It's the one language never run, because
       there's no .NET. Install .NET and run `npm run languages`, or drop C# from
       the "twelve languages" claim.
-- [ ] **8.7 Dependency audit** (S). Run `npm audit`. Check that Electron and
+      *1 Oct, done:* `npm run languages` had no C# case at all. Added one: a
+      two-file .csproj project that must build, and the same with a type error
+      across files that must fail. Both pass with .NET SDK 10.0.401, installed
+      to `~/.dotnet`.
+- [x] **8.7 Dependency audit** (S). Run `npm audit`. Check that Electron and
       Playwright are current, and pin versions CI builds with.
       *30 Sep:* CI already builds from the lockfile (`npm ci`). `local-agent`
       and `desktop` audit clean. The root has 13 findings, all in Electron
       31.7.7 (out of support; 44 is current) and electron-builder 24 (26 is
       current), whose `tar`, `xmldom` and `extract-zip` run only at build
       time. Playwright is 1.62.1 (1.63.0 is current).
+      *1 Oct, done:* Electron 44.5.1, electron-builder 26.15.3 and Playwright
+      1.63.0. `npm audit` finds nothing. Electron 44 needs Node 22.12 to
+      install, so CI and the README moved to Node 22. Build, every suite, the
+      packaged app and a launch all pass.
 - [ ] **8.8 Dead code sweep** (M). Once Phases 3–5 decide what stays, remove
       what didn't: unused provider configs, the `legacy/` samples, whichever web
       layer lost, and Needle if it's cut.
@@ -598,8 +645,8 @@ they name; the rule for each is fixed now so the run decides, not a debate.
 Deliberately out of scope. Each is real, and none is needed for the six criteria
 at the top.
 
-- Two builds or agent sessions running at the same time (architectural; see `NEXT.md` §7)
-- Reading reply text from the network stream (investigated and declined; see `NEXT.md` §1)
+- Two builds or agent sessions running at the same time (architectural; see `archive/NEXT.md` §7)
+- Reading reply text from the network stream (investigated and declined; see `archive/NEXT.md` §1)
 - Content-refusal detection beyond Needle's message
 - An agent inside VS Code (see 8.5)
 - macOS builds (no Mac to test on; unsigned macOS apps are a worse experience than Windows)
@@ -609,7 +656,7 @@ at the top.
 
 ## Rules that still hold
 
-These are carried over from `HANDOFF.md`, and the tests enforce most of them:
+These are carried over from `archive/HANDOFF.md`, and the tests enforce most of them:
 
 - Never widen the electron-builder `files` allow-list to a glob.
 - The GitHub token never touches `.git/config`, argv, logs, plaintext, the
@@ -617,6 +664,11 @@ These are carried over from `HANDOFF.md`, and the tests enforce most of them:
 - git runs with `shell: false`.
 - No colour literal in `styles.css` outside `:root` or `[data-theme]`.
 - The always-ask command floor holds in every mode.
+- Only conversations run in parallel. Applying files, syntax checks and command
+  approval sit behind one lock, because approval replies arrive on one stdin
+  queue with nothing saying which command they answer.
+- `closeni.run.json`, `run.sh` and `run.bat` are generated, and stripped from
+  any patch; the model sees them in the workspace and starts maintaining them.
 - Don't fix a broken selector by adding more selectors. Need fewer.
 - Don't publish a build until a run completes end to end.
 - Commits are authored by Siddarth alone, with no co-author trailers.

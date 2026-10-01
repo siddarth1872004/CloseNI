@@ -50,6 +50,12 @@ export interface ProviderConfig {
      * it falls back to reading the DOM.
      */
     copyButton?: string;
+    /**
+     * Optional. A citation badge inside a reply (DeepSeek's search sources).
+     * Read as text it is "-15" in the middle of a sentence, so the structured
+     * reader leaves it out.
+     */
+    citation?: string;
     assistantMessage: string;
   };
   completionRules: {
@@ -601,10 +607,14 @@ export class PlaywrightController {
     await this.page.waitForTimeout(1000);
 
     try {
-      const sendBtn = await this.page.$(config.selectors.sendButton);
+      // A provider with no send selector sends with Enter by design (DeepSeek).
+      const sendBtn = config.selectors.sendButton ? await this.page.$(config.selectors.sendButton) : null;
       if (sendBtn) {
         console.log("Clicking send button...");
         await sendBtn.click();
+      } else if (!config.selectors.sendButton) {
+        console.log("Sending with Enter...");
+        await input.press("Enter");
       } else {
         console.log("No send button found, pressing Enter...");
         await input.press("Enter");
@@ -1154,7 +1164,8 @@ export class PlaywrightController {
     if (!this.page) return "";
     const sel = await this.assistantSelector(config);
     try {
-      return await this.page.evaluate(function (selector: string) {
+      return await this.page.evaluate(function (arg: { selector: string; cite: string }) {
+        const selector = arg.selector;
         const doc = (globalThis as any).document;
         const nodes = doc.querySelectorAll(selector);
         if (nodes.length === 0) return "";
@@ -1207,6 +1218,7 @@ export class PlaywrightController {
         function inl(n: any): string {
           if (n.nodeType === 3) return n.textContent || "";
           if (n.nodeType !== 1 || isControl(n)) return "";
+          if (arg.cite && n.matches(arg.cite)) return "";
           const t = (n.tagName || "").toLowerCase();
           if (t === "br") return "\n";
           if (t === "code") {
@@ -1283,7 +1295,7 @@ export class PlaywrightController {
           const t = l.trim();
           return !/^(?:copy|download)$/i.test(t) && !/^(?:json|javascript|js|typescript|ts|python|py|bash|sh|shell|css|html|txt|text|plaintext)$/i.test(t);
         }).join("\n");
-      }, sel);
+      }, { selector: sel, cite: config.selectors.citation || "" });
     } catch {
       return "";
     }

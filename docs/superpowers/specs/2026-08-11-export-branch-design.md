@@ -1,6 +1,6 @@
 # A build, replayed as git history
 
-Design, 11 August 2026. Section 7 of `docs/NEXT.md`.
+Design, 11 August 2026. Section 7 of `docs/archive/NEXT.md`.
 
 ## Why this one
 
