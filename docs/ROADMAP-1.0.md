@@ -94,15 +94,20 @@ three days or more.
   - agent: the four-backtick rule in the preamble, and no nudge after a terminal session (`protocol.ts`)
   - the rest of the modified files: mode, language and context work from earlier sessions
   - new files: `context/defined-names.ts`, `step-prompt.ts`, `test/fixtures/chat-labelled.html`
-- [ ] **0.2 Sign in `gh`** (`gh auth login`; `gh` lives in `~/.local/bin`). Open a
+- [x] **0.2 Sign in `gh`** (`gh auth login`; `gh` lives in `~/.local/bin`). Open a
       PR into `main` and merge it (S).
 - [x] **0.3 Add a test workflow** `.github/workflows/test.yml`. It runs on every
       push and PR: `npm ci`, `npm run build`, `npm test`, `npm run verify`,
       and `npm run test:web` and `npm run test:ui` under `xvfb-run`. Today only
-      `release.yml` exists, so nothing checks a PR (M). **Still to do:** it
-      has not run on GitHub yet; the first push is its first run.
-- [ ] **0.4 Decide whether e2e runs in CI.** It takes about 15 minutes. Recommended:
-      nightly and on tags, not on every push (S).
+      `release.yml` exists, so nothing checks a PR (M). *1 Oct:* its first
+      runs failed one check, because verify audits the packaged app and CI
+      never built one. CI now runs `npm run pack` before verify. The same
+      pushes showed the Pages site had failed to build since 29 September:
+      Jekyll read `{{` in a plan's test code. `docs/.nojekyll` turns Jekyll
+      off, since the site is plain HTML.
+- [x] **0.4 Decide whether e2e runs in CI.** It takes about 15 minutes (S).
+      **Decided (D11):** a separate job on pull requests and by hand
+      (`workflow_dispatch`), not on every push.
 - [x] **0.5 Move the parse-sweep and selector-sweep checks into the suite.** The
       scratch scripts found real bugs: parse-sweep was 29/30, and its one known
       failure is a JSON object that comes before the files object. They should
@@ -160,7 +165,7 @@ protocol. This is the product, and everything else is secondary.
 - [ ] **1.7 Deep thinking timeouts** (S). Deep thinking on large prompts has hit
       the 300s wait. Either raise the wait while the reply stream is still open
       (the stream says the model is working), or default Deep thinking off for
-      agent turns. **Needs your decision:** it's your saved preference today.
+      agent turns. **Decided (D1):** off for agent turns.
 
 ### 1B · Things that will break on longer sessions (not yet seen, but certain)
 
@@ -323,7 +328,7 @@ live site.
   - **(b) Delete it.** Keep only the pieces the controller lacks, such as
     state detection, and move them into the controller.
   - Either way, one code path reads replies at 1.0, not two.
-- [ ] **3.3 Browser weight** (S–M). **Needs your decision** (asked on 30
+- [ ] **3.3 Browser weight** (S–M). **Decided (D2): trim** (asked on 30
       September):
   - (1) trim Chromium now: block images, fonts and media on provider pages, and reuse one browser;
   - (2) use a system browser;
@@ -356,7 +361,7 @@ The app is agent-first now. The planned build is still reachable through
       the rate across 20 plan requests. If it's over about 5%, prose-plan
       rescue (`extract/plan-rescue.ts`) needs the reader fixes that landed this
       session, since the readers now keep list items and inline code. Re-test.
-- [ ] **4.4 Decide its future** (S). **Needs your decision:**
+- [ ] **4.4 Decide its future** (S). **Rule fixed (D4):**
   - keep both modes;
   - or make the planned build a feature *of* the agent (the agent writes the plan and runs steps via its own tools);
   - or retire it.
@@ -454,7 +459,7 @@ throwaway GitHub account or repo.
       there's no bundler.
 - [ ] **8.4 Split `test/run-tests.cjs`** (M). It's 4364 lines. Split it by area,
       with a runner that keeps the single `PASS — N passed` line.
-- [ ] **8.5 The VS Code extension** (S–L). **Needs your decision.** Choose one:
+- [ ] **8.5 The VS Code extension** (S–L). **Decided (D7): delete.** The options were:
   - delete it: it's 97 lines, named "Agentic Web Coder", and predates the agent;
   - or rebuild it as a thin client of `agent-session`, so the agent runs inside VS Code. That's a real feature, so it may belong after 1.0.
 - [ ] **8.6 C# language check** (S). It's the one language never run, because
@@ -540,7 +545,7 @@ throwaway GitHub account or repo.
         of the suite passes.
   - [ ] AppImage: `chmod +x`, launch, scenario 1.
   - [ ] `.deb`: install, launch from the menu, scenario 1, uninstall cleanly.
-- [ ] **10.4 Code signing** (S decision, M work). **Needs your decision:** ship
+- [ ] **10.4 Code signing** (S decision, M work). **Decided (D9): unsigned for 1.0.** The choice was: ship
       unsigned (the README already says so) or buy a certificate. Unsigned is
       fine for 0.9. For 1.0, SmartScreen's warning will cost users.
 - [ ] **10.5 Auto-update** (M, optional). `electron-updater` against GitHub
@@ -565,20 +570,26 @@ and the README true.
 
 ---
 
-## Decisions only you can make
+## Decisions
 
-| # | Question | Recommendation |
-|---|---|---|
-| D1 | Deep thinking on by default for agent turns? (1.7) | Off for the agent, and keep your choice for Chat |
-| D2 | Browser weight: trim, system browser, or Lightpanda? (3.3) | Trim Chromium now |
-| D3 | Adopt or delete `src/web/`? (3.2) | Adopt for the agent, if 3.1 passes live |
-| D4 | Keep the planned build as a separate mode? (4.4) | Fold it into the agent, after 1.0; keep it for 1.0 only if 4.1 and 4.2 pass |
-| D5 | GLM: fix or drop for 1.0? (2.2) | Drop if the agent preamble is declined too |
-| D6 | Needle: keep? (5.3) | Only if it rescues most failed plans quickly |
-| D7 | VS Code extension: delete or rebuild? (8.5) | Delete now, rebuild after 1.0 |
-| D8 | How many themes ship? (7.2) | Three to four |
-| D9 | Code signing? (10.4) | Unsigned for 0.9, decide before 1.0 |
-| D10 | Auto-update, or remote provider configs? (10.5) | Remote provider configs first |
+On 1 October you handed these over ("do what's best for the project"), so each
+row now records what was decided and why. D3–D6 still wait on the live runs
+they name; the rule for each is fixed now so the run decides, not a debate.
+
+| # | Question | Decided | Why |
+|---|---|---|---|
+| D1 | Deep thinking on by default for agent turns? (1.7) | Off for agent turns; Chat keeps your choice | Agent turns are many and short, and thinking is what hit the 300 s wait |
+| D2 | Browser weight: trim, system browser, or Lightpanda? (3.3) | Trim Chromium | The other two change the engine every selector was measured on |
+| D3 | Adopt or delete `src/web/`? (3.2) | Adopt for the agent if 3.1 passes live, delete if it fails | Two reply-reading paths is the worst of both |
+| D4 | Keep the planned build as a separate mode? (4.4) | Keep for 1.0 only if 4.1 and 4.2 pass, otherwise demote it behind the agent | The agent is the product; a mode that fails live costs trust |
+| D5 | GLM: fix or drop for 1.0? (2.2) | Drop if it declines the agent preamble too | One reliable provider beats three gated ones |
+| D6 | Needle: keep? (5.3) | Keep only if it rescues most failed plans in seconds | It is off by default and unproven |
+| D7 | VS Code extension: delete or rebuild? (8.5) | Delete now, rebuild after 1.0 | 97 stale lines that predate the agent |
+| D8 | How many themes ship? (7.2) | All eleven | Eight are a single palette block that `verify:visual` contrast-checks; only Pixel and Terminal change layout, and those get the look by hand |
+| D9 | Code signing? (10.4) | Ship 1.0 unsigned, and say so | A certificate costs money every year before there are users; free signing for open-source projects (SignPath Foundation) is the first thing to try after |
+| D10 | Auto-update, or remote provider configs? (10.5) | Remote provider configs first | Most fixes are selector JSON, and this ships them without a release |
+| D11 | e2e in CI? (0.4) | On pull requests and by hand, not on every push | The repo is public, so minutes are free, and a PR is where a break should be caught |
+| D12 | Windows shell for `bash`? (1.11) | Git Bash when it is installed, else `cmd.exe`, and the preamble names the one in use | The model writes bash; when it can't have bash, it must be told |
 
 ---
 
