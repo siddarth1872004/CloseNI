@@ -112,8 +112,11 @@
   var DIRECTIVES = {
     build: "[Build mode] Build this end to end. First break it into steps with the todo tool. Then implement " +
       "them one at a time; after each step, build or run it with the project's own toolchain (whatever the " +
-      "language - its compiler, package manager or test runner) and fix what fails before moving on. Finish " +
-      "with what was built and the exact commands to run it.",
+      "language - its compiler, package manager or test runner) and fix what fails before moving on. Before you " +
+      "finish, start the program itself once, not only its tests: a crash at startup passes every unit test. A " +
+      "program that opens a window (a game, a GUI) would hold the command until its timeout, so start it headless " +
+      "and time-limited, such as SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy timeout 5 python main.py, where exit " +
+      "code 124 means it stayed up. Finish with what was built and the exact commands to run it.",
     test: "[Test mode] Work on this project's tests. Find how it runs them - the language's usual test runner " +
       "and whatever the project declares - run them and report the result. New tests go beside the existing " +
       "ones, in their style. When code fails a test, fix the code; never weaken or delete a test to make it " +

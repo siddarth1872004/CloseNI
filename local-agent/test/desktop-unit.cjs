@@ -200,6 +200,7 @@ function testCodeView() {
   check("a job mode puts its job above the words", /^\[Build mode\]/.test(V.modePrompt("build", "a todo app")) && /a todo app$/.test(V.modePrompt("build", "a todo app")));
   check("plain modes send the words as typed", V.modePrompt("default", " fix it ") === "fix it" && V.modePrompt("plan", "x") === "x");
   check("an empty line is nothing, except in ship", V.modePrompt("default", "") === null && V.modePrompt("build", "  ") === null && /commit/.test(V.modePrompt("ship", "")));
+  check("build starts the program, headless when it has a window", /start the program itself/.test(V.modePrompt("build", "x")) && /SDL_VIDEODRIVER=dummy/.test(V.modePrompt("build", "x")));
   check("the test directive never weakens tests", /never weaken or delete a test/.test(V.modePrompt("test", "x")));
   check("ship never force-pushes", /Never force-push/.test(V.modePrompt("ship", "x")));
   check("the old tabs are commands", ["/build", "/test", "/research", "/ship", "/steps", "/runner", "/github", "/settings"].every(function (c) { return V.parseSlash(c).known; }));
