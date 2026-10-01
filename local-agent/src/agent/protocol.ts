@@ -269,13 +269,21 @@ export interface PreambleOptions {
   mode: Mode;
   memory?: string;
   date?: string;
+  /** What the bash tool really runs in; the model writes bash unless told otherwise. */
+  shell?: string;
+}
+
+function shellNote(shell?: string): string {
+  if (!shell) return "";
+  if (shell === "cmd.exe") return " Commands run in cmd.exe, not bash: write cmd syntax (dir, type, set, &&).";
+  return " Commands run in " + shell + ".";
 }
 
 export function preamble(o: PreambleOptions): string {
   const T = "```";
   const parts = [
     "You are CloseNI, a coding agent working inside the user's project on their machine.",
-    "Working directory: " + o.workspace + " (paths are relative to it). Platform: " + o.platform + "." + (o.date ? " Date: " + o.date + "." : ""),
+    "Working directory: " + o.workspace + " (paths are relative to it). Platform: " + o.platform + "." + shellNote(o.shell) + (o.date ? " Date: " + o.date + "." : ""),
     "You cannot see files or run anything yourself. You act through tools: CloseNI runs them and sends the results back as the next message.",
     "",
     "To call a tool, reply with a fenced block whose first line is a JSON object naming it:",
