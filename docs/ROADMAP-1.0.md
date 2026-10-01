@@ -469,8 +469,13 @@ throwaway GitHub account or repo.
 - [ ] **8.3 Split `desktop/renderer.js` and `desktop/main.js`** (L), at 2063 and
       1625 lines, along panel lines and IPC domains. Keep the UMD pattern, since
       there's no bundler.
-- [ ] **8.4 Split `test/run-tests.cjs`** (M). It's 4364 lines. Split it by area,
+- [x] **8.4 Split `test/run-tests.cjs`** (M). It's 4364 lines. Split it by area,
       with a runner that keeps the single `PASS — N passed` line.
+      *1 Oct, done:* five new area files (`parse-`, `build-`, `checks-`,
+      `provider-` and `desktop-unit.cjs`) join the existing web, extract and
+      agent ones. `run-tests.cjs` is now a 56-line runner. It runs the same
+      1946 checks, in area order, and still names the Chromium sections it
+      skips.
 - [x] **8.5 The VS Code extension** (S–L). **Decided (D7): delete.** The options were:
   - delete it: it's 97 lines, named "Agentic Web Coder", and predates the agent;
   - or rebuild it as a thin client of `agent-session`, so the agent runs inside VS Code. That's a real feature, so it may belong after 1.0.
