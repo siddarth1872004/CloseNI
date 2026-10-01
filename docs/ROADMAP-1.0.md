@@ -1,8 +1,8 @@
 # CloseNI — roadmap to 1.0
 
 Written 30 September 2026, after the first live runs of the coding agent against
-DeepSeek. It replaces the open parts of `NEXT.md`, `NEXT-SESSION.md` and
-`HANDOFF.md` as the single list of what is left. `ROADMAP.md` stays as the record
+DeepSeek. It replaces the open parts of `archive/NEXT.md`, `archive/NEXT-SESSION.md` and
+`archive/HANDOFF.md` as the single list of what is left. `ROADMAP.md` stays as the record
 of what was built.
 
 ---
@@ -157,7 +157,7 @@ protocol. This is the product, and everything else is secondary.
       found". Re-capture it with `node scripts/capture-provider-ui.mjs deepseek`
       and update `config/providers/deepseek.json`. Or, if the only stable
       selector is a hashed class, drop `sendButton` and make Enter the
-      documented path. That is the "need fewer selectors" rule in `NEXT.md`.
+      documented path. That is the "need fewer selectors" rule in `archive/NEXT.md`.
 - [x] **1.6 DeepSeek Mode control does nothing** (S). The
       `[role="radiogroup"] [data-model-type]` selector points at UI DeepSeek
       no longer has. Remove `controls[0]` and `controlSelectors.modeOption`,
@@ -181,7 +181,7 @@ protocol. This is the product, and everything else is secondary.
   - Then: when a thread passes a budget, start a new chat. Seed it with the
     preamble, `CLOSENI.md`, the todo list, a list of the files touched, and a
     short summary the model writes on request. This is `/compact`. The
-    context-limit detection from `NEXT.md` §3 is where the trigger comes from.
+    context-limit detection from `archive/NEXT.md` §3 is where the trigger comes from.
       *Mechanism done; the measurement is still open.* Each chat's size is
       tracked (per project for DeepSeek). Past 80% of the budget
       (`contextBudgetChars`, default 150k characters), the agent asks the
@@ -357,7 +357,7 @@ labelled as secondary.
 The app is agent-first now. The planned build is still reachable through
 `/build` and the Plan and Build panels.
 
-- [ ] **4.1 Re-verify the four unverified fixes** (M), from `NEXT-SESSION.md` §2:
+- [ ] **4.1 Re-verify the four unverified fixes** (M), from `archive/NEXT-SESSION.md` §2:
   - `sudo` and `apt` prompt;
   - a build gets past step 1 on the venv;
   - New Chat clears the transcript and the plan;
@@ -455,9 +455,13 @@ throwaway GitHub account or repo.
 
 **Goal:** someone other than you, human or agent, can pick this up in an hour.
 
-- [ ] **8.1 One planning document** (S). Fold what's still true from `NEXT.md`,
+- [x] **8.1 One planning document** (S). Fold what's still true from `NEXT.md`,
       `NEXT-SESSION.md` and `HANDOFF.md` into this file. Move the three into
       `docs/archive/`. Keep `ROADMAP.md` as the history of what was built.
+      *1 Oct, done:* their open items were already the phases above; the two
+      rules this file lacked are now under "Rules that still hold". The three
+      are in `docs/archive/` with a note pointing here, and every link to them
+      follows.
 - [ ] **8.2 Split `local-agent/src/index.ts`** (L). At 2145 lines it holds about
       eleven CLI modes. Give each mode its own module under `src/modes/`, keeping
       `index.ts` as the dispatcher. Do this only after Phase 4's decision, since
@@ -616,8 +620,8 @@ they name; the rule for each is fixed now so the run decides, not a debate.
 Deliberately out of scope. Each is real, and none is needed for the six criteria
 at the top.
 
-- Two builds or agent sessions running at the same time (architectural; see `NEXT.md` §7)
-- Reading reply text from the network stream (investigated and declined; see `NEXT.md` §1)
+- Two builds or agent sessions running at the same time (architectural; see `archive/NEXT.md` §7)
+- Reading reply text from the network stream (investigated and declined; see `archive/NEXT.md` §1)
 - Content-refusal detection beyond Needle's message
 - An agent inside VS Code (see 8.5)
 - macOS builds (no Mac to test on; unsigned macOS apps are a worse experience than Windows)
@@ -627,7 +631,7 @@ at the top.
 
 ## Rules that still hold
 
-These are carried over from `HANDOFF.md`, and the tests enforce most of them:
+These are carried over from `archive/HANDOFF.md`, and the tests enforce most of them:
 
 - Never widen the electron-builder `files` allow-list to a glob.
 - The GitHub token never touches `.git/config`, argv, logs, plaintext, the
@@ -635,6 +639,11 @@ These are carried over from `HANDOFF.md`, and the tests enforce most of them:
 - git runs with `shell: false`.
 - No colour literal in `styles.css` outside `:root` or `[data-theme]`.
 - The always-ask command floor holds in every mode.
+- Only conversations run in parallel. Applying files, syntax checks and command
+  approval sit behind one lock, because approval replies arrive on one stdin
+  queue with nothing saying which command they answer.
+- `closeni.run.json`, `run.sh` and `run.bat` are generated, and stripped from
+  any patch; the model sees them in the workspace and starts maintaining them.
 - Don't fix a broken selector by adding more selectors. Need fewer.
 - Don't publish a build until a run completes end to end.
 - Commits are authored by Siddarth alone, with no co-author trailers.

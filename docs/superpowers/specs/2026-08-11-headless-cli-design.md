@@ -1,6 +1,6 @@
 # A build with no window
 
-Design, 11 August 2026. Section 7 of `docs/NEXT.md`.
+Design, 11 August 2026. Section 7 of `docs/archive/NEXT.md`.
 
 ## The refactor turned out to be unnecessary
 

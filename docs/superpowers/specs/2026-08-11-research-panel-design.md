@@ -1,6 +1,6 @@
 # Research without scraping a search engine
 
-Design, 11 August 2026. Section 6 of `docs/NEXT.md`.
+Design, 11 August 2026. Section 6 of `docs/archive/NEXT.md`.
 
 ## The proposed fix was the project's own trap
 

@@ -1,6 +1,6 @@
 # Editing a plan without breaking its graph
 
-Design, 11 August 2026. Section 7 of `docs/NEXT.md`.
+Design, 11 August 2026. Section 7 of `docs/archive/NEXT.md`.
 
 ## The UI is the easy half
 

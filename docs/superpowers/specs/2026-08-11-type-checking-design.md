@@ -1,6 +1,6 @@
 # Type checking, not just parsing
 
-Design, 11 August 2026. Section 4 of `docs/NEXT.md`, first of three items.
+Design, 11 August 2026. Section 4 of `docs/archive/NEXT.md`, first of three items.
 
 ## §4 is three projects, and one is further along than it reads
 
