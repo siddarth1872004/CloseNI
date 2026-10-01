@@ -38,8 +38,6 @@ const API = {
   platform: "linux",
   listProviders: async () => ([
     { id: "deepseek", name: "DeepSeek Chat", controls: [
-      { id: "mode", label: "Mode", kind: "select", default: "default",
-        options: [{ value: "default", label: "Instant" }, { value: "expert", label: "Advanced" }] },
       { id: "deep-thinking", label: "Deep thinking", kind: "toggle", default: false },
       { id: "smart-search", label: "Smart Search", kind: "toggle", default: false }] },
     { id: "qwen-studio", name: "Qwen Studio", comingSoon: true, controls: [] },

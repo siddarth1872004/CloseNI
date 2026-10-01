@@ -19,24 +19,8 @@
     "_maxWaitNote": "Raised from 120s. A reasoning model on a plan- or build-sized prompt was still thinking when the old wait expired, so a partial response got extracted and then failed to parse. The wait ends as soon as the reply is complete, so a longer ceiling costs nothing on fast answers.",
     "_stopButtonNote": "DeepSeek has NO distinct stop control, measured 11 August 2026. The stop button IS the send button - one element that gains ds-button--disabled when idle - so 'enabled' means either 'generating' OR 'you have typed something', and the only distinguishing classes are hashed (_52c986b). A selector here would be both ambiguous and the kind of guess every serious bug in this project has come from. The reply stream above is a better end signal and is exact."
   },
-  "_controlsNote": "DeepSeek has no model dropdown. Two modes and two inline toggles, all reporting their own state. Smart Search exists only under Instant.",
+  "_controlsNote": "DeepSeek has no model dropdown. Two inline toggles, each reporting its own state. The Instant/Advanced mode radiogroup this used to set is gone from the site (September 2026), so the Mode control was removed rather than left failing on every conversation open.",
   "controls": [
-    {
-      "id": "mode",
-      "label": "Mode",
-      "kind": "select",
-      "default": "default",
-      "options": [
-        {
-          "value": "default",
-          "label": "Instant"
-        },
-        {
-          "value": "expert",
-          "label": "Advanced"
-        }
-      ]
-    },
     {
       "id": "deep-thinking",
       "label": "Deep thinking",
@@ -52,7 +36,6 @@
     }
   ],
   "controlSelectors": {
-    "modeOption": "[role=\"radiogroup\"] [data-model-type=\"{value}\"]",
     "toggle": "[aria-pressed], [role=\"switch\"], button[aria-checked], .ds-toggle-button",
     "deepThinkingText": "Think",
     "smartSearchText": "Search",

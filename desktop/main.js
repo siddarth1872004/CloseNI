@@ -469,6 +469,18 @@ ipcMain.handle("code-start", async function (event, payload) {
         let ev;
         try { ev = JSON.parse(m[1]); } catch (e) { continue; }
         if (ev.type === "ready" && !settled) { settled = true; resolve(Object.assign({ ok: true }, ev)); }
+        // The chat controller's last phase is "reading - extracting the reply",
+        // and nothing after it in the agent loop sets another. Any event past
+        // "thinking" means the page has been read, so the bar would otherwise
+        // say "extracting" while the agent waits on an approval, or is done.
+        if (ev.type !== "thinking") clearPhase();
+        // Mirrored like routeLine does the narration: these went only to the
+        // window, so a run that stalled on a tool could not be diagnosed.
+        if (ev.type === "tool" || ev.type === "done" || ev.type === "error") {
+          const what = ev.type === "tool" ? ev.name + " " + (ev.title || "") + " -> " + ev.status + (ev.summary ? " (" + ev.summary + ")" : "")
+            : ev.type === "done" ? "turn " + ev.reason + (ev.error ? ": " + ev.error : "") : ev.message;
+          try { process.stdout.write("[agent] AGENT " + ev.type + ": " + String(what).slice(0, 300) + "\n"); } catch (e) {}
+        }
         try { win.webContents.send("code-event", ev); } catch (e) {}
       }
     });
@@ -499,6 +511,7 @@ ipcMain.handle("code-mode", function (event, mode) { return codeSend({ type: "mo
 ipcMain.handle("code-interrupt", function () { return codeSend({ type: "interrupt" }); });
 ipcMain.handle("code-rewind", function () { return codeSend({ type: "rewind" }); });
 ipcMain.handle("code-clear", function () { return codeSend({ type: "clear" }); });
+ipcMain.handle("code-compact", function () { return codeSend({ type: "compact" }); });
 ipcMain.handle("code-end", function () { return releaseCode(); });
 
 let sessionProc = null;

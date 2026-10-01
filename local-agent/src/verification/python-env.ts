@@ -212,12 +212,40 @@ export function describePythonUnavailable(output: string | null | undefined): st
  *
  * A single pass, deliberately: rewriting pip first and python second would find
  * the word "python" inside the venv path it had just written.
+ *
+ * Only a word the shell would run is rewritten - the start of the command, or
+ * just after a separator. Any whitespace was enough once, and `pip` is also an
+ * argument: `python -m pip install -r requirements.txt` became
+ * `<venv>/python -m <venv>/python -m pip install -r requirements.txt`, and
+ * `pip install --upgrade pip` rewrote the package name it was upgrading. A real
+ * build spent both of its repair attempts on commands mangled this way and
+ * reported the environment as unfixable.
+ *
+ * `venvScript` covers what the venv installs beside the interpreter - flask,
+ * alembic, uvicorn. Those live in the venv's bin directory and nothing puts
+ * that on PATH, so `flask db init` failed with "command not found" while
+ * .venv/bin/flask sat there. It answers only for a name really in there, the
+ * same rule the check resolver keeps: pointing at a script that was never
+ * installed turns a missing tool into a confusing failure.
  */
-export function rewriteForVenv(command: string, venvPythonPath: string | null): string {
+export function rewriteForVenv(
+  command: string,
+  venvPythonPath: string | null,
+  venvScript?: (name: string) => string | null,
+): string {
   const c = String(command || "");
   if (!venvPythonPath || !c.trim()) return c;
-  return c.replace(/(^|[\s;&|(])(pip3|pip|python3|python)(?=\s|$)/g, (_m, pre, name) =>
-    pre + venvPythonPath + (name === "pip" || name === "pip3" ? " -m pip" : ""));
+  // The leading group is the separator; the second is whatever sits between it
+  // and the command word - spaces, and the VAR=value prefixes a shell allows.
+  return c.replace(
+    /(^|[;&|(])(\s*(?:[A-Za-z_]\w*=\S*\s+)*)([A-Za-z_][\w.-]*)(?=\s|$)/g,
+    (whole, sep, lead, name) => {
+      if (/^(pip3|pip|python3|python)$/.test(name)) {
+        return sep + lead + venvPythonPath + (name.startsWith("pip") ? " -m pip" : "");
+      }
+      const script = venvScript ? venvScript(name) : null;
+      return script ? sep + lead + script : whole;
+    });
 }
 
 /**
@@ -246,4 +274,22 @@ export function mergeGitignore(existing: string | null | undefined, entries?: st
   const head = text && !text.endsWith("\n") ? text + "\n" : text;
   return head + (text ? "\n" : "") + "# Added by CloseNI: build artefacts, not project history\n" +
     missing.join("\n") + "\n";
+}
+
+/**
+ * The sentence that says why an install failed, out of pip's hundred lines.
+ *
+ * What was logged before was the first 300 characters - "Collecting
+ * pygame==2.5.2 ... Downloading ..." - which is the part that worked. The
+ * lines that say what broke come last and start with ERROR: or "Failed to".
+ */
+export function summarizeInstallFailure(output: string | null | undefined): string {
+  const lines = String(output || "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const key = lines.filter((l) =>
+    /^(ERROR:|error:|Failed to build|Could not|No matching distribution|npm ERR!)/.test(l) &&
+    !/subprocess-exited-with-error/.test(l) &&
+    !/^ERROR: Command errored out/.test(l));
+  const picked = Array.from(new Set(key)).slice(0, 4);
+  const text = picked.length ? picked.join(" ") : (lines[lines.length - 1] || "no output");
+  return text.length > 300 ? text.slice(0, 297) + "..." : text;
 }

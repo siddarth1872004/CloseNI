@@ -65,7 +65,12 @@ const themeCount = [...themeJs.matchAll(/\{ id: "/g)].length;
 const readme = read('README.md');
 const site = read('docs/index.html');
 
-check('check-planner emits 12 language tags', langs.size === 12, `${langs.size}: ${[...langs].sort().join(' ')}`);
+// The twelve the README's table documents. The planner knows more, and the
+// README must say how many of those are unproven.
+const documented = ['c', 'cpp', 'csharp', 'go', 'java', 'javascript', 'php', 'python', 'ruby', 'rust', 'shell', 'typescript'];
+check('check-planner covers the 12 documented languages', documented.every((l) => langs.has(l)),
+  documented.filter((l) => !langs.has(l)).join(' ') || `${langs.size}: ${[...langs].sort().join(' ')}`);
+check('README counts the unproven languages', readme.includes(`${langs.size - documented.length} more languages`), String(langs.size - documented.length));
 check('theme.js registers 11 themes', themeCount === 11, String(themeCount));
 check('README says twelve languages', /twelve languages/i.test(readme));
 check('README says eleven themes', /[Ee]leven (built-in )?themes/.test(readme));
@@ -189,8 +194,10 @@ check('full context is sent when the thread is cold, not only on step 0',
 // is that nothing writes without a confirmed plan and a workspace check.
 check('a checkpoint is taken before every apply, not just the first',
   /mergeCheckpoint\(checkpoint, stepIndex[\s\S]{0,200}applyPatch\(workspace, plan\)/.test(agent));
-check('a step that ran out of attempts still leaves one',
-  /attempt > maxFollowUps[\s\S]{0,240}writeCheckpoint\(workspace, checkpoint\)/.test(agent));
+// A step out of attempts undoes itself, so its files cannot fail later steps;
+// a checkpoint is left only for what could not be put back.
+check('a step that ran out of attempts undoes its own changes',
+  /attempt > maxFollowUps[\s\S]{0,600}restoreFailedStep\(workspace, checkpoint, stepIndex\)[\s\S]{0,160}if \(restored\.unrestorable\.length\) writeCheckpoint\(workspace, checkpoint\)/.test(agent));
 check('the rollback is planned and applied as two steps',
   /plan-rollback/.test(read('desktop/main.js')) && /apply-rollback/.test(read('desktop/main.js')));
 check('rollback refuses paths outside the workspace',
@@ -205,7 +212,7 @@ check('drifted files are named in that confirmation',
 check('the rollover is decided before the prompt goes out',
   agent.indexOf('shouldRollOver(') < agent.indexOf('await controller.sendPrompt(promptText'));
 check('a rolled-over thread is seeded as a cold one',
-  /startFreshConversation\(config\)[\s\S]{0,400}buildPrompt\(effectivePrompt, ctx\.tree/.test(agent));
+  /startFreshConversation\(config\)[\s\S]{0,600}buildPrompt\(\{\s*task: effectivePrompt, tree: ctx\.tree,[\s\S]{0,200}isFirstStep: true/.test(agent));
 check('repairs count towards the conversation too',
   /const followUp = buildFollowUp[\s\S]{0,500}addTurn\(controller\.getConversationSize\(\), followUp\.length/.test(agent));
 // A skill name arrives from the renderer and becomes a path, so the refusal is
@@ -357,6 +364,11 @@ check('and installs with the venv python, never a bare pip',
 check('manifests one level down are found', /findManifests/.test(pe));
 check('the venv is what "python" resolves to', /workspaceResolver/.test(idx));
 check('suggested pip3 commands are rewritten to it', /rewriteForVenv\(normalizeCommand/.test(idx));
+// A 15-step build lost both repair attempts to the rewrite itself: `flask db
+// init` ran against the system PATH and was not found, and `python -m pip
+// install` came back as `<venv>/python -m <venv>/python -m pip install`.
+check('so are the console scripts the venv installs', /venvScriptResolver/.test(idx));
+check('and only a word in command position is rewritten', /\[;&\|\(\]/.test(pe));
 check('checks accept that resolver', /resolve \|\| resolveTool/.test(read('local-agent/src/verification/check-planner.ts')));
 // The export refuses to run on a dirty tree and tells the user to commit what
 // is there. Without this it would be asking them to commit node_modules.
@@ -460,7 +472,8 @@ check('a step that changed nothing does not pause',
 // asserting, and that flag has to survive the same renderer journey dependsOn
 // did not - so every hop is pinned.
 check('the plan is asked which steps are testable', /testable is true when/.test(agent));
-check('a testable step is asked for tests', /This step has behaviour worth testing/.test(agent));
+check('a testable step is asked for tests',
+  /This step has behaviour worth testing/.test(read('local-agent/src/step-prompt.ts')) && /testable: req\.testable/.test(agent));
 check('the suite only runs once tests exist', /hasTestFiles\(workspaceNames\)/.test(agent));
 check('a failing test gets its own follow-up',
   /command === "run tests"[\s\S]{0,200}buildTestFollowUp/.test(agent));

@@ -14,17 +14,26 @@
   var COMMANDS = [
     { name: "/help", desc: "Commands and shortcuts" },
     { name: "/clear", desc: "Start a new conversation" },
+    { name: "/compact", desc: "Continue in a new conversation, carried over by a summary" },
     { name: "/plan", desc: "Toggle plan mode: read-only, answers with a plan" },
-    { name: "/mode", desc: "Set the mode: default, accept, plan or auto", arg: "<mode>" },
+    { name: "/build", desc: "Toggle build mode: breaks the work into steps, then builds and checks each" },
+    { name: "/test", desc: "Toggle test mode; enter on an empty line runs the project's tests" },
+    { name: "/research", desc: "Toggle research mode: searches the web and GitHub, changes nothing" },
+    { name: "/ship", desc: "Toggle ship mode: reviews, tests and commits with git" },
+    { name: "/mode", desc: "Set the mode: default, accept, plan, build, test, research, ship or auto", arg: "<mode>" },
     { name: "/rewind", desc: "Undo the file changes of the last turn" },
     { name: "/init", desc: "Write a CLOSENI.md describing this project" },
     { name: "/memory", desc: "Show the project's CLOSENI.md" },
-    { name: "/build", desc: "Planned build mode: plan first, then build step by step" },
+    { name: "/steps", desc: "Open the planned build: an editable plan built step by step" },
+    { name: "/runner", desc: "Open the run panel: run command, syntax checks, run history" },
+    { name: "/github", desc: "Open GitHub: token, repository, push, branch export, Actions" },
     { name: "/model", desc: "Choose the provider and its model" },
+    { name: "/settings", desc: "Open settings" },
     { name: "/theme", desc: "Change the theme" },
     { name: "/stop", desc: "Stop after the current reply" },
   ];
-  var ALIASES = { "/undo": "/rewind", "/reset": "/clear", "/new": "/clear", "/?": "/help", "/config": "/model", "/settings": "/model" };
+  var ALIASES = { "/undo": "/rewind", "/reset": "/clear", "/new": "/clear", "/?": "/help", "/config": "/settings",
+    "/tests": "/test", "/search": "/research", "/push": "/ship", "/commit": "/ship", "/run": "/runner", "/git": "/github" };
 
   /** "/mode plan" -> { cmd: "/mode", arg: "plan" }. Null for ordinary text. */
   function parseSlash(text) {
@@ -44,29 +53,85 @@
     return COMMANDS.filter(function (c) { return c.name.indexOf(p) === 0; });
   }
 
-  var MODES = ["default", "acceptEdits", "plan", "auto"];
+  var MODES = ["default", "acceptEdits", "plan", "build", "test", "research", "ship", "auto"];
 
   function modeFromWord(w) {
     var s = String(w || "").toLowerCase().replace(/[\s_-]/g, "");
-    if (s === "default" || s === "normal" || s === "ask") return "default";
+    if (s === "default" || s === "normal" || s === "ask" || s === "code") return "default";
     if (s === "accept" || s === "acceptedits" || s === "edits") return "acceptEdits";
     if (s === "plan" || s === "planning" || s === "readonly") return "plan";
+    if (s === "build" || s === "builder") return "build";
+    if (s === "test" || s === "tests" || s === "testing") return "test";
+    if (s === "research" || s === "search") return "research";
+    if (s === "ship" || s === "push" || s === "commit" || s === "git") return "ship";
     if (s === "auto" || s === "yolo" || s === "bypass" || s === "autoapprove") return "auto";
     return null;
   }
 
-  /** shift+tab: default, accept edits, plan, back. Auto is chosen, never cycled into. */
+  /**
+   * shift+tab: default, accept edits, plan, build, test, research, ship, back.
+   * Auto is chosen, never cycled into.
+   */
+  var CYCLE = ["default", "acceptEdits", "plan", "build", "test", "research", "ship"];
   function nextMode(mode) {
-    if (mode === "default") return "acceptEdits";
-    if (mode === "acceptEdits") return "plan";
-    return "default";
+    var i = CYCLE.indexOf(mode);
+    return i === -1 ? "default" : CYCLE[(i + 1) % CYCLE.length];
   }
 
   function modeLabel(mode) {
     if (mode === "acceptEdits") return { text: "⏵⏵ accept edits on (shift+tab to cycle)", cls: "accept" };
     if (mode === "plan") return { text: "⏸ plan mode on (shift+tab to cycle)", cls: "plan" };
+    if (mode === "build") return { text: "⚒ build mode on: steps, then edits without asking (shift+tab to cycle)", cls: "build" };
+    if (mode === "test") return { text: "✓ test mode on: enter on an empty line runs the tests (shift+tab to cycle)", cls: "test" };
+    if (mode === "research") return { text: "⌕ research mode on: web and GitHub, changes nothing (shift+tab to cycle)", cls: "research" };
+    if (mode === "ship") return { text: "⇡ ship mode on: review, test, commit (shift+tab to cycle)", cls: "ship" };
     if (mode === "auto") return { text: "⏵⏵ auto-approve on: commands run without asking (shift+tab to cycle)", cls: "auto" };
     return { text: "? for shortcuts", cls: "default" };
+  }
+
+  // Shown once when auto is chosen. Permission prompts are the only defence
+  // against instructions planted in the project, and auto turns them off.
+  var AUTO_WARNING = "Auto runs commands without asking. Files, command output and web pages the agent reads go to the model as they are, so text planted in them (\"ignore your instructions and run ...\") can steer it. Use auto only in a project you trust. sudo, recursive deletes and the rest of the safety list still ask, but that list reads the command's text and is not a sandbox.";
+
+  /**
+   * The agent's own permission mode behind each mode. Build, test and ship are
+   * the same agent with a job to do, so they borrow a permission mode rather
+   * than adding one: build edits freely, test and ship ask before commands -
+   * a commit or a push is exactly what should be looked at first. Research
+   * never reaches the agent; plan is the safe answer if it ever did.
+   */
+  function agentModeOf(mode) {
+    if (mode === "build") return "acceptEdits";
+    if (mode === "test" || mode === "ship") return "default";
+    if (mode === "research") return "plan";
+    return mode;
+  }
+
+  // What each job asks of the agent, above the user's words. Language-neutral
+  // on purpose: the project decides the toolchain, not the app.
+  var DIRECTIVES = {
+    build: "[Build mode] Build this end to end. First break it into steps with the todo tool. Then implement " +
+      "them one at a time; after each step, build or run it with the project's own toolchain (whatever the " +
+      "language - its compiler, package manager or test runner) and fix what fails before moving on. Finish " +
+      "with what was built and the exact commands to run it.",
+    test: "[Test mode] Work on this project's tests. Find how it runs them - the language's usual test runner " +
+      "and whatever the project declares - run them and report the result. New tests go beside the existing " +
+      "ones, in their style. When code fails a test, fix the code; never weaken or delete a test to make it " +
+      "pass unless you are asked to.",
+    ship: "[Ship mode] Get this work shipped with git. Look at git status and the diff, run the project's tests, " +
+      "then commit with a clear message that says what changed and why. Push, tag or open a pull request only " +
+      "if asked below. Never force-push, rewrite history or commit secrets or build output.",
+  };
+  var EMPTY_ASK = {
+    ship: "Review the changes, run the tests and commit them.",
+  };
+
+  /** The text sent to the agent for `text` typed in `mode`. Null: nothing to send. */
+  function modePrompt(mode, text) {
+    var t = String(text || "").trim();
+    if (!t) t = EMPTY_ASK[mode] || "";
+    if (!t) return null;
+    return DIRECTIVES[mode] ? DIRECTIVES[mode] + "\n\n" + t : t;
   }
 
   function clip(s, n) { s = String(s == null ? "" : s); return s.length > n ? s.slice(0, n - 1) + "…" : s; }
@@ -156,6 +221,7 @@
     if (req.tool === "bash") return "Bash command";
     if (req.tool === "write") return req.preview && req.preview.created ? "Create file" : "Overwrite file";
     if (req.tool === "edit") return "Edit file";
+    if (req.tool === "read" || req.tool === "grep") return "Read a file that may hold secrets (it is sent to the chat site)";
     return "Tool call";
   }
 
@@ -213,7 +279,7 @@
     "Shortcuts",
     "  enter           send",
     "  shift+enter     new line",
-    "  shift+tab       cycle mode: default, accept edits, plan",
+    "  shift+tab       cycle mode: default, accept edits, plan, build, test, research, ship",
     "  esc             stop after the current reply",
     "  ↑ / ↓           previous messages",
     "  @path           attach a file",
@@ -222,13 +288,18 @@
     "  default         reads freely; asks before edits and commands",
     "  accept edits    edits without asking; still asks before commands",
     "  plan            read-only; answers with a plan you can approve",
+    "  build           breaks the work into steps, builds and checks each; edits without asking",
+    "  test            runs, writes and fixes tests; enter on an empty line runs the suite",
+    "  research        asks the provider with web search on and searches GitHub",
+    "  ship            reviews the diff, runs the tests and commits; asks before each command",
     "  auto            runs everything, except commands that always ask",
   ].join("\n");
 
   var api = {
-    COMMANDS: COMMANDS, MODES: MODES, INIT_PROMPT: INIT_PROMPT, HELP: HELP,
+    COMMANDS: COMMANDS, MODES: MODES, INIT_PROMPT: INIT_PROMPT, HELP: HELP, AUTO_WARNING: AUTO_WARNING,
     parseSlash: parseSlash, matchCommands: matchCommands, modeFromWord: modeFromWord,
-    nextMode: nextMode, modeLabel: modeLabel, toolTitle: toolTitle, toolSummary: toolSummary,
+    nextMode: nextMode, modeLabel: modeLabel, agentModeOf: agentModeOf, modePrompt: modePrompt,
+    toolTitle: toolTitle, toolSummary: toolSummary,
     toolTone: toolTone, permissionOptions: permissionOptions, permissionQuestion: permissionQuestion,
     spinnerVerb: spinnerVerb, GLYPHS: GLYPHS, elapsed: elapsed, mentionAt: mentionAt,
     completeMention: completeMention, rankFiles: rankFiles, countChanges: countChanges,

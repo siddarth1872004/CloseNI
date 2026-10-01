@@ -145,6 +145,26 @@ export function parseEditSections(payload: string): EditSection[] {
   return out;
 }
 
+/**
+ * Whether these lines leave a backtick fence open. A payload cut short by its
+ * own inner fence ends exactly this way: the inner block's closing line closed
+ * the tool block instead, so the payload stops after the inner opener and the
+ * rest of the file lands in the prose.
+ */
+function leavesFenceOpen(lines: string[]): boolean {
+  let open = "";
+  for (const l of lines) {
+    const m = l.match(/^\s{0,3}(`{3,})(.*)$/);
+    if (!m) continue;
+    if (!open) { if (m[2].indexOf("`") === -1) open = m[1]; }
+    else if (!m[2].trim() && m[1].length >= open.length) open = "";
+  }
+  return open !== "";
+}
+
+const CUT_SHORT = "the payload stops inside a ``` code block it opened, so the block's end was probably taken for the end of the tool block and the rest was lost. " +
+  "Send it again inside a fence of four backticks (````tool ... ````).";
+
 function str(v: any): string | undefined {
   return typeof v === "string" ? v : undefined;
 }
@@ -169,11 +189,24 @@ export function readBlock(f: Fence): ToolCall | BadCall | null {
   if (tool === "write") {
     const content = payload !== null ? payload : (str(input.content) ?? str(input.text) ?? str(input.contents));
     if (content === undefined) return { error: "write needs the file content after a line containing only ---", raw: f.body.slice(0, 300) };
+    if (leavesFenceOpen(content.split("\n"))) return { error: "write " + (str(input.path) || "") + ": " + CUT_SHORT, raw: f.body.slice(0, 300) };
     call.content = content;
     delete input.content; delete input.text; delete input.contents;
   }
   if (tool === "edit") {
     let edits: EditSection[] = payload !== null ? parseEditSections(payload) : [];
+    // A SEARCH may quote half a code block, so an open fence alone proves
+    // nothing here; one in a last section that never reached its closing
+    // marker does.
+    if (payload !== null) {
+      const lines = payload.split("\n");
+      let last = -1;
+      lines.forEach((l, n) => { if (/^<{5,9}\s*(SEARCH|ORIGINAL|OLD)?\s*$/i.test(l.trim())) last = n; });
+      const tail = last === -1 ? [] : lines.slice(last + 1);
+      if (last !== -1 && !tail.some((l) => /^>{5,9}\s*(REPLACE|UPDATED|NEW)?\s*$/i.test(l.trim())) && leavesFenceOpen(tail)) {
+        return { error: "edit " + (str(input.path) || "") + ": " + CUT_SHORT, raw: f.body.slice(0, 300) };
+      }
+    }
     if (!edits.length) {
       const old = str(input.old) ?? str(input.old_string) ?? str(input.search) ?? str(input.find);
       const neu = str(input.new) ?? str(input.new_string) ?? str(input.replace) ?? str(input.replacement);
@@ -269,11 +302,13 @@ export function preamble(o: PreambleOptions): string {
     ">>>>>>> REPLACE",
     T,
     "",
+    "If the payload itself contains " + T + " lines (a README, Markdown docs), open and close the block with four backticks instead: " + T + "`tool ... " + T + "`. Otherwise the first inner " + T + " ends the block and the rest of the file is lost.",
+    "",
     "Tools:",
     "- read {path, offset?, limit?}: a file with line numbers.",
     "- write {path} + payload: create or overwrite a whole file.",
     "- edit {path} + SEARCH/REPLACE sections: each SEARCH must match the file exactly, once. Several sections may follow each other.",
-    "- bash {command, timeout?}: run a shell command in the working directory (timeout in seconds, default 60).",
+    "- bash {command, timeout?}: run a shell command in the working directory (timeout in seconds, default 60). A command still running at its timeout is stopped; to keep a server up for later commands, start it in the background with its output to a file: npm run dev > server.log 2>&1 &",
     "- glob {pattern}: files matching a pattern such as src/**/*.ts.",
     "- grep {pattern, path?, glob?, ignore_case?}: search file contents with a regular expression.",
     "- ls {path?}: list a directory.",
@@ -294,8 +329,56 @@ export function preamble(o: PreambleOptions): string {
   return parts.join("\n");
 }
 
+/** Asked in a thread about to be abandoned for a new one; the answer seeds the new one. */
+export const COMPACT_REQUEST = "This conversation is too long to continue, and the work will carry on in a new chat that sees none of it. " +
+  "Write a summary for yourself to pick up from: the user's goal and any instructions or constraints they gave; what is done; " +
+  "what is left, including anything half-finished; decisions made and why; and what you learned about the project (commands that work, pitfalls). " +
+  "Plain prose and short lists, under 400 words. No ```tool blocks - nothing will be run.";
+
 /** Said with every user message: web models drift from a convention over a long thread. */
 export const TURN_REMINDER = "(Act with ```tool blocks; a reply without them is your final answer.)";
+
+const NEXT_ACTION = /(?:^|[.!?]\s+|\n)\s*(?:(?:now|next|first|then|so|ok(?:ay)?)[,:]?\s+)?(?:let me|let's|i'll|i will|i'm going to|i am going to)\s+(?:now\s+|first\s+|also\s+|go ahead and\s+)?(?:read|check|look|open|inspect|view|examine|update|edit|fix|write|create|add|change|modify|patch|run|execute|test|install|search|grep|list|apply|make|implement|refactor|remove|delete|rename|verify)\b[^.!?\n]*[.!:]?\s*$/i;
+const CODE_FILE = /(?:^|[\s`'"(])[\w./-]*\w\.(?:py|js|mjs|cjs|ts|tsx|jsx|java|kt|go|rs|rb|php|c|cc|cpp|h|hpp|cs|swift|html|css|scss|json|ya?ml|toml|sh|sql|md)\b/i;
+
+/**
+ * A message sending the model back to work when a reply with no tool blocks
+ * stopped short of what it said it would do, or "" for a real answer.
+ *
+ * Web models drift from the tool convention in two ways the loop would
+ * otherwise take as the end of the turn: announcing the next step and stopping
+ * ("Now I'll update main.py:"), or pasting a file's new contents as a plain
+ * code block. Both are read from the reply's shape, not guessed at: the last
+ * line announcing an action, or a sizeable code block beside a file name.
+ * Only ever asked once a turn, so a model that meant it gets its answer back.
+ */
+export function stoppedShort(reply: string): string {
+  const text = typeof reply === "string" ? reply : "";
+  const blocks = fences(text);
+  const lines = text.split(/\r?\n/);
+  const inFence = new Set<number>();
+  for (const f of blocks) for (let i = f.start; i <= f.end; i++) inFence.add(i);
+  const prose = lines.filter((_, i) => !inFence.has(i));
+  const last = prose.map((l) => l.trim()).filter(Boolean).pop() || "";
+  const tail = prose.join("\n").trim().split(/\n\s*\n/).pop() || "";
+  const lastFenceEnd = blocks.length ? blocks[blocks.length - 1].end : -1;
+  const endsInProse = lines.slice(lastFenceEnd + 1).some((l) => l.trim());
+
+  if (endsInProse && (/:\s*$/.test(last) || NEXT_ACTION.test(tail))) {
+    return "Your last reply had no ```tool block, so nothing was run - it ended with: “" + last.slice(0, 200) +
+      "”. If there is more to do, send the tool blocks now. If the task is finished, reply with a short summary and no tool blocks.";
+  }
+  // A block opening at a shell prompt ("$ python3 todo.py list") is a
+  // terminal session being shown, not a file: no file starts with one.
+  const pasted = blocks.some((f) => f.body.split("\n").filter((l) => l.trim()).length >= 5 && !/^\s*\$ /.test(f.body) &&
+    (CODE_FILE.test(f.info) || CODE_FILE.test(f.body.split("\n")[0] || "") || CODE_FILE.test(lines.slice(Math.max(0, f.start - 3), f.start).join("\n"))));
+  if (pasted) {
+    return "Your last reply showed code as plain code blocks, so no file was changed. " +
+      "To create or change a file, send a ```tool block with write (whole file) or edit (SEARCH/REPLACE). " +
+      "If the code was only an example, reply with a short summary and no tool blocks.";
+  }
+  return "";
+}
 
 export interface ToolOutcome {
   call: ToolCall | BadCall;

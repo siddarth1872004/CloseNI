@@ -16,7 +16,7 @@ Ask for a change and it reads your project, edits files, runs commands and check
 
 [**Site**](https://siddarth1872004.github.io/CloseNI/) · [**How it works**](#how-it-works) · [**Architecture**](#architecture) · [**Browser layer**](#the-browser-native-layer) · [**Research**](#research) · [**Get started**](#getting-started) · [**Limitations**](#current-limitations)
 
-<img src="docs/assets/stats.svg" alt="1432 unit tests, 180 end-to-end tests, 204 browser checks, twelve languages, eleven themes, zero API keys" width="100%">
+<img src="docs/assets/stats.svg" alt="1937 unit tests, 200 end-to-end tests, 204 browser checks, twelve languages, eleven themes, zero API keys" width="100%">
 
 </div>
 
@@ -68,14 +68,14 @@ A chat site has no tool-calling API, so tools are a convention written into the 
 
 | Tool | Does | Asks first? |
 |---|---|---|
-| `read` | a file, with line numbers, by range | never |
-| `glob` / `grep` / `ls` | find files, search contents, list a folder | never |
+| `read` | a file, with line numbers, by range | only for a secret file such as `.env` or a private key |
+| `glob` / `grep` / `ls` | find files, search contents, list a folder | only when `grep` names a secret file; a project-wide search skips them and says so |
 | `todo` | the agent's own task list, shown above the input | never |
 | `edit` | exact search/replace, one match or a clear error | in default mode |
 | `write` | create or overwrite a file | in default mode |
 | `bash` | a shell command in the project folder | unless you said "don't ask again" for it |
 
-Every path is resolved inside the project and refused outside it, including through a symlink, and nothing inside `.git` is written. Outputs are capped, because they are typed back into a web page.
+Every path is resolved inside the project and refused outside it, including through a symlink or a link to something missing, and nothing inside any `.git` is written. Outputs are capped, because they are typed back into a web page.
 
 **Modes**, cycled with shift+tab:
 
@@ -84,7 +84,7 @@ Every path is resolved inside the project and refused outside it, including thro
 - **Plan** is read-only and ends with a plan you can approve, which then switches mode and starts the work.
 - **Auto** (`/mode auto`) runs everything.
 
-In every mode, `sudo`, package managers, recursive deletes, piping a download into a shell and the rest of the safety list always ask. "Don't ask again" is never offered for those.
+In every mode, `sudo`, package managers, recursive deletes, piping a download into a shell and the rest of the safety list always ask. "Don't ask again" is never offered for those. The list reads the command's text, so it is a floor, not a sandbox: a script the model writes and then runs gets past it. Files and command output the agent reads can carry planted instructions, and in auto mode nothing stops a command they suggest. [docs/SAFETY.md](docs/SAFETY.md) lists what holds and what doesn't.
 
 **Also:**
 - `@path` attaches a file to your message.
@@ -319,6 +319,8 @@ A manifest claims its language. If the workspace has a `Cargo.toml`, Rust files 
 
 `make -n` is a dry run on purpose. It proves the Makefile parses and its targets resolve, without dropping object files into your workspace. A check should not build.
 
+The checker also knows 16 more languages: Kotlin, Scala, Swift, Dart, Zig, Elixir, Erlang, Haskell, OCaml, F#, Clojure, Lua, Perl, Nim, Fortran and R. It runs their compilers and test runners the same way. None of these checks has yet been run against the real toolchain, and neither has C#'s. The other eleven above have been.
+
 A manifest claims its extensions whether or not the tool is installed. So a Rust project on a machine without `cargo` reports a missing toolchain, instead of silently falling through to a weaker per-file check.
 
 ---
@@ -538,13 +540,16 @@ An agent that writes files and runs commands on your machine has to be explicit 
 
 | | |
 |---|---|
-| **Commands always require confirmation** | `sudo` · `su` · package managers · `rm -rf` · `dd if=` · `mkfs` · `chmod 777` · `chown` · `shutdown` / `reboot` · `curl … \| sh` and friends · writes to raw disks · `git push --force` without `--with-lease`. The test covers the whole command string, because a real reply once hid `sudo apt install` behind `apt install … \|\| sudo apt install …`. |
+| **Commands always require confirmation** | `sudo` · `su` · `doas` · package managers · recursive deletes in any spelling (`rm -r`, `find -delete`, `rd /s`, `Remove-Item -Recurse`) · `dd if=` · `mkfs` · `format` · `chmod 777` · `chown` · `shutdown` / `reboot` · `curl … \| sh`, `bash <(curl …)` and friends · writes to raw disks · `git push --force` without `--with-lease` · `git reset --hard` · `git clean -f`. The test covers the whole command string, because a real reply once hid `sudo apt install` behind `apt install … \|\| sudo apt install …`. |
 | **Environment setup is recognised** | `venv`, `pip install` and `poetry install` are classified, so a failure there is an environment problem, not broken code. |
-| **File writes are contained** | A path that escapes the workspace root is refused. Overwrites are backed up first. |
+| **File writes are contained** | A path that escapes the workspace root is refused, including through a symlink or a link to something missing. Nothing inside any `.git` folder is written. Overwrites are backed up first. |
+| **Secret files ask first** | Reading `.env` files, `.netrc`, `.npmrc`, `.pypirc`, SSH private keys and `.pem` / `.key` / `.p12` / `.pfx` files asks in every mode, auto included, because whatever the agent reads is typed into a chat site. |
 | **Git never goes through a shell** | Arguments are passed as an array with `shell: false`. A commit message of `test; echo INJECTED` becomes a commit subject containing that text, and nothing executes. |
 | **Tokens stay sealed** | The GitHub token is encrypted with the OS keystore, handed to git through `GIT_ASKPASS`, and redacted from every log line by exact-string replacement. It never reaches `.git/config`, an argument list, a plaintext file, the renderer or the agent. |
 | **Session data is never committed** | Browser profiles, cookies, chat URLs and browser-layer diagnostics live under `local-agent/storage/`. They are excluded from version control and from the packaged app, whose file list is an explicit allow-list. |
 | **The browser layer never gets past a gate** | A login, a challenge or a rate limit stops the run and is recorded. See [the browser-native layer](#the-browser-native-layer). |
+
+The command list reads the command's text, so it is a floor, not a sandbox. [docs/SAFETY.md](docs/SAFETY.md) lists what it misses, such as a script the model writes and then runs.
 
 ---
 
@@ -589,10 +594,10 @@ Pixel-art motion appears throughout the app, driven by `steps()` timing so the a
 ```mermaid
 flowchart LR
     subgraph unit["npm test · no browser"]
-        U1["1432 unit tests<br/>including the web layer's pure logic"]
+        U1["1937 unit tests<br/>including the web layer's pure logic"]
     end
     subgraph browser["real Chromium"]
-        E2E["npm run test:e2e<br/>180 tests against a mock chat site"]
+        E2E["npm run test:e2e<br/>200 tests against a mock chat site"]
         WEB["npm run test:web<br/>204 checks against provider-shaped fixtures"]
     end
     subgraph live["live sites"]
@@ -692,6 +697,10 @@ source scripts/wsl-env.sh
 
 This sets up the display and library paths Electron and Chromium need under WSL2.
 
+#### Reporting a bug
+
+[Open an issue](https://github.com/siddarth1872004/CloseNI/issues/new/choose) with the bug report form. It asks for the provider, your OS, the version and the last 50 lines of the Console bar, which usually name the selector that failed. Check those lines for anything private before posting.
+
 ---
 
 ## Distribution builds
@@ -777,6 +786,8 @@ Stated plainly, because a README that only lists strengths is not useful.
 ## License
 
 MIT. See [LICENSE](LICENSE). Copyright (c) 2026 Siddarth S.
+
+Packaged builds ship the Electron and Chromium licence files and Playwright's licence and third-party notices. The Chromium that Playwright drives is downloaded at first run, not bundled.
 
 <div align="center">
 <sub>Every animation above is pixel art generated by a script. No GIFs and no JavaScript, and every one of them loops forever.</sub>
