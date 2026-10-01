@@ -157,7 +157,7 @@ Nothing is written before you approve the plan, and every step reports what it t
 ```mermaid
 flowchart TB
     subgraph desktop["desktop/ · Electron host"]
-        R["renderer.js<br/>panels, plans, diffs"]
+        R["renderer/<br/>panels, plans, diffs"]
         B["builder.js<br/>runs the steps"]
         S["scheduler.js<br/>dependency graph, resume"]
         T["theme.js<br/>eleven themes"]
@@ -725,8 +725,9 @@ The packaged `files` list is an explicit allow-list. Widening it to a glob would
 
 ```
 desktop/            Electron UI host, IPC handlers, and renderer
-  main.js             process host: IPC, git, credentials, agent lifecycle
-  renderer.js         panels, plan review, diff rendering
+  main.js             process host: window, agent lifecycle, sessions, sign-in
+  main/               IPC by domain: GitHub, git, build state, settings, files
+  renderer/           one script per panel, loaded in order; startup.js last
   builder.js          step orchestration
   scheduler.js        dependency graph, runnable set, resume state
   theme.js            theme registry and persistence

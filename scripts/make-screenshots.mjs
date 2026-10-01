@@ -29,7 +29,7 @@ fs.mkdirSync(out, { recursive: true });
  * The interesting values are spelled out; everything else falls through a Proxy
  * to a no-op that resolves to []. That fallback is the point: this used to be a
  * hand-maintained list of "everything preload exposes", so adding one method to
- * preload threw inside renderer.js before it reached `window.CN = {...}`, and
+ * preload threw inside the renderer before it reached `window.CN = {...}`, and
  * every screenshot came out as an empty shell. The failure looked like a
  * screenshot bug rather than a missing stub, which is how it survived a run.
  */

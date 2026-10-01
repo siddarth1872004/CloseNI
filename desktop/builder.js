@@ -644,7 +644,7 @@
    * The frontend preview.
    *
    * Only offered when there is genuinely something to show - an empty frame is
-   * worse than no button. Exposed for renderer.js to call after a run, since
+   * worse than no button. Exposed for renderer/test.js to call after a run, since
    * that is where the server output arrives.
    */
   window.CNBuilderPreview = {

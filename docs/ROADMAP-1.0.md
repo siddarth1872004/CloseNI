@@ -466,9 +466,21 @@ throwaway GitHub account or repo.
       eleven CLI modes. Give each mode its own module under `src/modes/`, keeping
       `index.ts` as the dispatcher. Do this only after Phase 4's decision, since
       the planned build may shrink.
-- [ ] **8.3 Split `desktop/renderer.js` and `desktop/main.js`** (L), at 2063 and
+- [x] **8.3 Split `desktop/renderer.js` and `desktop/main.js`** (L), at 2063 and
       1625 lines, along panel lines and IPC domains. Keep the UMD pattern, since
       there's no bundler.
+      *1 Oct, done:* `renderer.js` is now eleven classic scripts in
+      `desktop/renderer/`, one per panel, still sharing one global scope.
+      `index.html` loads them in their old order, and `startup.js` runs last.
+      Launch work moved there: the provider picker's start resumes after an
+      await, and from its old place it could reach `account.js` before that
+      file had loaded. A unit check (`load-order.cjs`) now fails any load-time
+      call into a later script. `main.js` keeps the window, the agent and
+      session processes and provider sign-in, about 760 lines. GitHub,
+      settings, build state, git, the browser install and file reads moved to
+      `desktop/main/`. Each is a function that takes what `main.js` owns and
+      returns what another needs. Checked with the unit suite, verify (with a
+      repacked app), `test:ui`, and the real app calling every moved handler.
 - [x] **8.4 Split `test/run-tests.cjs`** (M). It's 4364 lines. Split it by area,
       with a runner that keeps the single `PASS — N passed` line.
       *1 Oct, done:* five new area files (`parse-`, `build-`, `checks-`,

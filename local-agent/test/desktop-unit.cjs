@@ -10,6 +10,20 @@ const path = require("path");
 
 const DIST = path.join(__dirname, "..", "dist");
 
+// The renderer is one script per panel under desktop/renderer/, read as one.
+function readRenderer() {
+  const dir = path.join(__dirname, "..", "..", "desktop", "renderer");
+  return fs.readdirSync(dir).filter((f) => f.endsWith(".js")).sort()
+    .map((f) => fs.readFileSync(path.join(dir, f), "utf8")).join("\n");
+}
+
+// The main process likewise: main.js and the IPC domains under desktop/main/.
+function readMain() {
+  const D = path.join(__dirname, "..", "..", "desktop");
+  return [path.join(D, "main.js")].concat(fs.readdirSync(path.join(D, "main")).filter((f) => f.endsWith(".js")).sort()
+    .map((f) => path.join(D, "main", f))).map((f) => fs.readFileSync(f, "utf8")).join("\n");
+}
+
 // Handed in by run-tests.cjs, which keeps the one count.
 let check, section, skipped;
 
@@ -110,6 +124,29 @@ function testTheme() {
   // token would go unresolved, which renders as black text on white.
   check("an unknown theme falls back", resolveTheme("vaporwave-deluxe") === "terminal");
   check("a non-string falls back", resolveTheme({ id: "paper" }) === "terminal");
+}
+
+function testRendererLoadOrder() {
+  section("renderer load order");
+  const { forwardRefs, rendererScripts } = require(path.join(__dirname, "load-order.cjs"));
+  const scripts = rendererScripts(path.join(__dirname, "..", "..", "desktop"));
+  check("index.html loads the renderer's scripts, core first and startup last",
+    scripts.length > 2 && scripts[0].name === "renderer/core.js" &&
+      scripts[scripts.length - 1].name === "renderer/startup.js", scripts.map((s) => s.name).join(", "));
+  const refs = forwardRefs(scripts);
+  check("no code that runs during load reaches a later script", refs.length === 0, refs.slice(0, 4).join(" | "));
+
+  // Sanity-check the scan itself, so a broken one cannot report success.
+  const a = { name: "a.js", source: "(async function () { await x(); later(); })();\nfunction early() { return 1; }\n" };
+  const b = { name: "b.js", source: "function later() { return early(); }\n" };
+  check("the scan finds a forward call after an await", forwardRefs([a, b]).length === 1);
+  check("and through a function it calls",
+    forwardRefs([{ name: "a.js", source: "function f() { later(); }\nf();\n" }, b]).length === 1);
+  check("a click handler is not load-time code",
+    forwardRefs([{ name: "a.js", source: "el.onclick = function () { later(); };\nel.onchange = later;\n" }, b]).length === 0);
+  check("a typeof guard is safe",
+    forwardRefs([{ name: "a.js", source: "if (typeof later === \"function\") {}\n" }, b]).length === 0);
+  check("calling backwards is fine", forwardRefs([b, a]).length === 0);
 }
 
 function testFlow() {
@@ -326,7 +363,7 @@ function testBrowserCheck() {
   check("a failure that is not the network does not blame the network",
     !/firewall/.test(B.describeInstallFailure("Error: ENOSPC: no space left on device", 1)));
   check("a very long reason is cut", B.describeInstallFailure("Error: " + "x".repeat(1000), 1).length < 300);
-  check("the gate uses it", /describeInstallFailure\(output, code\)/.test(fs.readFileSync(path.join(__dirname, "..", "..", "desktop", "main.js"), "utf8")));
+  check("the gate uses it", /describeInstallFailure\(output, code\)/.test(readMain()));
 }
 
 function testBuildConfig() {
@@ -346,11 +383,9 @@ function testBuildConfig() {
   // mentioned the release it was describing, which is prose, not a hardcoded
   // version - and a check that punishes explaining yourself is a bad check.
   check("no source file hardcodes a version as a string literal", (() => {
-    const files = ["desktop/main.js", "desktop/renderer.js", "desktop/index.html"];
-    return files.every((f) => {
-      const src = fs.readFileSync(path.join(root, f), "utf8");
-      return !/["'`]\d+\.\d+\.\d+["'`]/.test(src);
-    });
+    const files = ["desktop/index.html"];
+    return files.map((f) => fs.readFileSync(path.join(root, f), "utf8")).concat(readMain(), readRenderer())
+      .every((src) => !/["'`]\d+\.\d+\.\d+["'`]/.test(src));
   })());
   check("desktop is a workspace", (pkg.workspaces || []).indexOf("desktop") !== -1);
   check("electron-builder is a dev dependency", !!(pkg.devDependencies || {})["electron-builder"]);
@@ -501,7 +536,7 @@ function testGitHubSafe() {
  */
 function testGitSpawnHardening() {
   section("git spawn hardening");
-  const main = fs.readFileSync(path.join(__dirname, "..", "..", "desktop", "main.js"), "utf8");
+  const main = readMain();
   const at = main.indexOf('ipcMain.handle("git"');
   const gitBlock = main.slice(at, at + 900);
   check("the git handler exists", at !== -1 && gitBlock.length > 100);
@@ -589,7 +624,7 @@ async function testGitHubApi() {
 function testPackagedPaths() {
   section("paths that must survive packaging");
   const root = path.join(__dirname, "..", "..");
-  const main = fs.readFileSync(path.join(root, "desktop/main.js"), "utf8");
+  const main = readMain();
   const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
 
   // Packaged, __dirname is inside the archive, so path.join(__dirname, "..") is
@@ -905,9 +940,9 @@ function testSkillsWiring() {
   section("skills reach the agent from the app");
   const GH = require(path.join(__dirname, "..", "..", "desktop", "github-api.js"));
   const D = path.join(__dirname, "..", "..", "desktop");
-  const main = fs.readFileSync(path.join(D, "main.js"), "utf8");
+  const main = readMain();
   const preload = fs.readFileSync(path.join(D, "preload.js"), "utf8");
-  const renderer = fs.readFileSync(path.join(D, "renderer.js"), "utf8");
+  const renderer = readRenderer();
   const html = fs.readFileSync(path.join(D, "index.html"), "utf8");
 
   // Import needs a file fetch. getReadme existed; a general one did not.
@@ -1030,10 +1065,10 @@ function testOnboarding() {
   // Wiring: the guide reads real state, never a flag of its own.
   const D = path.join(__dirname, "..", "..", "desktop");
   const html = fs.readFileSync(path.join(D, "index.html"), "utf8");
-  const renderer = fs.readFileSync(path.join(D, "renderer.js"), "utf8");
-  check("the page loads onboarding.js before renderer.js",
+  const renderer = readRenderer();
+  check("the page loads onboarding.js before the renderer",
     html.indexOf('<script src="onboarding.js">') !== -1 &&
-      html.indexOf('<script src="onboarding.js">') < html.indexOf('<script src="renderer.js">'));
+      html.indexOf('<script src="onboarding.js">') < html.indexOf('<script src="renderer/core.js">'));
   check("there is somewhere to draw it", /id="welcome"/.test(html));
   check("Settings can bring it back", /id="welcome-reset"/.test(html));
   check("the account light updates it", /acctNow = state;\s*renderOnboarding\(\)/.test(renderer));
@@ -1064,6 +1099,7 @@ async function run(c, s, sk) {
   testSkillsWiring();
   testRecentWorkspaces();
   testOnboarding();
+  testRendererLoadOrder();
   testFlow();
   testCodeView();
 }
