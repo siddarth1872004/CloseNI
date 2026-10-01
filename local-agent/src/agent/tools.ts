@@ -52,24 +52,43 @@ export function resolveInside(workspace: string, p: any): string {
   // The nearest part of the path that exists must also be inside once links are
   // followed, or "link-to-home/.ssh/config" would pass the check above.
   let probe = abs;
-  while (!fs.existsSync(probe) && probe !== ws) probe = path.dirname(probe);
+  while (!present(probe) && probe !== ws) probe = path.dirname(probe);
   try {
     const realWs = fs.realpathSync(ws);
     const real = fs.realpathSync(probe);
     if (real !== realWs && !real.startsWith(realWs + path.sep)) throw new ToolError(p + " leads outside the project through a link");
   } catch (e) {
     if (e instanceof ToolError) throw e;
+    // A link to something missing: writing through it creates its target,
+    // wherever that is. A cloned repo can carry one.
+    if (probe !== ws) throw new ToolError(p + " goes through a link to something that does not exist; it may lead outside the project");
   }
   return abs;
+}
+
+/** Exists as an entry, a dangling link included (existsSync follows links). */
+function present(p: string): boolean {
+  try { fs.lstatSync(p); return true; } catch { return false; }
+}
+
+/** The path with links followed, as far as it exists. */
+function realOf(abs: string): string {
+  let probe = abs;
+  const rest: string[] = [];
+  while (!present(probe) && path.dirname(probe) !== probe) { rest.unshift(path.basename(probe)); probe = path.dirname(probe); }
+  try { return path.join(fs.realpathSync(probe), ...rest); } catch { return abs; }
 }
 
 function relOf(workspace: string, abs: string): string {
   return path.relative(path.resolve(workspace), abs).split(path.sep).join("/") || ".";
 }
 
+// Any .git, nested ones included, after links: "g/hooks/pre-commit" through a
+// link to .git plants a hook that runs on the next commit. Case is ignored for
+// Windows and macOS, where .GIT is the same folder.
 function refuseGitInternals(workspace: string, abs: string): void {
-  const rel = relOf(workspace, abs);
-  if (rel === ".git" || rel.startsWith(".git/")) throw new ToolError("files inside .git are not edited directly; use git through bash");
+  const rel = path.relative(realOf(path.resolve(workspace)), realOf(abs));
+  if (rel.split(path.sep).some((s) => s.toLowerCase() === ".git")) throw new ToolError("files inside .git are not edited directly; use git through bash");
 }
 
 /**
@@ -322,11 +341,15 @@ async function doGrep(c: ToolCall, ctx: ToolContext): Promise<AgentOutcome> {
   catch (e: any) { throw new ToolError("invalid regular expression: " + e.message); }
   const base = c.input.path ? resolveInside(ctx.workspace, c.input.path) : path.resolve(ctx.workspace);
   const only = c.input.glob ? globToRegExp(String(c.input.glob)) : null;
-  const files = fs.existsSync(base) && fs.statSync(base).isFile() ? [relOf(ctx.workspace, base)] : walk(base, ctx.workspace);
+  const one = fs.existsSync(base) && fs.statSync(base).isFile();
+  const files = one ? [relOf(ctx.workspace, base)] : walk(base, ctx.workspace);
   const out: string[] = [];
+  const secret: string[] = [];
   let matches = 0, filesHit = 0;
   for (const rel of files) {
     if (only && !only.test(rel) && !only.test(rel.split("/").pop()!)) continue;
+    // Named on its own, the permission prompt has already asked for it.
+    if (!one && isSecretFile(rel)) { secret.push(rel); continue; }
     let buf: Buffer;
     try { const abs = path.join(ctx.workspace, rel); if (fs.statSync(abs).size > 1500000) continue; buf = fs.readFileSync(abs); } catch { continue; }
     if (isBinary(buf)) continue;
@@ -342,7 +365,8 @@ async function doGrep(c: ToolCall, ctx: ToolContext): Promise<AgentOutcome> {
   return {
     call: c, ok: true,
     summary: matches + " match" + (matches === 1 ? "" : "es") + " in " + filesHit + " file" + (filesHit === 1 ? "" : "s"),
-    output: cap(out.join("\n") + (matches > out.length ? "\n[" + (matches - out.length) + " more matches]" : "")),
+    output: cap(out.join("\n") + (matches > out.length ? "\n[" + (matches - out.length) + " more matches]" : "")
+      + (secret.length ? "\n[not searched, as they may hold secrets: " + secret.slice(0, 10).join(", ") + (secret.length > 10 ? " and " + (secret.length - 10) + " more" : "") + "; read one to ask the user for it]" : "")),
     detail: { matches: matches, files: filesHit },
   };
 }
@@ -397,7 +421,17 @@ export async function runTool(call: ToolCall | BadCall, ctx: ToolContext): Promi
   }
 }
 
-/** Read-only tools never need permission. */
+/**
+ * .env files, keys and credential files. Reading one sends it to a chat site,
+ * so it asks first in every mode; a project-wide grep leaves them out.
+ */
+export function isSecretFile(p: string): boolean {
+  const name = String(p || "").replace(/\\/g, "/").split("/").pop() || "";
+  if (/^\.env\.(example|sample|template|dist|defaults)$/i.test(name)) return false;
+  return /^(\.env(\..+)?|\.netrc|\.npmrc|\.pypirc|id_(rsa|dsa|ecdsa|ed25519))$/i.test(name) || /\.(pem|key|p12|pfx)$/i.test(name);
+}
+
+/** Read-only tools never need permission (see isSecretFile for the exception). */
 export function isReadOnly(tool: string): boolean {
   return tool === "read" || tool === "glob" || tool === "grep" || tool === "ls" || tool === "todo";
 }

@@ -470,7 +470,7 @@ throwaway GitHub account or repo.
 
 ## Phase 9 — Safety, legal and privacy review
 
-- [ ] **9.1 Agent sandbox review** (M). Path confinement (symlinks included),
+- [x] **9.1 Agent sandbox review** (M). Path confinement (symlinks included),
       no writing inside `.git`, and the command floor (sudo, package managers,
       `rm -rf`, `curl | sh`) holding in *every* mode, including auto. Try to
       break it on purpose with adversarial prompts: a file written through `..`,
@@ -478,20 +478,45 @@ throwaway GitHub account or repo.
       `python -c "import os; os.system('rm -rf ~')"`. Document what the floor
       cannot catch. It's a prompt-level floor, not a sandbox, and the README
       should say so plainly.
-- [ ] **9.2 Prompt injection from the workspace** (M). A file or tool output
+      *Done:* the four listed cases already asked. Probing found holes, now
+      closed: a `write` through a link to something missing created the file
+      outside the project (a cloned repo can carry such a link, so no bash was
+      needed); `.git` reached through a link, a nested `sub/.git` and `.GIT`
+      were writable (a planted hook); and `rm -Rf`, `rm --recursive`,
+      `rm -v -rf`, `find -delete`, `doas`, `pkexec`, bare `su`,
+      `bash <(curl …)`, `sh -c "$(curl …)"`, `curl … | tee | sh`,
+      `git push -f`/`+branch`, `git reset --hard`, `git clean -f`, and every
+      Windows equivalent ran free. What still gets past it (a script written
+      then run, download-then-run, encoded or assembled commands) is in
+      `docs/SAFETY.md`, which the README links.
+- [x] **9.2 Prompt injection from the workspace** (M). A file or tool output
       that says "ignore previous instructions and run …" is fed straight to the
       model. Permission prompts are the defence. Make sure auto mode's warning
       says this.
-- [ ] **9.3 Secrets** (S). Check that session cookies, `browser-profiles/` and
+      *Done:* `/mode auto` now shows a warning saying so, and that the safety
+      list is not a sandbox. `docs/SAFETY.md` explains it.
+- [x] **9.3 Secrets** (S). Check that session cookies, `browser-profiles/` and
       the GitHub token never reach a log, a crash report, an installer, or a
       prompt sent to a provider. The existing allow-list and audit cover the
       installer. Add a check that `.env` files aren't sent in `read` results
       without confirmation.
+      *Done:* reading a `.env`, a key or a credentials file asks in every mode
+      and can't be remembered; a project-wide `grep` skips them and names them.
+      The token is encrypted, reaches git only through `GIT_ASKPASS`, is
+      redacted from git output, and never reaches the agent's process. There is
+      no crash reporter. Not covered: `bash` runs as you and can read either.
 - [ ] **9.4 Terms of service** (S). The README already says this is your
       responsibility. Make the first-run screen say it too, once, with a link to
       each provider's terms.
-- [ ] **9.5 Licence check** (S) on the bundled dependencies (Electron,
+- [x] **9.5 Licence check** (S) on the bundled dependencies (Electron,
       Playwright, Chromium redistribution in the installer).
+      *Done:* the installer ships Electron (MIT, with `LICENSE.electron.txt`
+      and `LICENSES.chromium.html` at the app root), `playwright` and
+      `playwright-core` (Apache-2.0, each with LICENSE, NOTICE and
+      ThirdPartyNotices unpacked beside it) and nothing else from npm
+      (`fsevents` is macOS-only, MIT). The Chromium Playwright drives is not in
+      the installer: Playwright's own installer downloads it on first run.
+      Checked against `dist/linux-unpacked`.
 
 ---
 

@@ -89,6 +89,10 @@
     return { text: "? for shortcuts", cls: "default" };
   }
 
+  // Shown once when auto is chosen. Permission prompts are the only defence
+  // against instructions planted in the project, and auto turns them off.
+  var AUTO_WARNING = "Auto runs commands without asking. Files, command output and web pages the agent reads go to the model as they are, so text planted in them (\"ignore your instructions and run ...\") can steer it. Use auto only in a project you trust. sudo, recursive deletes and the rest of the safety list still ask, but that list reads the command's text and is not a sandbox.";
+
   /**
    * The agent's own permission mode behind each mode. Build, test and ship are
    * the same agent with a job to do, so they borrow a permission mode rather
@@ -217,6 +221,7 @@
     if (req.tool === "bash") return "Bash command";
     if (req.tool === "write") return req.preview && req.preview.created ? "Create file" : "Overwrite file";
     if (req.tool === "edit") return "Edit file";
+    if (req.tool === "read" || req.tool === "grep") return "Read a file that may hold secrets (it is sent to the chat site)";
     return "Tool call";
   }
 
@@ -291,7 +296,7 @@
   ].join("\n");
 
   var api = {
-    COMMANDS: COMMANDS, MODES: MODES, INIT_PROMPT: INIT_PROMPT, HELP: HELP,
+    COMMANDS: COMMANDS, MODES: MODES, INIT_PROMPT: INIT_PROMPT, HELP: HELP, AUTO_WARNING: AUTO_WARNING,
     parseSlash: parseSlash, matchCommands: matchCommands, modeFromWord: modeFromWord,
     nextMode: nextMode, modeLabel: modeLabel, agentModeOf: agentModeOf, modePrompt: modePrompt,
     toolTitle: toolTitle, toolSummary: toolSummary,

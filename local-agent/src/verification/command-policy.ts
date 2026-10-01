@@ -13,22 +13,38 @@
  * "Auto-allow" is about not being interrupted for `pytest` and `npm run build`.
  * It was never meant to mean "install system packages as root" or "download a
  * script and pipe it into an interpreter". Those need a human every time.
+ *
+ * This reads the command's text, so it is a floor, not a sandbox: a script the
+ * model wrote first, a variable that expands to `sudo`, or an escaped `r\m`
+ * all get past it. docs/SAFETY.md lists what it cannot catch.
  */
 const ALWAYS_CONFIRM = [
   /\bsudo\b/,
-  /\bsu\b\s/,
+  /\bsu\b(\s|$)/,
+  /\b(doas|pkexec|runas)\b/i,
   /\bapt(-get)?\b/,
-  /\bdnf\b|\byum\b|\bpacman\b|\bapk\b|\bbrew\b/,
-  /\brm\s+-[a-z]*[rf]/,
+  /\bdnf\b|\byum\b|\bpacman\b|\bapk\b|\bbrew\b|\bzypper\b|\bemerge\b|\bsnap\s+(install|remove)\b/,
+  /\b(winget|choco|scoop)\b/i,
+  // Flags anywhere and in any case: rm -Rf, rm -v -rf, rm --recursive.
+  /\brm\s+([^;&|\n]*\s)?(-[a-zA-Z]*[rRf]|--recursive\b|--force\b)/,
+  /\bfind\b[^;&|\n]*\s-delete\b/,
+  /\b(rd|rmdir)\s+([^;&|\n]*\s)?\/s\b/i,
+  /\bdel\s+([^;&|\n]*\s)?\/s\b/i,
+  /\bRemove-Item\b[^;&|\n]*-Recurse\b/i,
+  /\bgit\s+(reset\s+[^;&|\n]*--hard|clean\s+[^;&|\n]*-[a-zA-Z]*f)/,
   /\bdd\s+if=/,
   /\bmkfs\b/,
+  /\bformat\s+[a-z]:/i,
   /\bchmod\s+(-[a-zA-Z]+\s+)*777\b/,
   /\bchown\b/,
   /\b(shutdown|reboot|halt|poweroff)\b/,
-  /\bcurl\b[^|]*\|\s*(sudo\s+)?(sh|bash|zsh|python3?|node|perl|ruby)\b/,
-  /\bwget\b[^|]*\|\s*(sudo\s+)?(sh|bash|zsh|python3?|node|perl|ruby)\b/,
+  // A download run by an interpreter: piped (through tee or anything else),
+  // process-substituted, or command-substituted into sh -c.
+  /\b(curl|wget)\b.*\|\s*(sudo\s+)?(sh|bash|zsh|python3?|node|perl|ruby)\b/,
+  /\b(sh|bash|zsh|source)\s+(-c\s+)?["']?[<$]\(\s*(curl|wget)\b/,
+  /\b(iwr|irm|Invoke-WebRequest|Invoke-RestMethod)\b.*\|\s*(iex|Invoke-Expression)\b/i,
   />\s*\/dev\/(sd|nvme|disk)/,
-  /\bgit\s+push\b.*--force(?!-with-lease)/,
+  /\bgit\s+push\b.*(--force(?!-with-lease)|\s-[a-zA-Z]*f|\s\+\S)/,
 ];
 
 /**

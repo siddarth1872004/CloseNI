@@ -132,6 +132,24 @@ async function run(check, section) {
   check("the change is announced before it happens", changed.length === 1);
   o = await Tl.runTool(call({ tool: "write", path: ".git/config" }, { content: "x" }), ctx2);
   check(".git is not written", !o.ok && /\.git/.test(o.output));
+  // A repo can carry links, so these need no bash to set up.
+  fs.mkdirSync(path.join(ws, ".git", "hooks"), { recursive: true });
+  fs.mkdirSync(path.join(ws, "sub", ".git"), { recursive: true });
+  let linked = true;
+  try {
+    fs.symlinkSync(".git", path.join(ws, "g"));
+    fs.symlinkSync(path.join(outside, "planted.txt"), path.join(ws, "dangling"));
+  } catch (e) { linked = false; /* no symlinks here */ }
+  if (linked) {
+    o = await Tl.runTool(call({ tool: "write", path: "g/hooks/pre-commit" }, { content: "x" }), ctx2);
+    check("a link to .git does not reach it", !o.ok && /\.git/.test(o.output) && !fs.existsSync(path.join(ws, ".git", "hooks", "pre-commit")));
+    o = await Tl.runTool(call({ tool: "write", path: "dangling" }, { content: "x" }), ctx2);
+    check("a link to something missing is not written through", !o.ok && /does not exist/.test(o.output) && !fs.existsSync(path.join(outside, "planted.txt")));
+  }
+  o = await Tl.runTool(call({ tool: "write", path: "sub/.git/config" }, { content: "x" }), ctx2);
+  check("a nested .git is not written", !o.ok && /\.git/.test(o.output));
+  o = await Tl.runTool(call({ tool: "write", path: ".GIT/hooks/x" }, { content: "x" }), ctx2);
+  check(".git in another case is not written", !o.ok && /\.git/.test(o.output));
 
   o = await Tl.runTool(call({ tool: "edit", path: "src/app.py" }, { edits: [{ search: "y = 2", replace: "y = 3" }] }), ctx2);
   check("edit replaces a unique match", o.ok && /y = 3/.test(fs.readFileSync(path.join(ws, "src/app.py"), "utf-8")) && /\+1 -1/.test(o.summary));
@@ -221,6 +239,12 @@ async function run(check, section) {
   check("grep finds lines, case-insensitively, within a glob", o.ok && o.detail.matches === 2 && /src\/a\.ts:1:/.test(o.output), o.output);
   o = await Tl.runTool(call({ tool: "grep", pattern: "(" }), ctx);
   check("a bad regex is an error, not a crash", !o.ok && /regular expression/.test(o.output));
+  fs.writeFileSync(path.join(ws, "src", ".env"), "API_TOKEN=s3cret\n");
+  o = await Tl.runTool(call({ tool: "grep", pattern: "TOKEN" }), ctx);
+  check("a project-wide grep leaves .env out and says so", o.output.indexOf("s3cret") === -1 && /not searched.*src\/\.env/.test(o.output), o.output);
+  o = await Tl.runTool(call({ tool: "grep", pattern: "TOKEN", path: "src/.env" }), ctx);
+  check("named on its own (after the prompt) it is searched", /s3cret/.test(o.output), o.output);
+  fs.unlinkSync(path.join(ws, "src", ".env"));
   o = await Tl.runTool(call({ tool: "ls" }), ctx);
   check("ls lists directories first", o.ok && o.output.split("\n")[0].endsWith("/"));
   const tctx = { workspace: ws, todos: [] };
@@ -259,6 +283,11 @@ async function run(check, section) {
   const rules = Pm.emptyRules();
   const W = { tool: "write", input: { path: "a" } }, B = (c) => ({ tool: "bash", input: { command: c } });
   check("reading is always allowed, even in plan mode", Pm.decide({ tool: "read", input: {} }, "plan", rules).action === "allow");
+  const env = Pm.decide({ tool: "read", input: { path: "backend/.env" } }, "auto", rules);
+  check("reading a .env asks, even in auto mode, and cannot be remembered", env.action === "ask" && env.alwaysAsk === true);
+  check("so does a key, or a grep aimed at one", Pm.decide({ tool: "read", input: { path: "certs/server.key" } }, "default", rules).action === "ask"
+    && Pm.decide({ tool: "grep", input: { pattern: "KEY", path: ".env.local" } }, "plan", rules).action === "ask");
+  check("an example .env reads freely", Pm.decide({ tool: "read", input: { path: ".env.example" } }, "default", rules).action === "allow");
   check("plan mode refuses writes without asking", Pm.decide(W, "plan", rules).action === "deny");
   check("plan mode refuses commands", Pm.decide(B("ls"), "plan", rules).action === "deny");
   check("default mode asks before a write", Pm.decide(W, "default", rules).action === "ask");
