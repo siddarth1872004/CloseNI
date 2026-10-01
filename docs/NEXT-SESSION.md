@@ -140,10 +140,10 @@ automation, a small game, a developer tool, something embedded or hardware-ish.
 
 **By language**
 
-Every language except C# now has its check proven against a real toolchain,
+Every language now has its check proven against a real toolchain,
 good code passing and broken code failing: `npm run languages`. Running it found
 Go skipped on every machine (the probe used `go --version`, which is not a flag)
-and Java in packages failing on correct code. C# needs a machine with .NET.
+and Java in packages failing on correct code. C# was run last, on 1 October.
 
 ### What each axis is likely to expose
 

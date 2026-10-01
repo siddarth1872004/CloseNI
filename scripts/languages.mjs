@@ -332,6 +332,24 @@ await language('TypeScript project', {
   scope: 'project',
 });
 
+const CSPROJ = '<Project Sdk="Microsoft.NET.Sdk">\n  <PropertyGroup>\n    <OutputType>Exe</OutputType>\n    <TargetFramework>net8.0</TargetFramework>\n    <RollForward>Major</RollForward>\n    <Nullable>enable</Nullable>\n    <ImplicitUsings>enable</ImplicitUsings>\n  </PropertyGroup>\n</Project>\n';
+
+await language('C#, .csproj project', {
+  tools: ['dotnet'],
+  note: 'a type error across files',
+  good: {
+    'demo.csproj': CSPROJ,
+    'Program.cs': 'using Demo;\n\nConsole.WriteLine(Util.Twice(21));\n',
+    'Util.cs': 'namespace Demo;\n\npublic static class Util\n{\n    public static int Twice(int n) => n * 2;\n}\n',
+  },
+  bad: {
+    'demo.csproj': CSPROJ,
+    'Program.cs': 'using Demo;\n\nstring s = Util.Twice(21);\nConsole.WriteLine(s);\n',
+    'Util.cs': 'namespace Demo;\n\npublic static class Util\n{\n    public static int Twice(int n) => n * 2;\n}\n',
+  },
+  scope: 'project',
+});
+
 await language('C, Makefile project', {
   tools: ['make'],
   good: {
