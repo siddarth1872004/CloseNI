@@ -59,7 +59,9 @@ export function describeMachine(platform: string = process.platform): string {
   if (py) {
     facts.push("System Python: " + py.version + "." + (py.managed
       ? " It is externally managed (PEP 668), so pip install into it fails: make a venv first (python3 -m venv .venv) and use .venv/bin/pip."
-      : ""));
+      : "") +
+      " If pip has to build a package from source (no wheel for Python " + py.version + "), that can take many minutes and fail on missing system libraries:" +
+      " retry with --only-binary=:all: and pick an alternative that has a wheel (pygame-ce for pygame).");
   }
   const line = facts.join(" ");
   if (platform === process.platform) cached = line;
