@@ -617,6 +617,7 @@ require("./main/git.js")({
 });
 require("./main/browser.js")({ browsersDir, spawnCwd, getWin: function () { return win; } });
 require("./main/files.js")({ unpackedPath, storageRoot });
+require("./main/run-window.js")();
 
 /*
  * Is the provider signed in, and which conversation is it on?
