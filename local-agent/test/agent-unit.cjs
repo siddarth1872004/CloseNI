@@ -88,6 +88,23 @@ async function run(check, section) {
   const pre = P.preamble({ workspace: "/w", platform: "linux", mode: "plan", memory: "Use tabs." });
   check("the preamble teaches the format, the mode and the memory", /```tool/.test(pre) && /PLAN MODE/.test(pre) && /Use tabs\./.test(pre));
   check("the preamble says to lengthen the fence around a payload with its own fences", /four backticks instead: ````tool/.test(pre));
+  check("the preamble tells the model to write cmd syntax when there is no bash",
+    /Commands run in cmd\.exe, not bash/.test(P.preamble({ workspace: "C:\\w", platform: "win32", mode: "default", shell: "cmd.exe" })));
+  check("the preamble names Git Bash when commands run in it",
+    /Commands run in Git Bash\./.test(P.preamble({ workspace: "C:\\w", platform: "win32", mode: "default", shell: "Git Bash" })));
+
+  section("agent: the shell on Windows");
+  const CRw = require(path.join(DIST, "verification/command-runner.js"));
+  const onDisk = (files) => (p) => files.indexOf(p) !== -1;
+  const pf = "C:\\Program Files";
+  check("Git Bash is found where the installer puts it",
+    CRw.findBash("win32", { ProgramFiles: pf, PATH: "" }, onDisk([pf + "\\Git\\bin\\bash.exe"])) === pf + "\\Git\\bin\\bash.exe");
+  check("Git Bash is found next to a git on PATH",
+    CRw.findBash("win32", { Path: "D:\\tools\\Git\\cmd;C:\\Windows\\System32" }, onDisk(["D:\\tools\\Git\\cmd\\git.exe", "D:\\tools\\Git\\bin\\bash.exe"])) === "D:\\tools\\Git\\bin\\bash.exe");
+  check("WSL's bash.exe is never taken for Git Bash",
+    CRw.findBash("win32", { PATH: "C:\\Windows\\System32" }, onDisk(["C:\\Windows\\System32\\bash.exe"])) === undefined);
+  check("with no Git Bash, commands run in cmd.exe and the shell says so",
+    CRw.agentShell("win32", null) === "cmd.exe" && CRw.agentShell("win32", "C:\\Git\\bin\\bash.exe") === "Git Bash" && CRw.agentShell("linux", "/bin/bash") === "bash");
 
   section("agent: tools stay inside the project");
   const ws = tmp();

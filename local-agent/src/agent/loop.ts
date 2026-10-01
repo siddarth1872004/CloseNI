@@ -15,6 +15,7 @@ import * as path from "path";
 import { parseReply, preamble, formatResults, modeNote, TURN_REMINDER, COMPACT_REQUEST, Mode, ToolCall, BadCall, isBad, describeCall, fenceFor } from "./protocol.js";
 import { runTool, AgentOutcome, ToolContext, TodoItem, applyEdits, resolveInside, cap } from "./tools.js";
 import { decide, remember, SessionRules, emptyRules } from "./permissions.js";
+import { agentShell } from "../verification/command-runner.js";
 import { ConversationSize, emptySize, addTurn, shouldRollOver, describeSize } from "../context-budget.js";
 
 export interface Asker {
@@ -34,6 +35,8 @@ export interface LoopOptions {
   mode?: Mode;
   maxSteps?: number;
   platform?: string;
+  /** The shell named in the preamble; defaults to the one commands run in here. */
+  shell?: string;
   run?: ToolContext["run"];
   /** Wraps the first message of a thread - persona, skills and MCP context. */
   wrapFirst?: (text: string) => string;
@@ -246,6 +249,7 @@ export class AgentLoop {
       parts.push(preamble({
         workspace: this.o.workspace,
         platform: this.o.platform || process.platform,
+        shell: this.o.shell || agentShell(),
         mode: this.mode,
         memory: mem ? mem.text : "",
         date: new Date().toISOString().slice(0, 10),

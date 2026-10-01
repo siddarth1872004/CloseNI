@@ -211,6 +211,12 @@ protocol. This is the product, and everything else is secondary.
   - or use PowerShell;
   - or use Git Bash when it's present.
   Test on Windows.
+  *Written, not run on Windows (D12).* The bash tool runs in Git Bash when it
+  is installed (found under Program Files, LocalAppData or beside a `git.exe`
+  on PATH, never System32's WSL `bash.exe`), else in `cmd.exe`, and the
+  preamble names the shell, telling the model to write cmd syntax in
+  `cmd.exe`. Build and verify commands keep the platform shell. Commands no
+  longer open a console window. Still to do: run both cases on Windows.
 - [ ] **1.12 Long-running commands** (S). A dev server "left running" after its
       timeout: check it's killed when the session ends, on app quit, and on
       `/stop`, on both Linux and Windows. Orphaned servers holding ports are a
