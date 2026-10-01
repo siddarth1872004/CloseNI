@@ -217,7 +217,7 @@ function testRunManifest() {
 
 function testRunTarget() {
   section("run target");
-  const { venvCommand, looksGraphical } = require(path.join(__dirname, "..", "..", "desktop", "run-target.js"));
+  const { venvCommand, looksGraphical, fixPrompt } = require(path.join(__dirname, "..", "..", "desktop", "run-target.js"));
   check("python runs from the project's venv", venvCommand("python3 game.py", "/p/.venv/bin/python") === "/p/.venv/bin/python game.py");
   check("a path with spaces is quoted", venvCommand("python main.py", "/my p/.venv/bin/python") === '"/my p/.venv/bin/python" main.py');
   check("no venv leaves the command alone", venvCommand("python3 game.py", null) === "python3 game.py");
@@ -226,6 +226,14 @@ function testRunTarget() {
   check("a pygame program opens a window", looksGraphical(["import sys\nimport pygame\n"]));
   check("so does a tkinter one", looksGraphical(["from tkinter import ttk"]));
   check("a console program does not", !looksGraphical(["import sys\nprint('pygame')\n"]));
+  const crash = fixPrompt({ command: "python game.py", output: "Traceback\nNameError: x\n\n", code: 1, signal: null, gui: false });
+  check("a fix request names the command and how it ended", crash.indexOf("`python game.py` exited with code 1") !== -1, crash);
+  check("and carries the error", crash.indexOf("```\nTraceback\nNameError: x\n```") !== -1, crash);
+  check("a console program may be rerun to check", crash.indexOf("do not run it") === -1);
+  check("a windowed one may not", fixPrompt({ command: "p", output: "", code: 1, gui: true }).indexOf("do not run it yourself") !== -1);
+  const long = fixPrompt({ command: "p", output: "BANNER\n" + "line\n".repeat(3000) + "KeyError: 'end'\n", code: 1 });
+  check("long output keeps its end", long.indexOf("KeyError: 'end'") !== -1 && long.indexOf("BANNER") === -1 && long.length < 7000, long.length);
+  check("from a line start", long.indexOf("```\n...\nline\n") !== -1);
 }
 
 function testPreviewTarget() {

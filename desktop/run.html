@@ -28,6 +28,7 @@
   .rw-in { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-3) var(--sp-5); border-top: 1px solid var(--line); background: var(--panel); }
   .rw-in span { font-family: monospace; color: var(--mut); font-size: 12px; }
   .rw-in input { flex: 1; background: none; border: 0; outline: none; color: var(--txt); font-family: monospace; font-size: 13px; }
+  .rw-bar .btn.fix { border-color: var(--err); color: var(--err); }
   .hidden { display: none !important; }
 </style>
 </head>
@@ -36,6 +37,7 @@
     <span class="rw-label">▶ RUN</span>
     <span class="rw-cmd" id="cmd"></span>
     <span class="rw-state" id="state">starting</span>
+    <button class="btn btn-sm fix hidden" id="fix" title="Send the error to the CloseNI agent to fix">Fix errors</button>
     <button class="btn btn-sm" id="restart" title="Stop the program and start it again">Restart</button>
     <button class="btn btn-sm" id="stop" title="Stop the program">Stop</button>
     <button class="btn btn-sm" id="full" title="Full screen on or off (F11)">Windowed</button>
@@ -77,6 +79,7 @@
     $("cmd").title = d.cwd;
     document.title = "Run - " + d.command;
     state("running", "running");
+    $("fix").classList.add("hidden");
     line("sys", "$ " + d.command + "\n");
     // A native game window cannot be drawn inside this one, and full screen
     // would cover it, so step aside for it.
@@ -109,8 +112,20 @@
     const how = d.signal ? "stopped (" + d.signal + ")" : "exited with code " + d.code;
     line("sys", "\n[" + how + "]\n");
     state(d.signal ? "stopped" : ok ? "exited 0" : "exit " + d.code, d.signal ? "" : ok ? "ok" : "fail");
+    // A crash is worth handing to the agent; a program you stopped is not.
+    $("fix").classList.toggle("hidden", ok || !!d.signal);
   });
 
+  $("fix").onclick = function () {
+    // One request per failed run: a second click queued the same fix again.
+    $("fix").classList.add("hidden");
+    // Out of full screen, or it covers the agent at work.
+    if (full) setFull(false);
+    window.run.fix().then(function (r) {
+      if (r && r.ok) line("sys", "\n[sent to the CloseNI agent to fix - run it again when it is done]\n");
+      else line("err", "\n[could not send: " + ((r && r.error) || "unknown error") + "]\n");
+    });
+  };
   $("restart").onclick = function () { shownUrl = null; $("view").classList.add("hidden"); window.run.restart(); };
   $("stop").onclick = function () { window.run.stop(); };
   $("full").onclick = function () { setFull(!full); };
