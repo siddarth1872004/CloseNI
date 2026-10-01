@@ -80,11 +80,27 @@
     return encryptionAvailable === true;
   }
 
+  /**
+   * The key store to ask Chromium for, or null to leave its choice alone.
+   *
+   * Chromium picks the keyring itself only on desktops it recognises. On
+   * Hyprland, sway, i3 and the like it falls back to a plain-text key, calls
+   * encryption unavailable, and the token is never remembered, even with a
+   * keyring running. libsecret is what those keyrings speak; with none on the
+   * bus, encryption stays unavailable, as before.
+   */
+  function linuxPasswordStore(platform, desktop, hasSwitch) {
+    if (platform !== "linux" || hasSwitch) return null;
+    if (/gnome|unity|pantheon|xfce|deepin|ukui|cinnamon|kde/i.test(desktop || "")) return null;
+    return "gnome-libsecret";
+  }
+
   var api = {
     redactToken: redactToken,
     safeGitArgs: safeGitArgs,
     parseRepoUrl: parseRepoUrl,
     shouldPersistToken: shouldPersistToken,
+    linuxPasswordStore: linuxPasswordStore,
   };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.CNGit = api;

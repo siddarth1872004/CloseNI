@@ -10,6 +10,11 @@ const EXTRACT = require("./extraction-settings.js");
 const { safeStorage } = require("electron");
 const https = require("https");
 
+// Before ready, or Chromium has already chosen its key store.
+const passwordStore = GH.linuxPasswordStore(process.platform, process.env.XDG_CURRENT_DESKTOP,
+  app.commandLine.hasSwitch("password-store"));
+if (passwordStore) app.commandLine.appendSwitch("password-store", passwordStore);
+
 /**
  * The GitHub token lives here and nowhere else.
  *
