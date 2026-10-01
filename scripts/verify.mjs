@@ -28,6 +28,14 @@ function check(label, ok, detail = '') {
   current.rows.push({ label, ok, detail });
 }
 const read = (p) => readFileSync(join(ROOT, p), 'utf8');
+// The renderer is one script per panel under desktop/renderer/, read as one.
+const RENDERER_FILES = readdirSync(join(ROOT, 'desktop/renderer')).filter((f) => f.endsWith('.js')).sort()
+  .map((f) => 'desktop/renderer/' + f);
+const readRenderer = () => RENDERER_FILES.map(read).join('\n');
+// The main process likewise: main.js and the IPC domains under desktop/main/.
+const MAIN_FILES = ['desktop/main.js', ...readdirSync(join(ROOT, 'desktop/main')).filter((f) => f.endsWith('.js')).sort()
+  .map((f) => 'desktop/main/' + f)];
+const readMain = () => MAIN_FILES.map(read).join('\n');
 const sh = (cmd, args, opts = {}) =>
   execFileSync(cmd, args, { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], ...opts });
 
@@ -146,7 +154,7 @@ check('the roadmap records the concurrency reversal',
 // bullets, ellipses and middots are deliberate typography and must not trip
 // this - the first version of this check flagged them and was wrong.
 const MOJIBAKE = /Ã[-ÿ]|â€|â€™|ðŸ|Â[ -¿]|Å’|Å¸/;
-const mojibakeTargets = ['local-agent/src/index.ts', 'desktop/renderer.js', 'desktop/main.js',
+const mojibakeTargets = ['local-agent/src/index.ts', ...RENDERER_FILES, ...MAIN_FILES,
   'desktop/builder.js', 'README.md'];
 const garbled = mojibakeTargets.filter((f) => MOJIBAKE.test(read(f)));
 check('no mojibake in source', garbled.length === 0, garbled.join(', '));
@@ -178,13 +186,13 @@ const preload = read('desktop/preload.js');
 check('the build state is saved on every status change',
   /function setStatusOf[\s\S]{0,300}saveBuildState\(\)/.test(builder));
 check('and restored when a workspace is opened',
-  /restoreBuild/.test(read('desktop/renderer.js')));
+  /restoreBuild/.test(readRenderer()));
 check('the restored plan replaces the one in memory',
-  /restored\)\s*\{\s*currentPlan = restored/.test(read('desktop/renderer.js')));
+  /restored\)\s*\{\s*currentPlan = restored/.test(readRenderer()));
 check('the build state is reachable from the renderer',
   /readBuildState/.test(preload) && /writeBuildState/.test(preload));
 check('a resumed build keeps what the conversation has been shown',
-  /const resuming = steps\.some/.test(builder) && /AGENT_RESUMING/.test(read('desktop/main.js')));
+  /const resuming = steps\.some/.test(builder) && /AGENT_RESUMING/.test(readMain()));
 check('a step is told whether the conversation still has the plan',
   /threadHasContext: resumed/.test(agent));
 check('full context is sent when the thread is cold, not only on step 0',
@@ -199,9 +207,9 @@ check('a checkpoint is taken before every apply, not just the first',
 check('a step that ran out of attempts undoes its own changes',
   /attempt > maxFollowUps[\s\S]{0,600}restoreFailedStep\(workspace, checkpoint, stepIndex\)[\s\S]{0,160}if \(restored\.unrestorable\.length\) writeCheckpoint\(workspace, checkpoint\)/.test(agent));
 check('the rollback is planned and applied as two steps',
-  /plan-rollback/.test(read('desktop/main.js')) && /apply-rollback/.test(read('desktop/main.js')));
+  /plan-rollback/.test(readMain()) && /apply-rollback/.test(readMain()));
 check('rollback refuses paths outside the workspace',
-  /function inside\(rel\)[\s\S]{0,260}startsWith\('\.\.'\)|function inside\(rel\)[\s\S]{0,260}startsWith\("\.\."\)/.test(read('desktop/main.js')));
+  /function inside\(rel\)[\s\S]{0,260}startsWith\('\.\.'\)|function inside\(rel\)[\s\S]{0,260}startsWith\("\.\."\)/.test(readMain()));
 check('the user confirms before anything is written',
   /if \(!confirm\(msg\)\) return;[\s\S]{0,120}applyRollback/.test(builder));
 check('drifted files are named in that confirmation',
@@ -219,21 +227,21 @@ check('repairs count towards the conversation too',
 // the security-relevant part. An MCP server is an arbitrary subprocess the user
 // configured, which is a new category of thing this app runs.
 check('a skill name is refused rather than sanitised',
-  /isSafeName/.test(read('desktop/main.js')) &&
+  /isSafeName/.test(readMain()) &&
   /[Rr]efused rather than sanitised/.test(read('local-agent/src/skill-store.ts')));
 check('MCP context is gathered once per build, not per step',
-  /gather-mcp-context/.test(read('desktop/main.js')) &&
+  /gather-mcp-context/.test(readMain()) &&
   !/gatherMcpContext/.test(read('desktop/builder.js')));
 check('the preamble travels as an environment variable, like provider controls',
-  /AGENT_PREAMBLE = JSON\.stringify/.test(read('desktop/main.js')));
+  /AGENT_PREAMBLE = JSON\.stringify/.test(readMain()));
 check('a status probe sends no preamble',
-  /agentEnv\("0", null\)/.test(read('desktop/main.js')));
+  /agentEnv\("0", null\)/.test(readMain()));
 
 // Recent workspaces, and the bug adding them exposed: renderPlanDocument hands
 // the plan to the builder, which resets every status to pending - correct for a
 // new plan, destructive for a restored one. Resume had been silently broken
 // since it landed, and the wrong statuses were being written back to disk.
-const rendererSrc = read('desktop/renderer.js');
+const rendererSrc = readRenderer();
 check('restoring a build does not reset its statuses',
   /renderPlanDocument\(restored, \{ keepBuild: true \}\)/.test(rendererSrc) &&
   /!\(opts && opts\.keepBuild\)/.test(rendererSrc));
@@ -275,7 +283,7 @@ check('the CLI is shipped and installable',
 // step totals guessed at.
 const timing = read('desktop/step-timing.js');
 check('timing comes from observed phases, not inference',
-  /CN\.notePhase/.test(read('desktop/renderer.js')) && /markPhase\(stepTimer/.test(builder));
+  /CN\.notePhase/.test(readRenderer()) && /markPhase\(stepTimer/.test(builder));
 check('time nobody accounted for is named, not folded into a neighbour',
   /UNATTRIBUTED/.test(timing));
 check('timing survives a restart', /timing\?: \{ totalMs/.test(read('local-agent/src/build-state.ts')));
@@ -285,7 +293,7 @@ check('stored timing is re-validated on read', /function readTiming/.test(read('
 // silently produces an unschedulable graph - which falls back to the chain and
 // undoes the scheduler work rather than failing loudly.
 const planEdit = read('desktop/plan-edit.js');
-const rendererJs = read('desktop/renderer.js');
+const rendererJs = readRenderer();
 check('plan edits go through the remapping module, never the array directly',
   /window\.CNPlanEdit\.(moveStep|deleteStep|mergeStepUp)/.test(rendererJs) &&
   !/currentPlan\.steps\.splice/.test(rendererJs));
@@ -295,11 +303,11 @@ check('an invalid move is refused rather than silently dropping a dependency',
 check('an undeclared step is not turned into a declared one',
   /if \(!declared\) return Object\.assign\(\{\}, step\)/.test(planEdit));
 check('the editor is loaded before the renderer that uses it',
-  indexHtml.indexOf('<script src="plan-edit.js">') < indexHtml.indexOf('<script src="renderer.js">'));
+  indexHtml.indexOf('<script src="plan-edit.js">') < indexHtml.indexOf('<script src="renderer/core.js">'));
 
 // Exporting a build as git history. Two of these are bugs that only showed up
 // by running it against a real repository.
-const mainJs = read('desktop/main.js');
+const mainJs = readMain();
 check('every step stages every build path, not only what it touched',
   /const allPaths = Object\.keys\(touchedAt\)/.test(read('local-agent/src/export-branch.ts')));
 check('the working tree is restored whatever happens',
@@ -421,7 +429,7 @@ check('there is an opt-in interop check against a real server',
 check('a checkpoint records the step title, not the whole prompt',
   /req\.title \|\| stepDetail/.test(agent));
 check('and the title is sent by both the app and the CLI',
-  /title: payload\.title/.test(read('desktop/main.js')) &&
+  /title: payload\.title/.test(readMain()) &&
   /title: steps\[i\]\.title/.test(read('bin/closeni.js')));
 
 // The stream tap wrapped fetch only, and DeepSeek's page never calls fetch -
@@ -480,7 +488,7 @@ check('a failing test gets its own follow-up',
 check('the follow-up does not decide which is wrong',
   /either could be at fault/.test(read('local-agent/src/follow-up.ts')));
 check('testable survives the renderer', /testable: s\.testable === true/.test(builder));
-check('and the IPC to the session', /testable: !!payload\.testable/.test(read('desktop/main.js')));
+check('and the IPC to the session', /testable: !!payload\.testable/.test(readMain()));
 check('and a restart', /testable\?: boolean/.test(read('local-agent/src/build-state.ts')));
 
 // Type checking. The flags are the feature: without --ignore-missing-imports a
@@ -507,9 +515,9 @@ check('a failed probe does not stop a build',
 check('the read path is judged against a resumed conversation',
   /conversationResumed: resumed/.test(agent));
 check('there is an on-demand check too',
-  /provider-health/.test(read('desktop/main.js')) && /acct-health/.test(read('desktop/index.html')));
+  /provider-health/.test(readMain()) && /acct-health/.test(read('desktop/index.html')));
 check('the on-demand check is queued against the profile lock',
-  /refuseWhileBuilding\("The selector check"\)/.test(read('desktop/main.js')));
+  /refuseWhileBuilding\("The selector check"\)/.test(readMain()));
 
 check('the size is stored with the ledger, so both reset together',
   /entry\.buildLedger = \{\};[\s\S]{0,120}entry\.conversationSize/.test(read('local-agent/src/session-store.ts')));
@@ -602,7 +610,8 @@ if (!QUICK) {
     const list = sh('npx', ['asar', 'list', asar]).split('\n');
     const leaked = list.filter((f) => /storage\/|sessions\.json|last-chat-url|browser-profiles/.test(f));
     check('no session data in the artifact', leaked.length === 0, leaked.slice(0, 5).join(', '));
-    for (const need of ['/local-agent/dist/index.js', '/desktop/main.js', '/desktop/theme.js', '/build/icon.png']) {
+    for (const need of ['/local-agent/dist/index.js', '/desktop/main.js', '/desktop/main/github.js',
+      '/desktop/renderer/core.js', '/desktop/theme.js', '/build/icon.png']) {
       check(`artifact contains ${need}`, list.includes(need));
     }
     check('artifact bundles playwright', list.some((f) => f.startsWith('/node_modules/playwright')));

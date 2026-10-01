@@ -1,7 +1,7 @@
 /*
  * The Code panel: a coding agent in the style of a terminal one.
  *
- * Loaded after renderer.js (it uses window.CN, renderMarkdown, CNDiff and
+ * Loaded after the renderer/ scripts (it uses window.CN, renderMarkdown, CNDiff and
  * CNCode). The agent lives in a long-lived process started on the first
  * message; this file only draws what it reports and sends what the user
  * types. Everything it shows comes from an event - nothing here guesses at

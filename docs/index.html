@@ -467,8 +467,9 @@ step 2/7: Database models                             <span class="ok">done</spa
       hand — and that is exactly how its end-to-end suite drives it, against a mock chat
       server with only the model's answers faked.</p>
 <pre>  desktop/            Electron
-    main.js           IPC · git · the GitHub token · spawns the agent
-    renderer.js       panels, plan review, diffs, settings
+    main.js           the window · spawns the agent · sessions
+    main/             IPC by domain · git · the GitHub token
+    renderer/         panels, plan review, diffs, settings
     builder.js        the step scheduler
         │
         │  spawn, JSON over stdio
