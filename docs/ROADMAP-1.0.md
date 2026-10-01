@@ -40,7 +40,7 @@ Anything not needed for those six goes to [After 1.0](#after-10).
 | Unit tests | 1830 passing (`npm test`) |
 | Coding agent, live | **Worked** on a first DeepSeek run: wrote a todo CLI, built a venv, 13/13 pytest, then ran the demo. Five defects were found along the way (see Phase 1). |
 | Planned build, live | Worked on 11 August (3/3 steps). A 15-step Flask build later exposed venv failures, which are fixed but not re-verified. |
-| DeepSeek | Works. `sendButton` misses (Enter is used instead), and the Mode control does nothing. |
+| DeepSeek | Works. Prompts are sent with Enter by design. The broken Mode control is gone. |
 | Qwen Studio | Gated: completion wait too short for a thinking model |
 | GLM | Gated: selectors never confirmed, and the site declines build prompts |
 | Ollama | Works for Chat only. Refused by plan and build. |
@@ -152,12 +152,20 @@ protocol. This is the product, and everything else is secondary.
       bash exists, and fall back to `sh` otherwise. The model sees the output
       either way, but the UI's "exit 0" misleads the user. Done. Exit 141 (a stage
       stopped by SIGPIPE, as in `cat log | head`) still counts as success.
-- [ ] **1.5 DeepSeek `sendButton`** (S). It matches only `<button>`, and
+- [x] **1.5 DeepSeek `sendButton`** (S). It matches only `<button>`, and
       DeepSeek's send control is a div, so every prompt logs "No send button
       found". Re-capture it with `node scripts/capture-provider-ui.mjs deepseek`
       and update `config/providers/deepseek.json`. Or, if the only stable
       selector is a hashed class, drop `sendButton` and make Enter the
       documented path. That is the "need fewer selectors" rule in `archive/NEXT.md`.
+      *1 Oct, done: dropped.* The 11 August measurement already showed the
+      send control is also the stop control, told apart only by hashed classes,
+      so no re-capture could find a stable selector. (The saved profile was
+      signed out on 1 Oct, too.) `sendButton` is now empty for DeepSeek, and
+      the config says why. The controller sends with Enter without logging a
+      miss. The health check reports an unconfigured send button as skipped,
+      not degraded. The browser layer's send chain is empty, so no heuristic can
+      click the stop control by mistake.
 - [x] **1.6 DeepSeek Mode control does nothing** (S). The
       `[role="radiogroup"] [data-model-type]` selector points at UI DeepSeek
       no longer has. Remove `controls[0]` and `controlSelectors.modeOption`,

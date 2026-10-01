@@ -601,10 +601,14 @@ export class PlaywrightController {
     await this.page.waitForTimeout(1000);
 
     try {
-      const sendBtn = await this.page.$(config.selectors.sendButton);
+      // A provider with no send selector sends with Enter by design (DeepSeek).
+      const sendBtn = config.selectors.sendButton ? await this.page.$(config.selectors.sendButton) : null;
       if (sendBtn) {
         console.log("Clicking send button...");
         await sendBtn.click();
+      } else if (!config.selectors.sendButton) {
+        console.log("Sending with Enter...");
+        await input.press("Enter");
       } else {
         console.log("No send button found, pressing Enter...");
         await input.press("Enter");

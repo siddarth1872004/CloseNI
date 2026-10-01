@@ -472,6 +472,10 @@ function testSelectorHealth() {
     { conversationResumed: true, configured: { assistantMessage: false, copyButton: false } });
   check("an unconfigured selector is skipped", find(unconfigured, "copyButton").health === "skipped");
   check("and does not fail the provider", unconfigured.ok === true);
+  const enterOnly = H.judgeSelectors(Object.assign({}, full, { sendButton: 0 }),
+    { conversationResumed: true, configured: { sendButton: false } });
+  check("a provider that sends with Enter has its send button skipped, not degraded",
+    find(enterOnly, "sendButton").health === "skipped" && /Enter/.test(find(enterOnly, "sendButton").note));
 
   // Nothing at all must not throw, and must not read as healthy.
   const empty = H.judgeSelectors({}, { conversationResumed: false });
