@@ -492,55 +492,6 @@ ${frame(0, 0, COLS, ROWS, C.edge)}
 `;
 }
 
-// ------------------------------------------------- pixel strip for the site --
-// A compact looping build strip the Pages hero can sit beside.
-
-function buildStrip() {
-  const CYCLE = 7;
-  const COLS = 142;
-  const ROWS = 22;
-  const W = COLS * PX;
-  const H = ROWS * PX;
-
-  let g = '';
-  const y = 8;
-  const n = 7;
-  const bw = 15;
-  const outcome = ['ok', 'ok', 'ok', 'fail', 'ok', 'ok', 'ok'];
-
-  for (let i = 0; i < n; i++) {
-    const x = 4 + i * (bw + 3);
-    g += frame(x, y, bw, 6, C.edge);
-    // A resting fill, so no frame of the animation is blank.
-    //
-    // These boxes used to be empty outlines until their fill animated in, which
-    // meant the first second of every seven-second cycle showed seven hollow
-    // rectangles - indistinguishable from an image that failed to load, and
-    // reported as exactly that. A pending step now looks pending.
-    g += run(x + 1, y + 1, bw - 2, 4, C.edge2);
-    const t0 = 0.35 + i * 0.7;
-    const col = outcome[i] === 'fail' ? C.red : C.green;
-    g += `<g opacity="0">${run(x + 1, y + 1, bw - 2, 4, col)}${visible(t0, CYCLE, CYCLE)}</g>`;
-    // the failing block flips to green when the repair lands
-    if (outcome[i] === 'fail') {
-      g += `<g opacity="0">${run(x + 1, y + 1, bw - 2, 4, C.green)}${visible(t0 + 1.4, CYCLE, CYCLE)}</g>`;
-      g += `<g opacity="0">${sprite(CROSS, x + 4, y - 8, { x: C.red })}${visible(t0, t0 + 1.4, CYCLE)}</g>`;
-    }
-    g += `<text x="${(x + bw / 2) * PX}" y="${(y + 9) * PX}" fill="${C.dim}" font-size="10" text-anchor="middle">${i + 1}</text>`;
-  }
-  g += `<g opacity="0">${sprite(CHECK, COLS - 8, y + 1, { c: C.green })}${visible(6.0, CYCLE, CYCLE)}</g>`;
-
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" shape-rendering="crispEdges" aria-label="Seven build steps filling in, one failing and turning green after a repair">
-<title>Seven steps, one repair</title>
-<rect width="${W}" height="${H}" fill="none"/>
-<g font-family="${MONO}">
-  <text x="${4 * PX}" y="${4.6 * PX}" fill="${C.dim}" font-size="10.5" letter-spacing="2.2">BUILD</text>
-  ${g}
-</g>
-</svg>
-`;
-}
-
 // ---------------------------------------------------------------- divider ----
 // A rule made of pixels, with a few brighter ones marching along it.
 
@@ -1394,7 +1345,6 @@ const files = {
   'banner.svg': banner(),
   'pipeline.svg': pipeline(),
   'repair-loop.svg': repairLoop(),
-  'build-strip.svg': buildStrip(),
   'divider.svg': divider(),
   'themes-strip.svg': themesStrip(),
   'verify-strip.svg': verifyStrip(),
