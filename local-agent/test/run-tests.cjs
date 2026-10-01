@@ -21,6 +21,9 @@ const { selectRelevantFiles, extractSignatures } = require(path.join(DIST, "cont
 const F = "```";
 let pass = 0;
 let fail = 0;
+// Sections that need Chromium skip without it, so npm test runs on a machine
+// with no browser. The summary names them, and CI, which has Chromium, fails.
+const skipped = [];
 
 function check(name, cond, extra) {
   if (cond) {
@@ -2476,6 +2479,7 @@ async function testReaderSweep() {
     browser = await require("playwright").chromium.launch();
   } catch (e) {
     console.log("  skip (chromium unavailable: " + String(e.message).split("\n")[0] + ")");
+    skipped.push("reader sweep");
     return;
   }
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "agentic-readers-"));
@@ -2603,6 +2607,7 @@ async function testSelectorSyntax() {
     browser = await require("playwright").chromium.launch();
   } catch (e) {
     console.log("  skip (chromium unavailable: " + String(e.message).split("\n")[0] + ")");
+    skipped.push("selector sweep");
     return;
   }
   const bad = [];
@@ -4613,7 +4618,11 @@ function testUnittestFallback() {
   // The coding agent (src/agent): protocol, tools, permissions and the loop.
   await require("./agent-unit.cjs").run(check, section);
 
-  console.log("\n" + (fail === 0 ? "PASS" : "FAIL") + " — " + pass + " passed, " + fail + " failed");
+  if (skipped.length) {
+    console.log("\nSkipped, as Chromium is not installed (npx playwright install chromium): " + skipped.join(", "));
+    if (process.env.CI) fail++;
+  }
+  console.log("\n" + (fail === 0 ? "PASS" : "FAIL") + " — " + pass + " passed, " + fail + " failed" + (skipped.length ? ", " + skipped.length + " sections skipped" : ""));
   process.exit(fail === 0 ? 0 : 1);
 })().catch((e) => {
   console.error("test runner threw:", e);
