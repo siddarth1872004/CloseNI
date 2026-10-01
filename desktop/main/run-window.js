@@ -8,12 +8,14 @@ const fs = require("fs");
 const path = require("path");
 const { spawn, spawnSync } = require("child_process");
 const { app, BrowserWindow, ipcMain } = require("electron");
-const { venvCommand, looksGraphical, fixPrompt } = require("../run-target.js");
+const { venvCommand, looksGraphical, fixPrompt, checkableHeadless, startedOk, HEADLESS } = require("../run-target.js");
 
 const VENVS = [".venv", "venv", "env"];
 const SOURCE = /\.(py|js|mjs|ts|rb|go|rs|c|cpp|java|lua)$/;
 // Output kept for "Fix errors": the end is where the error is.
 const KEEP = 20000;
+// How long a start check lets the program run: past its imports and first frame.
+const CHECK_MS = 5000;
 
 /** The project's venv interpreter, or null. */
 function venvPython(cwd) {
@@ -58,6 +60,10 @@ module.exports = function runWindow() {
     const p = proc;
     if (!p) return;
     proc = null;
+    killGroup(p);
+  }
+
+  function killGroup(p) {
     if (process.platform === "win32") { try { spawnSync("taskkill", ["/pid", String(p.pid), "/T", "/F"]); } catch (e) {} return; }
     try { process.kill(-p.pid, "SIGTERM"); } catch (e) {}
     setTimeout(function () { try { process.kill(-p.pid, "SIGKILL"); } catch (e) {} }, 3000).unref();
@@ -107,6 +113,37 @@ module.exports = function runWindow() {
     win.webContents.once("did-finish-load", start);
     win.on("closed", function () { stop(); win = null; });
     return { ok: true };
+  });
+
+  // Before "Run this project" is offered: start a program with a window
+  // unseen for a few seconds. The Sigma game passed every unit test and died
+  // on import; this catches that before the user is told it is ready.
+  // stdin stays open and unwritten, so a prompt for input waits rather than
+  // failing on end of file.
+  ipcMain.handle("check-run", function (event, payload) {
+    const cwd = payload && payload.cwd;
+    const asked = String((payload && payload.command) || "").trim();
+    if (!asked || !cwd || !checkableHeadless(sources(cwd))) return { checked: false };
+    const command = venvCommand(asked, venvPython(cwd));
+    return new Promise(function (resolve) {
+      const run = { command: command, output: "", code: null, signal: null, timedOut: false };
+      const p = spawn(command, {
+        cwd: cwd, shell: true, detached: process.platform !== "win32",
+        env: Object.assign({}, process.env, { PYTHONUNBUFFERED: "1" }, HEADLESS),
+      });
+      const timer = setTimeout(function () { run.timedOut = true; killGroup(p); }, CHECK_MS);
+      function output(d) { run.output = (run.output + d.toString()).slice(-KEEP); }
+      p.stdout.on("data", output);
+      p.stderr.on("data", output);
+      p.on("error", function (e) { output(String(e) + "\n"); });
+      p.on("close", function (code, signal) {
+        clearTimeout(timer);
+        run.code = code;
+        run.signal = run.timedOut ? null : signal;
+        const ok = startedOk(run);
+        resolve({ checked: true, ok: ok, command: command, prompt: ok ? "" : fixPrompt(Object.assign({ gui: true }, run)) });
+      });
+    });
   });
 
   ipcMain.handle("run-window-restart", function () { if (job) start(); });

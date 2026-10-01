@@ -60,6 +60,7 @@ contextBridge.exposeInMainWorld("api", {
   endSession: function () { return ipcRenderer.invoke("end-session"); },
   runCommand: function (p) { return ipcRenderer.invoke("run-command", p); },
   openRunWindow: function (p) { return ipcRenderer.invoke("open-run-window", p); },
+  checkRun: function (p) { return ipcRenderer.invoke("check-run", p); },
   onRunFix: function (cb) { ipcRenderer.on("run-fix", function (e, d) { cb(d); }); },
   git: function (p) { return ipcRenderer.invoke("git", p); },
   exportBranch: function (p) { return ipcRenderer.invoke("export-branch", p); },
