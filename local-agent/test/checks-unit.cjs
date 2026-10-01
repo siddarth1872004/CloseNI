@@ -339,6 +339,8 @@ function testEntrypoint() {
   check("src/index.js", detectEntrypoint(["src/index.js"], null) === "node src/index.js");
 
   check("root main.py beats src/main.py", detectEntrypoint(["src/main.py", "main.py"], null) === "python3 main.py");
+  check("a lone script at the root runs, beside its tests", detectEntrypoint(["game.py", "test_game.py", "README.md"], null) === "python3 game.py");
+  check("two loose scripts are not guessed between", detectEntrypoint(["game.py", "tools.py"], null) === null);
   check("python beats javascript when both exist", detectEntrypoint(["index.js", "main.py"], null) === "python3 main.py");
 
   // Manifests beat loose files: a Cargo project is `cargo run`, whatever else
