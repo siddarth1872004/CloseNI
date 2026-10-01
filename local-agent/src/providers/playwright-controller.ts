@@ -93,6 +93,23 @@ function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+/**
+ * Page calls that have no timeout of their own - evaluate, count, all - wait
+ * forever on a page that stops answering, and the reply reader is the last
+ * thing between a finished reply and the agent. Its callers already treat an
+ * error as "nothing read", so a stalled call becomes that instead of a hang.
+ */
+const PAGE_CALL_MS = 15000;
+function bounded<T>(p: Promise<T>, what: string, ms: number = PAGE_CALL_MS): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => {
+      console.log("Reading the reply: " + what + " did not answer in " + Math.round(ms / 1000) + "s - skipping it.");
+      reject(new Error(what + " timed out"));
+    }, ms);
+    p.then((v) => { clearTimeout(t); resolve(v); }, (e) => { clearTimeout(t); reject(e); });
+  });
+}
+
 const DEFAULT_MAX_WAIT_MS = 120000;
 const POLL_INTERVAL_MS = 2000;
 // How long the reply length must hold steady before it counts as finished.
@@ -972,7 +989,7 @@ export class PlaywrightController {
       const message = this.page.locator(assistant).last();
       // Text-filtered: the same markup renders Download beside Copy.
       const buttons = message.locator(sel).filter({ hasText: /^\s*copy\s*$/i });
-      const n = await buttons.count();
+      const n = await bounded(buttons.count(), "counting Copy buttons");
       if (!n) return null;
 
       const out: string[] = [];
@@ -981,8 +998,8 @@ export class PlaywrightController {
         try { await btn.scrollIntoViewIfNeeded({ timeout: 2000 }); } catch { /* fine */ }
         await btn.click({ timeout: 3000 });
         await sleep(120);
-        const text: string = await this.page.evaluate(
-          () => (globalThis as any).navigator.clipboard.readText());
+        const text: string = await bounded(this.page.evaluate(
+          () => (globalThis as any).navigator.clipboard.readText()), "reading the clipboard", 5000);
         if (typeof text !== "string" || !text.trim()) return null;
         out.push(text.replace(/\n$/, ""));
       }
@@ -996,7 +1013,7 @@ export class PlaywrightController {
     if (!this.page) throw new Error("Browser not launched");
     try {
       const sel = await this.assistantSelector(config);
-      const messageLocators = await this.page.locator(sel).all();
+      const messageLocators = await bounded(this.page.locator(sel).all(), "finding the reply");
       if (messageLocators.length === 0) return "";
       const lastMessageLocator = messageLocators[messageLocators.length - 1];
 
@@ -1015,45 +1032,110 @@ export class PlaywrightController {
       //
       // The language is kept on the fence too, because sites carry it as a
       // class on <code> and a path can ride there.
-      const parts: string[] = await lastMessageLocator.evaluateAll((els: any[]) => {
+      const parts: string[] = await bounded(lastMessageLocator.evaluateAll((els: any[]) => {
         const root = els[els.length - 1];
         if (!root) return [];
         const out: string[] = [];
+        // "Copy Download" and friends are toolbar buttons, not content.
+        const JUNK = /^(?:[\w#+.-]+\s+)?(?:Copy\s+Download|Copy|Download)$/i;
+        const LANG_WORD = /^[a-z][a-z0-9+#.-]{0,15}$/i;
+        // tr so a table reads row by row rather than as every cell glued together.
+        const BLOCKS = "p,div,section,article,ul,ol,li,pre,table,tr,blockquote,h1,h2,h3,h4,h5,h6,hr,figure,details,dl";
+        const tagOf = (el: any): string => String(el.tagName || "").toLowerCase();
+        const isControl = (el: any): boolean => {
+          const role = String(el.getAttribute && el.getAttribute("role") || "");
+          return tagOf(el) === "button" || role === "button" || role === "toolbar" || role === "menu";
+        };
+        const isBlock = (el: any): boolean => el.matches(BLOCKS) || !!el.querySelector(BLOCKS);
+        const pushFence = (pre: any, label: string): void => {
+          const code = pre.querySelector("code") || pre;
+          const cls = String(code.getAttribute && code.getAttribute("class") || "");
+          const lang = (cls.match(/language-([\w+#-]+)/) || [])[1] || label;
+          const text = String(code.textContent || "").replace(/\n$/, "");
+          // Longer than any backtick run inside, so a README's own ``` blocks
+          // do not close this one.
+          let run = 2;
+          for (const r of text.match(/`+/g) || []) run = Math.max(run, r.length);
+          const fence = "`".repeat(run + 1);
+          if (text.trim()) out.push(fence + lang + "\n" + text + "\n" + fence);
+        };
+        // A code-block wrapper: one <pre> plus, at most, a banner naming the
+        // language and some controls (web/semantic/blocks.ts codeWrapper).
+        // Walking it as prose puts a stray "python" line above the block.
+        const wrapped = (el: any): { pre: any; label: string } | null => {
+          const pres: any[] = [];
+          const other: string[] = [];
+          const scan = (x: any): void => {
+            for (const n of x.childNodes) {
+              if (n.nodeType === 3) { const t = String(n.textContent || "").trim(); if (t) other.push(t); continue; }
+              if (n.nodeType !== 1 || isControl(n)) continue;
+              // A paragraph is prose even when it is one word; a banner never is one.
+              if (/^(p|li|h[1-6]|blockquote)$/.test(tagOf(n)) && String(n.textContent || "").trim()) other.push("\n");
+              else if (tagOf(n) === "pre") pres.push(n); else scan(n);
+            }
+          };
+          scan(el);
+          const words = other.filter((t) => !JUNK.test(t));
+          if (pres.length !== 1) return null;
+          if (words.length === 0) return { pre: pres[0], label: "" };
+          if (words.length === 1 && LANG_WORD.test(words[0])) return { pre: pres[0], label: words[0] };
+          return null;
+        };
+        // Inline content - text nodes and elements with no block inside - is
+        // read as one run, so "Now I'll edit <code>x.py</code>:" keeps its words.
+        // Inline code keeps its backticks: "Create `src/app.py`:" is how the
+        // fenced-file reader tells which file the next block is.
+        const inline = (nodes: any[]): string => nodes.map((n: any): string => {
+          // Newlines stay, as the structured reader keeps them: a renderer
+          // leaves a soft line break in the text, and "Step 1: ..." lines are
+          // what the plan rescue splits on.
+          if (n.nodeType === 3) return String(n.textContent || "").replace(/[ \t\f\v\r]+/g, " ");
+          if (n.nodeType !== 1 || isControl(n)) return "";
+          const tag = tagOf(n);
+          if (tag === "br") return "\n";
+          if (tag === "code") {
+            const t = String(n.textContent || "");
+            return !t ? "" : t.includes("`") ? "`` " + t + " ``" : "`" + t + "`";
+          }
+          if (tag === "td" || tag === "th") return "| " + inline(Array.from(n.childNodes)) + " ";
+          return inline(Array.from(n.childNodes));
+        }).join("");
         const walk = (el: any): void => {
-          const tag = String(el.tagName || "").toLowerCase();
-          if (tag === "pre") {
-            const code = el.querySelector("code") || el;
-            const cls = String(code.getAttribute && code.getAttribute("class") || "");
-            const lang = (cls.match(/language-([\w+#-]+)/) || [])[1] || "";
-            const text = String(code.textContent || "").replace(/\n$/, "");
-            if (text.trim()) out.push("```" + lang + "\n" + text + "\n```");
-            return;
+          if (tagOf(el) === "pre") { pushFence(el, ""); return; }
+          const w = wrapped(el);
+          if (w) { pushFence(w.pre, w.label); return; }
+          let run: any[] = [];
+          const flush = (): void => {
+            const t = inline(run).replace(/[ \t]*\n[ \t]*/g, "\n").trim();
+            if (t && !JUNK.test(t)) out.push(t);
+            run = [];
+          };
+          for (const n of el.childNodes) {
+            if (n.nodeType === 1 && isBlock(n)) { flush(); walk(n); } else run.push(n);
           }
-          if (el.children && el.children.length) {
-            for (const c of el.children) walk(c);
-            return;
-          }
-          const t = String(el.textContent || "").trim();
-          // "Copy Download" and friends are toolbar buttons, not content.
-          if (t && !/^(?:[\w#+.-]+\s+)?(?:Copy\s+Download|Copy|Download)$/i.test(t)) out.push(t);
+          flush();
         };
         walk(root);
         return out;
-      });
+      }), "reading the reply's text");
 
       // Upgrade the code with what the provider itself would copy, keeping the
       // prose the DOM gave us. Only when the counts agree - a mismatch means
       // the two views disagree about how many blocks there are, and guessing an
       // alignment would put one file's code under another file's heading.
-      let blocks = parts.filter((t) => t.startsWith("\u0060\u0060\u0060"));
+      const FENCED = /^(\u0060{3,})([^\n]*)/;
+      let blocks = parts.filter((t) => FENCED.test(t));
       if (blocks.length) {
         const copied = await this.copiedCodeBlocks(config);
         if (copied && copied.length === blocks.length) {
           let i = 0;
           for (let k = 0; k < parts.length; k++) {
-            if (!parts[k].startsWith("\u0060\u0060\u0060")) continue;
-            const lang = (parts[k].match(/^\u0060\u0060\u0060([^\n]*)/) || ["", ""])[1];
-            parts[k] = "\u0060\u0060\u0060" + lang + "\n" + copied[i] + "\n\u0060\u0060\u0060";
+            const m = FENCED.exec(parts[k]);
+            if (!m) continue;
+            let run = 2;
+            for (const r of copied[i].match(/`+/g) || []) run = Math.max(run, r.length);
+            const fence = "`".repeat(run + 1);
+            parts[k] = fence + m[2] + "\n" + copied[i] + "\n" + fence;
             i++;
           }
           console.log("Read " + copied.length + " code block(s) from the provider's own Copy button.");
@@ -1062,7 +1144,7 @@ export class PlaywrightController {
 
       const joined = (parts || []).join("\n\n").trim();
       if (joined) return joined;
-      return (await lastMessageLocator.textContent()) || "";
+      return (await lastMessageLocator.textContent({ timeout: PAGE_CALL_MS })) || "";
     } catch {
       return "";
     }
@@ -1080,24 +1162,124 @@ export class PlaywrightController {
         function isJunk(t: string): boolean {
           return /^(?:[\w#+.-]+\s+)?(?:Copy\s+Download|Copy|Download)$/i.test(t);
         }
+        // A code-block wrapper: one <pre> plus a banner naming the language and
+        // some controls. DeepSeek's banner otherwise leaves a stray "tool" line
+        // above every block, and the label belongs on the fence - a ```tool
+        // block is read more leniently than an unlabelled one.
+        function codeLabel(el: any): string | null {
+          const pres: any[] = [];
+          const words: string[] = [];
+          (function scan(x: any): void {
+            for (let i = 0; i < x.childNodes.length; i++) {
+              const n = x.childNodes[i];
+              if (n.nodeType === 3) { const t = (n.textContent || "").trim(); if (t) words.push(t); continue; }
+              if (n.nodeType !== 1) continue;
+              const t = (n.tagName || "").toLowerCase();
+              const role = n.getAttribute("role") || "";
+              if (t === "button" || role === "button" || role === "toolbar" || role === "menu") continue;
+              if (/^(p|li|h[1-6]|blockquote)$/.test(t) && (n.textContent || "").trim()) words.push("\n");
+              else if (t === "pre") pres.push(n); else scan(n);
+            }
+          })(el);
+          const rest = words.filter(function (t: string) { return !isJunk(t); });
+          if (pres.length !== 1) return null;
+          if (rest.length === 0) return "";
+          return rest.length === 1 && /^[a-z][a-z0-9+#.-]{0,15}$/i.test(rest[0]) ? rest[0] : null;
+        }
+        // Longer than any backtick run inside, so a README's own ``` blocks
+        // do not close this one.
+        function fenced(pre: any, label: string): string {
+          const code = pre.querySelector("code") || pre;
+          const lang = ((code.getAttribute("class") || "").match(/language-([\w+#-]+)/) || [])[1] || label;
+          const text = (code.textContent || "").replace(/\n$/, "");
+          let run = 2;
+          const runs = text.match(/`+/g) || [];
+          for (let i = 0; i < runs.length; i++) run = Math.max(run, runs[i].length);
+          const fence = new Array(run + 2).join("`");
+          return "\n" + fence + lang + "\n" + text + "\n" + fence + "\n";
+        }
+        function isControl(n: any): boolean {
+          const role = n.getAttribute("role") || "";
+          return (n.tagName || "").toLowerCase() === "button" || role === "button" || role === "toolbar" || role === "menu";
+        }
+        // Inline code keeps its backticks: "Create `src/app.py`:" is how the
+        // fenced-file reader tells which file the next block is.
+        function inl(n: any): string {
+          if (n.nodeType === 3) return n.textContent || "";
+          if (n.nodeType !== 1 || isControl(n)) return "";
+          const t = (n.tagName || "").toLowerCase();
+          if (t === "br") return "\n";
+          if (t === "code") {
+            const c = n.textContent || "";
+            return !c ? "" : c.indexOf("`") !== -1 ? "`` " + c + " ``" : "`" + c + "`";
+          }
+          let o = "";
+          for (let i = 0; i < n.childNodes.length; i++) o += inl(n.childNodes[i]);
+          return o;
+        }
+        const BLOCK = "p,div,section,article,ul,ol,li,pre,table,blockquote,h1,h2,h3,h4,h5,h6,hr,figure,details,dl";
+        // Text beside blocks - "Create x.py:" then its <pre> inside one <li>, or
+        // bare text in a <div> - is read in document order rather than dropped
+        // or flattened into the code.
+        function mixed(el: any): string {
+          let o = "";
+          let run = "";
+          const flush = function (): void {
+            const t = run.replace(/[ \t]+/g, " ").replace(/ ?\n ?/g, "\n").trim();
+            if (t && !isJunk(t)) o += t + "\n\n";
+            run = "";
+          };
+          for (let i = 0; i < el.childNodes.length; i++) {
+            const n = el.childNodes[i];
+            if (n.nodeType === 1 && (n.matches(BLOCK) || n.querySelector(BLOCK))) { flush(); o += walk(n); }
+            else run += inl(n);
+          }
+          flush();
+          return o;
+        }
         function walk(el: any): string {
           const tag = (el.tagName || "").toLowerCase();
-          if (tag === "pre") return "\n\`\`\`\n" + (el.textContent || "").replace(/\n$/, "") + "\n\`\`\`\n";
-          if (/^h[1-6]$/.test(tag)) return "\n### " + (el.textContent || "").trim() + "\n";
+          if (tag === "pre") return fenced(el, "");
+          const label = el.querySelector("pre") ? codeLabel(el) : null;
+          if (label !== null) return fenced(el.querySelector("pre"), label);
+          if (/^h[1-6]$/.test(tag)) return "\n### " + inl(el).trim() + "\n";
           if (tag === "ul" || tag === "ol") { let o = "\n"; for (let i = 0; i < el.children.length; i++) o += walk(el.children[i]); return o; }
-          if (tag === "li") return "- " + (el.textContent || "").trim() + "\n";
-          if (tag === "p") { const t = (el.textContent || "").trim(); return (t && !isJunk(t)) ? t + "\n\n" : ""; }
-          if (tag === "div" || tag === "section" || tag === "article" || tag === "table" || tag === "blockquote") {
-            if (el.children.length === 0) { const t = (el.textContent || "").trim(); return (t && !isJunk(t)) ? t + "\n\n" : ""; }
-            let o = ""; for (let i = 0; i < el.children.length; i++) o += walk(el.children[i]); return o;
+          if (tag === "li") {
+            if (!el.querySelector(BLOCK)) return "- " + inl(el).replace(/\s+/g, " ").trim() + "\n";
+            return "- " + mixed(el);
           }
-          const t = (el.textContent || "").trim();
+          if (tag === "p") { const t = inl(el).trim(); return (t && !isJunk(t)) ? t + "\n\n" : ""; }
+          if (tag === "table") {
+            let o = "";
+            const rows = el.querySelectorAll("tr");
+            for (let r = 0; r < rows.length; r++) {
+              const cells: string[] = [];
+              for (let c = 0; c < rows[r].children.length; c++) cells.push(inl(rows[r].children[c]).replace(/\s+/g, " ").trim());
+              o += "| " + cells.join(" | ") + " |\n";
+            }
+            return o + "\n";
+          }
+          if (tag === "div" || tag === "section" || tag === "article" || tag === "blockquote") {
+            if (el.children.length === 0) { const t = (el.textContent || "").trim(); return (t && !isJunk(t)) ? t + "\n\n" : ""; }
+            return mixed(el);
+          }
+          const t = inl(el).trim();
           return (t && !isJunk(t)) ? t + " " : "";
         }
         let md = "";
         if (root.children.length === 0) md = root.innerText || root.textContent || "";
-        else for (let i = 0; i < root.children.length; i++) md += walk(root.children[i]);
+        else md = mixed(root);
+        // Stray toolbar and language-banner lines - but never inside a block,
+        // where "json" or "Copy" on a line of its own is somebody's code.
+        let open = 0;
         return md.split("\n").filter(function (l: string) {
+          const f = l.match(/^(`{3,})/);
+          if (f) {
+            if (!open) open = f[1].length;
+            else if (f[1].length >= open && /^`+\s*$/.test(l)) open = 0;
+            return true;
+          }
+          if (open) return true;
           const t = l.trim();
           return !/^(?:copy|download)$/i.test(t) && !/^(?:json|javascript|js|typescript|ts|python|py|bash|sh|shell|css|html|txt|text|plaintext)$/i.test(t);
         }).join("\n");

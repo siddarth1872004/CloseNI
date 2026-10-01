@@ -38,6 +38,7 @@ function tool(obj, payload) {
 
 async function run(check, section) {
   const P = require(path.join(DIST, "agent/protocol.js"));
+  const { stoppedShort } = P;
   const Tl = require(path.join(DIST, "agent/tools.js"));
   const Pm = require(path.join(DIST, "agent/permissions.js"));
   const { AgentLoop, expandMentions, loadMemory } = require(path.join(DIST, "agent/loop.js"));
@@ -57,6 +58,14 @@ async function run(check, section) {
   check("and the payload is not left in the input", r.calls[0].input.content === undefined);
   r = P.parseReply("````tool\n{\"tool\":\"write\",\"path\":\"README.md\"}\n---\n# Title\n\n```sh\nnpm start\n```\n````");
   check("a longer fence carries code fences inside it", r.calls.length === 1 && r.calls[0].content.indexOf("```sh") !== -1);
+  r = P.parseReply(tool({ tool: "write", path: "README.md" }, "# Title\n\n```sh\nnpm start") + "\n\nThen open the browser.\n```");
+  check("a write cut short by its own inner fence is refused, not written", P.isBad(r.calls[0]) && /README\.md/.test(r.calls[0].error) && /four backticks/.test(r.calls[0].error), JSON.stringify(r.calls[0]));
+  r = P.parseReply(tool({ tool: "write", path: "a.md" }, "```\none\n```\n\n````js\ntwo\n````\n```not a ``` fence"));
+  check("balanced inner fences, and a line that is not a fence, pass", r.calls.length === 1 && !P.isBad(r.calls[0]), JSON.stringify(r.calls[0]));
+  r = P.parseReply(tool({ tool: "edit", path: "README.md" }, "<<<<<<< SEARCH\nold\n=======\n## Run\n\n```sh\nnpm start"));
+  check("an edit whose REPLACE was cut short the same way is refused", P.isBad(r.calls[0]) && /four backticks/.test(r.calls[0].error), JSON.stringify(r.calls[0]));
+  r = P.parseReply(tool({ tool: "edit", path: "README.md" }, "<<<<<<< SEARCH\n```sh\nnpm start\n=======\n```sh\nnpm run dev\n>>>>>>> REPLACE"));
+  check("an edit quoting half a code block is fine", r.calls.length === 1 && !P.isBad(r.calls[0]) && r.calls[0].edits[0].replace === "```sh\nnpm run dev", JSON.stringify(r.calls[0]));
   r = P.parseReply(tool({ tool: "edit", path: "a.py" }, "<<<<<<< SEARCH\nx = 1\n=======\nx = 2\n>>>>>>> REPLACE\n<<<<<<< SEARCH\ny = 1\n=======\ny = 3\n>>>>>>> REPLACE"));
   check("edit reads several search/replace sections", r.calls[0].edits.length === 2 && r.calls[0].edits[1].replace === "y = 3");
   r = P.parseReply(tool({ tool: "str_replace", path: "a.py", old_string: "a", new_string: "b" }));
@@ -78,6 +87,7 @@ async function run(check, section) {
   check("results name the call and fence its output safely", /\[1\] bash `npm test` - failed/.test(msg) && msg.indexOf("````\nboom") !== -1);
   const pre = P.preamble({ workspace: "/w", platform: "linux", mode: "plan", memory: "Use tabs." });
   check("the preamble teaches the format, the mode and the memory", /```tool/.test(pre) && /PLAN MODE/.test(pre) && /Use tabs\./.test(pre));
+  check("the preamble says to lengthen the fence around a payload with its own fences", /four backticks instead: ````tool/.test(pre));
 
   section("agent: tools stay inside the project");
   const ws = tmp();
@@ -122,6 +132,24 @@ async function run(check, section) {
   check("the change is announced before it happens", changed.length === 1);
   o = await Tl.runTool(call({ tool: "write", path: ".git/config" }, { content: "x" }), ctx2);
   check(".git is not written", !o.ok && /\.git/.test(o.output));
+  // A repo can carry links, so these need no bash to set up.
+  fs.mkdirSync(path.join(ws, ".git", "hooks"), { recursive: true });
+  fs.mkdirSync(path.join(ws, "sub", ".git"), { recursive: true });
+  let linked = true;
+  try {
+    fs.symlinkSync(".git", path.join(ws, "g"));
+    fs.symlinkSync(path.join(outside, "planted.txt"), path.join(ws, "dangling"));
+  } catch (e) { linked = false; /* no symlinks here */ }
+  if (linked) {
+    o = await Tl.runTool(call({ tool: "write", path: "g/hooks/pre-commit" }, { content: "x" }), ctx2);
+    check("a link to .git does not reach it", !o.ok && /\.git/.test(o.output) && !fs.existsSync(path.join(ws, ".git", "hooks", "pre-commit")));
+    o = await Tl.runTool(call({ tool: "write", path: "dangling" }, { content: "x" }), ctx2);
+    check("a link to something missing is not written through", !o.ok && /does not exist/.test(o.output) && !fs.existsSync(path.join(outside, "planted.txt")));
+  }
+  o = await Tl.runTool(call({ tool: "write", path: "sub/.git/config" }, { content: "x" }), ctx2);
+  check("a nested .git is not written", !o.ok && /\.git/.test(o.output));
+  o = await Tl.runTool(call({ tool: "write", path: ".GIT/hooks/x" }, { content: "x" }), ctx2);
+  check(".git in another case is not written", !o.ok && /\.git/.test(o.output));
 
   o = await Tl.runTool(call({ tool: "edit", path: "src/app.py" }, { edits: [{ search: "y = 2", replace: "y = 3" }] }), ctx2);
   check("edit replaces a unique match", o.ok && /y = 3/.test(fs.readFileSync(path.join(ws, "src/app.py"), "utf-8")) && /\+1 -1/.test(o.summary));
@@ -143,6 +171,57 @@ async function run(check, section) {
   check("bash runs in the workspace", o.ok && o.output === "ran echo hi in " + path.basename(ws) && o.summary === "exit 0");
   o = await Tl.runTool(call({ tool: "bash", command: "node -e \"process.stdout.write('real'); process.exit(3)\"" }), ctx);
   check("a real failing command reports its output and failure", !o.ok && /real/.test(o.output) && o.summary === "failed", JSON.stringify(o));
+  if (process.platform !== "win32" && fs.existsSync("/bin/bash")) {
+    o = await Tl.runTool(call({ tool: "bash", command: "node -e \"process.exit(2)\" | cat" }), ctx);
+    check("a failing stage fails the whole pipeline", !o.ok && o.summary === "failed", JSON.stringify(o));
+    o = await Tl.runTool(call({ tool: "bash", command: "yes | head -n 1" }), ctx);
+    check("a stage stopped early by head is not a failure", o.ok && o.output === "y", JSON.stringify(o));
+  }
+  const CR = require(path.join(DIST, "verification/command-runner.js"));
+  if (process.platform !== "win32") {
+    // A command is stopped whole - not just its shell, which left the rest
+    // running and holding the pipe, so the call never came back.
+    const gone = (pid) => { try { process.kill(-pid, 0); return false; } catch { return true; } };
+    const settle = () => new Promise((r) => setTimeout(r, 200));
+    let t0 = Date.now();
+    o = await Tl.runTool(call({ tool: "bash", command: "echo $$ > group.pid; sleep 30 | cat", timeout: 1 }), ctx);
+    const g1 = Number(fs.readFileSync(path.join(ws, "group.pid"), "utf-8"));
+    await settle();
+    check("a pipeline past its timeout comes back on time", o.detail.timedOut && Date.now() - t0 < 5000 && /^stopped after 1s/.test(o.summary), (Date.now() - t0) + "ms " + o.summary);
+    check("and nothing it started is left running", gone(g1));
+    t0 = Date.now();
+    o = await Tl.runTool(call({ tool: "bash", command: "echo $$ > group.pid; sleep 30 & echo started" }), ctx);
+    const g2 = Number(fs.readFileSync(path.join(ws, "group.pid"), "utf-8"));
+    check("a command that backgrounds a server returns when its shell does", o.ok && o.output === "started" && Date.now() - t0 < 3000, (Date.now() - t0) + "ms " + JSON.stringify(o.output));
+    check("and the server keeps running for later commands", !gone(g2));
+    check("closing the session stops it", CR.stopBackground() === 1 && (await settle(), gone(g2)));
+    t0 = Date.now();
+    const pending = Tl.runTool(call({ tool: "bash", command: "echo $$ > group.pid; echo partial; sleep 30" }), ctx);
+    await settle();
+    check("Esc stops the command in flight", CR.stopRunning() === 1);
+    o = await pending;
+    const g3 = Number(fs.readFileSync(path.join(ws, "group.pid"), "utf-8"));
+    await settle();
+    check("which returns what it printed, as a failure, straight away", !o.ok && /partial/.test(o.output) && /stopped by the user/.test(o.output) && Date.now() - t0 < 3000, (Date.now() - t0) + "ms " + o.output);
+    check("and leaves nothing behind", gone(g3));
+    fs.unlinkSync(path.join(ws, "group.pid"));
+  }
+  // What the model receives for a flood: both ends, and an honest count of
+  // the lines between, across the runner's cut and the tool's.
+  o = await Tl.runTool(call({ tool: "bash", command: "node -e \"for (let i = 0; i < 200000; i++) console.log('line ' + i)\"" }), ctx);
+  (function () {
+    const m = /\[\.\.\. (\d+) lines, \d+ characters omitted \.\.\.\]/.exec(o.output);
+    const shown = o.output.split("\n").filter((l) => /^line \d+$/.test(l)).length;
+    check("a flood of output keeps its first and last lines", o.ok && /^line 0\n/.test(o.output) && /\nline 199999$/.test(o.output), o.output.slice(-80));
+    check("and says how many lines it left out, in total", !!m && Number(m[1]) + shown === 200000, m && m[0] + " + " + shown);
+    check("and fits the model's budget", o.output.length <= Tl.MAX_OUTPUT + 100, o.output.length);
+    const kept = new CR.KeptOutput(200);
+    for (let i = 0; i < 1000; i++) kept.add("n " + i + "\n");
+    const k = kept.text();
+    const km = /\[\.\.\. (\d+) lines/.exec(k);
+    const kshown = k.split("\n").filter((l) => /^n \d+$/.test(l)).length;
+    check("the runner keeps whole lines at both ends of a stream and counts the rest", !!km && Number(km[1]) + kshown === 1000 && /^n 0\n/.test(k) && /\nn 999\n$/.test(k), k.slice(0, 60) + " ... " + k.slice(-60));
+  })();
   o = await Tl.runTool(call({ tool: "bash", command: "  " }), ctx);
   check("an empty command is an error", !o.ok);
 
@@ -160,6 +239,12 @@ async function run(check, section) {
   check("grep finds lines, case-insensitively, within a glob", o.ok && o.detail.matches === 2 && /src\/a\.ts:1:/.test(o.output), o.output);
   o = await Tl.runTool(call({ tool: "grep", pattern: "(" }), ctx);
   check("a bad regex is an error, not a crash", !o.ok && /regular expression/.test(o.output));
+  fs.writeFileSync(path.join(ws, "src", ".env"), "API_TOKEN=s3cret\n");
+  o = await Tl.runTool(call({ tool: "grep", pattern: "TOKEN" }), ctx);
+  check("a project-wide grep leaves .env out and says so", o.output.indexOf("s3cret") === -1 && /not searched.*src\/\.env/.test(o.output), o.output);
+  o = await Tl.runTool(call({ tool: "grep", pattern: "TOKEN", path: "src/.env" }), ctx);
+  check("named on its own (after the prompt) it is searched", /s3cret/.test(o.output), o.output);
+  fs.unlinkSync(path.join(ws, "src", ".env"));
   o = await Tl.runTool(call({ tool: "ls" }), ctx);
   check("ls lists directories first", o.ok && o.output.split("\n")[0].endsWith("/"));
   const tctx = { workspace: ws, todos: [] };
@@ -168,11 +253,41 @@ async function run(check, section) {
   o = await Tl.runTool({ error: "bad json", raw: "{" }, ctx);
   check("a bad block becomes an error outcome", !o.ok && /bad json/.test(o.output));
   check("cap keeps both ends", (function () { const c = Tl.cap("a".repeat(5000) + "END", 1000); return c.length < 1200 && c.endsWith("END") && /omitted/.test(c); })());
+  (function () {
+    const text = Array.from({ length: 100 }, (_, i) => "row " + i + " " + "x".repeat(40)).join("\n");
+    const c = Tl.cap(text, 1000);
+    const m = /\[\.\.\. (\d+) lines, \d+ characters omitted/.exec(c);
+    const rows = c.split("\n").filter((l) => /^row \d+ x+$/.test(l)).length;
+    check("cap cuts on line ends and counts the lines it drops", !!m && Number(m[1]) + rows === 100, c);
+    const again = Tl.cap(c, 400);
+    const m2 = /\[\.\.\. (\d+) lines/.exec(again);
+    const rows2 = again.split("\n").filter((l) => /^row \d+ x+$/.test(l)).length;
+    check("a second cut adds up what the first dropped", !!m2 && Number(m2[1]) + rows2 === 100, again);
+  })();
+  fs.writeFileSync(path.join(ws, "wide.txt"), Array.from({ length: 2000 }, (_, i) => "w".repeat(100) + i).join("\n") + "\n");
+  o = await Tl.runTool(call({ tool: "read", path: "wide.txt" }), ctx);
+  (function () {
+    const next = /read again with offset (\d+)/.exec(o.output);
+    const last = /^\s*(\d+)\t/.exec(o.output.split("\n").filter((l) => /^\s*\d+\t/.test(l)).pop() || "");
+    check("a long read stops at a whole line, not in the middle", o.ok && !/omitted/.test(o.output) && o.output.length <= Tl.MAX_OUTPUT, o.output.length);
+    check("and its next offset follows the last line shown", !!next && !!last && Number(next[1]) === Number(last[1]) + 1 && o.detail.lines === Number(last[1]), next && next[0]);
+  })();
+  const huge = path.join(ws, "huge.log");
+  fs.closeSync(fs.openSync(huge, "w"));
+  fs.truncateSync(huge, 65 * 1024 * 1024);
+  o = await Tl.runTool(call({ tool: "read", path: "huge.log" }), ctx);
+  check("a file too big to load points at grep and sed", !o.ok && /grep/.test(o.output) && /sed -n/.test(o.output), o.output);
+  fs.unlinkSync(huge);
 
   section("agent: permissions");
   const rules = Pm.emptyRules();
   const W = { tool: "write", input: { path: "a" } }, B = (c) => ({ tool: "bash", input: { command: c } });
   check("reading is always allowed, even in plan mode", Pm.decide({ tool: "read", input: {} }, "plan", rules).action === "allow");
+  const env = Pm.decide({ tool: "read", input: { path: "backend/.env" } }, "auto", rules);
+  check("reading a .env asks, even in auto mode, and cannot be remembered", env.action === "ask" && env.alwaysAsk === true);
+  check("so does a key, or a grep aimed at one", Pm.decide({ tool: "read", input: { path: "certs/server.key" } }, "default", rules).action === "ask"
+    && Pm.decide({ tool: "grep", input: { pattern: "KEY", path: ".env.local" } }, "plan", rules).action === "ask");
+  check("an example .env reads freely", Pm.decide({ tool: "read", input: { path: ".env.example" } }, "default", rules).action === "allow");
   check("plan mode refuses writes without asking", Pm.decide(W, "plan", rules).action === "deny");
   check("plan mode refuses commands", Pm.decide(B("ls"), "plan", rules).action === "deny");
   check("default mode asks before a write", Pm.decide(W, "default", rules).action === "ask");
@@ -285,6 +400,52 @@ async function run(check, section) {
   await h.l.turn("hello");
   check("a transport failure ends the turn with its reason", type(h.events, "done").pop().error === "browser closed" && !h.l.busy);
 
+  section("agent: a reply that stopped short");
+  check("an announced next step is caught", /nothing was run/.test(stoppedShort("I read the file. Now I'll update src/ball.py to fix the bounce:")));
+  check("so is 'let me' without a colon", /nothing was run/.test(stoppedShort("The tests fail on collisions.\n\nLet me check the tests to see why.")));
+  check("the nudge quotes the last line", /update src\/ball\.py/.test(stoppedShort("Now I'll update src/ball.py:")));
+  check("a finished summary is left alone", stoppedShort("Done. I fixed the bounce in src/ball.py and all 42 tests now pass.") === "");
+  check("'let me know' is not an action", stoppedShort("Fixed it. Let me know if you want the speed changed.") === "");
+  check("a question is left alone", stoppedShort("Should the paddle speed scale with the level?") === "");
+  check("a colon inside a code block does not count", stoppedShort("Run it with:\n```\n./run.sh\n```") === "");
+  const pastedFile = "Here is the corrected src/ball.py:\n```python\nclass Ball:\n    def __init__(self):\n        self.dy = 1\n    def bounce(self):\n        self.dy = -self.dy\n```\nThis fixes the bounce.";
+  check("a file pasted as a plain block is nudged toward write/edit", /write \(whole file\)/.test(stoppedShort(pastedFile)));
+  check("a short snippet is not", stoppedShort("Use `self.dy = -self.dy` in ball.py:\n```python\nself.dy = -self.dy\n```\nThat is all.") === "");
+  check("a terminal session naming a file is not", stoppedShort("Demo output\n```\n$ python3 todo.py add \"buy milk\"\nAdded: buy milk\n\n$ python3 todo.py list\n1. [ ] buy milk\n2. [x] write report\n```\nAll working.") === "");
+  check("a long block with no file name is not",stoppedShort("Example:\n```\na\nb\nc\nd\ne\n```\nThat's it.") === "");
+
+  const ws5 = tmp();
+  s = script(["Now I'll create hello.py:", tool({ tool: "write", path: "hello.py" }, "print(1)"), "Done.", "Done."]);
+  let finals = [];
+  h = loop(s, { ws: ws5, answer: () => ({ decision: "allow" }), checkFinal: async (r) => { finals.push(r); return stoppedShort(r); } });
+  await h.l.turn("make hello");
+  check("an unfinished reply gets one nudge instead of ending the turn", /nothing was run/.test(s.prompts[1]) && fs.existsSync(path.join(ws5, "hello.py")));
+  check("the answer after the tools is not nudged again", finals.length === 1 && type(h.events, "done").pop().reason === "complete" && s.prompts.length === 3);
+  s = script(["Now I'll create hello.py:", tool({ tool: "write", path: "hello.py" }, "print(1)"), "Done.", T + "tool\nnot json\n" + T, "Done."]);
+  h = loop(s, { ws: ws5, answer: () => ({ decision: "allow" }), checkFinal: async (r) => stoppedShort(r) });
+  await h.l.turn("make hello");
+  await h.l.turn("again");
+  (function () {
+    const d = type(h.events, "done").pop().drift;
+    check("each turn reports how often replies broke the tool convention, and where", d && d.replies === 5 && d.missing === 1 && d.malformed === 1 && JSON.stringify(d.at) === "[1,4]", JSON.stringify(d));
+  })();
+  await h.l.clear();
+  check("a new conversation starts the count again", h.l.drift.replies === 0 && h.l.drift.at.length === 0);
+  s = script(["I'll do it:", "I'll do it:", "I'll do it:"]);
+  finals = [];
+  h = loop(s, { ws: ws5, checkFinal: async (r) => { finals.push(r); return "go on"; } });
+  await h.l.turn("x");
+  check("the nudge is sent at most once a turn", finals.length === 1 && s.prompts.length === 2 && type(h.events, "done").pop().reason === "complete");
+  s = script(["Plan:\n1. I'll edit a.py", "x"]);
+  finals = [];
+  h = loop(s, { ws: ws5, mode: "plan", checkFinal: async (r) => { finals.push(r); return "go on"; } });
+  await h.l.turn("plan");
+  check("plan mode's prose answer is never nudged", finals.length === 0 && s.prompts.length === 1);
+  s = script(["I'll do it:", "x"]);
+  h = loop(s, { ws: ws5, checkFinal: async () => { throw new Error("broken check"); } });
+  await h.l.turn("x");
+  check("a failing check leaves the reply as the answer", s.prompts.length === 1 && type(h.events, "done").pop().reason === "complete");
+
   s = script([T + "tool\nnot json\n" + T, "ok"]);
   h = loop(s, { ws: ws4 });
   await h.l.turn("x");
@@ -299,6 +460,32 @@ async function run(check, section) {
   await h.l.clear();
   await h.l.turn("y");
   check("clear starts a new thread with the preamble again", s.resets === 1 && /You are CloseNI/.test(s.prompts[1]));
+
+  // A thread past its budget continues in a new chat, mid-turn or between turns.
+  const ws6 = tmp();
+  fs.writeFileSync(path.join(ws6, "a.txt"), "alpha\n");
+  s = script([tool({ tool: "read", path: "a.txt" }), tool({ tool: "write", path: "b.txt" }, "beta"), "SUMMARY: copying a to b", "Done."]);
+  h = loop(s, { ws: ws6, budgetChars: 1000 });
+  await h.l.turn("copy a to b");
+  check("a thread past its budget asks for a summary, mid-turn", s.prompts.length === 4 && /too long to continue/.test(s.prompts[2]), s.prompts.length);
+  check("then starts a new chat", s.resets === 1 && type(h.events, "compacted").length === 1);
+  check("seeded with the preamble, the summary and the files changed",
+    /You are CloseNI/.test(s.prompts[3]) && /SUMMARY: copying a to b/.test(s.prompts[3]) && /Files you changed: b\.txt/.test(s.prompts[3]), s.prompts[3].slice(-600));
+  check("and carrying the results it was about to send", /b\.txt/.test(s.prompts[3].split("Files you changed")[1] || "") && /wrote|created|write/i.test(s.prompts[3].split("Read a file again")[1] || ""), s.prompts[3].slice(-300));
+  check("the turn finishes in the new chat", type(h.events, "done").pop().reason === "complete" && fs.readFileSync(path.join(ws6, "b.txt"), "utf-8").trim() === "beta");
+
+  s = script([tool({ tool: "read", path: "a.txt" }), "Read it.", "SUMMARY: read a", "Done again."]);
+  h = loop(s, { ws: ws6, budgetChars: 1000 });
+  await h.l.turn("read a");
+  await h.l.turn("and again");
+  check("between turns, the next message opens the new chat", s.resets === 1 && /too long to continue/.test(s.prompts[2]) &&
+    /You are CloseNI/.test(s.prompts[3]) && /SUMMARY: read a/.test(s.prompts[3]) && /User request:\nand again/.test(s.prompts[3]), s.prompts[3] && s.prompts[3].slice(-300));
+  s = script(["ok", "ok", "ok"]);
+  h = loop(s, { ws: ws6, budgetChars: 1000 });
+  await h.l.turn("one");
+  await h.l.turn("two");
+  check("a new chat is not rolled over on its first message alone", s.resets === 0 && s.prompts.length === 2);
+  check("a transport with no new chat cannot compact", (await new AgentLoop({ session: { ask: async () => "x" }, workspace: ws6, emit: () => {}, askPermission: async () => ({ decision: "allow" }) }).compact()) === false);
   check("an @ that is not a project path stays as typed", expandMentions("mail me@example.com or use @decorator", ws4).attached.length === 0);
 
   s = script([tool({ tool: "todo", items: [{ text: "one", status: "in_progress" }, { text: "two" }] }), "ok"]);

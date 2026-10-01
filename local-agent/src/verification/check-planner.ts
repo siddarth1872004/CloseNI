@@ -71,6 +71,21 @@ const MANIFESTS: ManifestRule[] = [
   // so a project with a tsconfig is checked once as a project.
   { file: "tsconfig.json", tool: "tsc", command: (t) => t + " --noEmit", language: "typescript", extensions: [".ts", ".tsx"] },
   { file: ".csproj", bySuffix: true, tool: "dotnet", command: (t) => t + " build", language: "csharp", extensions: [".cs"] },
+  { file: ".fsproj", bySuffix: true, tool: "dotnet", command: (t) => t + " build", language: "fsharp", extensions: [".fs", ".fsi"] },
+  { file: ".sln", bySuffix: true, tool: "dotnet", command: (t) => t + " build", language: "csharp", extensions: [".cs", ".fs", ".vb"] },
+  // Kotlin and Scala have no quick single-file check, so their build is the check.
+  { file: "build.gradle", tool: "gradle", command: (t) => t + " classes -q", language: "kotlin", extensions: [".kt"] },
+  { file: "build.gradle.kts", tool: "gradle", command: (t) => t + " classes -q", language: "kotlin", extensions: [".kt"] },
+  { file: "build.sbt", tool: "sbt", command: (t) => t + " -batch compile", language: "scala", extensions: [".scala"] },
+  { file: "Package.swift", tool: "swift", command: (t) => t + " build", language: "swift", extensions: [".swift"] },
+  { file: "pubspec.yaml", tool: "dart", command: (t) => t + " analyze", language: "dart", extensions: [".dart"] },
+  { file: "build.zig", tool: "zig", command: (t) => t + " build", language: "zig", extensions: [".zig"] },
+  { file: "mix.exs", tool: "mix", command: (t) => t + " compile", language: "elixir", extensions: [".ex", ".exs"] },
+  { file: "stack.yaml", tool: "stack", command: (t) => t + " build --fast", language: "haskell", extensions: [".hs"] },
+  { file: ".cabal", bySuffix: true, tool: "cabal", command: (t) => t + " build", language: "haskell", extensions: [".hs"] },
+  { file: "dune-project", tool: "dune", command: (t) => t + " build", language: "ocaml", extensions: [".ml", ".mli"] },
+  { file: "project.clj", tool: "lein", command: (t) => t + " check", language: "clojure", extensions: [".clj"] },
+  { file: "rebar.config", tool: "rebar3", command: (t) => t + " compile", language: "erlang", extensions: [".erl", ".hrl"] },
 ];
 
 interface FileRule {
@@ -99,11 +114,26 @@ const FILE_RULES: FileRule[] = [
   // gofmt -e reports syntax errors and writes nothing, which is what a check
   // wants: `go vet` needs a package, and `go build` needs a module.
   { extensions: [".go"], tool: "gofmt", language: "go", command: (t, f) => t + ' -e "' + f + '"' },
-  { extensions: [".ts", ".tsx"], tool: "tsc", language: "typescript",
+  { extensions: [".ts", ".tsx", ".mts", ".cts"], tool: "tsc", language: "typescript",
     command: (t, f) => t + ' --noEmit --skipLibCheck "' + f + '"' },
   { extensions: [".rb"], tool: "ruby", language: "ruby", command: (t, f) => t + ' -c "' + f + '"' },
   { extensions: [".php"], tool: "php", language: "php", command: (t, f) => t + ' -l "' + f + '"' },
   { extensions: [".sh", ".bash"], tool: "bash", language: "shell", command: (t, f) => t + ' -n "' + f + '"' },
+  { extensions: [".zsh"], tool: "zsh", language: "shell", command: (t, f) => t + ' -n "' + f + '"' },
+  { extensions: [".fish"], tool: "fish", language: "shell", command: (t, f) => t + ' -n "' + f + '"' },
+  { extensions: [".lua"], tool: "luac", language: "lua", command: (t, f) => t + ' -p "' + f + '"' },
+  // perl -c runs BEGIN blocks and use statements - the same code the tests would.
+  { extensions: [".pl", ".pm"], tool: "perl", language: "perl", command: (t, f) => t + ' -c "' + f + '"' },
+  { extensions: [".swift"], tool: "swiftc", language: "swift", command: (t, f) => t + ' -parse "' + f + '"' },
+  { extensions: [".dart"], tool: "dart", language: "dart", command: (t, f) => t + ' analyze "' + f + '"' },
+  { extensions: [".zig"], tool: "zig", language: "zig", command: (t, f) => t + ' ast-check "' + f + '"' },
+  { extensions: [".hs"], tool: "ghc", language: "haskell",
+    command: (t, f, tmp) => t + ' -fno-code -outputdir "' + tmp + '" "' + f + '"' },
+  { extensions: [".nim"], tool: "nim", language: "nim", command: (t, f) => t + ' check --hints:off "' + f + '"' },
+  { extensions: [".f", ".f90", ".f95", ".f03"], tool: "gfortran", language: "fortran",
+    command: (t, f, tmp) => t + ' -fsyntax-only -J "' + tmp + '" "' + f + '"' },
+  { extensions: [".r"], tool: "rscript", language: "r",
+    command: (t, f) => t + ' -e "invisible(parse(file=commandArgs(TRUE)[1]))" "' + f + '"' },
   // No per-file rule for .cs: there is no single-file C# syntax checker worth
   // relying on, so it is verified through its project file or not at all.
 ];

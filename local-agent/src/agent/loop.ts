@@ -12,11 +12,17 @@
  */
 import * as fs from "fs";
 import * as path from "path";
-import { parseReply, preamble, formatResults, modeNote, TURN_REMINDER, Mode, ToolCall, BadCall, isBad, describeCall, fenceFor } from "./protocol.js";
+import { parseReply, preamble, formatResults, modeNote, TURN_REMINDER, COMPACT_REQUEST, Mode, ToolCall, BadCall, isBad, describeCall, fenceFor } from "./protocol.js";
 import { runTool, AgentOutcome, ToolContext, TodoItem, applyEdits, resolveInside, cap } from "./tools.js";
 import { decide, remember, SessionRules, emptyRules } from "./permissions.js";
+import { ConversationSize, emptySize, addTurn, shouldRollOver, describeSize } from "../context-budget.js";
 
-export interface Asker { ask(prompt: string): Promise<string>; reset?(): Promise<void> }
+export interface Asker {
+  ask(prompt: string): Promise<string>;
+  reset?(): Promise<void>;
+  /** What the thread holds, when the transport keeps count across restarts. */
+  size?(): ConversationSize;
+}
 
 export type PermissionAnswer = { decision: "allow" | "always" | "deny"; feedback?: string };
 
@@ -31,6 +37,17 @@ export interface LoopOptions {
   run?: ToolContext["run"];
   /** Wraps the first message of a thread - persona, skills and MCP context. */
   wrapFirst?: (text: string) => string;
+  /**
+   * Given a reply with no tool blocks, a message sending the model back to
+   * work if it stopped short of what it said it would do, or "". Asked at
+   * most once a turn, and never in plan mode, where prose is the answer.
+   */
+  checkFinal?: (reply: string) => Promise<string>;
+  /**
+   * Characters the thread may hold before it continues in a new chat, seeded
+   * with a summary. Unset, the thread only grows.
+   */
+  budgetChars?: number;
 }
 
 const MEMORY_FILES = ["CLOSENI.md", "AGENTS.md", "CLAUDE.md"];
@@ -89,6 +106,16 @@ export class AgentLoop {
   private notes: string[] = [];
   private checkpoints: Array<Map<string, string | null>> = [];
   private maxSteps: number;
+  /**
+   * How often this thread's replies broke the tool convention: a block that
+   * would not parse, or none where one was due (the reply that earned a
+   * nudge). `at` is which reply each happened on, counted from the start of
+   * the thread, so a rise with length shows up - which is the question
+   * before re-sending the tool list or starting a fresh chat.
+   */
+  readonly drift = { replies: 0, malformed: 0, missing: 0, at: [] as number[] };
+  /** This thread's traffic, for a transport that does not count it itself. */
+  private local: ConversationSize = emptySize();
 
   constructor(private o: LoopOptions) {
     this.mode = o.mode || "default";
@@ -96,6 +123,16 @@ export class AgentLoop {
   }
 
   get busy(): boolean { return this.running; }
+
+  /**
+   * Is the thread too full for the next message? Not before its second
+   * exchange: a new chat's first message carries the preamble and the seed,
+   * and rolling over on that alone would start chat after chat.
+   */
+  private overBudget(next: number): boolean {
+    const size = this.size();
+    return !!this.o.budgetChars && size.turns > 1 && shouldRollOver(size, this.o.budgetChars, next);
+  }
 
   setMode(mode: Mode): void {
     this.mode = mode;
@@ -110,12 +147,62 @@ export class AgentLoop {
   /** A new conversation: the thread, the todo list and pending notes go. */
   async clear(): Promise<void> {
     if (this.o.session.reset) await this.o.session.reset();
-    this.started = false;
-    this.lastSentMode = null;
+    this.newThread();
     this.notes = [];
     this.todos.length = 0;
     this.o.emit({ type: "todos", items: [] });
     this.o.emit({ type: "cleared" });
+  }
+
+  /** What starting over in a new chat resets. */
+  private newThread(): void {
+    this.started = false;
+    this.lastSentMode = null;
+    this.local = emptySize();
+    this.drift.replies = this.drift.malformed = this.drift.missing = 0;
+    this.drift.at.length = 0;
+  }
+
+  private size(): ConversationSize {
+    return this.o.session.size ? this.o.session.size() : this.local;
+  }
+
+  /**
+   * Continue in a new chat, because the thread is too long to keep - or,
+   * from /compact, because the user asked.
+   *
+   * Nothing shortens a provider's conversation, so this starts another. The
+   * model first writes down where things stand; the new chat gets the
+   * preamble, that summary, the todo list and the files changed, and is told
+   * to read a file again before editing it. Returns false when the transport
+   * cannot start a new chat.
+   */
+  async compact(): Promise<boolean> {
+    if (!this.o.session.reset) return false;
+    // From /compact it runs on its own, and a message must wait for it.
+    const own = !this.running;
+    this.running = true;
+    try { return await this.rollOver(); } finally { if (own) this.running = false; }
+  }
+
+  private async rollOver(): Promise<boolean> {
+    const before = this.size();
+    this.o.emit({ type: "compacting", size: describeSize(before, this.o.budgetChars || 0) });
+    let summary = "";
+    // Asked in the old thread, which is the only place that remembers it. A
+    // summary that fails still leaves the todos and files to go on.
+    try { summary = parseReply((await this.o.session.ask(COMPACT_REQUEST)) || "").text.trim(); } catch { /* go on without */ }
+    if (this.o.session.reset) await this.o.session.reset();
+    this.newThread();
+    const files = new Set<string>();
+    for (const cp of this.checkpoints) for (const abs of cp.keys()) files.add(path.relative(this.o.workspace, abs).split(path.sep).join("/"));
+    const parts = ["This conversation continues an earlier one that grew too long for the chat. Nothing from it is visible here except what follows."];
+    if (summary) { const f = fenceFor(summary); parts.push("Your summary of it:\n" + f + "\n" + cap(summary, 8000) + "\n" + f); }
+    if (this.todos.length) parts.push("Your todo list:\n" + this.todos.map((t) => "- [" + t.status + "] " + t.text).join("\n"));
+    if (files.size) parts.push("Files you changed: " + Array.from(files).sort().join(", ") + ". Read a file again before editing it - what you remember of it is from the old chat.");
+    this.notes.unshift(parts.join("\n\n"));
+    this.o.emit({ type: "compacted", summary: !!summary, files: files.size });
+    return true;
   }
 
   /**
@@ -143,6 +230,16 @@ export class AgentLoop {
   }
 
   private compose(userText: string): string {
+    const parts = this.opening();
+    const expanded = expandMentions(userText, this.o.workspace);
+    if (expanded.attached.length) this.o.emit({ type: "attached", files: expanded.attached });
+    parts.push((this.started ? "User: " : "User request:\n") + expanded.text);
+    parts.push(TURN_REMINDER);
+    return this.wrap(parts);
+  }
+
+  /** What leads a message: the preamble in a new thread, else a mode change; then pending notes. */
+  private opening(): string[] {
     const parts: string[] = [];
     if (!this.started) {
       const mem = loadMemory(this.o.workspace);
@@ -159,10 +256,10 @@ export class AgentLoop {
       this.lastSentMode = this.mode;
     }
     if (this.notes.length) { parts.push(this.notes.join("\n\n")); this.notes = []; }
-    const expanded = expandMentions(userText, this.o.workspace);
-    if (expanded.attached.length) this.o.emit({ type: "attached", files: expanded.attached });
-    parts.push((this.started ? "User: " : "User request:\n") + expanded.text);
-    parts.push(TURN_REMINDER);
+    return parts;
+  }
+
+  private wrap(parts: string[]): string {
     const text = parts.join("\n\n");
     return !this.started && this.o.wrapFirst ? this.o.wrapFirst(text) : text;
   }
@@ -204,19 +301,41 @@ export class AgentLoop {
       },
     };
     this.o.emit({ type: "turn-start" });
+    // Before composing, so the new chat's first message is this one. A thread
+    // resumed from an earlier run counts too, when the transport kept its size.
+    if (this.overBudget(userText.length)) await this.compact();
     let prompt = this.compose(userText);
     let reason = "complete";
     let errorText = "";
+    let nudged = false;
     try {
       for (let step = 0; ; step++) {
         if (step >= this.maxSteps) { reason = "step-limit"; break; }
+        // Mid-turn too: thirty steps of 24 KB reads outgrow a thread on their own.
+        if (step > 0 && this.overBudget(prompt.length) && await this.compact()) {
+          const parts = this.opening();
+          parts.push(prompt);
+          prompt = this.wrap(parts);
+        }
         this.o.emit({ type: "thinking", step: step });
         const reply = await this.o.session.ask(prompt);
+        this.local = addTurn(this.local, prompt.length, reply ? reply.length : 0);
         this.started = true;
         if (!reply || !reply.trim()) { reason = "error"; errorText = "No reply could be read from the provider."; break; }
         const parsed = parseReply(reply);
+        this.drift.replies++;
+        if (parsed.calls.some(isBad)) { this.drift.malformed++; this.drift.at.push(this.drift.replies); }
         if (parsed.text) this.o.emit({ type: "assistant", text: parsed.text });
-        if (!parsed.calls.length) break;
+        if (!parsed.calls.length) {
+          if (!nudged && this.o.checkFinal && this.mode !== "plan" && !this.stopRequested) {
+            nudged = true;
+            let nudge = "";
+            try { nudge = await this.o.checkFinal(reply); } catch { /* the reply stands as the answer */ }
+            if (nudge) { this.drift.missing++; this.drift.at.push(this.drift.replies); }
+            if (nudge && !this.stopRequested) { prompt = nudge; continue; }
+          }
+          break;
+        }
         if (this.stopRequested) { reason = "interrupted"; break; }
 
         const outcomes: AgentOutcome[] = [];
@@ -283,7 +402,8 @@ export class AgentLoop {
     } finally {
       this.running = false;
       if (!checkpoint.size) this.checkpoints.pop();
-      this.o.emit({ type: "done", reason: reason, error: errorText || undefined, canRewind: this.checkpoints.some((c) => c.size > 0) });
+      this.o.emit({ type: "done", reason: reason, error: errorText || undefined, canRewind: this.checkpoints.some((c) => c.size > 0),
+        drift: { replies: this.drift.replies, malformed: this.drift.malformed, missing: this.drift.missing, at: this.drift.at.slice() } });
     }
   }
 }

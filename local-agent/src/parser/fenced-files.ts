@@ -21,8 +21,6 @@ export interface FencedFile {
   language: string;
 }
 
-const FENCE = "`".repeat(3);
-
 /** Extensions worth trusting as a path when there is no other signal. */
 const PATHY = /\.(ts|tsx|js|jsx|mjs|cjs|py|rb|php|go|rs|java|cs|c|h|cpp|hpp|cc|sh|bash|sql|json|ya?ml|toml|ini|cfg|env|md|txt|html?|css|scss|xml|gradle|properties|dockerfile|lock)$/i;
 
@@ -114,6 +112,56 @@ function pathFromFirstLine(body: string): { filePath: string; body: string } | n
   return { filePath: p, body: rest };
 }
 
+interface Fence { info: string; body: string; start: number; end: number }
+
+/** Drop up to `n` columns of leading whitespace - the fence's own indent. */
+function stripIndent(line: string, n: number): string {
+  let i = 0;
+  while (i < n && i < line.length && (line[i] === " " || line[i] === "\t")) i++;
+  return line.substring(i);
+}
+
+/**
+ * The fenced blocks of a reply, read line by line the way CommonMark reads them.
+ *
+ * A regex from one triple backtick to the next closed a block at the first
+ * backticks anywhere - mid-line in a string literal, or at the nested fence of
+ * a README - and wrote the file cut off there. A block closes only on a line
+ * that is nothing but a fence of the same character, at least as long as the
+ * one that opened it, so ````md can hold ``` blocks. A backtick fence's info
+ * string cannot contain a backtick, which keeps inline ```code``` in prose
+ * from opening one. A block that never closes is a truncated reply and is not
+ * returned.
+ */
+function fencedBlocks(src: string): Fence[] {
+  const out: Fence[] = [];
+  const lines = src.split("\n");
+  let open: { ch: string; len: number; indent: number; info: string; start: number } | null = null;
+  let body: string[] = [];
+  let pos = 0;
+  for (const line of lines) {
+    const next = pos + line.length + 1;
+    if (!open) {
+      // "." stops at \r, so a CRLF reply's fence line would never match.
+      const m = /^([ \t]*)(`{3,}|~{3,})(.*)$/.exec(line.replace(/\r$/, ""));
+      if (m && !(m[2][0] === "`" && m[3].includes("`"))) {
+        open = { ch: m[2][0], len: m[2].length, indent: m[1].length, info: m[3], start: pos };
+        body = [];
+      }
+    } else {
+      const m = /^[ \t]*(`{3,}|~{3,})[ \t\r]*$/.exec(line);
+      if (m && m[1][0] === open.ch && m[1].length >= open.len) {
+        out.push({ info: open.info, body: body.length ? body.join("\n") + "\n" : "", start: open.start, end: Math.min(next, src.length) });
+        open = null;
+      } else {
+        body.push(stripIndent(line, open.indent));
+      }
+    }
+    pos = next;
+  }
+  return out;
+}
+
 /**
  * Every fenced block that can be attributed to a file.
  *
@@ -125,12 +173,10 @@ export function extractFencedFiles(text: string): FencedFile[] {
   const src = String(text || "");
   const out: FencedFile[] = [];
   const seen: Record<string, number> = {};
-  const re = new RegExp(FENCE + "([^\\n]*)\\n([\\s\\S]*?)" + FENCE, "g");
-  let m: RegExpExecArray | null;
   let lastEnd = 0;
-  while ((m = re.exec(src)) !== null) {
-    const info = m[1] || "";
-    let body = m[2] || "";
+  for (const block of fencedBlocks(src)) {
+    const info = block.info;
+    let body = block.body;
     const language = (info.trim().split(/\s+/)[0] || "text").replace(/[^a-z0-9+#-]/gi, "") || "text";
 
     let filePath = pathFromInfo(info);
@@ -138,8 +184,8 @@ export function extractFencedFiles(text: string): FencedFile[] {
       const fromComment = pathFromFirstLine(body);
       if (fromComment) { filePath = fromComment.filePath; body = fromComment.body; }
     }
-    if (!filePath) filePath = pathFromLeadIn(src.substring(lastEnd, m.index));
-    lastEnd = re.lastIndex;
+    if (!filePath) filePath = pathFromLeadIn(src.substring(lastEnd, block.start));
+    lastEnd = block.end;
     if (!filePath) continue;
     if (!body.trim()) continue;
 

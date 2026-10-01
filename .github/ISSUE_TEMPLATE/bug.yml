@@ -1,0 +1,65 @@
+name: Bug report
+description: Something broke, including a provider that stopped answering or being read.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Chat sites change their pages, so the most common break is a provider that stops sending, never finishes, or comes back empty. The console lines below usually say which selector failed, and the fix is often a JSON edit in `local-agent/config/providers/`.
+
+        **Before pasting logs:** GitHub tokens are redacted from git output, but check for anything private, such as file contents, paths, or a `.env` value you let the agent read.
+  - type: dropdown
+    id: provider
+    attributes:
+      label: Provider
+      options:
+        - DeepSeek Chat
+        - Qwen Studio
+        - GLM (Z.ai)
+        - Ollama (local)
+        - Not provider-related
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where
+      options:
+        - "Provider: message not sent, reply never finished, or reply empty or cut off"
+        - Coding agent (Code panel)
+        - Plan or step-by-step build
+        - Runner, tests or verification
+        - GitHub
+        - Install or first run
+        - Something else
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: OS and version
+      placeholder: Windows 11, Ubuntu 24.04, Arch...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: CloseNI version, and how you installed it
+      placeholder: 0.9.0 AppImage / .exe / .deb / from source at commit abc1234
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what you expected
+      description: What you typed or clicked, what happened, what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: console
+    attributes:
+      label: Console, last 50 lines
+      description: Open the Console bar at the bottom of the window. Copy the last 50 lines of the Agent pane, and of the Project pane if a build or command was involved.
+      render: text
+    validations:
+      required: true

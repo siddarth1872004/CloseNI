@@ -1,4 +1,5 @@
 ﻿import { spawn, spawnSync } from "child_process";
+import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { resolveTool } from "./toolchain.js";
@@ -18,6 +19,136 @@ export interface RunOptions {
    * model suggested may legitimately be a server that never exits.
    */
   timeoutIsFailure?: boolean;
+  /**
+   * Fail a pipeline when any stage fails. /bin/sh reports only the last stage,
+   * so `pytest | tail` said "exit 0" over failing tests. Needs bash; where there
+   * is none (Windows, a bare container) the command runs as before.
+   */
+  pipefail?: boolean;
+}
+
+const BASH = process.platform === "win32" ? undefined : ["/bin/bash", "/usr/bin/bash", "/usr/local/bin/bash"].find((p) => fs.existsSync(p));
+
+/** How much of each end of a stream is kept; a runaway log is not held whole. */
+export const KEEP_PER_END = 512 * 1024;
+
+/** The one wording for a cut, so a later cut can add up what earlier ones dropped. */
+export function omittedNote(lines: number, chars: number): string {
+  return "\n\n[... " + lines + " line" + (lines === 1 ? "" : "s") + ", " + chars + " characters omitted ...]\n\n";
+}
+export const OMITTED_NOTE = /\n*\[\.\.\. (\d+) lines?, (\d+) characters omitted \.\.\.\]\n*/g;
+
+function newlines(s: string): number {
+  let n = 0;
+  for (let i = s.indexOf("\n"); i !== -1; i = s.indexOf("\n", i + 1)) n++;
+  return n;
+}
+
+/**
+ * The start and the end of a stream, and a count of what fell between. `cat`
+ * of a 5 GB log, or a test run stuck printing, used to be buffered whole until
+ * the agent ran out of memory - only to be cut to 24 KB for the model anyway.
+ */
+export class KeptOutput {
+  private head = "";
+  private tail = "";
+  private droppedChars = 0;
+  private droppedLines = 0;
+  constructor(private readonly keep: number = KEEP_PER_END) {}
+
+  add(s: string): void {
+    if (this.head.length < this.keep) {
+      const n = this.keep - this.head.length;
+      this.head += s.slice(0, n);
+      s = s.slice(n);
+    }
+    if (!s) return;
+    this.tail += s;
+    // Trim only once the tail is twice its size, so a flood of small chunks
+    // is not re-sliced on every one.
+    if (this.tail.length > this.keep * 2) {
+      const gone = this.tail.length - this.keep;
+      this.droppedChars += gone;
+      this.droppedLines += newlines(this.tail.slice(0, gone));
+      this.tail = this.tail.slice(gone);
+    }
+  }
+
+  text(): string {
+    if (!this.droppedChars) return this.head + this.tail;
+    // Cut on line ends, as cap() does, so the count is of whole lines.
+    let head = this.head, tail = this.tail, lines = this.droppedLines, chars = this.droppedChars;
+    const h = head.lastIndexOf("\n");
+    if (h !== -1) { chars += head.length - h - 1; head = head.slice(0, h); }
+    const t = tail.indexOf("\n");
+    if (t !== -1) { chars += t + 1; lines += 1; tail = tail.slice(t + 1); }
+    return head + omittedNote(lines, chars) + tail;
+  }
+}
+
+/*
+ * Every command runs in its own process group, so it can be stopped whole.
+ * Killing only the shell left `sleep 20; echo x`, a pipeline or a dev server
+ * running - and still holding the output pipe, so the call never returned.
+ *
+ * `running` is what is in flight; `background` is what a finished command left
+ * behind (`npm run dev &`), kept so a later command can talk to it and stopped
+ * when the session ends or the process exits.
+ */
+const running = new Set<() => void>();
+const background = new Set<number>();
+const GROUPS = process.platform !== "win32";
+let exitHooked = false;
+
+function alive(pid: number): boolean {
+  try { process.kill(GROUPS ? -pid : pid, 0); return true; } catch { return false; }
+}
+
+/** Stop a command and everything it started: TERM first, KILL if it lingers. */
+function killTree(pid: number | undefined): void {
+  if (!pid) return;
+  if (!GROUPS) {
+    try { spawnSync("taskkill", ["/pid", String(pid), "/T", "/F"], { stdio: "ignore", windowsHide: true }); } catch { /* gone */ }
+    return;
+  }
+  try { process.kill(-pid, "SIGTERM"); } catch { return; }
+  const hard = setTimeout(() => { try { process.kill(-pid, "SIGKILL"); } catch { /* gone */ } }, 2000);
+  hard.unref();
+}
+
+/** Stop the commands in flight. Their calls return with what they printed. */
+export function stopRunning(): number {
+  const n = running.size;
+  for (const stop of Array.from(running)) stop();
+  return n;
+}
+
+/** Stop what finished commands left running in the background. */
+export function stopBackground(): number {
+  let n = 0;
+  for (const pid of Array.from(background)) {
+    background.delete(pid);
+    if (!alive(pid)) continue;
+    n++;
+    killTree(pid);
+  }
+  return n;
+}
+
+function hookExit(): void {
+  if (exitHooked) return;
+  exitHooked = true;
+  const all = () => {
+    for (const stop of Array.from(running)) stop();
+    // At exit there is no later tick for the SIGKILL, so it goes now.
+    for (const pid of Array.from(background)) { try { process.kill(GROUPS ? -pid : pid, "SIGKILL"); } catch { /* gone */ } }
+  };
+  process.on("exit", all);
+  // A signal ends Node without an "exit" event: clean up, then die of it as
+  // before, once the handler is out of the way.
+  for (const sig of ["SIGTERM", "SIGINT", "SIGHUP"] as NodeJS.Signals[]) {
+    process.once(sig, () => { all(); process.kill(process.pid, sig); });
+  }
 }
 
 export function runCommand(
@@ -27,11 +158,13 @@ export function runCommand(
   options: RunOptions = {},
 ): Promise<CommandResult> {
   return new Promise((resolve) => {
-    let stdout = "";
-    let stderr = "";
+    const stdout = new KeptOutput();
+    const stderr = new KeptOutput();
     let timedOut = false;
+    let stopped = false;
     let finished = false;
     let hasErrorOutput = false;
+    let exitCode: number | null = null;
 
     const env = Object.assign({}, process.env);
     if (command.includes("python")) {
@@ -44,41 +177,60 @@ export function runCommand(
       if (!env.PYTHONPYCACHEPREFIX) env.PYTHONPYCACHEPREFIX = path.join(os.tmpdir(), "closeni-pycache");
     }
 
-    const proc = spawn(command, { cwd: cwd, shell: true, env: env });
+    hookExit();
+    const bash = options.pipefail ? BASH : undefined;
+    const proc = bash
+      ? spawn(bash, ["-o", "pipefail", "-c", command], { cwd: cwd, env: env, detached: GROUPS })
+      : spawn(command, { cwd: cwd, shell: true, env: env, detached: GROUPS });
+    const pid = proc.pid;
+
+    const stop = () => { stopped = true; killTree(pid); };
+    running.add(stop);
 
     const timer = setTimeout(() => {
       timedOut = true;
-      proc.kill();
+      killTree(pid);
     }, timeoutMs);
 
-    proc.stdout.on("data", (d) => { 
-      const text = d.toString();
-      stdout += text; 
+    // Decoded by the stream, so a character split across two chunks survives.
+    // Read to the end even after the call returns: a server left in the
+    // background dies of a broken pipe the first time it logs otherwise.
+    proc.stdout.setEncoding("utf8");
+    proc.stderr.setEncoding("utf8");
+    proc.stdout.on("data", (text: string) => {
+      if (finished) return;
+      stdout.add(text);
       if (/error|traceback|exception|cannot find module|syntaxerror/i.test(text)) hasErrorOutput = true;
     });
-    proc.stderr.on("data", (d) => { 
-      stderr += d.toString(); 
+    proc.stderr.on("data", (text: string) => {
+      if (finished) return;
+      stderr.add(text);
       hasErrorOutput = true;
     });
 
     proc.on("error", (e) => {
       if (finished) return;
       finished = true;
+      running.delete(stop);
       clearTimeout(timer);
       resolve({ command: command, success: false, output: String(e), timedOut: timedOut });
     });
 
-    proc.on("close", (code) => {
+    const done = () => {
       if (finished) return;
       finished = true;
+      running.delete(stop);
       clearTimeout(timer);
-      const output = (stdout + "\n" + stderr).trim();
-      
+      // Whatever is still in the group was put in the background on purpose.
+      if (GROUPS && pid && !timedOut && !stopped && alive(pid)) background.add(pid);
+      let output = (stdout.text() + "\n" + stderr.text()).trim();
+      if (stopped) output = (output + "\n[stopped by the user]").trim();
+
       if (timedOut && !hasErrorOutput && !options.timeoutIsFailure) {
         resolve({ 
           command: command, 
           success: true, 
-          output: "[Process ran for " + (timeoutMs/1000) + "s with no errors. Assuming it's a running server/background task.] \n" + output, 
+          output: "[Process ran for " + (timeoutMs/1000) + "s with no errors, so it was taken to be a server and stopped.] \n" + output, 
           timedOut: true 
         });
         return;
@@ -86,10 +238,23 @@ export function runCommand(
 
       resolve({ 
         command: command, 
-        success: code === 0 && !timedOut, 
+        // 141 is a stage killed by SIGPIPE: `cat log | head` stopping early,
+        // which pipefail would otherwise call a failure.
+        success: (exitCode === 0 || (bash !== undefined && exitCode === 141)) && !timedOut && !stopped, 
         output: output, 
         timedOut: timedOut 
       });
+    };
+
+    // "close" waits for every holder of the pipe, and a background child is
+    // one; the shell's own exit is the end of the command.
+    proc.on("exit", (code) => {
+      exitCode = code;
+      setTimeout(done, 300).unref();
+    });
+    proc.on("close", (code) => {
+      if (exitCode === null) exitCode = code;
+      done();
     });
   });
 }

@@ -29,16 +29,12 @@
       <span>Close<span>NI</span></span>
     </div>
     <nav>
-      <!-- Code is the agent: ask, and it reads, edits and runs things in the
-           project. Plan and Build are the planned-build mode - plan first,
-           then build step by step - for when that is what you want. -->
-      <button class="nav-btn active" data-mode="code"><i>01</i>Code</button>
-      <button class="nav-btn" data-mode="chat"><i>02</i>Plan</button>
-      <button class="nav-btn" data-mode="build"><i>03</i>Build</button>
-      <button class="nav-btn" data-mode="test"><i>04</i>Test</button>
-      <button class="nav-btn" data-mode="research"><i>05</i>Research</button>
-      <button class="nav-btn" data-mode="push"><i>06</i>Ship</button>
-      <button class="nav-btn" data-mode="settings"><i>07</i>Settings</button>
+      <!-- One window. Plan, build, test, research and ship are modes of the
+           agent (shift+tab), not tabs. The full panels they grew out of - the
+           step-by-step planned build, the run panel, GitHub - are still here,
+           opened with /steps, /runner and /github. -->
+      <button class="nav-btn active" data-mode="code"><i>01</i>Agent</button>
+      <button class="nav-btn" data-mode="settings"><i>02</i>Settings</button>
     </nav>
     <div id="rail-bottom">
       <!-- Account. Whether the provider is signed in decides whether anything
@@ -94,6 +90,7 @@
   </aside>
   <main id="main">
     <header id="topbar">
+      <button id="back-to-code" class="btn btn-sm is-hidden" title="Back to the agent">&larr; Agent</button>
       <span id="mode-title">CODE</span>
       <!-- Describe, plan, build, test, ship: where this project is, and the one
            thing to do next. Drawn by renderer.js from desktop/flow.js. -->
@@ -113,7 +110,7 @@
           <div>Tips for getting started:</div>
           <div>1. Ask for a change, a fix or an explanation - the agent reads the project itself</div>
           <div>2. Run <b>/init</b> to write a CLOSENI.md with instructions for this project</div>
-          <div>3. Use <b>/plan</b> to get a plan first, or <b>/build</b> for a step-by-step planned build</div>
+          <div>3. <b>shift+tab</b> switches mode: plan, build, test, research and ship all run here</div>
         </div>
         <div id="code-transcript"></div>
         <div id="code-spinner" class="code-spinner hidden"><span class="cs-glyph">✻</span> <span class="cs-verb">Thinking…</span> <span class="cs-meta">(0s · esc to interrupt)</span></div>
@@ -121,6 +118,8 @@
       <div id="code-todos" class="code-todos hidden"></div>
       <div id="code-foot">
         <div id="code-suggest" class="code-suggest hidden"></div>
+        <!-- The current mode's own controls, drawn by code.js. -->
+        <div id="code-modebar" class="code-modebar hidden"></div>
         <div id="code-box" class="code-box" data-mode="default">
           <span class="code-caret">&gt;</span>
           <textarea id="code-input" rows="1" spellcheck="false" placeholder='Try "fix the failing test" or "explain @src/app.py"'></textarea>

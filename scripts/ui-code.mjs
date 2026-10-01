@@ -127,6 +127,8 @@ await page.keyboard.press("Shift+Tab");
 check("shift+tab turns on accept edits", /accept edits on/.test(await text("#code-mode")) && (await calls("codeMode")).pop().args[0] === "acceptEdits");
 await page.keyboard.press("Shift+Tab");
 check("again: plan mode", /plan mode on/.test(await text("#code-mode")));
+for (let i = 0; i < 4; i++) await page.keyboard.press("Shift+Tab");
+check("then build, test, research and ship", /ship mode on/.test(await text("#code-mode")));
 await page.keyboard.press("Shift+Tab");
 check("again: back to default", /\? for shortcuts/.test(await text("#code-mode")));
 
@@ -145,10 +147,14 @@ check("a finished plan offers to proceed", /Would you like to proceed/.test(awai
 const sendsBefore = (await calls("codeSend")).length;
 await page.click(".cc-plan-offer .cc-perm-opt");
 await page.waitForTimeout(150);
-check("proceeding switches to accept edits and asks for the implementation",
+check("proceeding switches to build mode, on accept edits, and asks for the implementation",
+  /build mode on/.test(await text("#code-mode")) &&
   (await calls("codeMode")).pop().args[0] === "acceptEdits" && (await calls("codeSend")).length === sendsBefore + 1 &&
   /implement the plan/.test((await calls("codeSend")).pop().args[0]));
 await emit({ type: "done", reason: "complete" });
+await page.fill("#code-input", "/build");
+await page.keyboard.press("Enter");
+check("/build turns build mode off again", /\? for shortcuts/.test(await text("#code-mode")));
 
 await page.fill("#code-input", "look at @src/mo");
 await page.waitForTimeout(200);

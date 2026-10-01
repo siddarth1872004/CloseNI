@@ -14,11 +14,12 @@
  */
 import * as fs from "fs";
 import * as path from "path";
-import { runCommand } from "../verification/command-runner.js";
+import { runCommand, omittedNote, OMITTED_NOTE } from "../verification/command-runner.js";
 import { ToolCall, BadCall, ToolOutcome, EditSection, isBad } from "./protocol.js";
 
 export const MAX_OUTPUT = 24000;
 export const MAX_READ_LINES = 2000;
+const MAX_READ_BYTES = 64 * 1024 * 1024;
 const SKIP_DIRS = new Set([".git", "node_modules", "__pycache__", ".venv", "venv", ".closeni", ".agent-backups", ".mypy_cache", ".pytest_cache", ".next", ".cache"]);
 const MAX_WALK = 20000;
 
@@ -51,32 +52,69 @@ export function resolveInside(workspace: string, p: any): string {
   // The nearest part of the path that exists must also be inside once links are
   // followed, or "link-to-home/.ssh/config" would pass the check above.
   let probe = abs;
-  while (!fs.existsSync(probe) && probe !== ws) probe = path.dirname(probe);
+  while (!present(probe) && probe !== ws) probe = path.dirname(probe);
   try {
     const realWs = fs.realpathSync(ws);
     const real = fs.realpathSync(probe);
     if (real !== realWs && !real.startsWith(realWs + path.sep)) throw new ToolError(p + " leads outside the project through a link");
   } catch (e) {
     if (e instanceof ToolError) throw e;
+    // A link to something missing: writing through it creates its target,
+    // wherever that is. A cloned repo can carry one.
+    if (probe !== ws) throw new ToolError(p + " goes through a link to something that does not exist; it may lead outside the project");
   }
   return abs;
+}
+
+/** Exists as an entry, a dangling link included (existsSync follows links). */
+function present(p: string): boolean {
+  try { fs.lstatSync(p); return true; } catch { return false; }
+}
+
+/** The path with links followed, as far as it exists. */
+function realOf(abs: string): string {
+  let probe = abs;
+  const rest: string[] = [];
+  while (!present(probe) && path.dirname(probe) !== probe) { rest.unshift(path.basename(probe)); probe = path.dirname(probe); }
+  try { return path.join(fs.realpathSync(probe), ...rest); } catch { return abs; }
 }
 
 function relOf(workspace: string, abs: string): string {
   return path.relative(path.resolve(workspace), abs).split(path.sep).join("/") || ".";
 }
 
+// Any .git, nested ones included, after links: "g/hooks/pre-commit" through a
+// link to .git plants a hook that runs on the next commit. Case is ignored for
+// Windows and macOS, where .GIT is the same folder.
 function refuseGitInternals(workspace: string, abs: string): void {
-  const rel = relOf(workspace, abs);
-  if (rel === ".git" || rel.startsWith(".git/")) throw new ToolError("files inside .git are not edited directly; use git through bash");
+  const rel = path.relative(realOf(path.resolve(workspace)), realOf(abs));
+  if (rel.split(path.sep).some((s) => s.toLowerCase() === ".git")) throw new ToolError("files inside .git are not edited directly; use git through bash");
 }
 
-/** Head and tail of long output: errors are usually at the end, context at the start. */
+/**
+ * Head and tail of long output: errors are usually at the end, context at the
+ * start. The cut falls on line ends where one is near, and the note says how
+ * many lines went, counting any earlier cut inside what was dropped - the
+ * model is told "40 lines" once, not "40 lines" of a log that was 90000.
+ */
 export function cap(text: string, max: number = MAX_OUTPUT): string {
   if (text.length <= max) return text;
-  const head = Math.floor(max * 0.4);
-  const tail = max - head;
-  return text.slice(0, head) + "\n\n[... " + (text.length - max) + " characters omitted ...]\n\n" + text.slice(text.length - tail);
+  let head = Math.floor(max * 0.4);
+  let tail = text.length - (max - head);
+  const h = text.lastIndexOf("\n", head);
+  if (h > head / 2) head = h + 1;
+  const t = text.indexOf("\n", tail);
+  if (t !== -1 && t - tail < (text.length - tail) / 2) tail = t + 1;
+  const middle = text.slice(head, tail);
+  let lines = middle.split("\n").length - 1;
+  let chars = middle.length;
+  // A note stands for the line end before it plus what it counted.
+  middle.replace(OMITTED_NOTE, (note: string, l: string, c: string) => {
+    lines += Number(l) + 1 - (note.split("\n").length - 1);
+    chars += Number(c) + 1 - note.length;
+    return note;
+  });
+  return text.slice(0, head).replace(/\n+$/, "") + omittedNote(lines, chars) + text.slice(tail);
 }
 
 function isBinary(buf: Buffer): boolean {
@@ -136,14 +174,26 @@ async function doRead(c: ToolCall, ctx: ToolContext): Promise<AgentOutcome> {
   const abs = resolveInside(ctx.workspace, c.input.path);
   if (!fs.existsSync(abs)) throw new ToolError(c.input.path + " does not exist");
   if (fs.statSync(abs).isDirectory()) throw new ToolError(c.input.path + " is a directory; use ls");
+  const size = fs.statSync(abs).size;
+  if (size > MAX_READ_BYTES) throw new ToolError(c.input.path + " is " + Math.round(size / 1048576) + " MB; search it with grep, or print part of it with bash (sed -n '100,200p', tail -n 200)");
   const buf = fs.readFileSync(abs);
   if (isBinary(buf)) return { call: c, ok: true, summary: "binary file, " + buf.length + " bytes", output: "" };
   const lines = buf.toString("utf-8").split("\n");
   if (lines.length && lines[lines.length - 1] === "") lines.pop();
   const offset = Math.max(1, parseInt(c.input.offset, 10) || 1);
   const limit = Math.max(1, Math.min(MAX_READ_LINES, parseInt(c.input.limit, 10) || MAX_READ_LINES));
-  const slice = lines.slice(offset - 1, offset - 1 + limit);
-  const body = slice.map((l, k) => String(offset + k).padStart(6, " ") + "\t" + (l.length > 2000 ? l.slice(0, 2000) + " [line truncated]" : l)).join("\n");
+  // Whole lines up to the output budget. Capping afterwards cut out the middle
+  // of the read, and "read again with offset N" then skipped what was cut.
+  const slice: string[] = [];
+  let used = 0;
+  for (let k = 0; k < limit && offset - 1 + k < lines.length; k++) {
+    const l = lines[offset - 1 + k];
+    const row = String(offset + k).padStart(6, " ") + "\t" + (l.length > 2000 ? l.slice(0, 2000) + " [line truncated]" : l);
+    if (slice.length && used + row.length + 1 > MAX_OUTPUT - 200) break;
+    slice.push(row);
+    used += row.length + 1;
+  }
+  const body = slice.join("\n");
   const more = offset - 1 + slice.length < lines.length
     ? "\n[file continues: " + lines.length + " lines in total; read again with offset " + (offset + slice.length) + "]" : "";
   return {
@@ -249,12 +299,12 @@ async function doBash(c: ToolCall, ctx: ToolContext): Promise<AgentOutcome> {
   const command = String(c.input.command || "").trim();
   if (!command) throw new ToolError("bash needs a command");
   const secs = Math.max(1, Math.min(600, parseInt(c.input.timeout, 10) || 60));
-  const run = ctx.run || ((cmd: string, cwd: string, t: number) => runCommand(cmd, cwd, t));
+  const run = ctx.run || ((cmd: string, cwd: string, t: number) => runCommand(cmd, cwd, t, { pipefail: true }));
   const r = await run(command, ctx.workspace, secs * 1000);
   const output = cap(r.output || "");
   return {
     call: c, ok: r.success,
-    summary: r.timedOut ? "still running after " + secs + "s (left running as a server)" : r.success ? "exit 0" : "failed",
+    summary: r.timedOut ? "stopped after " + secs + "s" + (r.success ? " (no errors, taken to be a server)" : "") : r.success ? "exit 0" : "failed",
     output: output || "(no output)",
     detail: { command: command, output: output, ok: r.success, timedOut: r.timedOut },
   };
@@ -291,11 +341,15 @@ async function doGrep(c: ToolCall, ctx: ToolContext): Promise<AgentOutcome> {
   catch (e: any) { throw new ToolError("invalid regular expression: " + e.message); }
   const base = c.input.path ? resolveInside(ctx.workspace, c.input.path) : path.resolve(ctx.workspace);
   const only = c.input.glob ? globToRegExp(String(c.input.glob)) : null;
-  const files = fs.existsSync(base) && fs.statSync(base).isFile() ? [relOf(ctx.workspace, base)] : walk(base, ctx.workspace);
+  const one = fs.existsSync(base) && fs.statSync(base).isFile();
+  const files = one ? [relOf(ctx.workspace, base)] : walk(base, ctx.workspace);
   const out: string[] = [];
+  const secret: string[] = [];
   let matches = 0, filesHit = 0;
   for (const rel of files) {
     if (only && !only.test(rel) && !only.test(rel.split("/").pop()!)) continue;
+    // Named on its own, the permission prompt has already asked for it.
+    if (!one && isSecretFile(rel)) { secret.push(rel); continue; }
     let buf: Buffer;
     try { const abs = path.join(ctx.workspace, rel); if (fs.statSync(abs).size > 1500000) continue; buf = fs.readFileSync(abs); } catch { continue; }
     if (isBinary(buf)) continue;
@@ -311,7 +365,8 @@ async function doGrep(c: ToolCall, ctx: ToolContext): Promise<AgentOutcome> {
   return {
     call: c, ok: true,
     summary: matches + " match" + (matches === 1 ? "" : "es") + " in " + filesHit + " file" + (filesHit === 1 ? "" : "s"),
-    output: cap(out.join("\n") + (matches > out.length ? "\n[" + (matches - out.length) + " more matches]" : "")),
+    output: cap(out.join("\n") + (matches > out.length ? "\n[" + (matches - out.length) + " more matches]" : "")
+      + (secret.length ? "\n[not searched, as they may hold secrets: " + secret.slice(0, 10).join(", ") + (secret.length > 10 ? " and " + (secret.length - 10) + " more" : "") + "; read one to ask the user for it]" : "")),
     detail: { matches: matches, files: filesHit },
   };
 }
@@ -366,7 +421,17 @@ export async function runTool(call: ToolCall | BadCall, ctx: ToolContext): Promi
   }
 }
 
-/** Read-only tools never need permission. */
+/**
+ * .env files, keys and credential files. Reading one sends it to a chat site,
+ * so it asks first in every mode; a project-wide grep leaves them out.
+ */
+export function isSecretFile(p: string): boolean {
+  const name = String(p || "").replace(/\\/g, "/").split("/").pop() || "";
+  if (/^\.env\.(example|sample|template|dist|defaults)$/i.test(name)) return false;
+  return /^(\.env(\..+)?|\.netrc|\.npmrc|\.pypirc|id_(rsa|dsa|ecdsa|ed25519))$/i.test(name) || /\.(pem|key|p12|pfx)$/i.test(name);
+}
+
+/** Read-only tools never need permission (see isSecretFile for the exception). */
 export function isReadOnly(tool: string): boolean {
   return tool === "read" || tool === "glob" || tool === "grep" || tool === "ls" || tool === "todo";
 }

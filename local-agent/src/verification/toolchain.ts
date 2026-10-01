@@ -35,6 +35,9 @@ export const TOOL_CANDIDATES: Record<string, string[]> = {
   php: ["php"],
   dotnet: ["dotnet"],
   bash: ["bash", "sh"],
+  // Distributions ship Lua's compiler under its version.
+  luac: ["luac", "luac5.4", "luac5.3", "luac5.1"],
+  rscript: ["Rscript"],
   // `python -m mypy` second: mypy is very often installed into a virtualenv
   // without its console script on PATH, and a bare `mypy` misses it. Probing
   // both means a project whose venv has mypy gets type-checked rather than
@@ -58,6 +61,13 @@ export const TOOL_CANDIDATES: Record<string, string[]> = {
 export const TOOL_PROBES: Record<string, string> = {
   go: " version",
   gofmt: "",
+  // The same for these: a version subcommand, or a flag other than --version.
+  zig: " version",
+  lein: " version",
+  rebar3: " version",
+  luac: " -v",
+  // --version starts sbt's whole server; this only asks the launcher.
+  sbt: " --script-version",
 };
 
 /** The command that proves `candidate` works as tool `name`. */

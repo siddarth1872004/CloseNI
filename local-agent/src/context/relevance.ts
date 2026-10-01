@@ -28,7 +28,7 @@ export interface SelectOptions {
 
 const DEFAULT_BUDGET_CHARS = 2600;
 const DEFAULT_MAX_FILES = 8;
-const SIGNATURE_LINE_LIMIT = 40;
+const SIGNATURE_LINE_LIMIT = 60;
 
 /**
  * Reduce a file to the part another module needs in order to call into it:
@@ -43,8 +43,14 @@ export function extractSignatures(src: string, filePath: string): string {
       const line = raw.replace(/\s+$/, "");
       if (/^(import|from)\s/.test(line)) out.push(line);
       else if (/^class\s+/.test(line)) { out.push(line); depth = 1; }
-      else if (/^def\s+/.test(line) && depth === 0) out.push(line);
-      else if (depth > 0 && /^\s{4}(def|@)/.test(line)) out.push(line);
+      // A def after a class used to be dropped: depth was still 1, so it fell
+      // through to the reset below without being kept.
+      else if (/^(async\s+)?def\s+/.test(line)) { out.push(line); depth = 0; }
+      // Module-level constants are the surface of a settings module. Without
+      // them its outline was empty, and a model told to extend it rewrote it
+      // from memory - dropping the constants other modules imported.
+      else if (/^[A-Za-z_]\w*\s*(?::[^=\n]*)?=(?!=)/.test(line)) { out.push(line.slice(0, 120)); depth = 0; }
+      else if (depth > 0 && /^\s{4}(async\s+def|def|@)/.test(line)) out.push(line);
       else if (depth > 0 && /^\S/.test(line)) depth = 0;
     }
     return out.slice(0, SIGNATURE_LINE_LIMIT).join("\n");
@@ -181,4 +187,31 @@ export function selectRelevantFiles(opts: SelectOptions): SelectedFile[] {
     spent += body.length;
   }
   return selected;
+}
+
+const DEFAULT_EDIT_BUDGET_CHARS = 12000;
+
+/**
+ * Existing files the plan says this step writes, in full.
+ *
+ * An outline is enough to call into a module and not enough to rewrite it. The
+ * plan names the files a step will touch; when one of those already exists, the
+ * step is going to replace it, and a model replacing a file it was shown only
+ * the outline of rewrites it from memory. Regardless of what the thread was
+ * shown before - five steps back is not something a model reproduces exactly.
+ */
+export function selectFilesToEdit(files: WorkspaceFile[], stepDetail: string, budgetChars?: number): SelectedFile[] {
+  const budget = budgetChars ?? DEFAULT_EDIT_BUDGET_CHARS;
+  const expected = parseExpectedFiles(stepDetail || "").map((e) => e.replace(/\\/g, "/").replace(/^\.\//, ""));
+  if (!expected.length) return [];
+  const out: SelectedFile[] = [];
+  let spent = 0;
+  for (const want of expected) {
+    const f = (files || []).find((x) => x.path === want);
+    if (!f || out.some((o) => o.path === f.path)) continue;
+    if (spent + f.content.length > budget) continue;
+    out.push({ path: f.path, content: f.content });
+    spent += f.content.length;
+  }
+  return out;
 }
