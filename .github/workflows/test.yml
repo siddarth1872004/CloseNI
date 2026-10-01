@@ -1,11 +1,12 @@
 # Runs the fast suites on every push and pull request. The end-to-end suite
-# drives a real browser for around fifteen minutes and stays a local gate for
-# now (roadmap 0.4).
+# drives a real browser for around fifteen minutes, so it runs on pull requests
+# and by hand, not on every push (roadmap 0.4, D11).
 name: test
 
 on:
   push:
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -40,6 +41,10 @@ jobs:
       - name: Unit tests
         run: npm test
 
+      # verify audits the packaged app for session data, so there must be one.
+      - name: Package
+        run: npm run pack
+
       - name: Verify
         run: npm run verify
 
@@ -50,3 +55,27 @@ jobs:
 
       - name: Panel tests
         run: xvfb-run -a npm run test:ui
+
+  e2e:
+    if: github.event_name != 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Compile the agent
+        run: npm run build
+
+      - name: End-to-end tests
+        run: xvfb-run -a npm run test:e2e
