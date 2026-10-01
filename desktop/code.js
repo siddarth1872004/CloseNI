@@ -768,6 +768,12 @@
     }
     // Enter on an empty line is the mode's own action: run the tests, or ship.
     if (!t && S.mode === "test") { userLine("run the tests"); runChecks("behaviour"); return; }
+    // A build request in a mode that cannot build goes to Build instead.
+    let switched = "";
+    if ((S.mode === "research" || S.mode === "ship") && !shownAs && V.looksLikeBuild(t)) {
+      switched = "That asks for something to be built, so Build mode is on (it was " + S.mode + "; shift+tab to change)";
+      setMode("build");
+    }
     if (S.mode === "research" && !shownAs) {
       if (!t) return;
       userLine(t);
@@ -782,9 +788,11 @@
     if (S.busy || S.starting || S.running) {
       S.queue.push({ text: wire, shownAs: shown, fix: fix });
       add(el("div", "cc-user queued", '<span class="cc-prompt">&gt;</span><span>' + esc(shown) + '</span><span class="cc-queued">queued</span>'));
+      if (switched) note(switched, "dim");
       return;
     }
     userLine(shown);
+    if (switched) note(switched, "dim");
     S.fixing = !!fix;
     ensureSession().then(function (ok) {
       if (!ok) return;
