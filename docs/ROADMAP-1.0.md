@@ -459,9 +459,11 @@ throwaway GitHub account or repo.
       there's no bundler.
 - [ ] **8.4 Split `test/run-tests.cjs`** (M). It's 4364 lines. Split it by area,
       with a runner that keeps the single `PASS — N passed` line.
-- [ ] **8.5 The VS Code extension** (S–L). **Decided (D7): delete.** The options were:
+- [x] **8.5 The VS Code extension** (S–L). **Decided (D7): delete.** The options were:
   - delete it: it's 97 lines, named "Agentic Web Coder", and predates the agent;
   - or rebuild it as a thin client of `agent-session`, so the agent runs inside VS Code. That's a real feature, so it may belong after 1.0.
+      *Done:* deleted, with its workspace entry and the references in verify,
+      the packaging test and the README. Rebuilding it is listed after 1.0.
 - [ ] **8.6 C# language check** (S). It's the one language never run, because
       there's no .NET. Install .NET and run `npm run languages`, or drop C# from
       the "twelve languages" claim.
