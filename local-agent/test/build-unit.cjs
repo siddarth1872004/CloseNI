@@ -226,6 +226,12 @@ function testRunTarget() {
   check("a pygame program opens a window", looksGraphical(["import sys\nimport pygame\n"]));
   check("so does a tkinter one", looksGraphical(["from tkinter import ttk"]));
   check("a console program does not", !looksGraphical(["import sys\nprint('pygame')\n"]));
+  const RT = require(path.join(__dirname, "..", "..", "desktop", "run-target.js"));
+  check("a pygame or Qt program is checked unseen", RT.checkableHeadless(["import sys\nimport pygame\n"]) && RT.checkableHeadless(["from PySide6.QtWidgets import QApplication"]));
+  check("a console script is never started on its own", !RT.checkableHeadless(["import os\nfor f in os.listdir(): os.rename(f, f + '.bak')\n"]));
+  check("nor one with a toolkit that needs a screen", !RT.checkableHeadless(["import tkinter"]) && !RT.checkableHeadless(["import pygame", "import turtle"]));
+  check("still up at the limit, or a clean exit, is a start", RT.startedOk({ timedOut: true, code: null }) && RT.startedOk({ code: 0 }) && !RT.startedOk({ code: 1 }) && !RT.startedOk({ code: null, signal: "SIGSEGV" }));
+  check("the check runs SDL and Qt without a screen", RT.HEADLESS.SDL_VIDEODRIVER === "dummy" && RT.HEADLESS.QT_QPA_PLATFORM === "offscreen");
   const crash = fixPrompt({ command: "python game.py", output: "Traceback\nNameError: x\n\n", code: 1, signal: null, gui: false });
   check("a fix request names the command and how it ended", crash.indexOf("`python game.py` exited with code 1") !== -1, crash);
   check("and carries the error", crash.indexOf("```\nTraceback\nNameError: x\n```") !== -1, crash);

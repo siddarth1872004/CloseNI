@@ -394,21 +394,44 @@
     if (S.runOffer) { S.runOffer.remove(); S.runOffer = null; }
   }
 
-  /** After a turn that changed files, offer to run what was built, when there is a command for it. */
+  /**
+   * After a turn that changed files, offer to run what was built, when there
+   * is a command for it. A program with a window is first started unseen for
+   * a few seconds; one that crashes on start is offered to the agent instead.
+   */
   function offerRun() {
     if (!CN.resolveRunCommand) return;
     CN.resolveRunCommand().then(function (rc) {
       if (!rc || !rc.command || S.busy) return;
       closeRunOffer();
       const box = document.body.appendChild(el("div", "run-offer",
-        '<div class="run-offer-title">▶ Ready to run</div>' +
+        '<div class="run-offer-title">Checking that it starts…</div>' +
         '<div class="run-offer-cmd"></div>' +
         '<div class="run-offer-acts"></div>'));
       box.querySelector(".run-offer-cmd").textContent = rc.command;
       const acts = box.querySelector(".run-offer-acts");
-      acts.appendChild(mbtn("Run this project", function () { runInWindow(rc.command); }, "Opens it full screen in a CloseNI window", "primary"));
       acts.appendChild(mbtn("Not now", closeRunOffer));
       S.runOffer = box;
+      const check = window.api.checkRun
+        ? window.api.checkRun({ command: rc.command, cwd: CN.getWorkspace() }).catch(function () { return null; })
+        : Promise.resolve(null);
+      check.then(function (r) {
+        if (S.runOffer !== box) return;
+        const title = box.querySelector(".run-offer-title");
+        const later = acts.firstChild;
+        if (r && r.checked && !r.ok) {
+          box.classList.add("fail");
+          title.textContent = "✗ Crashed on start";
+          acts.insertBefore(mbtn("Fix errors", function () {
+            closeRunOffer();
+            send(r.prompt, "fix the crash on start of " + rc.command, true);
+          }, "Sends the error to the agent", "primary"), later);
+          acts.insertBefore(mbtn("Run anyway", function () { runInWindow(rc.command); }), later);
+          return;
+        }
+        title.textContent = "▶ Ready to run";
+        acts.insertBefore(mbtn("Run this project", function () { runInWindow(rc.command); }, "Opens it full screen in a CloseNI window", "primary"), later);
+      });
     });
   }
 

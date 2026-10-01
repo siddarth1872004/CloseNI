@@ -29,13 +29,39 @@
     return (sources || []).some(function (s) { return GUI.test(String(s || "")); });
   }
 
+  // Toolkits that run without a screen, given HEADLESS: SDL draws to a dummy
+  // video driver, Qt to an offscreen platform. The rest would flash a window.
+  var NO_SCREEN = /^(?:pygame|PyQt[56]|PySide[26])$/;
+  var HEADLESS = { SDL_VIDEODRIVER: "dummy", SDL_AUDIODRIVER: "dummy", QT_QPA_PLATFORM: "offscreen" };
+
+  /**
+   * Can CloseNI start this program unseen, to check it gets past startup?
+   * Only a program with a window, whose every toolkit runs without a screen:
+   * the agent cannot easily check those itself, and a game does not act on
+   * the user's files at startup the way a console script might.
+   */
+  function checkableHeadless(sources) {
+    var kits = [];
+    (sources || []).forEach(function (s) {
+      var re = new RegExp(GUI.source, "gm");
+      var m;
+      while ((m = re.exec(String(s || "")))) kits.push(m[0].replace(/^\s*(?:import|from)\s+/, ""));
+    });
+    return kits.length > 0 && kits.every(function (k) { return NO_SCREEN.test(k); });
+  }
+
+  /** A start check passes when the program was still up at the limit, or ended cleanly. */
+  function startedOk(r) {
+    return !!(r && (r.timedOut || r.code === 0));
+  }
+
   // The end of the output is where the error is; the start is mostly banners.
   var FIX_TAIL = 6000;
 
   /**
    * What the agent is asked after a run fails: the command, how it ended and
-   * the end of its output. A program that opens a window must not be run by
-   * the agent to check, since its bash call would sit until the timeout.
+   * the end of its output. A program that opens a window is checked headless
+   * and time-limited, since a plain bash call would sit until the timeout.
    */
   function fixPrompt(run) {
     var out = String(run.output || "");
@@ -54,7 +80,10 @@
         ", where exit code 124 means it stayed up. The user will run it for real." : "");
   }
 
-  var api = { venvCommand: venvCommand, looksGraphical: looksGraphical, fixPrompt: fixPrompt };
+  var api = {
+    venvCommand: venvCommand, looksGraphical: looksGraphical, fixPrompt: fixPrompt,
+    checkableHeadless: checkableHeadless, startedOk: startedOk, HEADLESS: HEADLESS,
+  };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.CNRunTarget = api;
 })(typeof window !== "undefined" ? window : globalThis);
