@@ -302,27 +302,38 @@ not a wrong result.
       completion to the reply-stream signal, as DeepSeek did, or raise
       `maxWaitMs` while the stream is open. Then run scenarios 1–3 of the
       suite. If they pass, drop `comingSoon`.
+      *2 Oct, deferred:* it ships gated for 1.0, and the work is under After
+      1.0. Before it is ungated, give its config a `termsUrl`: the unit suite
+      fails a selectable web provider without one, and Qwen's terms page could
+      not be confirmed (its site answers 200 for any path).
 - [ ] **2.2 GLM** (M). Selectors have never been confirmed, and the site declines
       build prompts. Run `capture-provider-ui.mjs glm`, fix the selectors, and try
       the *agent's* preamble, which is smaller than a build prompt and may not
       be declined. **Decision point:** if it still declines, remove GLM from the
       provider list for 1.0 rather than shipping it gated forever.
+      *2 Oct, deferred:* you chose to ship it gated for 1.0 rather than remove
+      it (this overrides D5). The work is under After 1.0.
 - [ ] **2.3 Ollama for the coding agent** (M). The session seam (`start`,
       `ready`, `ask`, `reset`) already exists, and the agent only needs `ask`.
       A local model is the one provider with no terms-of-service risk and no
       selectors, so it's worth offering to the agent even if plan/build stay
       browser-only. Test with a 7–14B coder model, and expect more protocol
       drift (item 1.9).
+      *2 Oct, deferred:* none of the six criteria need it. It is under After 1.0.
 - [x] **2.4 HuggingChat and Open WebUI** (S). Configs exist in
       `config/providers/`. Confirm whether they're offered anywhere. Either test
       them or delete the configs.
       *Done:* both were `enabled: false` with no selectors, and the registry hid
       them, so nothing offered them. Configs and the README row deleted.
-- [ ] **2.5 Provider health on startup, live** (S). Run `npm run smoke deepseek`
+- [x] **2.5 Provider health on startup, live** (S). Run `npm run smoke deepseek`
       against the real site and fix every "degraded" row, or explain why it's
       skipped.
+      *2 Oct, done:* 6 checks passed, none degraded, completion in 8.8s. The one
+      skipped row is the stop button, which DeepSeek's config leaves empty on
+      purpose: its stop control is told apart only by hashed classes.
 
-**Exit:** the provider dropdown lists only providers that passed scenarios 1–3.
+**Exit:** the provider dropdown lets you pick only providers that passed
+scenarios 1–3. Qwen and GLM are listed, gated, as coming soon.
 
 ---
 
@@ -564,9 +575,14 @@ throwaway GitHub account or repo.
       The token is encrypted, reaches git only through `GIT_ASKPASS`, is
       redacted from git output, and never reaches the agent's process. There is
       no crash reporter. Not covered: `bash` runs as you and can read either.
-- [ ] **9.4 Terms of service** (S). The README already says this is your
+- [x] **9.4 Terms of service** (S). The README already says this is your
       responsibility. Make the first-run screen say it too, once, with a link to
       each provider's terms.
+      *2 Oct, done:* the sign-in step says it, with a "Read the terms" link
+      from the provider's `termsUrl` (DeepSeek, and GLM's Z.ai page). It shows
+      in the Code panel's welcome, where a first launch lands, once a folder is
+      chosen and until the provider is signed in, and in the chat panel's
+      getting-started guide.
 - [x] **9.5 Licence check** (S) on the bundled dependencies (Electron,
       Playwright, Chromium redistribution in the installer).
       *Done:* the installer ships Electron (MIT, with `LICENSE.electron.txt`
@@ -653,6 +669,8 @@ at the top.
 - MCP servers as agent tools, not only as pre-build context
 - Images and screenshots in agent prompts
 - Sub-agents and parallel tool calls across providers
+- Qwen Studio and GLM, ungated (2.1, 2.2; they ship gated as coming soon)
+- Ollama for the coding agent (2.3)
 
 ## Rules that still hold
 
