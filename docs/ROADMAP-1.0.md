@@ -347,6 +347,11 @@ live site.
 
 - [ ] **3.1 Run it live once** (S). Run `npm run webtest -- deepseek --headed`,
       then `npm run web:report`.
+      *2 Oct: 15/16. The failed row was a prompt DeepSeek's CloudFront
+      firewall dropped after about 13 prompts in 36 s. The layer called it an
+      empty reply; that is fixed, and the harness now waits 8 s between
+      scenarios. The firewall then blocked this machine's IP outright (403),
+      so the clean rerun is still to do.*
 - [ ] **3.2 Decide** (M):
   - **(a) Adopt it.** Route the agent's `ask` through `AIWebProvider`, since
     its explicit states (AUTH_REQUIRED, CAPTCHA, RATE_LIMITED) are exactly
@@ -401,10 +406,19 @@ The app is agent-first now. The planned build is still reachable through
 
 ## Phase 5 — Needle extraction: prove or remove
 
-- [ ] **5.1 Run the real model once** (S): `closeni extractor-check warm` on a
+- [x] **5.1 Run the real model once** (S): `closeni extractor-check warm` on a
       network that can reach Hugging Face.
-- [ ] **5.2 Measure it** (M) on the plans that failed in 4.3. Does it rescue
+      *2 Oct: cactus-needle 3.0.6, base weights, warmed in 3.9 s.*
+- [x] **5.2 Measure it** (M) on the plans that failed in 4.3. Does it rescue
       them? How fast is it?
+      *2 Oct, measured on six prose plans in the shapes chat models write,
+      since 4.3 has not run. It rescued none of them. Five never reach the model:
+      the rule-based segmenter only finds "Step N" markers, not "First… Next…",
+      headings, bullets or "Step one". On the one that does, each step took
+      17–30 s on 12 cores, and both answers were withheld at confidence
+      0.04–0.06. One of them made up a file path
+      (`https://flask.app.com/app.py`). The package also sends usage telemetry
+      unless `NEEDLE_TELEMETRY=0` is set.*
 - [ ] **5.3 Decide** (S). If it rescues fewer than half, or takes more than
       about 10 seconds, remove Settings → Extraction for 1.0. An optional
       Python dependency that doesn't earn its place costs support forever.
