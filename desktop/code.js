@@ -49,11 +49,30 @@
     $("code-cwd").textContent = ws || "no folder selected";
     const need = $("code-need");
     need.innerHTML = "";
+    const terms = $("code-terms");
+    terms.innerHTML = "";
     if (!ws) {
       const b = el("button", "btn btn-sm", "Choose a project folder");
       b.onclick = function () { const x = $("browse-btn"); if (x) x.click(); };
       need.appendChild(el("span", "hint", "The agent works inside one folder. "));
       need.appendChild(b);
+      return;
+    }
+    // Then the sign-in, and with it - once, before the first one - the terms.
+    const step = CN.signInStep && CN.signInStep();
+    if (!step || step.done) return;
+    need.appendChild(el("span", "hint", esc(step.title) + ". "));
+    if (step.action) {
+      const s = el("button", "btn btn-sm", esc(step.action));
+      s.onclick = function () { CN.onboardingAction("signin"); };
+      need.appendChild(s);
+    }
+    terms.textContent = step.terms + " ";
+    if (step.termsUrl) {
+      const a = el("a", "terms-link", "Read the terms");
+      a.href = "#";
+      a.onclick = function (e) { e.preventDefault(); CN.openUrl(step.termsUrl); };
+      terms.appendChild(a);
     }
   }
 
@@ -960,6 +979,7 @@
     renderModebar();
   };
   CN.focusCode = function () { input.focus(); };
+  CN.onAccountChange = refreshWelcome;
 
   refreshWelcome();
   showMode();

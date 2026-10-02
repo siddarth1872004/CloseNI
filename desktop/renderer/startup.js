@@ -7,6 +7,13 @@
 window.CN = {
   getWorkspace: function () { return workspace; },
   getProvider: function () { return provider; },
+  // The getting-started guide's sign-in step, for the Code panel's welcome:
+  // that is the screen a first launch lands on, not the chat panel's guide.
+  signInStep: function () {
+    return window.CNOnboarding.steps(onboardingState()).find(function (s) { return s.id === "signin"; });
+  },
+  onboardingAction: onboardingAction,
+  openUrl: function (url) { return window.api.openThread(url); },
   getAutonomy: function () { const s = $("autonomy-select"); return (s && s.value) || "ask"; },
   // One conversation, one composer: steps are serial and no longer configurable.
   // Kept as a function returning 1 rather than removed, so builder.js keeps a

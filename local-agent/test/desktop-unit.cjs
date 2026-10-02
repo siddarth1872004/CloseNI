@@ -1042,6 +1042,10 @@ function testOnboarding() {
   check("a signed-out account offers sign-in", off.action === "Sign in");
   check("and explains the window before it opens", /window opens/.test(off.detail) && /closes by itself/.test(off.detail));
   check("the provider is named", /DeepSeek/.test(off.title) && /DeepSeek/.test(off.detail));
+  check("the sign-in step says the terms are your call", /terms of use/.test(off.terms) && /your call/.test(off.terms));
+  check("and links them when the provider has any",
+    O.steps(Object.assign({}, withFolder, { termsUrl: "https://x/terms" })).find(function (x) { return x.id === "signin"; }).termsUrl === "https://x/terms" &&
+      off.termsUrl === null);
   const busy = O.steps(Object.assign({}, withFolder, { account: "busy" })).find(function (x) { return x.id === "signin"; });
   check("a check in progress offers no button to press twice", busy.action === null && /Checking/.test(busy.title));
 
@@ -1077,6 +1081,24 @@ function testOnboarding() {
   check("the account light updates it", /acctNow = state;\s*renderOnboarding\(\)/.test(renderer));
   check("opening a folder updates it", /renderRecent\(\);\s*renderOnboarding\(\);\s*\}/.test(renderer));
   check("the browser gate updates it", /browserReady = false;\s*renderOnboarding\(\)/.test(renderer));
+
+  // Every provider a person can sign in to has its terms on file, and they reach the guide.
+  const files = fs.readFileSync(path.join(D, "main", "files.js"), "utf8");
+  check("the provider list carries termsUrl to the renderer", /termsUrl: cfg\.termsUrl/.test(files));
+  check("the guide reads it from the provider", /termsUrl: p && p\.termsUrl/.test(renderer));
+  const provDir = path.join(__dirname, "..", "config", "providers");
+  const noTerms = fs.readdirSync(provDir).filter(function (f) {
+    const cfg = JSON.parse(fs.readFileSync(path.join(provDir, f), "utf8"));
+    return cfg.enabled && !cfg.comingSoon && /^https:/.test(cfg.baseUrl) && !/^https:\/\//.test(cfg.termsUrl || "");
+  });
+  check("every selectable web provider links its terms", noTerms.length === 0, noTerms.join(", "));
+  // A first launch lands on the Code panel, not the chat panel's guide, so the
+  // sign-in and its terms are said there too.
+  const code = fs.readFileSync(path.join(D, "code.js"), "utf8");
+  check("the Code panel's welcome has a place for the terms", /id="code-terms"/.test(html));
+  check("and fills it from the guide's sign-in step", /CN\.signInStep\(\)/.test(code) && /step\.terms/.test(code) && /signInStep:/.test(renderer));
+  check("and redraws when the account light changes",
+    /CN\.onAccountChange = refreshWelcome/.test(code) && /acctNow = state;\s*renderOnboarding\(\);\s*if \(window\.CN && window\.CN\.onAccountChange\)/.test(renderer));
 }
 
 async function run(c, s, sk) {

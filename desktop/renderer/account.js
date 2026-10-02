@@ -65,6 +65,7 @@ function setAcct(state, text) {
   }
   acctNow = state;
   renderOnboarding();
+  if (window.CN && window.CN.onAccountChange) window.CN.onAccountChange();
   const signedIn = state === "on";
   const inBtn = $("acct-signin");
   const outBtn = $("acct-signout");
@@ -87,6 +88,7 @@ function onboardingState() {
     workspace: workspace,
     account: acctNow,
     providerName: p && p.name ? p.name.replace(/\s*\(.*\)$/, "").replace(/\s+Chat$/i, "") : "your provider",
+    termsUrl: p && p.termsUrl ? p.termsUrl : "",
     // A saved conversation in this folder counts: someone reopening a project
     // they have already worked in does not need to be told to say something.
     chatted: chatHistory.length > 0 || savedChatCount() > 0,
@@ -177,6 +179,20 @@ function renderOnboarding() {
       d.className = "hint";
       d.textContent = step.detail;
       body.appendChild(d);
+      if (step.terms) {
+        const t2 = document.createElement("div");
+        t2.className = "hint";
+        t2.textContent = step.terms + " ";
+        if (step.termsUrl) {
+          const a = document.createElement("a");
+          a.href = "#";
+          a.className = "terms-link";
+          a.textContent = "Read the terms";
+          a.onclick = function (e) { e.preventDefault(); window.api.openThread(step.termsUrl); };
+          t2.appendChild(a);
+        }
+        body.appendChild(t2);
+      }
     }
     li.appendChild(mark); li.appendChild(body);
     if (step.action && step.id === next) {

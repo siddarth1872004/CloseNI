@@ -935,6 +935,9 @@ input:focus,textarea:focus,select:focus{transition:border-color .06s steps(1);}
 .cw-sub,.cw-cwd{color:var(--mut);font-size:12px;margin-top:6px;}
 .cw-need{margin-top:8px;display:flex;align-items:center;gap:var(--sp-3);}
 .cw-need:empty{display:none;}
+.cw-terms{margin-top:6px;max-width:64ch;}
+.cw-terms:empty{display:none;}
+.terms-link{color:var(--txt);text-decoration:underline;cursor:pointer;}
 .code-tips{color:var(--mut);font-size:12px;line-height:1.7;margin-bottom:14px;}
 .code-tips b{color:var(--dim);font-weight:600;}
 

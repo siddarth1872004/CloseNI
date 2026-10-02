@@ -21,7 +21,8 @@ module.exports = function files(main) {
           const cfg = JSON.parse(fs.readFileSync(path.join(dir, f), "utf-8"));
           // `controls` goes to the renderer so the sidebar can offer them. The
           // selectors stay here: the agent reads those, the UI never needs them.
-          if (cfg && cfg.enabled && cfg.id) out.push({ id: cfg.id, name: cfg.name || cfg.id, controls: cfg.controls || [] });
+          // `termsUrl` is linked from the sign-in step.
+          if (cfg && cfg.enabled && cfg.id) out.push({ id: cfg.id, name: cfg.name || cfg.id, controls: cfg.controls || [], termsUrl: cfg.termsUrl || "" });
         } catch (e) { /* a malformed config is skipped, not fatal */ }
       }
     } catch (e) { /* no directory means no providers */ }

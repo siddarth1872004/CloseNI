@@ -47,8 +47,9 @@
   /**
    * The steps, each with whether it is done and what its button does.
    *
-   * state: { browserReady, workspace, account, providerName, chatted }
+   * state: { browserReady, workspace, account, providerName, termsUrl, chatted }
    *   account      the account light: "on" | "off" | "busy" | "unknown"
+   *   termsUrl     the provider's terms of use, linked from the sign-in step
    *   chatted      whether this session has sent a message
    */
   function steps(state) {
@@ -81,6 +82,11 @@
           : "A browser window opens on " + name + "'s site. Sign in as you normally " +
             "would; it closes by itself once the chat box appears. The login stays in " +
             "CloseNI's own profile on this machine, and no password is ever seen by the app.",
+        // Said once, where it matters: before the first sign-in. The guide is
+        // gone once that is done, and the README says it for good.
+        terms: "Driving a chat site from an app may go against its terms of use. " +
+          "Whether to is your call, and so is the account you use.",
+        termsUrl: s.termsUrl || null,
         done: signIn === "done",
         action: signIn === "done" || signIn === "checking" ? null
           : signIn === "unknown" ? "Check" : "Sign in",

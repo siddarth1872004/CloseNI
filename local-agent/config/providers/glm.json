@@ -2,6 +2,7 @@
   "id": "glm",
   "name": "GLM (Z.ai)",
   "baseUrl": "https://chat.z.ai/",
+  "termsUrl": "https://docs.z.ai/legal-agreement/terms-of-use",
   "enabled": true,
   "selectors": {
     "chatInput": "textarea, div[contenteditable=\"true\"]",
