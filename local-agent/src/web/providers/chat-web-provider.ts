@@ -192,6 +192,9 @@ export class ChatWebProvider implements AIWebProvider {
     await this.install();
     this.lastNav = await navigate(this.mp, target, { tracer: this.tracer, timeoutMs: 30000, retries: 1 });
     await this.install();
+    // As openChat does: the page has loaded, but a single-page app may not
+    // have drawn its composer yet.
+    if (this.lastNav.ok) await this.settle(this.spec.timing.readyTimeoutMs);
     return this.lastNav.ok;
   }
 

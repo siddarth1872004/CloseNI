@@ -147,7 +147,8 @@ async function main() {
     // Not awaited: the reply would come from the renderer being crashed, so
     // the promise can simply never settle.
     cdp.send("Page.crash").catch(() => {});
-    await new Promise((res) => setTimeout(res, 800));
+    // Poll, not a fixed sleep: on a loaded machine the crash event comes late.
+    for (let t = 0; t < 100 && !crashPage.crashed && crashPage.healthy(); t++) await new Promise((res) => setTimeout(res, 100));
     check("a renderer crash is observed", crashPage.crashed || !crashPage.healthy());
     // Depending on the build, a renderer crash can take the whole browser with
     // it (headless shell does). Either way, asking the manager again must give
@@ -614,6 +615,19 @@ async function main() {
     check("the wait ends and does not report the lost reply as complete text", r5.status !== "complete" || r5.content.text.length < 25000, JSON.stringify({ s: r5.status, n: r5.content.text.length, sig: r5.extraction_metadata.completionSignal }));
     record("chaos", "Reload mid-generation", "PARTIAL", "the wait ends (status " + r5.status + "); whether a live site restores the reply after reload is UNKNOWN");
     await p.close();
+
+    section("chaos: a tab is closed on a page that renders its composer late");
+    // The CI flake above, made certain: the reopened page shows its composer
+    // 2.5s after it loads, and the ask must wait for it.
+    const ps = mk("qwen", "slow");
+    await ps.openChat();
+    await ps.ask("TOKEN-one");
+    await (await sm.get("provider:qwen").page()).page.close();
+    const r6 = await ps.ask("TOKEN-two");
+    check("the next ask waits for the composer and answers", /ACK two/.test(r6.content.text),
+      r6.status + " " + JSON.stringify(r6.extraction_metadata.warnings));
+    record("chaos", "Tab closed, late composer", /ACK two/.test(r6.content.text) ? "PASS" : "FAIL");
+    await ps.close();
 
     section("chaos: malformed and empty extraction");
     const ctx = await sm.context({ key: "temp:chaos", kind: "temporary" });
