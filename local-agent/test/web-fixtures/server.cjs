@@ -488,6 +488,9 @@ function streamReply(req, res, flavor, scenario, delay) {
     let parsed = {};
     try { parsed = JSON.parse(body); } catch { /* empty */ }
     if (scenario === "ratelimit") { res.writeHead(429, { "Content-Type": "application/json" }); return res.end('{"error":"rate limited"}'); }
+    // A firewall in front of the site dropping the request: no status, no
+    // body, the page's XHR just errors - what DeepSeek's CloudFront did live.
+    if (scenario === "blocked") return req.socket.destroy();
     if (scenario === "error-reply") { res.writeHead(500, { "Content-Type": "application/json" }); return res.end('{"error":"boom"}'); }
     const reply = scriptedReply(parsed.prompt, parsed.turn);
     res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" });

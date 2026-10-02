@@ -16,7 +16,7 @@ Ask for a change and it reads your project, edits files, runs commands and check
 
 [**Site**](https://siddarth1872004.github.io/CloseNI/) · [**How it works**](#how-it-works) · [**Architecture**](#architecture) · [**Browser layer**](#the-browser-native-layer) · [**Research**](#research) · [**Get started**](#getting-started) · [**Limitations**](#current-limitations)
 
-<img src="docs/assets/stats.svg" alt="1999 unit tests, 200 end-to-end tests, 205 browser checks, twelve languages, eleven themes, zero API keys" width="100%">
+<img src="docs/assets/stats.svg" alt="1999 unit tests, 200 end-to-end tests, 206 browser checks, twelve languages, eleven themes, zero API keys" width="100%">
 
 </div>
 
@@ -597,7 +597,7 @@ flowchart LR
     end
     subgraph browser["real Chromium"]
         E2E["npm run test:e2e<br/>200 tests against a mock chat site"]
-        WEB["npm run test:web<br/>205 checks against provider-shaped fixtures"]
+        WEB["npm run test:web<br/>206 checks against provider-shaped fixtures"]
     end
     subgraph live["live sites"]
         WT["npm run webtest<br/>identical scenarios, your signed-in profile"]

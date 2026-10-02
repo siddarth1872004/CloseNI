@@ -580,7 +580,19 @@ export class ChatWebProvider implements AIWebProvider {
       }
       if (v.phase === "complete") {
         finalState = "GENERATION_COMPLETE";
-        if (v.reason === "empty-reply") return finish("complete", "empty");
+        if (v.reason === "empty-reply") {
+          // Nothing arrived because the request itself failed - a firewall that
+          // drops it, a connection cut before any reply. That is not the model
+          // answering with nothing, and must not read as one.
+          if (this.stream.cut) {
+            const st = await this.detectState({ inFlight: true, detector: "failed" });
+            finalState = st.state;
+            const r = finish("failed", "failed", "the reply's request failed before anything arrived" + (st.evidence.length ? " - " + st.evidence.join("; ") : ""));
+            await this.noteTerminal(st, "wait");
+            return r;
+          }
+          return finish("complete", "empty");
+        }
         // A reply whose stream failed mid-transfer is not complete, however
         // still the page has gone.
         if (this.stream.cut) {

@@ -359,6 +359,14 @@ async function main() {
     record(P, "Rate-limit detection", rlR.extraction_metadata.waitedMs < 10000 ? "PASS" : "FAIL", flavor === "deepseek" ? "HTTP 429 on the reply stream" : "alert text (no stream tap)");
     void rlState;
 
+    if (flavor === "deepseek") {
+      const bl = mk(flavor, "blocked");
+      await bl.openChat();
+      const blR = await bl.ask("hello");
+      check(P + ": a reply request dropped before it is answered is a failure, not an empty reply", blR.status === "failed" && blR.extraction_metadata.waitedMs < 10000, JSON.stringify({ s: blR.status, w: blR.extraction_metadata.waitedMs, sig: blR.extraction_metadata.completionSignal }));
+      record(P, "Request dropped by a firewall", blR.status === "failed" ? "PASS" : "FAIL", "signal=" + blR.extraction_metadata.completionSignal);
+    }
+
     const er = mk(flavor, "error-reply");
     await er.openChat();
     const erR = await er.ask("hello");

@@ -72,7 +72,7 @@ Ask for a change and it reads your project, edits files, runs commands and check
 <a href="#what-it-is"><img src="https://img.shields.io/badge/API%20keys-none-ff7b72?style=flat-square" alt="API keys"></a>
 <a href="https://github.com/siddarth1872004/CloseNI/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-bc8cff?style=flat-square" alt="License"></a></p>
 <p><a href="https://siddarth1872004.github.io/CloseNI/"><strong>Site</strong></a> · <a href="#how-it-works"><strong>How it works</strong></a> · <a href="#architecture"><strong>Architecture</strong></a> · <a href="#the-browser-native-layer"><strong>Browser layer</strong></a> · <a href="#research"><strong>Research</strong></a> · <a href="#getting-started"><strong>Get started</strong></a> · <a href="#current-limitations"><strong>Limitations</strong></a></p>
-<img src="assets/stats.svg" alt="1999 unit tests, 200 end-to-end tests, 205 browser checks, twelve languages, eleven themes, zero API keys" width="100%"></div><hr>
+<img src="assets/stats.svg" alt="1999 unit tests, 200 end-to-end tests, 206 browser checks, twelve languages, eleven themes, zero API keys" width="100%"></div><hr>
 <h2 id="what-it-is">What it is</h2>
 <p>Every other coding agent bills per token through an API key. CloseNI does not have one.</p>
 <p>It opens a real Chromium window and uses the session you are already signed into. It types the prompt into the page, waits for the answer to finish streaming, and reads it back out. From the model&#39;s side it is a person typing. From your side it is a coding agent working in your project folder.</p>
@@ -678,7 +678,7 @@ Ask for a change and it reads your project, edits files, runs commands and check
     end
     subgraph browser[&quot;real Chromium&quot;]
         E2E[&quot;npm run test:e2e&lt;br/&gt;200 tests against a mock chat site&quot;]
-        WEB[&quot;npm run test:web&lt;br/&gt;205 checks against provider-shaped fixtures&quot;]
+        WEB[&quot;npm run test:web&lt;br/&gt;206 checks against provider-shaped fixtures&quot;]
     end
     subgraph live[&quot;live sites&quot;]
         WT[&quot;npm run webtest&lt;br/&gt;identical scenarios, your signed-in profile&quot;]

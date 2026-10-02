@@ -25,6 +25,7 @@ import { adapterFor } from "./providers/adapters.js";
 import { AIResponse, StateReport } from "./providers/ai-web-provider.js";
 import { Tracer } from "./trace.js";
 import { storagePaths } from "../storage-paths.js";
+import { sleep } from "./util.js";
 
 export type RowStatus = "PASS" | "FAIL" | "PARTIAL" | "AUTH_REQUIRED" | "BLOCKED" | "NOT_APPLICABLE" | "NOT_TESTED";
 
@@ -44,6 +45,13 @@ interface Scenario {
   prompt: string;
   judge: (r: AIResponse) => { status: RowStatus; detail: string };
 }
+
+/**
+ * Pause between scenarios. Back to back, a dozen prompts in half a minute
+ * tripped DeepSeek's CloudFront firewall on 2 October: the 14th request was
+ * dropped unanswered and then the whole site returned 403 to this machine.
+ */
+const SCENARIO_GAP_MS = 8000;
 
 const token = "CLOSENI-" + Math.random().toString(36).slice(2, 8).toUpperCase();
 
@@ -109,6 +117,7 @@ export async function runLive(providerId: string, config: any, opts: LiveOptions
     } else {
       let first = true;
       for (const sc of LIVE_SCENARIOS) {
+        if (!first) await sleep(SCENARIO_GAP_MS);
         const partials: number[] = [];
         const r = await provider.ask(sc.prompt, { onPartial: (p) => partials.push(p.chars) });
         if (first) {
