@@ -94,7 +94,8 @@
     },
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": true,
+    "artifactName": "CloseNI-Setup-${version}.${ext}"
     },
     "linux": {
       "target": [

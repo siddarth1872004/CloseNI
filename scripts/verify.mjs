@@ -14,6 +14,7 @@ import { execFileSync } from 'node:child_process';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { renderSite } from './make-site.mjs';
+import { renderLanding } from './make-landing.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const QUICK = process.argv.includes('--quick');
@@ -78,10 +79,17 @@ const langs = new Set([...planner.matchAll(/language: "([a-z+#]+)"/g)].map((m) =
 const themeJs = read('desktop/theme.js');
 const themeCount = [...themeJs.matchAll(/\{ id: "/g)].length;
 const readme = read('README.md');
-const site = read('docs/index.html');
-// The site is the README, rendered. Every claim checked against the README
-// below holds for the site because of this one.
-check('the site is generated from the current README', site === renderSite(readme), 'run npm run site');
+const landing = read('docs/index.html');
+const docsPage = read('docs/readme.html');
+const site = landing + docsPage;
+// The documentation page is the README, rendered, so every claim checked
+// against the README below holds for it. The landing page carries only the
+// version and the README's test counts, both regenerated from their source.
+check('the docs page is generated from the current README', docsPage === renderSite(readme), 'run npm run site');
+check('the landing page is generated from the README and package.json',
+  landing === renderLanding(readme, JSON.parse(read('package.json'))), 'run npm run site');
+check('the landing page links the latest release for both systems',
+  (landing.match(/releases\/latest/g) || []).length >= 3 && /Windows/.test(landing) && /Linux/.test(landing));
 
 // The twelve the README's table documents. The planner knows more, and the
 // README must say how many of those are unproven.

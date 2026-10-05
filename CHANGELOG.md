@@ -5,9 +5,10 @@ All notable changes to CloseNI are recorded here. This project follows
 
 ## [0.1.0] — unreleased
 
-**Not published.** Installers build in CI and have been withdrawn: plans do not
-always parse. A binary that fails on the first thing someone tries is worse than
-no binary.
+**Published as an early release.** Installers for Windows (NSIS) and Linux
+(AppImage and `.deb`) are built by CI from the `v0.1.0` tag and attached to a
+GitHub release. They are unsigned. Earlier 1.0.x builds were withdrawn because
+plans did not always parse; this one is numbered for what it is.
 
 **Why 0.1 and not 1.0.** The version says what this is: one provider driven end
 to end, a Windows installer nobody has run yet, and a GitHub integration that

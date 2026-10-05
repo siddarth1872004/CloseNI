@@ -34,7 +34,7 @@ It opens a real Chromium window and uses the session you are already signed into
 > - **DeepSeek** is driven end to end.
 > - **Qwen Studio** and **GLM** are wired and listed as **coming soon**.
 > - **Ollama** is local and **chat-only**.
-> - Nothing is published yet. Build it from source.
+> - Installers for Windows and Linux are on the [releases page](https://github.com/siddarth1872004/CloseNI/releases/latest), unsigned. Or build it from source.
 >
 > The [limitations](#current-limitations) are listed as carefully as the features.
 
@@ -665,7 +665,7 @@ cd desktop && npm start
 
 #### Downloads
 
-**There are none yet.** Installers have been built and withdrawn while known problems are worked through, and plans do not always parse. Shipping a binary that fails on the first thing you try is worse than shipping nothing, so the releases page is deliberately empty.
+Installers are built by CI from a version tag and attached to the [latest release](https://github.com/siddarth1872004/CloseNI/releases/latest): a Windows `.exe`, a Linux AppImage and a `.deb`. They are **unsigned**, so Windows SmartScreen will warn. The Linux AppImage has been run here; the Windows installer is built by CI and has not yet been installed on a clean machine. Treat it as unproven.
 
 #### First run
 
@@ -769,7 +769,7 @@ Stated plainly, because a README that only lists strengths is not useful.
 - **The browser-native layer has never met a live site.** It passes every fixture scenario, but every live row so far is `BLOCKED` by the development machine's network, and builds still use the older controller.
 - **Chat sites change.** Provider control is per-site page automation. A redesign can break extraction until the selectors are updated, which is a JSON edit, not a code change.
 - **Verification is syntax and compilation, not correctness.** A project can pass every check and still be wrong.
-- **Nothing is published.** Installers build in CI and have been withdrawn.
+- **The installers are unsigned and early.** Windows SmartScreen will warn, and the Windows installer has not been installed on a clean machine.
 - **Plans do not always parse.** The reply is re-asked once and reported honestly if that fails, but it remains a live limitation.
 - **Installers are unsigned.** SmartScreen and Gatekeeper will say so, and that warning is accurate.
 - **Only the Linux artifacts have been verified.** The first `.exe` the release workflow produces is unverified until someone installs it.

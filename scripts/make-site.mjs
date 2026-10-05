@@ -1,9 +1,14 @@
 #!/usr/bin/env node
-// Generates the Pages site, docs/index.html, from README.md.
+// Generates the Pages site from README.md and package.json.
 //
-// The site is the README, rendered the way GitHub renders it. A hand-written
-// site drifted from the README for months, so there is one source now and
-// scripts/verify.mjs fails when the page is older than it.
+//   docs/index.html   the landing page: what it is, screenshots, downloads
+//   docs/readme.html  the README, rendered the way GitHub renders it
+//
+// A hand-written site drifted from the README for months, so neither page
+// carries a fact of its own. The landing page takes its numbers from the
+// README's stats image and its version from package.json, the documentation
+// page is the README itself, and scripts/verify.mjs fails when either is older
+// than its source.
 //
 // Pages serves docs/ as the site root, so docs/assets/x.svg becomes
 // assets/x.svg. Every other repo-relative link (CHANGELOG.md, LICENSE,
@@ -12,6 +17,7 @@
 //   node scripts/make-site.mjs
 
 import { readFileSync, writeFileSync } from 'node:fs';
+import { renderLanding } from './make-landing.mjs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Marked } from 'marked';
@@ -86,7 +92,10 @@ body{margin:0;background:var(--bg);color:var(--fg);
 .bar{position:sticky;top:0;z-index:1;background:var(--bar);border-bottom:1px solid var(--line);
   display:flex;align-items:center;gap:16px;padding:12px 16px;font-size:14px}
 .bar b{font-size:16px}
-.bar a{color:var(--fg);text-decoration:none;margin-left:auto;border:1px solid var(--line);border-radius:6px;padding:4px 12px}
+.bar .home{margin:0;border:0;padding:0}
+.bar .dim{color:var(--dim)}
+.bar a:last-child{margin-left:auto}
+.bar a{color:var(--fg);text-decoration:none;border:1px solid var(--line);border-radius:6px;padding:4px 12px}
 .bar a:hover{border-color:var(--dim)}
 main{max-width:1012px;margin:24px auto 48px;padding:0 16px}
 article{background:var(--box);border:1px solid var(--line);border-radius:6px;padding:32px}
@@ -116,7 +125,7 @@ td img{background:transparent}
 </style>
 </head>
 <body>
-<header class="bar"><b>CloseNI</b><a href="${REPO}">View on GitHub</a></header>
+<header class="bar"><b><a class="home" href="./">CloseNI</a></b><span class="dim">Documentation</span><a href="${REPO}">View on GitHub</a></header>
 <main><article>
 ${body}</article></main>
 </body>
@@ -125,6 +134,9 @@ ${body}</article></main>
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  writeFileSync(resolve(ROOT, 'docs/index.html'), renderSite(readFileSync(resolve(ROOT, 'README.md'), 'utf8')));
-  console.log('docs/index.html written from README.md');
+  const readme = readFileSync(resolve(ROOT, 'README.md'), 'utf8');
+  const pkg = JSON.parse(readFileSync(resolve(ROOT, 'package.json'), 'utf8'));
+  writeFileSync(resolve(ROOT, 'docs/readme.html'), renderSite(readme));
+  writeFileSync(resolve(ROOT, 'docs/index.html'), renderLanding(readme, pkg));
+  console.log('docs/index.html and docs/readme.html written');
 }
