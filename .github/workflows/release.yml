@@ -59,6 +59,10 @@ jobs:
       - name: Compile the agent
         run: npm run build
 
+      # The unit suite fails under CI when it has to skip its Chromium sections.
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
       # The unit suite is fast and catches a broken build config before it
       # produces an artifact. The end-to-end suite drives a real browser for
       # around twenty minutes and stays a local gate.

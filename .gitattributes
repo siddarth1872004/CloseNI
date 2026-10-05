@@ -1,0 +1,6 @@
+# Check text out with LF on every platform. The tests compare recorded fixtures
+# byte for byte, and Windows' default CRLF made one of them fail in CI.
+* text=auto eol=lf
+*.png binary
+*.ico binary
+*.icns binary
