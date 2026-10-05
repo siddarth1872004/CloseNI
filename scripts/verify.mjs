@@ -37,6 +37,12 @@ const readRenderer = () => RENDERER_FILES.map(read).join('\n');
 const MAIN_FILES = ['desktop/main.js', ...readdirSync(join(ROOT, 'desktop/main')).filter((f) => f.endsWith('.js')).sort()
   .map((f) => 'desktop/main/' + f)];
 const readMain = () => MAIN_FILES.map(read).join('\n');
+// The agent CLI: the dispatcher in index.ts, its I/O and workspace helpers, and
+// one module per mode under src/modes/.
+const AGENT_FILES = ['local-agent/src/index.ts', 'local-agent/src/cli-io.ts', 'local-agent/src/workspace-env.ts',
+  ...readdirSync(join(ROOT, 'local-agent/src/modes')).filter((f) => f.endsWith('.ts')).sort()
+    .map((f) => 'local-agent/src/modes/' + f)];
+const readAgent = () => AGENT_FILES.map(read).join('\n');
 const sh = (cmd, args, opts = {}) =>
   execFileSync(cmd, args, { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], ...opts });
 
@@ -130,7 +136,7 @@ for (const p of gated) {
 // Steps run one at a time now, because chat, plan and build share a
 // conversation. Every one of these claimed otherwise until it was hunted down
 // by hand; a grep is cheaper than the next hunt.
-const agentSrc = read('local-agent/src/index.ts');
+const agentSrc = readAgent();
 const indexHtml = read('desktop/index.html');
 check('the build no longer spawns parallel workers',
   !/setThreadKind\("build"\)/.test(agentSrc) && !agentSrc.includes('attachTo('),
@@ -150,13 +156,13 @@ check('the roadmap records the concurrency reversal',
 // bullets, ellipses and middots are deliberate typography and must not trip
 // this - the first version of this check flagged them and was wrong.
 const MOJIBAKE = /Ã[-ÿ]|â€|â€™|ðŸ|Â[ -¿]|Å’|Å¸/;
-const mojibakeTargets = ['local-agent/src/index.ts', ...RENDERER_FILES, ...MAIN_FILES,
+const mojibakeTargets = [...AGENT_FILES, ...RENDERER_FILES, ...MAIN_FILES,
   'desktop/builder.js', 'README.md'];
 const garbled = mojibakeTargets.filter((f) => MOJIBAKE.test(read(f)));
 check('no mojibake in source', garbled.length === 0, garbled.join(', '));
 
 // The retry budget the docs quote.
-const agent = read('local-agent/src/index.ts');
+const agent = readAgent();
 const budget = agent.match(/const maxFollowUps = (\d+)/);
 check('repair budget is 2, as documented', budget && budget[1] === '2', budget ? budget[1] : 'not found');
 check('README quotes the same budget', /[Tt]wo attempts/.test(readme));
@@ -322,7 +328,7 @@ check('the docs agree with whether Research is gated',
   researchGated ? 'gated in markup' : 'live in markup');
 // Research must not scrape a search engine. That is the trap the whole project
 // is written against, and it would be an easy thing to reach for later.
-const research = read('local-agent/src/index.ts');
+const research = readAgent();
 const researchCode = research.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
 check('research uses the provider search, not a scraped results page',
   /smart-search/.test(researchCode) && !/duckduckgo|google\.com\/search|bing\.com/i.test(researchCode));
@@ -350,7 +356,7 @@ check('loose python test files are run with unittest',
 check('a declared pytest project still wins',
   bc.indexOf('pytest.ini') < bc.indexOf('unittest discover'));
 check('a missing dependency does not fail the step',
-  /looksLikeMissingDependency/.test(read('local-agent/src/index.ts')));
+  /looksLikeMissingDependency/.test(readAgent()));
 check('but a missing LOCAL module still does',
   /local\.has/.test(bc));
 
@@ -359,7 +365,7 @@ check('but a missing LOCAL module still does',
 // with "pip3: not found", and then failed nine steps on "No module named
 // pytest" - one fact about the machine, reported as nine code bugs.
 const pe = read('local-agent/src/verification/python-env.ts');
-const idx = read('local-agent/src/index.ts');
+const idx = readAgent();
 check('a build creates its own venv', /-m venv/.test(pe));
 check('and installs with the venv python, never a bare pip',
   /-m pip install/.test(pe) && !/^\s*"pip3? install/m.test(pe));

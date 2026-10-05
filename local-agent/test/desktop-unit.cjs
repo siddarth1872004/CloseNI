@@ -418,11 +418,7 @@ function testBuildConfig() {
   const agentGlobs = files.filter(function (f) { return String(f).indexOf("local-agent") === 0; });
   check("only the agent's dist and config are included",
     agentGlobs.length > 0 && agentGlobs.every(function (f) {
-      // The Needle bridge is named file by file, never as a glob: it sits in a
-      // directory nothing else is kept in, and must stay the only thing shipped
-      // from it.
-      return f.indexOf("local-agent/dist") === 0 || f.indexOf("local-agent/config") === 0 ||
-        f === "local-agent/python/needle_bridge.py";
+      return f.indexOf("local-agent/dist") === 0 || f.indexOf("local-agent/config") === 0;
     }), agentGlobs.join(" "));
   ["local-agent/storage", ".superpowers", "docs", "samples", "app", "instance"]
     .forEach(function (dir) {
@@ -781,7 +777,10 @@ function testPromptCompose() {
   // The agent has to read the preamble from the environment, the way provider
   // controls already travel, rather than as a new positional argument threaded
   // through every mode and every caller for something only buildPrompt uses.
-  const agentSrc = fs.readFileSync(path.join(__dirname, "..", "src", "index.ts"), "utf8");
+  const src = path.join(__dirname, "..", "src");
+  const agentSrc = ["index.ts", "cli-io.ts", "workspace-env.ts",
+    ...fs.readdirSync(path.join(src, "modes")).filter((f) => f.endsWith(".ts")).map((f) => path.join("modes", f))]
+    .map((f) => fs.readFileSync(path.join(src, f), "utf8")).join("\n");
   check("the agent reads AGENT_PREAMBLE", /AGENT_PREAMBLE/.test(agentSrc));
   check("and composes rather than concatenating", /composePrompt\(/.test(agentSrc));
   check("a malformed preamble is ignored rather than fatal",

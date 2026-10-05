@@ -72,7 +72,7 @@ Ask for a change and it reads your project, edits files, runs commands and check
 <a href="#what-it-is"><img src="https://img.shields.io/badge/API%20keys-none-ff7b72?style=flat-square" alt="API keys"></a>
 <a href="https://github.com/siddarth1872004/CloseNI/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-bc8cff?style=flat-square" alt="License"></a></p>
 <p><a href="https://siddarth1872004.github.io/CloseNI/"><strong>Site</strong></a> · <a href="#how-it-works"><strong>How it works</strong></a> · <a href="#architecture"><strong>Architecture</strong></a> · <a href="#the-browser-native-layer"><strong>Browser layer</strong></a> · <a href="#research"><strong>Research</strong></a> · <a href="#getting-started"><strong>Get started</strong></a> · <a href="#current-limitations"><strong>Limitations</strong></a></p>
-<img src="assets/stats.svg" alt="1999 unit tests, 200 end-to-end tests, 206 browser checks, twelve languages, eleven themes, zero API keys" width="100%"></div><hr>
+<img src="assets/stats.svg" alt="1902 unit tests, 192 end-to-end tests, 206 browser checks, twelve languages, eleven themes, zero API keys" width="100%"></div><hr>
 <h2 id="what-it-is">What it is</h2>
 <p>Every other coding agent bills per token through an API key. CloseNI does not have one.</p>
 <p>It opens a real Chromium window and uses the session you are already signed into. It types the prompt into the page, waits for the answer to finish streaming, and reads it back out. From the model&#39;s side it is a person typing. From your side it is a coding agent working in your project folder.</p>
@@ -525,12 +525,11 @@ Ask for a change and it reads your project, edits files, runs commands and check
 </td>
 </tr>
 <tr>
-<td width="50%" valign="top"><p><strong>05 · Research</strong> is <a href="#research">above</a>. <strong>07 · Settings</strong> covers six areas:</p>
+<td width="50%" valign="top"><p><strong>05 · Research</strong> is <a href="#research">above</a>. <strong>07 · Settings</strong> covers five areas:</p>
 <ul>
 <li>the provider, the Chromium install and sign-in</li>
 <li>autonomy (<em>ask each command</em>, <em>auto-allow</em>, <em>never run commands</em>)</li>
 <li>skills, personas and MCP</li>
-<li>extraction (the optional local Needle model)</li>
 <li>appearance</li>
 <li>about</li>
 </ul>
@@ -674,10 +673,10 @@ Ask for a change and it reads your project, edits files, runs commands and check
 <h2 id="tests-and-verification">Tests and verification</h2>
 <pre><code class="language-mermaid">flowchart LR
     subgraph unit[&quot;npm test · no browser&quot;]
-        U1[&quot;1999 unit tests&lt;br/&gt;including the web layer&#39;s pure logic&quot;]
+        U1[&quot;1902 unit tests&lt;br/&gt;including the web layer&#39;s pure logic&quot;]
     end
     subgraph browser[&quot;real Chromium&quot;]
-        E2E[&quot;npm run test:e2e&lt;br/&gt;200 tests against a mock chat site&quot;]
+        E2E[&quot;npm run test:e2e&lt;br/&gt;192 tests against a mock chat site&quot;]
         WEB[&quot;npm run test:web&lt;br/&gt;206 checks against provider-shaped fixtures&quot;]
     end
     subgraph live[&quot;live sites&quot;]
@@ -830,7 +829,7 @@ scripts/            verification, asset generation, release and environment help
 <li><strong>Chat sites change.</strong> Provider control is per-site page automation. A redesign can break extraction until the selectors are updated, which is a JSON edit, not a code change.</li>
 <li><strong>Verification is syntax and compilation, not correctness.</strong> A project can pass every check and still be wrong.</li>
 <li><strong>Nothing is published.</strong> Installers build in CI and have been withdrawn.</li>
-<li><strong>Plans do not always parse.</strong> The reply is re-asked once and reported honestly if that fails, but it remains a live limitation. Settings → Extraction can add a local <a href="https://github.com/cactus-compute/needle">Needle</a> model that reads a prose plan and names a refusal. It is off by default and has not yet been run with the real model.</li>
+<li><strong>Plans do not always parse.</strong> The reply is re-asked once and reported honestly if that fails, but it remains a live limitation.</li>
 <li><strong>Installers are unsigned.</strong> SmartScreen and Gatekeeper will say so, and that warning is accurate.</li>
 <li><strong>Only the Linux artifacts have been verified.</strong> The first <code>.exe</code> the release workflow produces is unverified until someone installs it.</li>
 <li><strong>Large projects are not proven at scale.</strong> Builds of a few dozen steps behave well. Beyond that is untested.</li>

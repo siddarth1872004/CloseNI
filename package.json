@@ -78,7 +78,6 @@
       "desktop/**/*",
       "local-agent/dist/**/*",
       "local-agent/config/**/*",
-      "local-agent/python/needle_bridge.py",
       "build/icon.png",
       "bin/**/*"
     ],

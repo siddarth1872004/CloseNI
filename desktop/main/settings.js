@@ -1,16 +1,15 @@
 /*
- * What the Settings panel reads and writes: extraction, skills and personas,
- * and the MCP servers whose context goes into a run.
+ * What the Settings panel reads and writes: skills and personas, and the MCP
+ * servers whose context goes into a run.
  */
 const fs = require("fs");
 const path = require("path");
 const { ipcMain } = require("electron");
 const GH = require("../github-safe.js");
-const EXTRACT = require("../extraction-settings.js");
 
-/** Registers the handlers. main.js hands in unpackedPath, storageRoot, spawnAgent, gh, currentToken. */
+/** Registers the handlers. main.js hands in unpackedPath, storageRoot, gh, currentToken. */
 module.exports = function settings(main) {
-  const { unpackedPath, storageRoot, spawnAgent, gh, currentToken } = main;
+  const { unpackedPath, storageRoot, gh, currentToken } = main;
 
   const SKILLS = require(unpackedPath(path.join("local-agent", "dist", "skill-store.js")));
   const MCPCTX = require(unpackedPath(path.join("local-agent", "dist", "mcp", "mcp-context.js")));
@@ -19,57 +18,6 @@ module.exports = function settings(main) {
     return kind === "persona" ? SKILLS.personasDir(storageRoot()) : SKILLS.skillsDir(storageRoot());
   }
   function mcpConfigPath() { return path.join(storageRoot(), "mcp.json"); }
-
-  function extractionPath() { return path.join(storageRoot(), "extraction.json"); }
-
-  function readExtraction() {
-    try { return EXTRACT.normalize(JSON.parse(fs.readFileSync(extractionPath(), "utf-8"))); }
-    catch (e) { return EXTRACT.normalize(null); }
-  }
-
-  ipcMain.handle("read-extraction", function () {
-    return { ok: true, settings: readExtraction() };
-  });
-
-  ipcMain.handle("write-extraction", function (event, raw) {
-    try {
-      const settings = EXTRACT.normalize(raw);
-      fs.writeFileSync(extractionPath(), JSON.stringify(settings, null, 2));
-      return { ok: true, settings: settings };
-    } catch (e) { return { ok: false, error: String(e) }; }
-  });
-
-  /*
-   * Check the settings as typed, before they are saved. Not queued behind other
-   * agent runs: it opens no browser profile, only the Python bridge, so it cannot
-   * contend with a build. The agent bounds every step of it, the optional model
-   * download included.
-   */
-  ipcMain.handle("check-extraction", function (event, payload) {
-    const settings = EXTRACT.normalize(payload && payload.settings);
-    const args = ["extractor-check"].concat(payload && payload.warm ? ["warm"] : []);
-    return new Promise(function (resolve) {
-      let proc;
-      const env = Object.assign({ CLOSENI_EXTRACTOR: "builtin" }, EXTRACT.toEnv(settings));
-      try { proc = spawnAgent(args, env); }
-      catch (e) { resolve({ success: false, error: String(e) }); return; }
-      let out = "";
-      proc.stdout.on("data", function (d) { out += d.toString(); });
-      proc.on("close", function () {
-        const start = out.indexOf("AGENT_OUTPUT_START");
-        const end = out.indexOf("AGENT_OUTPUT_END");
-        let result = null;
-        if (start !== -1 && end !== -1) {
-          const lines = out.substring(start + 18, end).split(/\r?\n/)
-            .map(function (l) { return l.trim(); })
-            .filter(function (l) { return l.indexOf("{") === 0; });
-          if (lines.length) { try { result = JSON.parse(lines[lines.length - 1]); } catch (e) {} }
-        }
-        resolve(result || { success: false, error: "no answer from the agent" });
-      });
-      proc.on("error", function (e) { resolve({ success: false, error: String(e) }); });
-    });
-  });
 
   ipcMain.handle("list-skills", function () {
     return {
@@ -154,5 +102,4 @@ module.exports = function settings(main) {
     } catch (e) { return { ok: true, texts: [], notes: [String(e)] }; }
   });
 
-  return { readExtraction };
 };

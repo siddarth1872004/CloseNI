@@ -4,7 +4,6 @@ const { app, BrowserWindow, ipcMain, dialog, shell, Menu } = require("electron")
 const path = require("path");
 const { spawn } = require("child_process");
 const GH = require("./github-safe.js");
-const EXTRACT = require("./extraction-settings.js");
 
 // Before ready, or Chromium has already chosen its key store.
 const passwordStore = GH.linuxPasswordStore(process.platform, process.env.XDG_CURRENT_DESKTOP,
@@ -205,9 +204,7 @@ ipcMain.handle("select-folder", async function () {
  * Returns only its own keys - spawnAgent does the merging with process.env.
  */
 function agentEnv(headed, controls, preamble) {
-  // Extraction settings go to every agent, read fresh each spawn so a change in
-  // Settings applies to the next run without a restart.
-  const env = Object.assign({ AGENT_HEADED: headed }, EXTRACT.toEnv(settings.readExtraction()));
+  const env = { AGENT_HEADED: headed };
   if (controls && Object.keys(controls).length) env.AGENT_CONTROLS = JSON.stringify(controls);
   // One environment variable, read once by the agent, exactly as controls
   // travel. A positional argument would have to be threaded through every mode.
@@ -607,8 +604,8 @@ ipcMain.handle("run-command", function (event, payload) {
  * Each takes what it uses from here and returns what another needs.
  */
 const github = require("./main/github.js")({ getWin: function () { return win; } });
-const settings = require("./main/settings.js")({
-  unpackedPath, storageRoot, spawnAgent, gh: github.gh, currentToken: github.currentToken,
+require("./main/settings.js")({
+  unpackedPath, storageRoot, gh: github.gh, currentToken: github.currentToken,
 });
 const build = require("./main/build.js")({ unpackedPath });
 require("./main/git.js")({

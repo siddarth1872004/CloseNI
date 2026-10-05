@@ -39,8 +39,6 @@ function section(name) {
   // The browser-native layer's pure logic (src/web). Its browser suite is
   // run-web.cjs, which needs Chromium and is run separately.
   await require("./web-unit.cjs").run(check, section);
-  // The optional structured-extraction backend (src/extract).
-  await require("./extract-unit.cjs").run(check, section);
   // The coding agent (src/agent): protocol, tools, permissions and the loop.
   await require("./agent-unit.cjs").run(check, section);
 

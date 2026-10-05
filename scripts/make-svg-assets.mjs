@@ -1304,8 +1304,8 @@ ${frame(0, 0, COLS, ROWS, C.edge)}
 
 function stats() {
   const tiles = [
-    [1999, 'UNIT TESTS', 'npm test', C.green],
-    [200, 'END-TO-END', 'real Chromium', C.blue],
+    [1902, 'UNIT TESTS', 'npm test', C.green],
+    [192, 'END-TO-END', 'real Chromium', C.blue],
     [206, 'BROWSER CHECKS', 'npm run test:web', C.violet],
     [12, 'LANGUAGES', 'syntax + compile', C.amber],
     [11, 'THEMES', 'one palette each', C.blue],

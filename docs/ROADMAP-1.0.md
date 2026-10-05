@@ -45,7 +45,7 @@ Anything not needed for those six goes to [After 1.0](#after-10).
 | GLM | Gated: selectors never confirmed, and the site declines build prompts |
 | Ollama | Works for Chat only. Refused by plan and build. |
 | Browser-native layer (`src/web/`) | Built and passes its fixtures. Has never met a live site, and nothing uses it. |
-| Needle extraction | Built, off by default. The real model has never run. |
+| Needle extraction | Removed 2 October after its first real run (5.3). |
 | GitHub (sign-in, push, clone, Actions) | Unit-tested only. Zero live requests. |
 | Installers | Linux AppImage and `.deb` packed and launched headless. The Windows NSIS installer has never been installed. |
 | VS Code extension | `vscode-extension/`: 97 lines, still named "Agentic Web Coder", predates the agent |
@@ -419,9 +419,12 @@ The app is agent-first now. The planned build is still reachable through
       0.04–0.06. One of them made up a file path
       (`https://flask.app.com/app.py`). The package also sends usage telemetry
       unless `NEEDLE_TELEMETRY=0` is set.*
-- [ ] **5.3 Decide** (S). If it rescues fewer than half, or takes more than
+- [x] **5.3 Decide** (S). If it rescues fewer than half, or takes more than
       about 10 seconds, remove Settings → Extraction for 1.0. An optional
       Python dependency that doesn't earn its place costs support forever.
+      *2 Oct: removed. It failed both tests. The bridge, `src/extract/`,
+      the Settings section, the `extractor-check` and `rescue-plan` modes and
+      their tests are gone.*
 
 ---
 
@@ -495,10 +498,20 @@ throwaway GitHub account or repo.
       rules this file lacked are now under "Rules that still hold". The three
       are in `docs/archive/` with a note pointing here, and every link to them
       follows.
-- [ ] **8.2 Split `local-agent/src/index.ts`** (L). At 2145 lines it holds about
+- [x] **8.2 Split `local-agent/src/index.ts`** (L). At 2145 lines it holds about
       eleven CLI modes. Give each mode its own module under `src/modes/`, keeping
       `index.ts` as the dispatcher. Do this only after Phase 4's decision, since
       the planned build may shrink.
+      *2 Oct, done ahead of Phase 4:* the planned build now sits in two files,
+      `modes/build.ts` and `modes/build-step.ts`, so whatever D4 decides keeps
+      or deletes whole files instead of carving a 2000-line one. `index.ts` is
+      the dispatcher (87 lines). The agent's stdin and output are in `cli-io.ts`,
+      and the venv and install handling in `workspace-env.ts`. There are eight
+      modules under `src/modes/`, the largest `build-step.ts` at 667 lines.
+      Code moved unchanged; the one change is that the session line handler is
+      now set through `setSessionLineHandler`, since another module can't assign
+      an imported binding. The source checks in `verify.mjs` and
+      `desktop-unit.cjs` read all the files.
 - [x] **8.3 Split `desktop/renderer.js` and `desktop/main.js`** (L), at 2063 and
       1625 lines, along panel lines and IPC domains. Keep the UMD pattern, since
       there's no bundler.
@@ -545,8 +558,8 @@ throwaway GitHub account or repo.
       install, so CI and the README moved to Node 22. Build, every suite, the
       packaged app and a launch all pass.
 - [ ] **8.8 Dead code sweep** (M). Once Phases 3–5 decide what stays, remove
-      what didn't: unused provider configs, the `legacy/` samples, whichever web
-      layer lost, and Needle if it's cut.
+      what didn't: unused provider configs, the `legacy/` samples, and whichever web
+      layer lost. (Needle went with 5.3.)
 
 **Exit:** no file over about 1000 lines outside tests, one planning doc, CI green.
 
@@ -677,7 +690,7 @@ at the top.
 
 - Two builds or agent sessions running at the same time (architectural; see `archive/NEXT.md` §7)
 - Reading reply text from the network stream (investigated and declined; see `archive/NEXT.md` §1)
-- Content-refusal detection beyond Needle's message
+- Content-refusal detection (Needle named refusals; it was removed with 5.3)
 - An agent inside VS Code (see 8.5)
 - macOS builds (no Mac to test on; unsigned macOS apps are a worse experience than Windows)
 - MCP servers as agent tools, not only as pre-build context

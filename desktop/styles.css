@@ -711,9 +711,6 @@ input:focus,textarea:focus,select:focus{transition:border-color .06s steps(1);}
 .recent-forget{background:none;border:none;color:var(--mut);cursor:pointer;font-size:10px;padding:0 2px;line-height:1;}
 .recent-forget:hover{color:var(--txt);}
 
-/* Extraction settings: the three fields read as one column, like the selects. */
-#extract-needle input{width:100%;box-sizing:border-box;}
-
 /* ------------------------------------------------------- flow and layout ----
    Shared by every theme: the flow bar in the top bar, the rail's three cards,
    and the console drawer. Colours are tokens, so each theme restyles them. */

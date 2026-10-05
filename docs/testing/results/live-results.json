@@ -1,19 +1,18 @@
 {
   "deepseek": {
     "provider": "deepseek",
-    "at": "2026-09-29T04:24:18.699Z",
-    "machine": "vm (linux)",
+    "at": "2026-10-02T05:30:05.400Z",
+    "machine": "archlinux (linux)",
     "state": {
-      "state": "ERROR",
+      "state": "CHAT_READY",
       "evidence": [
-        "navigation failed: blocked - page.goto: net::ERR_TUNNEL_CONNECTION_FAILED at https://chat.deepseek.com/"
+        "composer visible and enabled"
       ],
       "url": "https://chat.deepseek.com/",
       "navigation": {
-        "ok": false,
-        "errorKind": "blocked",
-        "error": "page.goto: net::ERR_TUNNEL_CONNECTION_FAILED at https://chat.deepseek.com/",
-        "finalUrl": "about:blank"
+        "ok": true,
+        "status": 200,
+        "finalUrl": "https://chat.deepseek.com/"
       }
     },
     "rows": [
@@ -24,76 +23,81 @@
       },
       {
         "capability": "UI detection",
-        "status": "BLOCKED",
-        "detail": "ERROR: navigation failed: blocked - page.goto: net::ERR_TUNNEL_CONNECTION_FAILED at https://chat.deepseek.com/ (blocked)"
+        "status": "PASS",
+        "detail": "CHAT_READY: composer visible and enabled"
       },
       {
         "capability": "Prompt submission",
-        "status": "BLOCKED",
-        "detail": "ERROR: navigation failed: blocked - page.goto: net::ERR_TUNNEL_CONNECTION_FAILED at https://chat.deepseek.com/ (blocked)"
+        "status": "PASS",
+        "detail": ""
       },
       {
         "capability": "Response detection",
-        "status": "BLOCKED",
-        "detail": "ERROR: navigation failed: blocked - page.goto: net::ERR_TUNNEL_CONNECTION_FAILED at https://chat.deepseek.com/ (blocked)"
+        "status": "PASS",
+        "detail": "signal stream-closed in 2094ms"
       },
       {
         "capability": "Streaming capture",
-        "status": "BLOCKED",
-        "detail": "ERROR: navigation failed: blocked - page.goto: net::ERR_TUNNEL_CONNECTION_FAILED at https://chat.deepseek.com/ (blocked)"
+        "status": "PASS",
+        "detail": "2 partials"
       },
       {
         "capability": "Instruction following",
-        "status": "BLOCKED",
-        "detail": "ERROR: navigation failed: blocked - page.goto: net::ERR_TUNNEL_CONNECTION_FAILED at https://chat.deepseek.com/ (blocked)"
+        "status": "PASS",
+        "detail": "\"CLOSENI-R3XYIT\""
       },
       {
         "capability": "Reasoning",
-        "status": "BLOCKED",
-        "detail": "ERROR: navigation failed: blocked - page.goto: net::ERR_TUNNEL_CONNECTION_FAILED at https://chat.deepseek.com/ (blocked)"
+        "status": "PASS",
+        "detail": "391 (no reasoning section seen)"
       },
       {
         "capability": "Code extraction",
-        "status": "BLOCKED",
-        "detail": "ERROR: navigation failed: blocked - page.goto: net::ERR_TUNNEL_CONNECTION_FAILED at https://chat.deepseek.com/ (blocked)"
+        "status": "PASS",
+        "detail": "python via Copy control"
       },
       {
         "capability": "JSON generation",
-        "status": "BLOCKED",
-        "detail": "ERROR: navigation failed: blocked - page.goto: net::ERR_TUNNEL_CONNECTION_FAILED at https://chat.deepseek.com/ (blocked)"
+        "status": "PASS",
+        "detail": "parsed"
       },
       {
         "capability": "Markdown extraction",
-        "status": "BLOCKED",
-        "detail": "ERROR: navigation failed: blocked - page.goto: net::ERR_TUNNEL_CONNECTION_FAILED at https://chat.deepseek.com/ (blocked)"
+        "status": "PASS",
+        "detail": "1. Place the eggs in a saucepan and cover them with cold water by about an inch."
       },
       {
         "capability": "Tables",
-        "status": "BLOCKED",
-        "detail": "ERROR: navigation failed: blocked - page.goto: net::ERR_TUNNEL_CONNECTION_FAILED at https://chat.deepseek.com/ (blocked)"
+        "status": "PASS",
+        "detail": "1 table(s)"
       },
       {
         "capability": "Links/citations",
-        "status": "BLOCKED",
-        "detail": "ERROR: navigation failed: blocked - page.goto: net::ERR_TUNNEL_CONNECTION_FAILED at https://chat.deepseek.com/ (blocked)"
+        "status": "PASS",
+        "detail": "2 link(s)"
       },
       {
         "capability": "Long response",
-        "status": "BLOCKED",
-        "detail": "ERROR: navigation failed: blocked - page.goto: net::ERR_TUNNEL_CONNECTION_FAILED at https://chat.deepseek.com/ (blocked)"
+        "status": "PASS",
+        "detail": "2291 chars, signal stream-closed"
       },
       {
         "capability": "Large context",
-        "status": "BLOCKED",
-        "detail": "ERROR: navigation failed: blocked - page.goto: net::ERR_TUNNEL_CONNECTION_FAILED at https://chat.deepseek.com/ (blocked)"
+        "status": "PASS",
+        "detail": "~15k-char prompt; ZEBRA-91"
       },
       {
         "capability": "Long-running conversation",
-        "status": "BLOCKED",
-        "detail": "ERROR: navigation failed: blocked - page.goto: net::ERR_TUNNEL_CONNECTION_FAILED at https://chat.deepseek.com/ (blocked)"
+        "status": "FAIL",
+        "detail": "recall across turns"
+      },
+      {
+        "capability": "Selector health",
+        "status": "PASS",
+        "detail": "CHAT_READY; nothing matches: newChat; not present in this state: copy"
       }
     ],
-    "durationMs": 436
+    "durationMs": 36506
   },
   "qwen": {
     "provider": "qwen",

@@ -16,7 +16,7 @@ Ask for a change and it reads your project, edits files, runs commands and check
 
 [**Site**](https://siddarth1872004.github.io/CloseNI/) · [**How it works**](#how-it-works) · [**Architecture**](#architecture) · [**Browser layer**](#the-browser-native-layer) · [**Research**](#research) · [**Get started**](#getting-started) · [**Limitations**](#current-limitations)
 
-<img src="docs/assets/stats.svg" alt="1999 unit tests, 200 end-to-end tests, 206 browser checks, twelve languages, eleven themes, zero API keys" width="100%">
+<img src="docs/assets/stats.svg" alt="1902 unit tests, 192 end-to-end tests, 206 browser checks, twelve languages, eleven themes, zero API keys" width="100%">
 
 </div>
 
@@ -474,12 +474,11 @@ The run command arrives resolved, with a badge saying where it came from: `SAVED
 <tr>
 <td width="50%" valign="top">
 
-**05 · Research** is [above](#research). **07 · Settings** covers six areas:
+**05 · Research** is [above](#research). **07 · Settings** covers five areas:
 
 - the provider, the Chromium install and sign-in
 - autonomy (*ask each command*, *auto-allow*, *never run commands*)
 - skills, personas and MCP
-- extraction (the optional local Needle model)
 - appearance
 - about
 
@@ -593,10 +592,10 @@ Pixel-art motion appears throughout the app, driven by `steps()` timing so the a
 ```mermaid
 flowchart LR
     subgraph unit["npm test · no browser"]
-        U1["1999 unit tests<br/>including the web layer's pure logic"]
+        U1["1902 unit tests<br/>including the web layer's pure logic"]
     end
     subgraph browser["real Chromium"]
-        E2E["npm run test:e2e<br/>200 tests against a mock chat site"]
+        E2E["npm run test:e2e<br/>192 tests against a mock chat site"]
         WEB["npm run test:web<br/>206 checks against provider-shaped fixtures"]
     end
     subgraph live["live sites"]
@@ -771,7 +770,7 @@ Stated plainly, because a README that only lists strengths is not useful.
 - **Chat sites change.** Provider control is per-site page automation. A redesign can break extraction until the selectors are updated, which is a JSON edit, not a code change.
 - **Verification is syntax and compilation, not correctness.** A project can pass every check and still be wrong.
 - **Nothing is published.** Installers build in CI and have been withdrawn.
-- **Plans do not always parse.** The reply is re-asked once and reported honestly if that fails, but it remains a live limitation. Settings → Extraction can add a local [Needle](https://github.com/cactus-compute/needle) model that reads a prose plan and names a refusal. It is off by default and has not yet been run with the real model.
+- **Plans do not always parse.** The reply is re-asked once and reported honestly if that fails, but it remains a live limitation.
 - **Installers are unsigned.** SmartScreen and Gatekeeper will say so, and that warning is accurate.
 - **Only the Linux artifacts have been verified.** The first `.exe` the release workflow produces is unverified until someone installs it.
 - **Large projects are not proven at scale.** Builds of a few dozen steps behave well. Beyond that is untested.
