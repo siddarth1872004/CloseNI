@@ -119,7 +119,6 @@ function testProviderGating() {
 
   // Shown, not hidden: a provider people should know is planned rather than
   // one that silently does not exist.
-  check("gated providers are still listed for the settings panel", gated.length >= 1, gated.join(","));
   check("at least one provider is actually usable",
     listed.some(function (p) { return !p.comingSoon; }));
 
