@@ -6,7 +6,7 @@
  */
 import { PlaywrightController } from "../providers/playwright-controller.js";
 import { ProviderRegistry } from "../providers/provider-registry.js";
-import { withControl } from "../providers/controls/decisions.js";
+import { withControl, parseDesiredControls } from "../providers/controls/decisions.js";
 import { ChatSession, BrowserChatSession, transportOf, isBrowserTransport } from "../providers/chat-session.js";
 import { OllamaSession } from "../providers/ollama-session.js";
 import { sleep } from "../cli-io.js";
@@ -160,14 +160,18 @@ export function forceControl(id: string, value: string | boolean): void {
 }
 
 /**
- * Deep thinking off for the coding agent, the same way and for the same reason
- * as research forces search: for this process only, so Chat keeps the user's
- * choice. Agent turns are many and short, and a thinking turn on a large prompt
- * spent the whole 300s wait reasoning (roadmap 1.7, D1). Search off too: left
- * on from research, it searched the web on fix turns and filled replies with
- * citation badges, while the agent's facts come from its tools.
+ * Controls for the coding agent, for this process only so Chat is untouched.
+ *
+ * Deep thinking follows the user's saved choice and defaults to off when they
+ * have not made one: agent turns are many and short, and a thinking turn on a
+ * large prompt spent the whole 300s wait reasoning (roadmap 1.7, D1), so off is
+ * the right default, but someone who turned it on in settings asked for it.
+ * Search is always off: left on from research, it searched the web on fix turns
+ * and filled replies with citation badges, while the agent's facts come from
+ * its tools.
  */
 export function agentControls(): void {
-  forceControl("deep-thinking", false);
+  const saved = parseDesiredControls(process.env.AGENT_CONTROLS);
+  if (typeof saved["deep-thinking"] !== "boolean") forceControl("deep-thinking", false);
   forceControl("smart-search", false);
 }
