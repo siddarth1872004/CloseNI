@@ -32,7 +32,7 @@ It opens a real Chromium window and uses the session you are already signed into
 
 > **Where it stands, plainly.**
 > - **DeepSeek** is driven end to end.
-> - **Qwen Studio** and **GLM** are wired and listed as **coming soon**.
+> - **Qwen Studio** and **GLM** can be selected, as **experimental**: neither has been re-checked against its live site since it was ungated.
 > - **Ollama** is local and **chat-only**.
 > - Installers for Windows and Linux are on the [releases page](https://github.com/siddarth1872004/CloseNI/releases/latest), unsigned. Or build it from source.
 >
@@ -190,8 +190,8 @@ flowchart TB
 
     subgraph sites["Chromium, one profile per site"]
         D["DeepSeek"]
-        Q["Qwen Studio · coming soon"]
-        G["GLM · coming soon"]
+        Q["Qwen Studio · experimental"]
+        G["GLM · experimental"]
     end
 
     O["Ollama<br/>local HTTP · chat-only"]
@@ -223,13 +223,13 @@ CloseNI drives a chat site the way a person does, so each site needs its own pag
 | Provider | Status | What is known |
 |---|---|---|
 | **DeepSeek Chat** | ![ready](https://img.shields.io/badge/-ready-57d38c?style=flat-square) | Driven end to end: plan, build, repair, verify. Its reply stream (`/api/v0/chat/completion`) is measured and used to know when an answer ended. |
-| **Qwen Studio** | ![coming soon](https://img.shields.io/badge/-coming%20soon-e3b341?style=flat-square) | Page control works against the live site: the input is found, long prompts are pasted via the clipboard, and send and completion detection are both confirmed. It is gated because a build-sized prompt (~9k characters) outruns the 120 s completion wait while the model is still thinking. |
-| **GLM (Z.ai)** | ![coming soon](https://img.shields.io/badge/-coming%20soon-e3b341?style=flat-square) | The live site declines the build prompts, and the model and thinking controls were not found on the page. Selectors have never been confirmed. |
+| **Qwen Studio** | ![experimental](https://img.shields.io/badge/-experimental-e3b341?style=flat-square) | Page control works against the live site: the input is found, long prompts are pasted via the clipboard, and send and completion detection are both confirmed. It was gated because a build-sized prompt (~9k characters) outran the old 120 s completion wait while the model was still thinking. The wait is now 300 s, which has not been re-run live. |
+| **GLM (Z.ai)** | ![experimental](https://img.shields.io/badge/-experimental-e3b341?style=flat-square) | Selectable, but the least proven. When last tried, the live site declined the build prompts and the model and thinking controls were not found on the page. Selectors have never been confirmed. |
 | **Ollama (local)** | ![chat-only](https://img.shields.io/badge/-chat--only-79c0ff?style=flat-square) | The first provider that is not a web page: no selectors, no login, no rate limit. Chat works. Plan and build still need a browser provider, and it says so if you try. |
 
-Gated providers appear in Settings, so it is clear they are planned rather than missing, but they cannot be selected. `getUsableProvider` refuses them in the agent too, so a preference saved before the gate cannot start a session on one.
+A provider can be gated with `"comingSoon": true` in its config. Gated providers appear in Settings, so it is clear they are planned rather than missing, but they cannot be selected. `getUsableProvider` refuses them in the agent too, so a preference saved before the gate cannot start a session on one.
 
-Each provider is a JSON file in [`local-agent/config/providers/`](local-agent/config/providers/), read at runtime. Fixing a selector is a text edit and a re-run, not a rebuild. Each gated file carries a `_comingSoonReason` saying what is left, and a test enforces that the reason is there.
+Each provider is a JSON file in [`local-agent/config/providers/`](local-agent/config/providers/), read at runtime. Fixing a selector is a text edit and a re-run, not a rebuild. Each gated file carries a `_comingSoonReason` saying what is left, and a test enforces that the reason is there. Qwen Studio and GLM keep theirs as `_ungatedNote`, so what was unresolved when they were ungated stays next to their selectors.
 
 ---
 
@@ -765,7 +765,7 @@ scripts/            verification, asset generation, release and environment help
 Stated plainly, because a README that only lists strengths is not useful.
 
 - **The coding agent has not met a live site yet.** Its tool protocol, tools, permissions and loop are proven against a scripted model and, end to end, through a real browser against the mock chat. Whether DeepSeek follows the tool-block convention reliably over a long session is the first thing to measure on a signed-in machine.
-- **One provider is ready.** DeepSeek is driven end to end. Qwen Studio and GLM ship gated as coming soon. See [providers](#providers).
+- **One provider is proven.** DeepSeek is driven end to end. Qwen Studio and GLM can be selected but are experimental and unconfirmed against their live sites. See [providers](#providers).
 - **The browser-native layer has never met a live site.** It passes every fixture scenario, but every live row so far is `BLOCKED` by the development machine's network, and builds still use the older controller.
 - **Chat sites change.** Provider control is per-site page automation. A redesign can break extraction until the selectors are updated, which is a JSON edit, not a code change.
 - **Verification is syntax and compilation, not correctness.** A project can pass every check and still be wrong.

@@ -210,8 +210,8 @@ ${shots}
   <table>
     <tr><th>Provider</th><th>Status</th></tr>
     <tr><td>DeepSeek</td><td class="ok">Driven end to end</td></tr>
-    <tr><td>Qwen Studio</td><td class="soon">Wired, coming soon</td></tr>
-    <tr><td>GLM</td><td class="soon">Wired, coming soon</td></tr>
+    <tr><td>Qwen Studio</td><td class="soon">Selectable, experimental</td></tr>
+    <tr><td>GLM</td><td class="soon">Selectable, experimental</td></tr>
     <tr><td>Ollama</td><td>Local, chat only</td></tr>
   </table>
   <p class="sect-lede" style="margin-top:14px">You are using a site under its own terms. Check them before you sign in. <a href="readme.html#providers">Details</a>.</p>

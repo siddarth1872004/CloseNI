@@ -84,7 +84,7 @@ Ask for a change and it reads your project, edits files, runs commands and check
 <p><strong>Where it stands, plainly.</strong></p>
 <ul>
 <li><strong>DeepSeek</strong> is driven end to end.</li>
-<li><strong>Qwen Studio</strong> and <strong>GLM</strong> are wired and listed as <strong>coming soon</strong>.</li>
+<li><strong>Qwen Studio</strong> and <strong>GLM</strong> can be selected, as <strong>experimental</strong>: neither has been re-checked against its live site since it was ungated.</li>
 <li><strong>Ollama</strong> is local and <strong>chat-only</strong>.</li>
 <li>Installers for Windows and Linux are on the <a href="https://github.com/siddarth1872004/CloseNI/releases/latest">releases page</a>, unsigned. Or build it from source.</li>
 </ul>
@@ -268,8 +268,8 @@ Ask for a change and it reads your project, edits files, runs commands and check
 
     subgraph sites[&quot;Chromium, one profile per site&quot;]
         D[&quot;DeepSeek&quot;]
-        Q[&quot;Qwen Studio · coming soon&quot;]
-        G[&quot;GLM · coming soon&quot;]
+        Q[&quot;Qwen Studio · experimental&quot;]
+        G[&quot;GLM · experimental&quot;]
     end
 
     O[&quot;Ollama&lt;br/&gt;local HTTP · chat-only&quot;]
@@ -305,13 +305,13 @@ Ask for a change and it reads your project, edits files, runs commands and check
 </tr>
 <tr>
 <td><strong>Qwen Studio</strong></td>
-<td><img src="https://img.shields.io/badge/-coming%20soon-e3b341?style=flat-square" alt="coming soon"></td>
-<td>Page control works against the live site: the input is found, long prompts are pasted via the clipboard, and send and completion detection are both confirmed. It is gated because a build-sized prompt (~9k characters) outruns the 120 s completion wait while the model is still thinking.</td>
+<td><img src="https://img.shields.io/badge/-experimental-e3b341?style=flat-square" alt="experimental"></td>
+<td>Page control works against the live site: the input is found, long prompts are pasted via the clipboard, and send and completion detection are both confirmed. It was gated because a build-sized prompt (~9k characters) outran the old 120 s completion wait while the model was still thinking. The wait is now 300 s, which has not been re-run live.</td>
 </tr>
 <tr>
 <td><strong>GLM (Z.ai)</strong></td>
-<td><img src="https://img.shields.io/badge/-coming%20soon-e3b341?style=flat-square" alt="coming soon"></td>
-<td>The live site declines the build prompts, and the model and thinking controls were not found on the page. Selectors have never been confirmed.</td>
+<td><img src="https://img.shields.io/badge/-experimental-e3b341?style=flat-square" alt="experimental"></td>
+<td>Selectable, but the least proven. When last tried, the live site declined the build prompts and the model and thinking controls were not found on the page. Selectors have never been confirmed.</td>
 </tr>
 <tr>
 <td><strong>Ollama (local)</strong></td>
@@ -319,8 +319,8 @@ Ask for a change and it reads your project, edits files, runs commands and check
 <td>The first provider that is not a web page: no selectors, no login, no rate limit. Chat works. Plan and build still need a browser provider, and it says so if you try.</td>
 </tr>
 </tbody></table>
-<p>Gated providers appear in Settings, so it is clear they are planned rather than missing, but they cannot be selected. <code>getUsableProvider</code> refuses them in the agent too, so a preference saved before the gate cannot start a session on one.</p>
-<p>Each provider is a JSON file in <a href="https://github.com/siddarth1872004/CloseNI/tree/main/local-agent/config/providers/"><code>local-agent/config/providers/</code></a>, read at runtime. Fixing a selector is a text edit and a re-run, not a rebuild. Each gated file carries a <code>_comingSoonReason</code> saying what is left, and a test enforces that the reason is there.</p>
+<p>A provider can be gated with <code>&quot;comingSoon&quot;: true</code> in its config. Gated providers appear in Settings, so it is clear they are planned rather than missing, but they cannot be selected. <code>getUsableProvider</code> refuses them in the agent too, so a preference saved before the gate cannot start a session on one.</p>
+<p>Each provider is a JSON file in <a href="https://github.com/siddarth1872004/CloseNI/tree/main/local-agent/config/providers/"><code>local-agent/config/providers/</code></a>, read at runtime. Fixing a selector is a text edit and a re-run, not a rebuild. Each gated file carries a <code>_comingSoonReason</code> saying what is left, and a test enforces that the reason is there. Qwen Studio and GLM keep theirs as <code>_ungatedNote</code>, so what was unresolved when they were ungated stays next to their selectors.</p>
 <hr>
 <h2 id="anatomy-of-a-build">Anatomy of a build</h2>
 <pre><code class="language-mermaid">flowchart LR
@@ -827,7 +827,7 @@ scripts/            verification, asset generation, release and environment help
 <p>Stated plainly, because a README that only lists strengths is not useful.</p>
 <ul>
 <li><strong>The coding agent has not met a live site yet.</strong> Its tool protocol, tools, permissions and loop are proven against a scripted model and, end to end, through a real browser against the mock chat. Whether DeepSeek follows the tool-block convention reliably over a long session is the first thing to measure on a signed-in machine.</li>
-<li><strong>One provider is ready.</strong> DeepSeek is driven end to end. Qwen Studio and GLM ship gated as coming soon. See <a href="#providers">providers</a>.</li>
+<li><strong>One provider is proven.</strong> DeepSeek is driven end to end. Qwen Studio and GLM can be selected but are experimental and unconfirmed against their live sites. See <a href="#providers">providers</a>.</li>
 <li><strong>The browser-native layer has never met a live site.</strong> It passes every fixture scenario, but every live row so far is <code>BLOCKED</code> by the development machine&#39;s network, and builds still use the older controller.</li>
 <li><strong>Chat sites change.</strong> Provider control is per-site page automation. A redesign can break extraction until the selectors are updated, which is a JSON edit, not a code change.</li>
 <li><strong>Verification is syntax and compilation, not correctness.</strong> A project can pass every check and still be wrong.</li>

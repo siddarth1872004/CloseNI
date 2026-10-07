@@ -115,7 +115,7 @@ function rpc(
       const init = await send("initialize", {
         protocolVersion: "2024-11-05",
         capabilities: {},
-        clientInfo: { name: "CloseNI", version: "0.1.0" },
+        clientInfo: { name: "CloseNI", version: "0.2.0" },
       });
       if (settled) return;
       if (init && init.error) {
