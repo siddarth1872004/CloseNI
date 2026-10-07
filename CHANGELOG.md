@@ -3,7 +3,12 @@
 All notable changes to CloseNI are recorded here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.2.0] — 2026-10-07
+
+Qwen Studio and GLM can be picked, and the coding agent respects the DeepSeek
+Deep thinking setting. Installers are built by CI from the `v0.2.0` tag and are
+unsigned, as before: Windows SmartScreen will warn about an unrecognised
+publisher.
 
 ### Providers
 
@@ -14,7 +19,7 @@ All notable changes to CloseNI are recorded here. This project follows
   Deep thinking off on every agent run. It now follows the saved setting and
   still defaults to off when none is saved. Smart Search stays off for the agent.
 
-## [0.1.0] — unreleased
+## [0.1.0] — 2026-10-05
 
 **Published as an early release.** Installers for Windows (NSIS) and Linux
 (AppImage and `.deb`) are built by CI from the `v0.1.0` tag and attached to a
@@ -34,7 +39,7 @@ agent spawning. The Windows application packs, audits clean, and has been
 started on Windows 11. The NSIS installer is built by CI and has not been
 installed by anyone — treat it as unproven. GitHub sign-in, push, clone and
 Actions are unit-tested with an injected transport and have never made a live
-request. Qwen Studio and GLM shipped gated in this release; see Unreleased.
+request. Qwen Studio and GLM shipped gated in this release; see 0.2.0.
 
 ### A coding agent, first
 
