@@ -5,7 +5,13 @@
 #   cmake --build build-native
 cmake_minimum_required(VERSION 3.21)
 
-project(CloseNI VERSION 0.3.0 LANGUAGES CXX)
+# The version has one home, the root package.json, which the agent and the
+# release tag check also read.
+file(READ ${CMAKE_CURRENT_SOURCE_DIR}/../package.json CLOSENI_PACKAGE_JSON)
+string(JSON CLOSENI_PACKAGE_VERSION GET ${CLOSENI_PACKAGE_JSON} version)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/../package.json)
+
+project(CloseNI VERSION ${CLOSENI_PACKAGE_VERSION} LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

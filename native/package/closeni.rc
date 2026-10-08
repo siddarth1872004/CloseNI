@@ -1,0 +1,2 @@
+// The Windows executable's icon (the one Explorer and the taskbar show).
+IDI_ICON1 ICON "closeni.ico"

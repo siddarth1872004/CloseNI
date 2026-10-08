@@ -6,6 +6,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QQmlApplicationEngine>
+#include <QQuickStyle>
 
 #include <cstdio>
 
@@ -49,6 +50,12 @@ int main(int argc, char *argv[])
     QGuiApplication app(argc, argv);
     QGuiApplication::setApplicationName(QStringLiteral("CloseNI"));
     QGuiApplication::setApplicationVersion(QStringLiteral(CLOSENI_VERSION));
+    // Matches closeni.desktop, so Wayland shells show the app's icon.
+    QGuiApplication::setDesktopFileName(QStringLiteral("closeni"));
+    // Packages ship the Basic style only (native/package/stage.mjs). Without
+    // this, an `import QtQuick.Controls` or the dialogs would pick the
+    // platform's default style (Fusion, FluentWinUI3, macOS), which is not there.
+    QQuickStyle::setStyle(QStringLiteral("Basic"));
 
     QCommandLineParser parser;
     parser.setApplicationDescription(QStringLiteral("CloseNI, the native app"));
