@@ -33,10 +33,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # 6.8 is the LTS the design sets as the minimum.
+      # 6.10: the 6.8 builds still link the AGL framework, which current macOS SDKs
+      # no longer ship.
       - uses: jurplel/install-qt-action@v4
         with:
-          version: "6.8.*"
+          version: "6.10.*"
           cache: true
 
       - name: Configure
