@@ -32,19 +32,43 @@ ApplicationWindow {
     function toUrl(path) { return (path.startsWith("/") ? "file://" : "file:///") + path }
     function fromUrl(url) { return decodeURIComponent(url.toString().replace(/^file:\/\/(\/(?=[A-Za-z]:))?/, "")) }
 
-    AgentProcess {
-        id: agent
+    // "idle", "starting", "ready", "closing" or "failed", from Agent's replies.
+    property string status: "idle"
+    property var readyInfo: ({})
+    property string error: ""
 
-        onStatusChanged: {
-            if (status === "ready")
-                window.log("ready: " + JSON.stringify(readyInfo))
-            else if (status === "failed")
-                window.log("failed: " + error)
-        }
-        onLogLine: (line) => window.log(line)
+    function startAgent() {
+        status = "starting"
+        Agent.codeStart({ workspace: workspace, provider: provider, mode: "default" }, function (r) {
+            if (r.ok) {
+                readyInfo = r
+                status = "ready"
+                log("ready: " + JSON.stringify(r))
+            } else {
+                error = r.error
+                status = "failed"
+                log("failed: " + r.error)
+            }
+        })
     }
 
-    Component.onCompleted: if (autoStart) agent.start(workspace, provider, "default")
+    function stopAgent() {
+        status = "closing"
+        Agent.codeEnd(function () { status = "idle" })
+    }
+
+    Connections {
+        target: Agent
+        function onLog(line) { window.log(line) }
+        function onCodeEvent(ev) {
+            if (ev.type === "closed" && window.status === "ready")
+                window.status = "idle"
+            else if (ev.type !== "ready")
+                window.log(JSON.stringify(ev))
+        }
+    }
+
+    Component.onCompleted: if (autoStart) startAgent()
 
     FolderDialog {
         id: folderDialog
@@ -66,28 +90,28 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 text: window.workspace
                 onEditingFinished: window.workspace = text
-                enabled: agent.status === "idle" || agent.status === "failed"
+                enabled: window.status === "idle" || window.status === "failed"
             }
             Button {
                 text: "Browse…"
                 onClicked: folderDialog.open()
-                enabled: agent.status === "idle" || agent.status === "failed"
+                enabled: window.status === "idle" || window.status === "failed"
             }
             Label { text: "Provider" }
             TextField {
                 Layout.preferredWidth: 120
                 text: window.provider
                 onEditingFinished: window.provider = text
-                enabled: agent.status === "idle" || agent.status === "failed"
+                enabled: window.status === "idle" || window.status === "failed"
             }
             Button {
-                text: agent.status === "idle" || agent.status === "failed" ? "Start" : "Stop"
-                enabled: agent.status !== "closing"
+                text: window.status === "idle" || window.status === "failed" ? "Start" : "Stop"
+                enabled: window.status !== "closing"
                 onClicked: {
-                    if (agent.status === "idle" || agent.status === "failed")
-                        agent.start(window.workspace, window.provider, "default")
+                    if (window.status === "idle" || window.status === "failed")
+                        window.startAgent()
                     else
-                        agent.close()
+                        window.stopAgent()
                 }
             }
         }
@@ -97,11 +121,11 @@ ApplicationWindow {
             wrapMode: Text.Wrap
             font.bold: true
             text: {
-                switch (agent.status) {
+                switch (window.status) {
                 case "starting": return "Starting the agent…"
-                case "ready": return "Ready: " + agent.readyInfo.provider + ", " + agent.readyInfo.mode + " mode, in " + agent.readyInfo.workspace
+                case "ready": return "Ready: " + window.readyInfo.provider + ", " + window.readyInfo.mode + " mode, in " + window.readyInfo.workspace
                 case "closing": return "Closing…"
-                case "failed": return "Failed: " + agent.error
+                case "failed": return "Failed: " + window.error
                 default: return "Not running"
                 }
             }
@@ -135,7 +159,7 @@ ApplicationWindow {
             elide: Text.ElideMiddle
             opacity: 0.6
             font.pixelSize: 11
-            text: "Node: " + (agent.nodePath || "not found") + "   Agent: " + (agent.agentPath || "not found") + "   Storage: " + agent.storageRoot
+            text: "Storage: " + App.storageRoot
         }
     }
 }
