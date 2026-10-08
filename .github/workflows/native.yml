@@ -1,0 +1,73 @@
+# Builds the native Qt app on Linux, Windows and macOS (design D13, phase 0),
+# and on Linux starts it against the mock provider to check the agent session
+# comes up. The Electron app's checks stay in test.yml.
+name: native
+
+on:
+  push:
+    paths:
+      - "native/**"
+      - "local-agent/**"
+      - ".github/workflows/native.yml"
+  pull_request:
+    paths:
+      - "native/**"
+      - "local-agent/**"
+      - ".github/workflows/native.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # 6.8 is the LTS the design sets as the minimum.
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.8.*"
+          cache: true
+
+      - name: Configure
+        run: cmake -S native -B build-native -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build-native --config Release
+
+      - name: Version
+        if: runner.os == 'Linux'
+        run: QT_QPA_PLATFORM=offscreen build-native/bin/CloseNI --version
+
+      # The session check needs the compiled agent and Playwright's Chromium.
+      - uses: actions/setup-node@v4
+        if: runner.os == 'Linux'
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install
+        if: runner.os == 'Linux'
+        run: npm ci
+
+      - name: Install Chromium
+        if: runner.os == 'Linux'
+        run: npx playwright install --with-deps chromium
+
+      - name: Compile the agent
+        if: runner.os == 'Linux'
+        run: npm run build
+
+      - name: Agent session smoke test
+        if: runner.os == 'Linux'
+        run: node native/smoke.cjs

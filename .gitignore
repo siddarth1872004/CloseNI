@@ -1,6 +1,8 @@
 node_modules/
 dist/
 out/
+# The native Qt app's CMake build (native/).
+build-native/
 *.log
 .env
 .env.*
