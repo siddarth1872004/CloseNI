@@ -29,9 +29,9 @@ const { applyPatch, isAbbreviated } = require(join(D, 'patch/patch-applier.js'))
 const { needsConfirmation, isEnvironmentSetup, isGeneratedFile } = require(join(D, 'verification/command-policy.js'));
 const { validateGraph } = require(join(D, 'plan-graph.js'));
 const { planChecks } = require(join(D, 'verification/check-planner.js'));
-const GH = require(join(ROOT, 'desktop/github-safe.js'));
-const SCHED = require(join(ROOT, 'desktop/scheduler.js'));
-const ENTRY = require(join(ROOT, 'desktop/entrypoint.js'));
+const GH = require(join(ROOT, 'native/qml/js/github-safe.mjs'));
+const SCHED = require(join(ROOT, 'native/qml/js/scheduler.mjs'));
+const ENTRY = require(join(ROOT, 'native/qml/js/entrypoint.mjs'));
 
 let pass = 0, fail = 0;
 const failures = [];

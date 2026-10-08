@@ -69,7 +69,7 @@ function testControlDecisions() {
 
 function testControlSettings() {
   section("provider control settings");
-  const { resolveControls, labelFor } = require(path.join(__dirname, "..", "..", "desktop", "controls-settings.js"));
+  const { resolveControls, labelFor } = require(path.join(__dirname, "..", "..", "native", "qml", "js", "controls-settings.mjs"));
 
   const controls = [
     { id: "mode", kind: "select", default: "default", options: [{ value: "default" }, { value: "expert" }] },

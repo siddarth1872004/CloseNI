@@ -166,7 +166,7 @@ function testPlanScale() {
   // The renderer cannot require the agent's module - no bundler, no require -
   // so the estimate is duplicated in desktop/plan-scale.js. Duplication is only
   // acceptable while something proves the copies agree.
-  const ui = require(path.join(__dirname, "..", "..", "desktop", "plan-scale.js"));
+  const ui = require(path.join(__dirname, "..", "..", "native", "qml", "js", "plan-scale.mjs"));
   [0, 1, 3, 8, 20, 40, 100].forEach(function (n) {
     check("both copies agree at " + n + " steps",
       ui.estimateDuration(n) === estimateDuration(n),
@@ -226,7 +226,7 @@ function testRunManifest() {
 
 function testRunTarget() {
   section("run target");
-  const { venvCommand, looksGraphical, fixPrompt } = require(path.join(__dirname, "..", "..", "desktop", "run-target.js"));
+  const { venvCommand, looksGraphical, fixPrompt } = require(path.join(__dirname, "..", "..", "native", "qml", "js", "run-target.mjs"));
   check("python runs from the project's venv", venvCommand("python3 game.py", "/p/.venv/bin/python") === "/p/.venv/bin/python game.py");
   check("a path with spaces is quoted", venvCommand("python main.py", "/my p/.venv/bin/python") === '"/my p/.venv/bin/python" main.py');
   check("no venv leaves the command alone", venvCommand("python3 game.py", null) === "python3 game.py");
@@ -235,7 +235,7 @@ function testRunTarget() {
   check("a pygame program opens a window", looksGraphical(["import sys\nimport pygame\n"]));
   check("so does a tkinter one", looksGraphical(["from tkinter import ttk"]));
   check("a console program does not", !looksGraphical(["import sys\nprint('pygame')\n"]));
-  const RT = require(path.join(__dirname, "..", "..", "desktop", "run-target.js"));
+  const RT = require(path.join(__dirname, "..", "..", "native", "qml", "js", "run-target.mjs"));
   check("a pygame or Qt program is checked unseen", RT.checkableHeadless(["import sys\nimport pygame\n"]) && RT.checkableHeadless(["from PySide6.QtWidgets import QApplication"]));
   check("a console script is never started on its own", !RT.checkableHeadless(["import os\nfor f in os.listdir(): os.rename(f, f + '.bak')\n"]));
   check("nor one with a toolkit that needs a screen", !RT.checkableHeadless(["import tkinter"]) && !RT.checkableHeadless(["import pygame", "import turtle"]));
@@ -253,7 +253,7 @@ function testRunTarget() {
 
 function testPreviewTarget() {
   section("preview target");
-  const { previewTarget } = require(path.join(__dirname, "..", "..", "desktop", "preview-target.js"));
+  const { previewTarget } = require(path.join(__dirname, "..", "..", "native", "qml", "js", "preview-target.mjs"));
 
   // Real output from the servers these projects actually produce.
   const flask = " * Running on http://127.0.0.1:5000\n * Press CTRL+C to quit";
@@ -324,7 +324,7 @@ function testPlanGraph() {
 
 function testScheduler() {
   section("scheduler");
-  const { runnableSteps, blockedBy } = require(path.join(__dirname, "..", "..", "desktop", "scheduler.js"));
+  const { runnableSteps, blockedBy } = require(path.join(__dirname, "..", "..", "native", "qml", "js", "scheduler.mjs"));
   const S = (o) => Object.assign({ completed: [], failed: [], blocked: [], skipped: [], running: [] }, o);
   const serial = [[], [0], [1], [2]];
   const diamond = [[], [0], [0], [1, 2]];
@@ -384,7 +384,7 @@ function testScheduler() {
   // --- resuming. Without this, pressing Build after a partial run re-runs
   // every completed step from the beginning, which is what made recovering
   // from a failure feel like starting over.
-  const { seedState } = require(path.join(__dirname, "..", "..", "desktop", "scheduler.js"));
+  const { seedState } = require(path.join(__dirname, "..", "..", "native", "qml", "js", "scheduler.mjs"));
   const St = (statuses) => statuses.map(function (x) { return { status: x }; });
 
   const fresh = seedState(St(["pending", "pending", "pending"]));
@@ -572,7 +572,7 @@ async function testAgentQueue() {
 
 function testSchedulerGraph() {
   section("a plan's declared dependencies reach the scheduler");
-  const sched = require(path.join(__dirname, "..", "..", "desktop", "scheduler.js"));
+  const sched = require(path.join(__dirname, "..", "..", "native", "qml", "js", "scheduler.mjs"));
 
   function withDeps(list) { return list.map(function (d) { return { dependsOn: d }; }); }
 
@@ -968,8 +968,8 @@ function testExportBranch() {
 
 function testPlanEdit() {
   section("editing a plan without breaking its graph");
-  const P = require(path.join(__dirname, "..", "..", "desktop", "plan-edit.js"));
-  const sched = require(path.join(__dirname, "..", "..", "desktop", "scheduler.js"));
+  const P = require(path.join(__dirname, "..", "..", "native", "qml", "js", "plan-edit.mjs"));
+  const sched = require(path.join(__dirname, "..", "..", "native", "qml", "js", "scheduler.mjs"));
 
   function mk(deps) { return deps.map(function (d, i) { return { title: "s" + (i + 1), dependsOn: d }; }); }
   function depsOf(r) { return r.steps.map(function (s) { return s.dependsOn; }); }
@@ -1043,7 +1043,7 @@ function testPlanEdit() {
 
 function testStepTiming() {
   section("where a build's time went");
-  const T = require(path.join(__dirname, "..", "..", "desktop", "step-timing.js"));
+  const T = require(path.join(__dirname, "..", "..", "native", "qml", "js", "step-timing.mjs"));
 
   // A step: 2s before the first phase is reported, then sending, writing,
   // applying, checking - and 1s after the last phase closes.
