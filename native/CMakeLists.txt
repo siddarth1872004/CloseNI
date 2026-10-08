@@ -50,9 +50,19 @@ foreach(f ${CLOSENI_PLATFORM_SOURCES})
     endif()
 endforeach()
 
+# The app icon (made from build/icon.png by package/icons.mjs): embedded in the
+# .exe through a resource script, and copied into the macOS bundle.
+if(WIN32)
+    set(CLOSENI_ICON package/closeni.rc)
+elseif(APPLE)
+    set(CLOSENI_ICON package/closeni.icns)
+    set_source_files_properties(package/closeni.icns PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+endif()
+
 qt_add_executable(closeni
     src/main.cpp
     ${CLOSENI_PLATFORM_SOURCES}
+    ${CLOSENI_ICON}
 )
 
 qt_add_qml_module(closeni
@@ -68,7 +78,9 @@ set_target_properties(closeni PROPERTIES
     OUTPUT_NAME CloseNI
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     MACOSX_BUNDLE TRUE
-    MACOSX_BUNDLE_GUI_IDENTIFIER com.closeni.app
+    MACOSX_BUNDLE_GUI_IDENTIFIER com.siddarth.closeni
+    MACOSX_BUNDLE_BUNDLE_NAME CloseNI
+    MACOSX_BUNDLE_ICON_FILE closeni.icns
     MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
     MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION}
     WIN32_EXECUTABLE TRUE
