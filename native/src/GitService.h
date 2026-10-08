@@ -21,6 +21,12 @@ class GitService : public QObject
 public:
     explicit GitService(QObject *parent = nullptr);
 
+    /* { args, cwd } -> { success, output } */
     Q_INVOKABLE void git(const QVariantMap &payload, QJSValue callback);
+    /* { workspace, summary, steps } -> { ok, branch, commits, warnings } or { ok: false, error } */
     Q_INVOKABLE void exportBranch(const QVariantMap &payload, QJSValue callback);
+
+signals:
+    /* "git> " + a redacted chunk of a git command's output: Electron's "project-log". */
+    void projectLog(const QString &line);
 };
