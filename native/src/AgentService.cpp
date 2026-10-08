@@ -204,10 +204,16 @@ AgentService::~AgentService()
             sessions.append(p);
         }
     }
-    if (m_agentProc && m_agentProc->state() != QProcess::NotRunning) {
-        disconnect(m_agentProc, nullptr, this, nullptr);
-        Proc::terminate(m_agentProc);
-        sessions.append(m_agentProc);
+    // Every other run (the one-shot holding the profile, and the ones that do
+    // not: the account check, health, the browser install) is stopped too, so
+    // none outlives the app or is destroyed while still running.
+    const auto children = findChildren<QProcess *>(Qt::FindDirectChildrenOnly);
+    for (QProcess *p : children) {
+        if (p == m_codeProc || p == m_sessionProc || p->state() == QProcess::NotRunning)
+            continue;
+        disconnect(p, nullptr, this, nullptr);
+        Proc::terminate(p);
+        sessions.append(p);
     }
     for (QProcess *p : sessions) {
         if (!p->waitForFinished(5000)) {
