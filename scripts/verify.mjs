@@ -648,9 +648,9 @@ ${'-'.repeat(W)}
 
     · The Windows installer. No Windows machine here; the first .exe the
       release workflow builds is unverified until someone installs it.
-    · Qwen and GLM are gated as coming soon, not verified. Qwen's page control
-      works against the live site but a build-sized prompt outruns its 120s
-      completion wait; GLM's live site declines the build prompts. Only
+    · Qwen and GLM are selectable as experimental, not verified. Qwen's 300s
+      completion wait has not been re-run live with a build-sized prompt;
+      GLM's live site declined the build prompts when last tried. Only
       DeepSeek has been driven end to end.
     · GitHub sign-in, push, clone and Actions against a real token. Tested
       with an injected transport, never over the network.
