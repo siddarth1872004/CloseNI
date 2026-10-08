@@ -3,12 +3,16 @@
 All notable changes to CloseNI are recorded here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.3.0] — 2026-10-08
 
 DeepSeek is hardened for the coding agent and was checked against the live site
 on 8 October 2026. Its reasoning now shows while it thinks. When DeepSeek drops
 a reply, the agent asks again instead of waiting out the clock. Qwen Studio and
 GLM have not been touched since 0.2.0.
+
+Installers are built by CI from the `v0.3.0` tag and are unsigned, as before:
+Windows SmartScreen will warn about an unrecognised publisher. These are the
+first installers since 0.1.0 (see the note under 0.2.0).
 
 ### Thinking
 
@@ -78,9 +82,11 @@ GLM have not been touched since 0.2.0.
 ## [0.2.0] — 2026-10-07
 
 Qwen Studio and GLM can be picked, and the coding agent respects the DeepSeek
-Deep thinking setting. Installers are built by CI from the `v0.2.0` tag and are
-unsigned, as before: Windows SmartScreen will warn about an unrecognised
-publisher.
+Deep thinking setting.
+
+**No installers were built for 0.2.0.** It was tagged `0.2.0` without the `v`,
+and the release workflow runs only on `v*` tags. Its GitHub release has no
+files. Use 0.3.0, which includes everything here.
 
 ### Providers
 
