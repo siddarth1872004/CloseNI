@@ -27,6 +27,10 @@
     // Mode actions: a test or research run in flight, the build's todo list
     // for its progress bar, and which sources research searches.
     running: false, todos: [], research: { web: true, gh: true }, modebarSeq: 0,
+    // The reasoning block being written for the current step, while it grows.
+    think: null,
+    // The settings the running agent was started with (sessionSettings).
+    settings: "",
   };
 
   const transcript = $("code-transcript");
@@ -171,6 +175,31 @@
       more.innerHTML = '<pre class="cc-out">' + esc(ev.output) + "</pre>";
     }
     stick();
+  }
+
+  // The model's reasoning, copied from the provider's page as it thinks: open
+  // while it grows, folded to one line once the answer or a tool call follows.
+  function onReasoning(ev) {
+    if (S.think && S.think.step !== ev.step) endThinking();
+    if (!S.think) {
+      const node = add(el("div", "cc-think live open",
+        '<div class="cc-think-head"><span class="cc-dot">✻</span><span class="cc-think-label">Thinking…</span></div>' +
+        '<div class="cc-think-body cc-body md"></div>'));
+      node.querySelector(".cc-think-head").addEventListener("click", function () { node.classList.toggle("open"); });
+      S.think = { step: ev.step, node: node };
+    }
+    const body = S.think.node.querySelector(".cc-think-body");
+    body.innerHTML = typeof renderMarkdown === "function" ? renderMarkdown(ev.text) : esc(ev.text);
+    body.scrollTop = body.scrollHeight;
+    stick();
+  }
+
+  function endThinking() {
+    if (!S.think) return;
+    const node = S.think.node;
+    S.think = null;
+    node.classList.remove("live", "open");
+    node.querySelector(".cc-think-label").textContent = "Thought";
   }
 
   function todoHtml(items) {
@@ -653,6 +682,7 @@
   }
 
   function onEvent(ev) {
+    if (ev.type === "assistant" || ev.type === "tool" || ev.type === "thinking" || ev.type === "done" || ev.type === "closed") endThinking();
     switch (ev.type) {
       case "ready":
         S.provider = ev.provider || S.provider;
@@ -661,6 +691,7 @@
         break;
       case "turn-start": setBusy(true); S.changed = false; closeRunOffer(); break;
       case "thinking": S.step = ev.step; spinnerOn(V.spinnerVerb(ev.step, S.verbSeed)); break;
+      case "reasoning": onReasoning(ev); break;
       case "assistant": {
         const m = add(el("div", "cc-msg", '<span class="cc-dot">⏺</span><div class="cc-body md"></div>'));
         m.querySelector(".cc-body").innerHTML = typeof renderMarkdown === "function" ? renderMarkdown(ev.text) : esc(ev.text);
@@ -677,7 +708,7 @@
       case "rewound":
         note(ev.files.length ? "Rewound " + ev.files.length + " file" + (ev.files.length === 1 ? "" : "s") + ": " + ev.files.join(", ") : "Nothing to rewind");
         break;
-      case "cleared": transcript.innerHTML = ""; S.tools = {}; onTodos([]); note("Started a new conversation", "dim"); break;
+      case "cleared": transcript.innerHTML = ""; S.tools = {}; S.think = null; onTodos([]); note("Started a new conversation", "dim"); break;
       case "compacting": note("Conversation at " + ev.size + " - summarising it to continue in a new one", "dim"); break;
       case "compacted": note("Continuing in a new conversation" + (ev.summary ? ", with a summary of the last" : " (no summary could be read)"), ev.summary ? "dim" : "warn"); break;
       case "error": note(ev.message, "err"); break;
@@ -705,14 +736,29 @@
 
   // --------------------------------------------------------------- sending
 
+  // What the agent reads once, when it starts: which provider, whether its
+  // browser is shown, and the provider's controls. Applied to the page at
+  // sign-in, so a change made later means nothing until the agent restarts.
+  function sessionSettings() {
+    return JSON.stringify([CN.getProvider(), CN.isHeaded(), CN.getControls ? CN.getControls() : {}]);
+  }
+
   function ensureSession() {
-    if (S.up) return Promise.resolve(true);
     if (S.starting) return S.starting;
+    const settings = sessionSettings();
+    if (S.up && S.settings === settings) return Promise.resolve(true);
     const ws = CN.getWorkspace();
     if (!ws) { note("Choose a project folder first - the agent works inside one.", "err"); refreshWelcome(); return Promise.resolve(false); }
+    // Changed since the agent started: it yields and a new one opens with the
+    // new settings. The provider's thread is saved per project, so it resumes.
+    const closing = S.up ? window.api.codeEnd() : Promise.resolve();
+    if (S.up) note("Settings changed - reopening " + (CN.getProviderName ? CN.getProviderName() : "the provider") + " with them", "dim");
+    S.up = false;
     spinnerOn("Opening " + (CN.getProviderName ? CN.getProviderName() : "the provider"));
     S.turnStart = Date.now();
-    S.starting = (CN.buildPreamble ? CN.buildPreamble() : Promise.resolve({})).catch(function () { return {}; }).then(function (preamble) {
+    S.starting = closing.catch(function () {}).then(function () {
+      return CN.buildPreamble ? CN.buildPreamble() : {};
+    }).catch(function () { return {}; }).then(function (preamble) {
       return window.api.codeStart({
         workspace: ws, provider: CN.getProvider(), mode: V.agentModeOf(S.mode),
         headed: CN.isHeaded(), controls: CN.getControls ? CN.getControls() : {}, preamble: preamble,
@@ -721,6 +767,7 @@
       S.starting = null;
       if (!r || !r.ok) { spinnerOff(); note("Could not start: " + ((r && r.error) || "unknown error"), "err"); return false; }
       S.up = true;
+      S.settings = settings;
       if (r.provider) { S.provider = r.provider; showMeta(); }
       return true;
     }, function (e) { S.starting = null; spinnerOff(); note("Could not start: " + String(e), "err"); return false; });

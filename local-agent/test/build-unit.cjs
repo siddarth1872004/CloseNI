@@ -101,8 +101,17 @@ function testSessionStore() {
 
 function testCompletion() {
   section("completion decision");
-  const { isComplete } = require(path.join(DIST, "providers/completion.js"));
+  const { isComplete, endedWithoutReply, ReplyDropped } = require(path.join(DIST, "providers/completion.js"));
   const s = (o) => Object.assign({ started: false, stopSeen: false, stopGone: false, stableTicks: 0 }, o);
+
+  // A reply the provider dropped: its stream closed and nothing ever appeared.
+  const d = (o) => Object.assign({ started: false, streamsOpened: 1, streamsClosed: 1, ticksSinceClosed: 3 }, o);
+  check("a closed stream with nothing on the page is a dropped reply", endedWithoutReply(d({}), 3) === true);
+  check("not before the grace polls pass", endedWithoutReply(d({ ticksSinceClosed: 2 }), 3) === false);
+  check("a reply that started is never dropped", endedWithoutReply(d({ started: true }), 3) === false);
+  check("a stream still open is a model still thinking", endedWithoutReply(d({ streamsOpened: 2, streamsClosed: 1 }), 3) === false);
+  check("no stream seen says nothing", endedWithoutReply(d({ streamsOpened: 0, streamsClosed: 0 }), 3) === false);
+  check("the drop is its own error type", new ReplyDropped("x") instanceof Error && new ReplyDropped("x").name === "ReplyDropped");
 
   // Nothing completes before the response has started.
   check("not started never completes", isComplete(s({ stopSeen: true, stopGone: true, stableTicks: 99 }), true, 4) === false);

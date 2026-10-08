@@ -67,6 +67,15 @@ async function run(check, section) {
   r = P.parseReply("````tool\n{\"tool\":\"write\",\"path\":\"requirements.txt\"}\n---\npygame\n```tool\n{\"tool\":\"write\",\"path\":\".gitignore\"}\n---\n.venv/\n````");
   check("a write that runs on into the next tool block says its closing fence is missing", P.isBad(r.calls[0]) && /requirements\.txt/.test(r.calls[0].error) && /missing its closing/.test(r.calls[0].error) && !/four backticks/.test(r.calls[0].error), JSON.stringify(r.calls[0]));
   check("and the call it swallowed gets a result of its own", r.calls.length === 2 && P.isBad(r.calls[1]) && /not run/.test(r.calls[1].error), JSON.stringify(r.calls));
+  // The live README reply, 8 October 2026: a ```` line closed the write and
+  // opened a plain block that ran to the end, taking the bash call with it.
+  r = P.parseReply("```tool\n{\"tool\": \"write\", \"path\": \"README.md\"}\n---\n````\n# hello\n\n```bash\npython3 hello.py\n```\n````\n```\n\nThen run it:\n\n" + tool({ tool: "bash", command: "python3 hello.py" }));
+  check("a call lost in a block that never closed gets a result of its own", r.calls.length === 2 && r.calls[0].tool === "write" && P.isBad(r.calls[1]) && /not run/.test(r.calls[1].error) && /````/.test(r.calls[1].error), JSON.stringify(r.calls));
+  // The same reply as it is read back after DeepSeek rendered it: the page closes the runaway block.
+  r = P.parseReply("I will write it.\n\n```tool\n{\"tool\": \"write\", \"path\": \"README.md\"}\n---\n```\n\nhello\n\nUsage\n\n```bash\npython3 hello.py\n```\n\n````text\n```\n\nThen run it:\n\n" + tool({ tool: "bash", command: "python3 hello.py" }) + "\n````");
+  check("and as the page renders it, with that block closed", r.calls.length === 2 && r.calls[0].tool === "write" && P.isBad(r.calls[1]) && /not run/.test(r.calls[1].error), JSON.stringify(r.calls));
+  r = P.parseReply("Calls look like this:\n\n````markdown\n" + tool({ tool: "ls" }) + "\n````\n");
+  check("a tool block shown inside a closed code block is neither run nor reported lost", r.calls.length === 0, JSON.stringify(r.calls));
   r = P.parseReply(tool({ tool: "edit", path: "README.md" }, "<<<<<<< SEARCH\nold\n=======\n## Run\n\n```sh\nnpm start"));
   check("an edit whose REPLACE was cut short the same way is refused", P.isBad(r.calls[0]) && /four backticks/.test(r.calls[0].error), JSON.stringify(r.calls[0]));
   r = P.parseReply(tool({ tool: "edit", path: "README.md" }, "<<<<<<< SEARCH\n```sh\nnpm start\n=======\n```sh\nnpm run dev\n>>>>>>> REPLACE"));
@@ -158,6 +167,16 @@ async function run(check, section) {
   check("write creates folders and ends the file with a newline", o.ok && fs.readFileSync(path.join(ws, "pkg/new/mod.py"), "utf-8") === "a = 1\n");
   check("and says it created it", /created pkg\/new\/mod\.py/.test(o.summary) && o.detail.created === true);
   check("the change is announced before it happens", changed.length === 1);
+  // A ```tool block closed early by a ```` line arrives with nothing after ---.
+  const cut = P.parseReply("```tool\n{\"tool\": \"write\", \"path\": \"pkg/new/mod.py\"}\n---\n````\n# Title\n````\n```").calls[0];
+  o = await Tl.runTool(cut, ctx2);
+  check("an empty payload does not blank a file that has content", !o.ok && /empty a file of 1 lines/.test(o.output) && /````tool/.test(o.output) && fs.readFileSync(path.join(ws, "pkg/new/mod.py"), "utf-8") === "a = 1\n", o.output);
+  check("and nothing is announced as changed", changed.length === 1);
+  o = await Tl.runTool(call({ tool: "write", path: "pkg/new/mod.py" }, { content: "\n\n" }), ctx2);
+  check("blank lines alone count as an empty payload", !o.ok && /empty a file/.test(o.output) && fs.readFileSync(path.join(ws, "pkg/new/mod.py"), "utf-8") === "a = 1\n", o.output);
+  o = await Tl.runTool(call({ tool: "write", path: "pkg/__init__.py" }, { content: "" }), ctx2);
+  check("an empty payload still creates an empty file", o.ok && fs.readFileSync(path.join(ws, "pkg/__init__.py"), "utf-8") === "");
+  changed.length = 1;
   o = await Tl.runTool(call({ tool: "write", path: ".git/config" }, { content: "x" }), ctx2);
   check(".git is not written", !o.ok && /\.git/.test(o.output));
   // A repo can carry links, so these need no bash to set up.
@@ -361,6 +380,14 @@ async function run(check, section) {
   check("the first message carries the preamble", /You are CloseNI/.test(s.prompts[0]) && /User request:\nhi/.test(s.prompts[0]));
   await h.l.turn("again");
   check("later messages do not repeat it", !/You are CloseNI/.test(s.prompts[1]) && /^User: again/.test(s.prompts[1]) && /```tool blocks/.test(s.prompts[1]));
+
+  h = loop({ ask: async (p, o) => { o.onThinking("Is it"); o.onThinking("Is it prime? No."); return "Not prime."; } });
+  await h.l.turn("is 391 prime?");
+  const thought = type(h.events, "reasoning");
+  check("the model's reasoning is relayed as it grows, whole each time",
+    thought.length === 2 && thought[1].text === "Is it prime? No." && thought[1].step === 0, JSON.stringify(thought));
+  check("and comes before the answer it led to",
+    h.events.indexOf(thought[1]) < h.events.indexOf(type(h.events, "assistant")[0]));
 
   const ws2 = tmp();
   fs.writeFileSync(path.join(ws2, "calc.py"), "def add(a, b):\n    return a - b\n");

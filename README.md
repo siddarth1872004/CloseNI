@@ -91,7 +91,8 @@ In every mode, `sudo`, package managers, recursive deletes, piping a download in
 - `/rewind` undoes the last turn's file changes.
 - `/init` writes a `CLOSENI.md` of project instructions, which is read at the start of every conversation (`AGENTS.md` and `CLAUDE.md` are read if there is no `CLOSENI.md`).
 - Messages sent while the agent is working are queued. Esc stops it after the current reply.
-- The persona, skills and MCP context from Settings apply here too, and so do the provider's controls, except Deep thinking, which is off for agent turns: they are many and short, and a thinking turn on a large prompt can outlast the wait.
+- The persona, skills and MCP context from Settings apply here too, and so do the provider's controls, except Smart Search, which stays off for agent turns. Changing a control, the provider or Show Browser takes effect on the next message: the agent reopens the provider with the new settings and resumes the project's thread.
+- With DeepSeek's Deep thinking on, the model's reasoning streams into the panel under a "Thinking…" line and folds away once the reply or a tool call arrives.
 - From a terminal: `npm run agent -- "fix the failing test" ./project deepseek`.
 
 It works with any provider CloseNI can talk to, including a local model through Ollama.
@@ -222,7 +223,7 @@ CloseNI drives a chat site the way a person does, so each site needs its own pag
 
 | Provider | Status | What is known |
 |---|---|---|
-| **DeepSeek Chat** | ![ready](https://img.shields.io/badge/-ready-57d38c?style=flat-square) | Driven end to end: plan, build, repair, verify. Its reply stream (`/api/v0/chat/completion`) is measured and used to know when an answer ended. |
+| **DeepSeek Chat** | ![ready](https://img.shields.io/badge/-ready-57d38c?style=flat-square) | Driven end to end: plan, build, repair, verify, and the coding agent. Its reply streams (`/api/v0/chat/completion`, and `resume_stream` when the page picks up a cut one) are measured and used to know when an answer ended. A reply it drops before writing any of it is asked for once more, and that was checked live against injected faults. Deep thinking's reasoning is shown as it streams. |
 | **Qwen Studio** | ![experimental](https://img.shields.io/badge/-experimental-e3b341?style=flat-square) | Page control works against the live site: the input is found, long prompts are pasted via the clipboard, and send and completion detection are both confirmed. It was gated because a build-sized prompt (~9k characters) outran the old 120 s completion wait while the model was still thinking. The wait is now 300 s, which has not been re-run live. |
 | **GLM (Z.ai)** | ![experimental](https://img.shields.io/badge/-experimental-e3b341?style=flat-square) | Selectable, but the least proven. When last tried, the live site declined the build prompts and the model and thinking controls were not found on the page. Selectors have never been confirmed. |
 | **Ollama (local)** | ![chat-only](https://img.shields.io/badge/-chat--only-79c0ff?style=flat-square) | The first provider that is not a web page: no selectors, no login, no rate limit. Chat works. Plan and build still need a browser provider, and it says so if you try. |
@@ -764,7 +765,7 @@ scripts/            verification, asset generation, release and environment help
 
 Stated plainly, because a README that only lists strengths is not useful.
 
-- **The coding agent has not met a live site yet.** Its tool protocol, tools, permissions and loop are proven against a scripted model and, end to end, through a real browser against the mock chat. Whether DeepSeek follows the tool-block convention reliably over a long session is the first thing to measure on a signed-in machine.
+- **The coding agent is proven on short DeepSeek sessions only.** It has run live on DeepSeek, including nested-fence writes, dropped replies and broken fences. Whether DeepSeek follows the tool-block convention reliably over a long session is still to be measured.
 - **One provider is proven.** DeepSeek is driven end to end. Qwen Studio and GLM can be selected but are experimental and unconfirmed against their live sites. See [providers](#providers).
 - **The browser-native layer has never met a live site.** It passes every fixture scenario, but every live row so far is `BLOCKED` by the development machine's network, and builds still use the older controller.
 - **Chat sites change.** Provider control is per-site page automation. A redesign can break extraction until the selectors are updated, which is a JSON edit, not a code change.

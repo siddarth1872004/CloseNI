@@ -20,7 +20,8 @@ import { describeMachine } from "./machine.js";
 import { ConversationSize, emptySize, addTurn, shouldRollOver, describeSize } from "../context-budget.js";
 
 export interface Asker {
-  ask(prompt: string): Promise<string>;
+  /** `onThinking` gets the model's reasoning, whole, each time it grows. */
+  ask(prompt: string, opts?: { onThinking?: (text: string) => void }): Promise<string>;
   reset?(): Promise<void>;
   /** What the thread holds, when the transport keeps count across restarts. */
   size?(): ConversationSize;
@@ -326,7 +327,7 @@ export class AgentLoop {
           prompt = this.wrap(parts);
         }
         this.o.emit({ type: "thinking", step: step });
-        const reply = await this.o.session.ask(prompt);
+        const reply = await this.o.session.ask(prompt, { onThinking: (text) => this.o.emit({ type: "reasoning", step: step, text: text }) });
         this.local = addTurn(this.local, prompt.length, reply ? reply.length : 0);
         this.started = true;
         if (!reply || !reply.trim()) { reason = "error"; errorText = "No reply could be read from the provider."; break; }

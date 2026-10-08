@@ -12,10 +12,14 @@
     "copyButton": "div[role=\"button\"]:has(span.code-info-button-text)",
     "citation": ".ds-markdown-cite",
     "_citationNote": "Smart Search's source badges: <a><span class=\"ds-markdown-cite\"><span style=\"opacity:0\">-</span><span>15</span></span></a>, read as \"-15\" mid-sentence. Seen in DeepSeek's own replies, 2026-10-01.",
+    "thinking": ".ds-think-content",
+    "turn": ".ds-message",
+    "thinkingHeader": "span",
+    "_thinkingNote": "MEASURED 8 October 2026. With DeepThink on, a turn is <div class=\"ds-message\"> holding a header span \"Thought for 1 second\", then <div class=\"ds-think-content\"><div class=\"ds-markdown\">reasoning</div></div>, then <div class=\"ds-markdown ds-assistant-message-main-content\">answer</div>. The reasoning is a ds-markdown too, so assistantMessage is read with it excluded. Clicking the header collapses the reasoning by REMOVING .ds-think-content from the page, not hiding it, so a collapsed one is expanded before it is read. The prompt you sent is a .ds-message as well, with no reasoning in it.",
     "_copyButtonNote": "Matches the code-block toolbar buttons; the caller filters by the label so Download is not clicked. .code-info-button-text is the only unhashed class on that control - the rest (ds-button--capsule etc.) are design-system modifiers and the surrounding path is entirely build hashes.",
     "_assistantNote": "ds-markdown first: it is the container DeepSeek renders assistant content into. The previous value led with [data-testid] and [class*=message][class*=assistant], which matched three nodes that never update while a reply streams - a build step sat at messages=3, chars=9019 for the full 300s wait because the node being watched was the PREVIOUS answer.",
-    "streamUrlPattern": "/api/v0/chat/completion",
-    "_streamNote": "MEASURED on 11 August 2026 by instrumenting a real reply: DeepSeek streams its answer over POST /api/v0/chat/completion with content-type text/event-stream. Exact rather than a loose pattern on purpose - the earlier guess also matched chat_session/create, and a short request that opened AND closed before the reply began would have satisfied 'all streams closed' and ended the wait early. The reply is never read from this; only its start and end are used."
+    "streamUrlPattern": "/api/v0/chat/(completion|resume_stream)",
+    "_streamNote": "MEASURED on 11 August 2026 by instrumenting a real reply: DeepSeek streams its answer over POST /api/v0/chat/completion with content-type text/event-stream. Exact rather than a loose pattern on purpose - the earlier guess also matched chat_session/create, and a short request that opened AND closed before the reply began would have satisfied 'all streams closed' and ended the wait early. The reply is never read from this; only its start and end are used. resume_stream MEASURED 8 October 2026: when the completion stream ends without its close event, the page itself POSTs /api/v0/chat/resume_stream at once and carries on the reply over it (application/json when the server has already finished, otherwise the rest of the reply). Unwatched, that looked like a closed stream: the wait could read a reply before the resume finished it, or call a reply dropped and send the prompt a second time while the page was still fetching it."
   },
   "completionRules": {
     "waitForStopButtonDisappear": false,
@@ -45,6 +49,8 @@
     "smartSearchText": "Search",
     "_note": "toggle keys off aria-pressed rather than a class: setFlagByText reads that attribute anyway, and .ds-toggle-button stopped matching after a DeepSeek redesign. Confirmed live 2026-10-01 from DeepSeek's own message records: research turns went out with thinking and search on, agent turns with thinking off. If the toggles ever report unavailable, the run log prints the page's pressable controls to copy from."
   },
+  "thinkingHeaderText": "^(Thought for|Thinking)",
+  "_thinkingHeaderTextNote": "Matched against the header span's whole text, case-insensitively. \"Thinking\" while the model reasons, then \"Thought for N seconds\" once it ends - both seen live 8 October 2026. An English-language UI is assumed, as deepThinkingText already does.",
   "profileDir": "local-agent/storage/browser-profiles/deepseek",
   "contextBudgetChars": 150000,
   "_contextBudgetNote": "Roughly how much conversation this provider will hold before a build should continue in a new thread, in characters. A deliberately conservative guess - nothing can read the real window, and being wrong in this direction costs one seeded prompt while being wrong the other way loses a step fifteen deep. Counted from what we send and the replies we receive, never from the page."

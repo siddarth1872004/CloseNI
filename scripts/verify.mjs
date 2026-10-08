@@ -451,7 +451,7 @@ check('an XHR stream closes on loadend, so a failed one cannot hang the counter'
   /loadend/.test(tapSrc));
 check("DeepSeek's stream pattern is the measured endpoint, not a guess",
   JSON.parse(read('local-agent/config/providers/deepseek.json')).selectors.streamUrlPattern
-    === '/api/v0/chat/completion');
+    === '/api/v0/chat/(completion|resume_stream)');
 check('a provider with no stop control does not pretend to have one',
   !JSON.parse(read('local-agent/config/providers/deepseek.json')).selectors.stopButton);
 

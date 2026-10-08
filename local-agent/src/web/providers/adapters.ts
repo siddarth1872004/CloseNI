@@ -132,7 +132,8 @@ export const DEEPSEEK: AdapterSpec = {
     newChat: genericNewChat,
     copy: { name: "copy", strategies: [{ kind: "css", css: 'div[role="button"]:has(span.code-info-button-text)', provenance: "MEASURED" }] },
   },
-  streamUrlPattern: "/api/v0/chat/completion",
+  // And resume_stream, which the page opens to carry on a reply whose stream was cut.
+  streamUrlPattern: "/api/v0/chat/(completion|resume_stream)",
   conversationIdPattern: GENERIC_CONVERSATION_ID,
   hints: {},
   timing: { ...DEFAULT_TIMING },
