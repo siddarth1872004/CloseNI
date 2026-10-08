@@ -419,8 +419,17 @@ ipcMain.handle("code-start", async function (event, payload) {
         if (!m) {
           // A failure before the session is ready arrives as the usual output
           // block; it is the reason the panel needs to show.
+          // It is no longer the session either: released, so the next start
+          // waits for it to exit instead of being told one is already up.
           if (line.indexOf('{"success"') === 0 && !settled) {
-            try { const r = JSON.parse(line); if (r && r.success === false) { settled = true; resolve({ ok: false, error: r.error || "the agent stopped" }); } } catch (e) {}
+            try {
+              const r = JSON.parse(line);
+              if (r && r.success === false) {
+                settled = true;
+                if (codeProc === proc) releaseCode();
+                resolve({ ok: false, error: r.error || "the agent stopped" });
+              }
+            } catch (e) {}
           }
           routeLine(line);
           continue;
@@ -432,7 +441,9 @@ ipcMain.handle("code-start", async function (event, payload) {
         // and nothing after it in the agent loop sets another. Any event past
         // "thinking" means the page has been read, so the bar would otherwise
         // say "extracting" while the agent waits on an approval, or is done.
-        if (ev.type !== "thinking") clearPhase();
+        // Reasoning arrives while the page is still being watched, so it is not
+        // one of them.
+        if (ev.type !== "thinking" && ev.type !== "reasoning") clearPhase();
         // Mirrored like routeLine does the narration: these went only to the
         // window, so a run that stalled on a tool could not be diagnosed.
         if (ev.type === "tool" || ev.type === "done" || ev.type === "error") {

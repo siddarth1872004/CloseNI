@@ -132,6 +132,9 @@ export async function agentOnceMode(prompt: string, workspace: string, providerI
   const { session, config } = await openChatSession(providerId, workspace);
   let final = "";
   let result: any = null;
+  // Reasoning arrives whole each time it grows; a terminal prints it once,
+  // ahead of the reply or tool call it led to.
+  let thought = "";
   const loop = new AgentLoop({
     session: session,
     workspace: workspace,
@@ -139,6 +142,11 @@ export async function agentOnceMode(prompt: string, workspace: string, providerI
     checkFinal: async (reply) => stoppedShort(reply),
     budgetChars: budgetFor(config.contextBudgetChars),
     emit: (ev: any) => {
+      if (ev.type === "reasoning") { thought = ev.text; return; }
+      if (thought && (ev.type === "assistant" || ev.type === "tool" || ev.type === "done")) {
+        console.log("\n\u273b Thought:\n  " + thought.split("\n").join("\n  "));
+        thought = "";
+      }
       if (ev.type === "assistant") { final = ev.text; console.log("\n\u23fa " + ev.text.split("\n").join("\n  ")); }
       else if (ev.type === "tool" && ev.status !== "running" && ev.status !== "waiting") console.log("\u23fa " + ev.title + "\n  \u23bf  " + (ev.summary || ev.status));
       else if (ev.type === "done") result = ev;

@@ -212,6 +212,14 @@ async function doWrite(c: ToolCall, ctx: ToolContext): Promise<AgentOutcome> {
   // The reply reader drops a code block's final newline; files end with one.
   if (content && !content.endsWith("\n")) content += "\n";
   const before = fs.existsSync(abs) ? fs.readFileSync(abs, "utf-8") : null;
+  // An empty payload over a real file is almost always a block whose fence
+  // closed early (a ```` line inside a ```tool block), not a wish to blank it.
+  // Blank lines count as empty: the fence can close after them.
+  if (!content.trim() && before && before.trim()) {
+    throw new ToolError("write " + c.input.path + ": nothing came after the --- line, so this would empty a file of " + countLines(before) +
+      " lines. If the payload has ``` lines, the tool block's fence probably closed early: open it with ````tool and close it with ````. " +
+      "To really empty the file, run bash `: > " + c.input.path + "`.");
+  }
   if (ctx.beforeChange) ctx.beforeChange(abs);
   fs.mkdirSync(path.dirname(abs), { recursive: true });
   fs.writeFileSync(abs, content);

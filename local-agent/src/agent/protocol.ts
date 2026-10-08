@@ -46,7 +46,7 @@ export interface ParsedReply {
   calls: Array<ToolCall | BadCall>;
 }
 
-interface Fence { info: string; body: string; start: number; end: number }
+interface Fence { info: string; body: string; start: number; end: number; closed: boolean }
 
 /** Fenced code blocks, in order, with the line range each one spans. */
 export function fences(text: string): Fence[] {
@@ -68,7 +68,7 @@ export function fences(text: string): Fence[] {
     }
     // An unclosed fence runs to the end of the reply: a truncated reply is
     // still worth reading, and the parse below decides whether it is usable.
-    out.push({ info: info, body: body.join("\n"), start: i, end: closed ? j : lines.length - 1 });
+    out.push({ info: info, body: body.join("\n"), start: i, end: closed ? j : lines.length - 1, closed: closed });
     i = closed ? j + 1 : lines.length;
   }
   return out;
@@ -163,7 +163,8 @@ function leavesFenceOpen(lines: string[]): boolean {
 }
 
 const CUT_SHORT = "the payload stops inside a ``` code block it opened, so the block's end was probably taken for the end of the tool block and the rest was lost. " +
-  "Send it again inside a fence of four backticks (````tool ... ````).";
+  "Send it again with the whole tool block fenced by four backticks: its first line is ````tool (not ```tool), its last line is ````, " +
+  "and the payload's own ``` lines stay inside it unchanged.";
 
 /**
  * Tool blocks opened inside a payload. A block whose closing ``` is missing
@@ -182,6 +183,9 @@ function runsOn(n: number): string {
 }
 
 const SWALLOWED = "this call was inside the unclosed tool block before it, so it was not run; send it again.";
+
+const LOST = "a ```tool block in this reply was read as plain text, so it was not run: a code fence before it was left open " +
+  "(often a stray ```` line, which only another ```` can close) and the rest of the reply was taken as prose. Send that call again.";
 
 function str(v: any): string | undefined {
   return typeof v === "string" ? v : undefined;
@@ -249,9 +253,22 @@ export function parseReply(reply: string): ParsedReply {
   const lines = text.split(/\r?\n/);
   const calls: Array<ToolCall | BadCall> = [];
   const drop = new Set<number>();
+  let lost = 0;
+  // Set once a block shows the fences went wrong: a malformed call, or a write
+  // with nothing after --- (its fence closed early).
+  let broken = false;
   for (const f of fences(text)) {
     const c = readBlock(f);
+    // A tool opener inside a plain block is a call nobody ran when that block
+    // never closed, or when the fences already broke earlier in the reply.
+    // Seen live: a ```` line closed a write early and opened a block that ```
+    // could not close, and the bash call after it vanished without the model
+    // ever hearing it had not run. DeepSeek's page closes that block when it
+    // renders it, so by the time the reply is read it is closed. Otherwise a
+    // closed block is only showing code.
+    if (!c && (!f.closed || broken)) lost += toolOpeners(f.body);
     if (!c) continue;
+    if (isBad(c) || (c.tool === "write" && !(c.content || "").trim())) broken = true;
     calls.push(c);
     // One result per call the model sent, so a swallowed call is not silently
     // missing from the results.
@@ -261,6 +278,7 @@ export function parseReply(reply: string): ParsedReply {
     }
     for (let i = f.start; i <= f.end; i++) drop.add(i);
   }
+  for (let k = 0; k < lost; k++) calls.push({ error: LOST, raw: "" });
   const visible = lines.filter((_, i) => !drop.has(i)).join("\n").replace(/\n{3,}/g, "\n\n").trim();
   return { text: visible, calls: calls };
 }
@@ -338,7 +356,7 @@ export function preamble(o: PreambleOptions): string {
     ">>>>>>> REPLACE",
     T,
     "",
-    "If the payload itself contains " + T + " lines (a README, Markdown docs), open and close the block with four backticks instead: " + T + "`tool ... " + T + "`. Otherwise the first inner " + T + " ends the block and the rest of the file is lost.",
+    "If the payload itself contains " + T + " lines (a README, Markdown docs), open and close the block with four backticks instead: " + T + "`tool ... " + T + "`. Otherwise the first inner " + T + " ends the block and the rest of the file is lost. The opening line itself must be " + T + "`tool: wrapping only the payload in " + T + "` inside a " + T + "tool block closes that block early.",
     "",
     "Tools:",
     "- read {path, offset?, limit?}: a file with line numbers.",

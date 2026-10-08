@@ -133,7 +133,15 @@ export async function openChatSession(providerId: string, workspace: string): Pr
 
   const controller = new PlaywrightController(config);
   const session = new BrowserChatSession(controller, config, { workspace: workspace, sleep: sleep });
-  await session.start();
+  try {
+    await session.start();
+  } catch (e) {
+    // The browser is already open by the time the page can fail. Left open it
+    // keeps this process alive after it has reported the failure, holding the
+    // profile, and the app goes on treating it as a session that is running.
+    try { await session.close(); } catch {}
+    throw e;
+  }
   return { session: session, config: config };
 }
 

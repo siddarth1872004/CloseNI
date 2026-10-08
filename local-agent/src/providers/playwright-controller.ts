@@ -2,7 +2,7 @@ import { chromium, BrowserContext, Page } from "playwright";
 import * as path from "path";
 import * as fs from "fs";
 import { readSessions, writeSessions, resetBuildRun, getBuildLedger, setBuildLedger, BuildLedger, describeThread, getConversationSize, setConversationSize } from "../session-store.js";
-import { isComplete } from "./completion.js";
+import { isComplete, endedWithoutReply, ReplyDropped } from "./completion.js";
 import { applyProviderControls } from "./controls/index.js";
 import { parseDesiredControls } from "./controls/decisions.js";
 import { formatResults } from "./controls/helpers.js";
@@ -56,8 +56,29 @@ export interface ProviderConfig {
      * reader leaves it out.
      */
     citation?: string;
+    /**
+     * Optional. The container a thinking model writes its reasoning into.
+     *
+     * Two jobs. The reply is never read from inside it: DeepSeek renders its
+     * reasoning as a .ds-markdown too, so without the exclusion the last match
+     * during the thinking phase is the reasoning, and a pause in it reads as a
+     * finished reply. And it is what the reasoning is relayed from while the
+     * model thinks.
+     */
+    thinking?: string;
+    /** Optional. One turn of the conversation, so reasoning is read from the
+     *  newest turn only and never from an earlier answer's. */
+    turn?: string;
+    /**
+     * Optional. The header that collapses and expands the reasoning, found by
+     * `thinkingHeaderText`. A collapsed reasoning block is not hidden but
+     * removed from the page, so it is expanded before it can be read.
+     */
+    thinkingHeader?: string;
     assistantMessage: string;
   };
+  /** A pattern for the reasoning header's text ("Thought for 3 seconds"). */
+  thinkingHeaderText?: string;
   completionRules: {
     waitForStopButtonDisappear: boolean;
     maxWaitMs: number;
@@ -116,6 +137,17 @@ function bounded<T>(p: Promise<T>, what: string, ms: number = PAGE_CALL_MS): Pro
   });
 }
 
+/**
+ * Chromium's "start the request again" failures: the network, or the
+ * certificate verifier, changed while the request was in flight. Seen live on
+ * 8 October 2026 as ERR_CERT_VERIFIER_CHANGED on a headed browser's first
+ * navigation, while its certificate store was still loading - which failed the
+ * whole session before a prompt had been sent. Nothing is wrong with the page,
+ * so the navigation is simply made again.
+ */
+const RETRYABLE_NAVIGATION = /net::ERR_(?:CERT_VERIFIER_CHANGED|NETWORK_CHANGED)\b/;
+const NAVIGATION_ATTEMPTS = 3;
+
 const DEFAULT_MAX_WAIT_MS = 120000;
 const POLL_INTERVAL_MS = 2000;
 // How long the reply length must hold steady before it counts as finished.
@@ -128,6 +160,8 @@ const STABLE_TICKS = 4;
 const THINKING_LOG_EVERY_TICKS = 5;
 /** Ticks of total stillness before the assistant selector is re-resolved. */
 const FROZEN_TICKS = 15;
+/** Polls after the reply stream closed with nothing on the page before the reply counts as dropped. */
+const DROPPED_TICKS = 3;
 
 /** Ceiling on the soft extension given to a model that is still writing. */
 const MAX_GRACE_MS = 180000;
@@ -189,6 +223,8 @@ export class PlaywrightController {
   private streamsClosed = 0;
   /** HTTP status of the most recent reply request, 0 until one is seen. */
   private lastStreamStatus = 0;
+  /** What sendPrompt last sent, so a dropped reply can be asked for again. */
+  private lastPrompt: string | null = null;
   private streamWatchInstalled = false;
 
   constructor(config: ProviderConfig) {
@@ -437,7 +473,7 @@ export class PlaywrightController {
     const savedUrl = this.getChatUrlForWorkspace(this.workspace);
     if (savedUrl) {
       console.log("Resuming session chat " + describeThread(savedUrl) + " (same conversation as before).");
-      await this.page.goto(savedUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
+      await this.goto(savedUrl);
       try {
         // 5s was too tight for a cold profile: the thread had loaded but the
         // composer had not mounted yet, so a perfectly good conversation was
@@ -450,7 +486,7 @@ export class PlaywrightController {
       }
     }
     console.log("Starting new chat for workspace: " + this.workspace);
-    await this.page.goto(config.baseUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
+    await this.goto(config.baseUrl);
     return false;
   }
 
@@ -458,7 +494,22 @@ export class PlaywrightController {
     if (!this.page) throw new Error("Browser not launched");
     phase("opening", "new conversation");
     console.log("Starting fresh chat (no saved thread)...");
-    await this.page.goto(config.baseUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
+    await this.goto(config.baseUrl);
+  }
+
+  /** page.goto, made again when Chromium says to (RETRYABLE_NAVIGATION). */
+  private async goto(url: string): Promise<void> {
+    for (let attempt = 1; ; attempt++) {
+      try {
+        await this.page!.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
+        return;
+      } catch (e) {
+        const m = String(e).match(RETRYABLE_NAVIGATION);
+        if (!m || attempt >= NAVIGATION_ATTEMPTS) throw e;
+        console.log("Navigation interrupted (" + m[0] + "), trying again...");
+        await sleep(1000);
+      }
+    }
   }
 
   /**
@@ -528,6 +579,7 @@ export class PlaywrightController {
 
   async sendPrompt(prompt: string, config: ProviderConfig): Promise<void> {
     if (!this.page) throw new Error("Browser not launched");
+    this.lastPrompt = prompt;
     // Never type into a composer the provider has disabled because it is still
     // answering. The re-ask after a timeout used to fire immediately, so the
     // "reply" it then waited for was the tail of the previous answer rather
@@ -675,14 +727,19 @@ export class PlaywrightController {
   private async assistantSelector(config: ProviderConfig): Promise<string> {
     if (this.pickedSelector) return this.pickedSelector;
     if (!this.page) return config.selectors.assistantMessage;
-    const candidates = [config.selectors.assistantMessage].concat(FALLBACK_SELECTORS);
+    // The fallbacks too: in a new chat whose first reply is still thinking the
+    // configured selector matches nothing, and a bare ds-markdown fallback
+    // would match the reasoning and be cached for the rest of the session.
+    const think = config.selectors.thinking;
+    const candidates = [config.selectors.assistantMessage].concat(FALLBACK_SELECTORS)
+      .map((sel) => think ? ":is(" + sel + "):not(" + think + " *)" : sel);
     for (const sel of candidates) {
       try {
         const n = await this.page.locator(sel).count();
         if (n > 0) { this.pickedSelector = sel; return sel; }
       } catch {}
     }
-    return config.selectors.assistantMessage;
+    return candidates[0];
   }
 
   /**
@@ -779,12 +836,39 @@ export class PlaywrightController {
    * the REAL wait rather than a reimplementation of it - a copy would keep
    * passing after the original broke, which is the one thing a smoke test must
    * not do.
+   *
+   * `onThinking` is handed the newest turn's reasoning each time it changes,
+   * and once more just before the reply is read so its end is not lost.
    */
   async waitForResponse(
     config: ProviderConfig,
     prevCount: number,
     prevContent: string,
     observe?: (tick: { messages: number; chars: number; stopVisible: boolean }) => void,
+    onThinking?: (text: string) => void,
+  ): Promise<string> {
+    try {
+      return await this.waitOnce(config, prevCount, prevContent, observe, onThinking);
+    } catch (e) {
+      // A reply the provider dropped before writing any of it was never read,
+      // so the same prompt can go again. Once: a second drop is the provider's
+      // state, not a hiccup, and the caller hears about it.
+      if (!(e instanceof ReplyDropped) || this.lastPrompt === null) throw e;
+      console.log(e.message + " Sending the prompt again.");
+      await sleep(3000);
+      const count = await this.countMessages(config);
+      const content = await this.getLastMessageText(config);
+      await this.sendPrompt(this.lastPrompt, config);
+      return await this.waitOnce(config, count, content, observe, onThinking);
+    }
+  }
+
+  private async waitOnce(
+    config: ProviderConfig,
+    prevCount: number,
+    prevContent: string,
+    observe?: (tick: { messages: number; chars: number; stopVisible: boolean }) => void,
+    onThinking?: (text: string) => void,
   ): Promise<string> {
     if (!this.page) throw new Error("Browser not launched");
     const maxWait = config.completionRules?.maxWaitMs || DEFAULT_MAX_WAIT_MS;
@@ -792,16 +876,33 @@ export class PlaywrightController {
     const start = Date.now();
     await this.page.waitForTimeout(3000);
 
+    let lastThinking = "";
+    const relayThinking = async (): Promise<void> => {
+      if (!onThinking) return;
+      const t = (await this.getLastThinking(config)).trim();
+      if (!t || t === lastThinking) return;
+      lastThinking = t;
+      // A listener that throws must not end the wait it is watching.
+      try { onThinking(t); } catch {}
+    };
+    const finish = async (): Promise<string> => {
+      await relayThinking();
+      return await this.extractWithRetry(config);
+    };
+
     let started = false;
     let lastText: string | null = null;
     let stableCount = 0;
     let waitingTicks = 0;
+    let closedTicks = 0;
+    let reresolved = false;
     let stopSeen = false;
     let stopGone = false;
     const useStopButton = !!(config.completionRules?.waitForStopButtonDisappear && config.selectors.stopButton);
 
     while (Date.now() - start < maxWait) {
       await this.page.waitForTimeout(POLL_INTERVAL_MS);
+      await relayThinking();
       const count = await this.countMessages(config);
       const text = await this.getLastMessageText(config);
 
@@ -865,6 +966,20 @@ export class PlaywrightController {
               "s - re-resolving which element holds the reply.");
             this.pickedSelector = null;
           }
+          closedTicks = this.streamsOpened > 0 && this.streamsClosed >= this.streamsOpened ? closedTicks + 1 : 0;
+          if (endedWithoutReply({ started: started, streamsOpened: this.streamsOpened, streamsClosed: this.streamsClosed, ticksSinceClosed: closedTicks }, DROPPED_TICKS)) {
+            // Once more on a freshly resolved selector first: a watch on the
+            // wrong node also sees nothing, and that reply is not lost.
+            if (!reresolved) {
+              reresolved = true;
+              closedTicks = 0;
+              this.pickedSelector = null;
+              continue;
+            }
+            const secs = Math.round((Date.now() - start) / 1000);
+            console.log("The reply stream closed with nothing on the page after " + secs + "s - the provider dropped the reply.");
+            throw new ReplyDropped(config.name + " ended its reply without writing anything (the reply stream closed after " + secs + "s).");
+          }
           // The provider's own stop button is the difference between a model
           // that is composing and one that has not begun.
           phase(stopSeen && !stopGone ? "generating" : "thinking", elapsed + "s");
@@ -912,14 +1027,14 @@ export class PlaywrightController {
       const streamDone = this.streamsOpened > 0 && this.streamsClosed >= this.streamsOpened;
       if (streamDone && stableCount >= 1) {
         console.log("Response complete (the page's reply stream closed)!");
-        return await this.extractWithRetry(config);
+        return await finish();
       }
 
       if (isComplete({ started: started, stopSeen: stopSeen, stopGone: stopGone, stableTicks: stableCount }, useStopButton, STABLE_TICKS)) {
         console.log(useStopButton && stopSeen && stopGone
           ? "Response complete (stop button disappeared)!"
           : "Response complete (stable for " + (STABLE_TICKS * POLL_INTERVAL_MS) / 1000 + "s)!");
-        return await this.extractWithRetry(config);
+        return await finish();
       }
     }
 
@@ -942,7 +1057,7 @@ export class PlaywrightController {
         await this.page.waitForTimeout(POLL_INTERVAL_MS);
         if (!(await this.stopButtonVisible(config))) {
           console.log("Response complete (finished during grace period)!");
-          return await this.extractWithRetry(config);
+          return await finish();
         }
         const waited = Math.round((Date.now() - graceStart) / 1000);
         if (waited % 30 < POLL_INTERVAL_MS / 1000) {
@@ -953,7 +1068,7 @@ export class PlaywrightController {
     } else {
       console.log("Timeout after " + Math.round(maxWait / 1000) + "s - extracting partial response.");
     }
-    return await this.extractWithRetry(config);
+    return await finish();
   }
 
   private async extractWithRetry(config: ProviderConfig): Promise<string> {
@@ -1162,14 +1277,60 @@ export class PlaywrightController {
 
   async getLastMessageStructured(config: ProviderConfig): Promise<string> {
     if (!this.page) return "";
-    const sel = await this.assistantSelector(config);
+    return this.structuredMarkdown(await this.assistantSelector(config), config.selectors.citation || "", "");
+  }
+
+  /**
+   * The newest turn's reasoning as markdown, or "" when it has none.
+   *
+   * Scoped to the last `turn` so an earlier answer's reasoning is never shown
+   * as this one's: before the new reply's turn exists the last turn is the
+   * prompt just sent, which has none. A collapsed block is gone from the page
+   * rather than hidden, so when the header is there and the content is not,
+   * the header is clicked and the content read on the next call.
+   */
+  async getLastThinking(config: ProviderConfig): Promise<string> {
+    const s = config.selectors;
+    if (!this.page || !s.thinking || !s.turn) return "";
     try {
-      return await this.page.evaluate(function (arg: { selector: string; cite: string }) {
+      const collapsed = await bounded(this.page.evaluate(function (arg: { turn: string; thinking: string; header: string; text: string }) {
+        const doc = (globalThis as any).document;
+        const turns = doc.querySelectorAll(arg.turn);
+        const last = turns[turns.length - 1];
+        if (!last || last.querySelector(arg.thinking) || !arg.header || !arg.text) return false;
+        const re = new RegExp(arg.text, "i");
+        const heads = last.querySelectorAll(arg.header);
+        for (let i = 0; i < heads.length; i++) {
+          if (re.test((heads[i].textContent || "").trim())) { heads[i].click(); return true; }
+        }
+        return false;
+      }, { turn: s.turn, thinking: s.thinking, header: s.thinkingHeader || "", text: config.thinkingHeaderText || "" }), "expanding the reasoning");
+      if (collapsed) await this.page.waitForTimeout(400);
+    } catch {
+      return "";
+    }
+    return this.structuredMarkdown(s.thinking, s.citation || "", s.turn);
+  }
+
+  /**
+   * Markdown from the last node matching `selector`, or, given `turn`, from
+   * the first match inside the last turn.
+   */
+  private async structuredMarkdown(sel: string, cite: string, turn: string): Promise<string> {
+    if (!this.page) return "";
+    try {
+      return await this.page.evaluate(function (arg: { selector: string; cite: string; turn: string }) {
         const selector = arg.selector;
         const doc = (globalThis as any).document;
-        const nodes = doc.querySelectorAll(selector);
-        if (nodes.length === 0) return "";
-        const root = nodes[nodes.length - 1];
+        let root: any = null;
+        if (arg.turn) {
+          const turns = doc.querySelectorAll(arg.turn);
+          root = turns.length ? turns[turns.length - 1].querySelector(selector) : null;
+        } else {
+          const nodes = doc.querySelectorAll(selector);
+          root = nodes.length ? nodes[nodes.length - 1] : null;
+        }
+        if (!root) return "";
         function isJunk(t: string): boolean {
           return /^(?:[\w#+.-]+\s+)?(?:Copy\s+Download|Copy|Download)$/i.test(t);
         }
@@ -1295,7 +1456,7 @@ export class PlaywrightController {
           const t = l.trim();
           return !/^(?:copy|download)$/i.test(t) && !/^(?:json|javascript|js|typescript|ts|python|py|bash|sh|shell|css|html|txt|text|plaintext)$/i.test(t);
         }).join("\n");
-      }, { selector: sel, cite: config.selectors.citation || "" });
+      }, { selector: sel, cite: cite, turn: turn });
     } catch {
       return "";
     }

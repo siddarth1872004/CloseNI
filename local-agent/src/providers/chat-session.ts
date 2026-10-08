@@ -26,6 +26,14 @@ export interface Readiness {
   detail: string;
 }
 
+export interface AskOptions {
+  /**
+   * The model's reasoning so far, whole each time, while it thinks. Only a
+   * transport that can see reasoning calls it; the reply is unaffected.
+   */
+  onThinking?: (text: string) => void;
+}
+
 export interface ChatSession {
   /** Open whatever this provider needs - a browser, a socket, nothing at all. */
   start(): Promise<void>;
@@ -48,7 +56,7 @@ export interface ChatSession {
    * insisted on it would make every non-browser provider implement three
    * methods to satisfy a shape it does not have.
    */
-  ask(prompt: string): Promise<string>;
+  ask(prompt: string, opts?: AskOptions): Promise<string>;
 
   /** Abandon the current conversation and begin an empty one. */
   reset(): Promise<void>;
@@ -117,11 +125,11 @@ export class BrowserChatSession implements ChatSession {
       : { ok: false, detail: "Not signed in to " + this.config.name + " - use Sign in." };
   }
 
-  async ask(prompt: string): Promise<string> {
+  async ask(prompt: string, opts: AskOptions = {}): Promise<string> {
     const prevCount = await this.controller.countMessages(this.config);
     const prevContent = await this.controller.getLastMessageText(this.config);
     await this.controller.sendPrompt(prompt, this.config);
-    await this.controller.waitForResponse(this.config, prevCount, prevContent);
+    await this.controller.waitForResponse(this.config, prevCount, prevContent, undefined, opts.onThinking);
     let answer = "";
     for (let i = 0; i < 4 && answer.trim().length < 2; i++) {
       if (i > 0) await this.opts.sleep(1500);

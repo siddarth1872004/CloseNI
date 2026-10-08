@@ -803,6 +803,111 @@ function testStreamStatus() {
     S.describeStreamFailure(200) === null);
 }
 
+// DeepSeek's reasoning, as measured on the live site on 8 October 2026 and
+// trimmed: the reasoning is a ds-markdown inside .ds-think-content, and
+// collapsing it removes it from the page.
+async function testThinkingReader() {
+  section("reasoning reader: DeepSeek's thinking markup (real chromium)");
+  let browser;
+  try {
+    browser = await require("playwright").chromium.launch();
+  } catch (e) {
+    console.log("  skip (chromium unavailable: " + String(e.message).split("\n")[0] + ")");
+    skipped.push("reasoning reader");
+    return;
+  }
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "agentic-think-"));
+  try {
+    const ds = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "config", "providers", "deepseek.json"), "utf8"));
+    const cfg = Object.assign({}, ds, { profileDir: path.join(root, "profiles", "ds") });
+    const page = await browser.newPage();
+    const user = (t) => '<div class="d29f3d7d ds-message"><div class="ds-collapsible-text"><span>' + t + "</span></div></div>";
+    const head = (t) => '<div class="_245c867"><span class="_5255ff8">' + t + "</span></div>";
+    const think = (t) => '<div class="ds-think-content"><div class="ds-markdown">' + t + "</div></div>";
+    const answer = (t) => '<div class="ds-markdown ds-assistant-message-main-content">' + t + "</div>";
+    const turn = (inner) => '<div class="ds-message">' + inner + "</div>";
+    const EARLIER = user("first") + turn(head("Thought for 2 seconds") + think("<p>old reasoning</p>") + answer("<p>old answer</p>"));
+    const fresh = () => { const c = new PlaywrightController(cfg); c.attachPageForReplay(page); return c; };
+    const set = (html) => page.setContent("<main>" + html + "</main>");
+
+    await set(EARLIER + user("second") + turn(head("Thought for 3 seconds") +
+      think("<p>Check 391.</p><ul><li>17 x 23 = 391</li></ul>") + answer("<p>391 = 17 × 23, not prime.</p>")));
+    let c = fresh();
+    const reply = await c.getLastMessageStructured(cfg);
+    check("the reply is the answer, not the reasoning", /not prime/.test(reply) && !/Check 391/.test(reply), reply);
+    check("the last-message text the wait watches is the answer", /not prime/.test(await c.getLastMessageText(cfg)));
+    let r = await c.getLastThinking(cfg);
+    check("the newest turn's reasoning is read as markdown", /Check 391\./.test(r) && /^- 17 x 23 = 391$/m.test(r), r);
+    check("an earlier turn's reasoning is not part of it", !/old reasoning/.test(r), r);
+
+    // Sent, and the reply's turn not drawn yet: the last turn is the prompt.
+    await set(EARLIER + user("second"));
+    check("before the reply's turn exists there is no reasoning", (await fresh().getLastThinking(cfg)) === "");
+
+    // A new chat whose first reply is still thinking: nothing is a reply yet,
+    // and no fallback may pick the reasoning up instead.
+    await set(user("hi") + turn(head("Thinking") + think("<p>mid-thought</p>")));
+    c = fresh();
+    check("reasoning alone counts as no reply", (await c.countMessages(cfg)) === 0 && (await c.getLastMessageText(cfg)) === "");
+    check("and is still relayed", /mid-thought/.test(await c.getLastThinking(cfg)));
+
+    // Collapsed: the header is there and the reasoning is gone from the page.
+    await set(EARLIER + user("second") + turn('<div class="_245c867"><span class="_5255ff8" id="h">Thought for 4 seconds</span></div>' +
+      answer("<p>done</p>")) + "<script>window.clicks=0;document.getElementById('h').onclick=function(){window.clicks++;" +
+      "this.parentNode.insertAdjacentHTML('afterend','<div class=\"ds-think-content\"><div class=\"ds-markdown\"><p>expanded reasoning</p></div></div>');};</script>");
+    r = await fresh().getLastThinking(cfg);
+    check("a collapsed reasoning block is expanded and read", /expanded reasoning/.test(r), r);
+    check("by one click on its header", (await page.evaluate(() => window.clicks)) === 1);
+
+    await set(EARLIER + user("second") + turn(answer("<p>no thinking here</p>")));
+    check("a reply without reasoning has none", (await fresh().getLastThinking(cfg)) === "");
+
+    const plain = Object.assign({}, cfg, { selectors: Object.assign({}, cfg.selectors, { thinking: undefined, turn: undefined }) });
+    check("a provider with no reasoning selectors reads none", (await fresh().getLastThinking(plain)) === "");
+  } finally {
+    await browser.close();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+}
+
+async function testNavigationRetry() {
+  section("navigation: Chromium's retry-me errors are retried");
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "agentic-nav-"));
+  const cfg = { id: "nav", name: "Nav", baseUrl: "https://example.test/", selectors: {}, profileDir: path.join(root, "profiles", "nav") };
+  // A stand-in page whose goto fails with each error in turn, then succeeds.
+  const stub = (errors) => {
+    const page = { calls: 0, goto: async () => { const e = errors[page.calls++]; if (e) throw new Error(e); } };
+    const c = new PlaywrightController(cfg);
+    c.attachPageForReplay(page);
+    return { c, page };
+  };
+  const quiet = console.log;
+  console.log = () => {};
+  try {
+    let t = stub(["page.goto: net::ERR_CERT_VERIFIER_CHANGED at https://example.test/"]);
+    await t.c.navigateFresh(cfg);
+    check("a changed certificate verifier is navigated again", t.page.calls === 2);
+
+    t = stub(["page.goto: net::ERR_NETWORK_CHANGED at https://example.test/"]);
+    await t.c.navigateFresh(cfg);
+    check("so is a changed network", t.page.calls === 2);
+
+    t = stub(["page.goto: net::ERR_NAME_NOT_RESOLVED at https://example.test/"]);
+    let threw = false;
+    try { await t.c.navigateFresh(cfg); } catch { threw = true; }
+    check("any other failure is not retried", threw && t.page.calls === 1);
+
+    const again = "page.goto: net::ERR_CERT_VERIFIER_CHANGED at https://example.test/";
+    t = stub([again, again, again, again]);
+    threw = false;
+    try { await t.c.navigateFresh(cfg); } catch { threw = true; }
+    check("and the retries stop after three tries", threw && t.page.calls === 3);
+  } finally {
+    console.log = quiet;
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+}
+
 async function run(c, s, sk) {
   check = c; section = s; skipped = sk;
   testControlDecisions();
@@ -810,6 +915,8 @@ async function run(c, s, sk) {
   testProviderGating();
   await testBrowserExtraction();
   await testReaderSweep();
+  await testThinkingReader();
+  await testNavigationRetry();
   await testSelectorSyntax();
   testSelectorHealth();
   testSmokeReport();

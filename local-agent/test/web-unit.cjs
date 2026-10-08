@@ -258,7 +258,12 @@ async function run(check, section) {
   const allStrategies = (spec) => Object.values(spec.chains).flatMap((c) => c.strategies);
   check("DeepSeek has no stop chain - measured not to exist", A.DEEPSEEK.chains.stop.strategies.length === 0 && A.DEEPSEEK.knowledge["stop control"] === "NOT_APPLICABLE");
   check("DeepSeek sends with Enter - it has no send chain to click", A.DEEPSEEK.chains.send.strategies.length === 0 && A.DEEPSEEK.knowledge["send button"] === "NOT_APPLICABLE");
-  check("DeepSeek's reply stream is the measured endpoint", A.DEEPSEEK.streamUrlPattern === "/api/v0/chat/completion");
+  check("DeepSeek's reply stream is the measured endpoint", A.DEEPSEEK.streamUrlPattern === "/api/v0/chat/(completion|resume_stream)");
+  // Every /api request one live reply made, 8 October 2026: only the two that carry the reply may match.
+  const dsStream = new RegExp(A.DEEPSEEK.streamUrlPattern);
+  check("DeepSeek's stream pattern matches the reply and its resume, nothing else",
+    ["/api/v0/chat/completion", "/api/v0/chat/resume_stream"].every((u) => dsStream.test(u)) &&
+    !["/api/v0/chat/create_pow_challenge", "/api/v0/chat_session/create", "/api/v0/client/settings/report", "/api/v0/users/auth_token/check_device"].some((u) => dsStream.test(u)));
   check("GLM claims nothing as MEASURED", !allStrategies(A.GLM).some((s) => s.provenance === "MEASURED"));
   check("no adapter claims a stream endpoint it never measured", !A.QWEN.streamUrlPattern && !A.GLM.streamUrlPattern);
   check("reasoning markup is UNKNOWN everywhere", ["deepseek", "qwen", "glm"].every((id) => A.adapterFor(id).knowledge["reasoning markup"] === "UNKNOWN"));

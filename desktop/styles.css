@@ -553,8 +553,11 @@ select{width:100%;}
 .acct-actions .btn{flex:1 1 auto;min-width:72px;padding:5px 4px;font-size:10px;letter-spacing:.04em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 #rail-controls{margin-bottom:var(--sp-3);}
 #rail-controls select{width:100%;margin-bottom:var(--sp-2);}
-#rail-controls .rail-toggle{display:flex;align-items:center;gap:var(--sp-2);
+#rail-controls .rail-toggle,#rail-browser{display:flex;align-items:center;gap:var(--sp-2);
   font-size:11px;color:var(--dim);margin-bottom:var(--sp-1);}
+#rail-browser{margin-top:calc(-1 * var(--sp-2));margin-bottom:var(--sp-3);}
+#rail-browser input{width:auto;flex:none;accent-color:var(--txt);}
+#rail-browser label{cursor:pointer;}
 .thread-label{font-family:ui-monospace,Consolas,monospace;font-size:10px;
   color:var(--mut);margin-top:var(--sp-1);}
 
@@ -965,6 +968,13 @@ input:focus,textarea:focus,select:focus{transition:border-color .06s steps(1);}
 .cc-sum{margin:0;font:inherit;color:var(--dim);white-space:pre-wrap;word-break:break-word;}
 .cc-tool.err .cc-sum{color:var(--err);}
 .cc-tool-more{margin:6px 0 0 4ch;}
+.cc-think{margin:10px 0;}
+.cc-think-head{display:flex;gap:1ch;align-items:baseline;cursor:pointer;color:var(--dim);font-style:italic;}
+.cc-think-head .cc-dot{color:var(--mut);font-style:normal;}
+.cc-think.live .cc-dot{animation:phase-blink 1s steps(2) infinite;}
+.cc-think-body{display:none;margin:6px 0 0 2ch;padding-left:1.5ch;border-left:2px solid var(--line);color:var(--dim);
+  font-size:12px;max-height:320px;overflow:auto;}
+.cc-think.open .cc-think-body{display:block;}
 .cc-out{margin:0;padding:8px 10px;background:var(--surface-sunken);border:1px solid var(--line);color:var(--dim);
   font-size:12px;line-height:1.5;font-family:inherit;white-space:pre-wrap;word-break:break-word;max-height:360px;overflow:auto;}
 
@@ -1034,7 +1044,7 @@ input:focus,textarea:focus,select:focus{transition:border-color .06s steps(1);}
 .cc-sug .d{color:var(--mut);}
 .cc-sug.sel{background:var(--surface-raised);}
 .cc-sug.sel .k{color:var(--accent);}
-[data-decor="off"] .cc-tool.run .cc-dot{animation:none;}
+[data-decor="off"] .cc-tool.run .cc-dot,[data-decor="off"] .cc-think.live .cc-dot{animation:none;}
 
 /* Modes: one accent each, carried by the prompt box, the mode line, the strip
    above the prompt and the cards the mode leaves in the transcript. */

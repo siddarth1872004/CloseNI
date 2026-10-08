@@ -26,3 +26,34 @@ export function isComplete(state: CompletionState, useStopButton: boolean, requi
   if (useStopButton && state.stopSeen && state.stopGone) return true;
   return state.stableTicks >= requiredStableTicks;
 }
+
+export interface StreamState {
+  /** A reply has begun arriving on the page. */
+  started: boolean;
+  streamsOpened: number;
+  streamsClosed: number;
+  /** Consecutive polls since every opened reply stream had closed. */
+  ticksSinceClosed: number;
+}
+
+/**
+ * The provider ended its reply before writing any of it.
+ *
+ * Seen live on DeepSeek, 8 October 2026: a 9146-character rollover prompt got
+ * 0.3s of thinking, the server marked the message INCOMPLETE and closed the
+ * stream, and the page showed no answer. Nothing more was ever coming, yet the
+ * wait sat at "messages=0" for its whole 300s. A closed stream with nothing on
+ * the page a few polls later is that case, and it ends the wait.
+ */
+export function endedWithoutReply(s: StreamState, graceTicks: number): boolean {
+  if (s.started || s.streamsOpened === 0 || s.streamsClosed < s.streamsOpened) return false;
+  return s.ticksSinceClosed >= graceTicks;
+}
+
+/** Thrown when the provider dropped a reply it never began, so the caller may ask again. */
+export class ReplyDropped extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ReplyDropped";
+  }
+}

@@ -82,6 +82,22 @@ window.CN = {
   markShipped: function () { flowSeen.shipped = true; refreshFlow(); },
 };
 
+// Show Browser: one setting with two checkboxes, Settings and the rail, kept in
+// step and saved. Unsaved, it was off again after every restart, so a window
+// someone had asked for never opened. Everything reads #show-browser.
+(function () {
+  const boxes = [$("show-browser"), $("rail-show-browser")].filter(Boolean);
+  let on = false;
+  try { on = localStorage.getItem("closeni.showBrowser") === "1"; } catch (e) {}
+  boxes.forEach(function (b) {
+    b.checked = on;
+    b.addEventListener("change", function () {
+      boxes.forEach(function (o) { o.checked = b.checked; });
+      try { localStorage.setItem("closeni.showBrowser", b.checked ? "1" : "0"); } catch (e) {}
+    });
+  });
+})();
+
 (async function () {
   const sel = $("provider-select");
   if (!sel) return;
