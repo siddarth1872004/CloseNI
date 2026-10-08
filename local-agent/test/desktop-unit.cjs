@@ -55,7 +55,7 @@ function testCssTokens() {
   // inherits Midnight's near-black, which looks correct until the day a build
   // fails - on Paper, that is dark red text on a near-black background.
   const { STRUCTURAL_PREFIXES } = require(path.join(__dirname, "css-lint.cjs"));
-  const { THEMES } = require(path.join(__dirname, "..", "..", "desktop", "theme.js"));
+  const { THEMES } = require(path.join(__dirname, "..", "..", "native", "qml", "js", "theme.mjs"));
   const rootBlock = blocks.find(function (b) { return b.name === ":root"; });
   const palette = rootBlock.tokens.filter(function (t) {
     return !STRUCTURAL_PREFIXES.some(function (p) { return t.indexOf(p) === 0; });
@@ -98,7 +98,7 @@ function testCssTokens() {
 
 function testTheme() {
   section("theme resolution");
-  const { THEMES, resolveTheme, DEFAULT_THEME } = require(path.join(__dirname, "..", "..", "desktop", "theme.js"));
+  const { THEMES, resolveTheme, DEFAULT_THEME } = require(path.join(__dirname, "..", "..", "native", "qml", "js", "theme.mjs"));
 
   check("eleven themes are offered", THEMES.length === 11, String(THEMES.length));
   check("terminal is the default", DEFAULT_THEME === "terminal");
@@ -151,7 +151,7 @@ function testRendererLoadOrder() {
 
 function testFlow() {
   section("project flow");
-  const F = require(path.join(__dirname, "..", "..", "desktop", "flow.js"));
+  const F = require(path.join(__dirname, "..", "..", "native", "qml", "js", "flow.mjs"));
   const by = function (list) { const o = {}; list.forEach(function (s) { o[s.id] = s.status; }); return o; };
 
   let s = by(F.stages({}));
@@ -186,7 +186,7 @@ function testFlow() {
 
 function testCodeView() {
   section("code panel vocabulary");
-  const V = require(path.join(__dirname, "..", "..", "desktop", "code-view.js"));
+  const V = require(path.join(__dirname, "..", "..", "native", "qml", "js", "code-view.mjs"));
   check("a slash command parses with its argument", JSON.stringify(V.parseSlash("/mode plan")) === JSON.stringify({ cmd: "/mode", arg: "plan", known: true }));
   check("aliases resolve", V.parseSlash("/undo").cmd === "/rewind" && V.parseSlash("/reset").cmd === "/clear");
   check("ordinary text is not a command", V.parseSlash("fix the /api route") === null && V.parseSlash("/usr/bin/env python") === null);
@@ -255,7 +255,7 @@ function testLogo() {
 
 function testLanguageMark() {
   section("language marks");
-  const { languageMark } = require(path.join(__dirname, "..", "..", "desktop", "language-mark.js"));
+  const { languageMark } = require(path.join(__dirname, "..", "..", "native", "qml", "js", "language-mark.mjs"));
 
   check("python", languageMark("handlers.py").label === "py");
   check("python uses its own token", languageMark("handlers.py").token === "--lang-py");
@@ -281,7 +281,7 @@ function testLanguageMark() {
   check("a windows path works", languageMark("src\\main.rs").token === "--lang-rs");
   check("a long extension is truncated", languageMark("a.mjsonschema").label.length <= 4);
   check("missing input is survivable", languageMark(undefined).token === "--lang-default");
-  const { languageToken } = require(path.join(__dirname, "..", "..", "desktop", "language-mark.js"));
+  const { languageToken } = require(path.join(__dirname, "..", "..", "native", "qml", "js", "language-mark.mjs"));
   check("many languages have an accent", ["main.go", "App.kt", "Main.scala", "Program.cs", "app.rb", "index.php", "init.lua", "lib.ex", "Main.hs",
     "main.zig", "App.swift", "main.dart", "core.clj", "script.jl", "run.sh", "Main.fs", "app.ts", "page.vue"].every(function (f) { return languageMark(f).token !== "--lang-default"; }));
   check("kin share an accent", languageMark("App.kt").token === "--lang-java" && languageMark("main.go").token === "--lang-c" && languageMark("Main.hs").token === "--lang-rs");
@@ -330,7 +330,7 @@ function testStoragePaths() {
 
 function testBrowserCheck() {
   section("browser presence");
-  const { hasChromium } = require(path.join(__dirname, "..", "..", "desktop", "browser-check.js"));
+  const { hasChromium } = require(path.join(__dirname, "..", "..", "native", "qml", "js", "browser-check.mjs"));
 
   check("a chromium build counts", hasChromium(["chromium-1234"]) === true);
   check("a different revision counts", hasChromium(["chromium-9999"]) === true);
@@ -344,7 +344,7 @@ function testBrowserCheck() {
   check("a partial download does not count", hasChromium(["chromium-1234.downloads-in-progress"]) === false);
 
   // Captured from a real failed install behind a proxy that blocks the CDN.
-  const B = require(path.join(__dirname, "..", "..", "desktop", "browser-check.js"));
+  const B = require(path.join(__dirname, "..", "..", "native", "qml", "js", "browser-check.mjs"));
   const ESC = String.fromCharCode(27);
   const blockedLog = [
     "Downloading Chrome for Testing 151.0.7922.34 (playwright chromium v1234)" + ESC + "[2m from https://cdn.playwright.dev/x.zip" + ESC + "[22m",
@@ -452,7 +452,7 @@ function testReleaseWorkflow() {
 
 function testGitHubSafe() {
   section("github safety");
-  const s = require(path.join(__dirname, "..", "..", "desktop", "github-safe.js"));
+  const s = require(path.join(__dirname, "..", "..", "native", "qml", "js", "github-safe.mjs"));
 
   // --- redaction. A token in a log file has been published: to a screenshot,
   // a pasted error report, a support request.
@@ -971,7 +971,7 @@ function testSkillsWiring() {
 
 function testRecentWorkspaces() {
   section("the projects you have been working on");
-  const R = require(path.join(__dirname, "..", "..", "desktop", "recent-workspaces.js"));
+  const R = require(path.join(__dirname, "..", "..", "native", "qml", "js", "recent-workspaces.mjs"));
 
   check("an empty list starts empty", JSON.stringify(R.parse(null)) === "[]");
   check("garbage reads as empty", JSON.stringify(R.parse("{{")) === "[]");
@@ -1018,7 +1018,7 @@ function testRecentWorkspaces() {
 
 function testOnboarding() {
   section("a first launch is told what to do, in order");
-  const O = require(path.join(__dirname, "..", "..", "desktop", "onboarding.js"));
+  const O = require(path.join(__dirname, "..", "..", "native", "qml", "js", "onboarding.mjs"));
   const ids = function (st) { return O.steps(st).map(function (x) { return x.id; }).join(","); };
 
   const fresh = { browserReady: true, workspace: "", account: "unknown", providerName: "DeepSeek", chatted: false };
@@ -1100,6 +1100,292 @@ function testOnboarding() {
     /CN\.onAccountChange = refreshWelcome/.test(code) && /acctNow = state;\s*renderOnboarding\(\);\s*if \(window\.CN && window\.CN\.onAccountChange\)/.test(renderer));
 }
 
+// The native app's copies of the pure modules (native/qml/js/*.mjs). The tests
+// above load those copies; this keeps the Electron originals, which still run
+// until cut-over, saying the same thing.
+const JS = path.join(__dirname, "..", "..", "native", "qml", "js");
+const PORTED = ["diff", "entrypoint", "controls-settings", "theme", "language-mark", "browser-check",
+  "plan-scale", "preview-target", "scheduler", "plan-edit", "step-timing", "recent-workspaces",
+  "github-safe", "onboarding", "flow", "code-view", "run-target"];
+
+function testNativePorts() {
+  section("the native app's modules match the Electron originals");
+  const squash = function (s) { return String(s).replace(/\s+/g, " ").trim(); };
+  PORTED.forEach(function (name) {
+    const before = require(path.join(__dirname, "..", "..", "desktop", name + ".js"));
+    const after = require(path.join(JS, name + ".mjs"));
+    const keys = Object.keys(before).sort().join(",");
+    check(name + ": the same exports", Object.keys(after).sort().join(",") === keys,
+      Object.keys(after).sort().join(","));
+    const drift = Object.keys(before).filter(function (k) {
+      const a = before[k], b = after[k];
+      return typeof a === "function" ? squash(a) !== squash(b) : JSON.stringify(a) !== JSON.stringify(b);
+    });
+    check(name + ": the same code", drift.length === 0, drift.join(", "));
+    const src = fs.readFileSync(path.join(JS, name + ".mjs"), "utf8");
+    // The QML engine has none of these, and a module using one fails to load
+    // in the app while passing every test here under Node.
+    check(name + ": nothing the QML engine lacks",
+      !/\basync\b|\bawait\b|\.flat\(|fromEntries|globalThis|\bwindow\.|\bdocument\.|localStorage\.|\brequire\(/.test(src.replace(/^\s*(\/\/|\*).*$/gm, "")));
+  });
+
+  ["builder-logic", "code-logic", "renderer-logic"].forEach(function (name) {
+    const src = fs.readFileSync(path.join(JS, name + ".mjs"), "utf8");
+    check(name + ": nothing the QML engine lacks",
+      !/\basync\b|\bawait\b|\.flat\(|fromEntries|globalThis|\bwindow\.|\bdocument\.|localStorage\.|\brequire\(|\.\.\.[A-Za-z_({[]/.test(src.replace(/^\s*(\/\/|\*).*$/gm, "")));
+  });
+
+  // Theme.qml holds the palettes the theme list names. Checked once it exists,
+  // because a theme in the list with no palette renders with none at all.
+  const themeQml = path.join(__dirname, "..", "..", "native", "qml", "singletons", "Theme.qml");
+  if (fs.existsSync(themeQml)) {
+    const qml = fs.readFileSync(themeQml, "utf8");
+    const { THEMES } = require(path.join(JS, "theme.mjs"));
+    const missing = THEMES.filter(function (t) { return qml.indexOf('"' + t.id + '"') === -1; }).map(function (t) { return t.id; });
+    check("Theme.qml has a palette for every theme in theme.mjs", missing.length === 0, missing.join(", "));
+  }
+}
+
+function testBuilderLogic() {
+  section("the Build panel's decisions, without the panel");
+  const B = require(path.join(JS, "builder-logic.mjs"));
+
+  const planned = B.stepsFromPlan([
+    { title: "a", detail: "do a", files: ["a.py"], dependsOn: [], testable: true },
+    { title: "b", dependsOn: [0], testable: "yes" },
+    { title: "c", dependsOn: "0" },
+  ]);
+  check("a plan's steps start pending with no result",
+    planned.every(function (s) { return s.status === "pending" && s.result === null; }));
+  check("dependsOn is carried across", JSON.stringify(planned[1].dependsOn) === "[0]" && Array.isArray(planned[0].dependsOn));
+  check("a dependsOn that is not a list is dropped", planned[2].dependsOn === undefined);
+  check("files default to none", Array.isArray(planned[1].files) && planned[1].files.length === 0);
+  check("only a literal true is testable", planned[0].testable === true && planned[1].testable === false);
+  const src = [{ title: "x", dependsOn: [1] }];
+  check("dependsOn is copied, not shared", B.stepsFromPlan(src)[0].dependsOn !== src[0].dependsOn);
+
+  const saved = B.stepsFromSaved([{ title: "a", status: "done", timing: { totalMs: 5 } }, { title: "b" }]);
+  check("a saved build keeps its statuses and timings",
+    saved[0].status === "done" && saved[0].timing.totalMs === 5 && saved[1].status === "pending");
+  const plan = B.planFromSaved({ summary: "s", runCommand: "" }, saved);
+  check("a restored plan keeps its summary", plan.summary === "s" && plan.runCommand === undefined);
+  check("and hands back steps without statuses", plan.steps.length === 2 && plan.steps[0].status === undefined);
+  check("a restored build with nothing done is ready", B.restoredStatus(0, 4).status === "ready: 4 steps" && B.restoredStatus(0, 4).log === "");
+  check("one with steps done is resumable", B.restoredStatus(2, 4).status === "resumable: 2/4 done" && /2\/4 steps done/.test(B.restoredStatus(2, 4).log));
+
+  const st = [{ status: "done" }, { status: "skipped" }, { status: "failed" }, { status: "pending" }];
+  check("skipped counts as finished", B.finishedCount(st) === 2);
+  const stats = B.buildStats(st, true);
+  check("build stats count total, done, failed and running",
+    stats.total === 4 && stats.done === 2 && stats.failed === 1 && stats.running === true);
+
+  const idle = B.buttonVisibility("idle", st);
+  check("idle shows Start and Retry when a step failed", idle.start && idle.retry && !idle.pause && !idle.stop);
+  check("idle with nothing failed has no Retry", !B.buttonVisibility("idle", [{ status: "done" }]).retry);
+  const running = B.buttonVisibility("running", st);
+  check("running shows Pause, Skip and Stop", running.pause && running.skip && running.stop && !running.start && !running.resume);
+  const paused = B.buttonVisibility("paused", st);
+  check("paused shows Resume and Stop", paused.resume && paused.stop && !paused.pause);
+
+  const p1 = B.stepPrompt({ summary: "a game" }, { title: "Board", detail: "Draw it.", files: ["board.py"] }, "");
+  check("a step is told the overall goal and only its own work",
+    p1 === "Overall: a game\n\nExecute ONLY this step: Board. Draw it. Expected files: board.py", JSON.stringify(p1));
+  const p2 = B.stepPrompt(null, { title: "Board" }, "wrong colour");
+  check("a rejection is carried into the next attempt",
+    /^Overall: \n\nExecute ONLY this step: Board\. /.test(p2) && /What was wrong: wrong colour\nAddress that specifically\.$/.test(p2), JSON.stringify(p2));
+
+  check("rollback is offered where a later step ran", B.rollbackOffered([{ status: "pending" }, { status: "done" }], 0, false));
+  check("not while the build runs", !B.rollbackOffered([{ status: "done" }], 0, true));
+  check("not where nothing ran", !B.rollbackOffered([{ status: "done" }, { status: "pending" }], 1, false));
+  check("a rollback that undoes nothing has no message", B.rollbackMessage({ steps: [] }, 2) === "");
+  const msg = B.rollbackMessage({ steps: [1, 2], restore: { a: 1 }, remove: ["b", "c"], drifted: ["d.py"], unrestorable: ["big.bin"] }, 3);
+  check("the rollback message counts what it undoes",
+    /^Roll back to before step 4\?\n\nThis undoes 2 steps: 1 file\(s\) restored, 2 removed\./.test(msg), msg);
+  check("and names hand-edited and unsaved files", /will be lost:\n  d\.py/.test(msg) && /left as they are:\n  big\.bin/.test(msg));
+  check("one step is singular", /undoes 1 step:/.test(B.rollbackMessage({ steps: [1] }, 0)));
+
+  const timing = { totalMs: 65000, phases: { thinking: 60000, applying: 5000 } };
+  const tt = B.timingText(timing);
+  check("the time card shows the total and padded phases",
+    tt.total === "1m 05s" && /^thinking {6}1m 00s\napplying {6}5.0s$/.test(tt.body), JSON.stringify(tt));
+  check("no phases says so", B.timingText({ totalMs: 0, phases: {} }).body === "(no phases recorded)");
+  check("the step's time log line", B.stepTimingLog(0, timing) === "step 1 took 1m 05s (thinking 1m 00s, applying 5.0s)",
+    B.stepTimingLog(0, timing));
+  const roll = B.buildTimingLog([{ timing: timing }, {}]);
+  check("the build's time is summed across timed steps", roll[0] === "build time 1m 05s across 1 step(s)" && roll.length === 3, JSON.stringify(roll));
+  check("an untimed build logs nothing", B.buildTimingLog([{}]).length === 0);
+
+  check("unusable dependencies are an error", B.dependencyLog({ reason: "cycle", graph: [] }).tone === "err");
+  check("declared dependencies count the independent steps",
+    B.dependencyLog({ declared: true, graph: [[], [], [0]] }).text === "plan declares its own dependencies; 1 step(s) do not wait on anything");
+  check("an undeclared plan logs nothing", B.dependencyLog({ graph: [[], [0]] }) === null);
+  check("diff marks", B.diffMark("add") === "+" && B.diffMark("remove") === "-" && B.diffMark("same") === " ");
+  check("a file preview is opened from the workspace", B.previewUrl("file", "/w", "index.html") === "file:///w/index.html");
+  check("a server preview is opened as is", B.previewUrl("server", "/w", "http://localhost:5000") === "http://localhost:5000");
+  check("only done, failed and running steps move", B.PIX_MOTION.done === "pix-stamp" && B.PIX_MOTION.pending === undefined);
+}
+
+function testCodeLogic() {
+  section("the Code panel's decisions, without the panel");
+  const C = require(path.join(JS, "code-logic.mjs"));
+
+  const rows = C.numberDiff("a\nb\nc\n", "a\nB\nc\nd\n");
+  check("an edit's diff is numbered by side",
+    rows.map(function (r) { return r.sign + r.ln + r.text; }).join("|") === " 1a|-2b|+2B| 3c|+4d", rows.map(function (r) { return r.sign + r.ln + r.text; }).join("|"));
+  const long = Array.from({ length: 30 }, function (_, i) { return "l" + i; });
+  const edited = long.slice(); edited[25] = "X";
+  const gapped = C.numberDiff(long.join("\n"), edited.join("\n"));
+  const gap = gapped.find(function (r) { return r.type === "gap"; });
+  const change = gapped.find(function (r) { return r.type === "add"; });
+  check("a gap moves both sides on", !!gap && gap.ln === "" && change && change.ln === 26, JSON.stringify(gapped.slice(0, 3)));
+
+  check("todo boxes", C.todoBox("done") === "☒" && C.todoBox("in_progress") === "◼" && C.todoBox("pending") === "☐");
+  check("todos show while something is left", C.todosVisible([{ status: "done" }, { status: "pending" }]));
+  check("and hide when all are done or there are none", !C.todosVisible([{ status: "done" }]) && !C.todosVisible([]) && !C.todosVisible(null));
+  check("build mode with no list explains itself", /^Say what to build/.test(C.buildModeInfo([])));
+  check("build mode counts steps and names the current one",
+    C.buildModeInfo([{ status: "done" }, { status: "in_progress", text: "tests" }]) === "1/2 steps done · now: tests");
+  check("build progress", C.buildModeProgress([{ status: "done" }, { status: "x" }]) === 0.5 && C.buildModeProgress([]) === null);
+  check("test mode names the run command and its source", C.testModeInfo({ command: "npm start", source: "plan" }) === "run: npm start  (plan)");
+  check("test mode with no command", /^No run command yet/.test(C.testModeInfo(null)));
+  check("ship mode outside git", /^Not a git repository/.test(C.shipModeInfo(false, "")));
+  check("ship mode reads branch, ahead, behind and changes",
+    /^on main ↑2 ↓1 · 2 changed files\./.test(C.shipModeInfo(true, "## main...origin/main [ahead 2, behind 1]\n M a\n?? b\n")),
+    C.shipModeInfo(true, "## main...origin/main [ahead 2, behind 1]\n M a\n?? b\n"));
+  check("a clean tree says so", /^on dev · clean\./.test(C.shipModeInfo(true, "## dev\n")));
+
+  check("checks: could not run", C.checksSummary(null).tone === "fail");
+  check("checks: counts and not run", C.checksSummary({ passed: 2, failed: 1, skipped: 1 }).text === "2 passed, 1 failed, 1 not run"
+    && C.checksSummary({ passed: 2, failed: 1 }).tone === "fail");
+  check("checks: nothing ran says why", C.checksSummary({ note: "no tests" }).text === "no tests" && C.checksSummary({}).tone === "none");
+  check("a passing row", C.testRow({ success: true, command: "x" }).mark === "✓");
+  check("a skipped row is neither pass nor fail", C.testRow({ success: false, detail: "skipped: no pytest" }).kind === "skip");
+  check("a failing row keeps the first detail line", C.testRow({ success: false, detail: "boom\nmore" }).detail === "boom"
+    && C.testRow({ success: false, detail: "boom\nmore" }).multiline);
+  check("failing checks are listed for the fix", C.failingChecks([{ success: true, command: "a" }, { success: false, command: "b", detail: "bad" }]) === "- b: bad");
+  check("the fix prompt rides on test mode", /These checks failed\./.test(C.fixChecksPrompt([])));
+  check("git diff line classes",
+    ["+x", "+++ b", "-x", "--- a", "@@ -1 +1 @@", "diff --git", " x"].map(C.gitDiffLineClass).join(",") === "add,meta,del,meta,hunk,meta,");
+  check("permission answers", C.permissionAnswerLabel("deny", "use yarn") === "No: use yarn"
+    && C.permissionAnswerLabel("always") === "Yes, don't ask again" && C.permissionAnswerLabel("once") === "Yes");
+
+  check("an interrupted turn says so", C.doneOutcome({ reason: "interrupted" }, "default").note === "Interrupted by user");
+  check("a finished plan offers to build", C.doneOutcome({ reason: "complete" }, "plan", false, false).offer === "plan");
+  check("a turn that changed files offers to run", C.doneOutcome({ reason: "complete" }, "default", true, false).offer === "run");
+  check("so does a fix", C.doneOutcome({ reason: "complete" }, "default", false, true).offer === "run");
+  check("a turn that changed nothing ends quietly", C.doneOutcome({ reason: "complete" }, "default", false, false) === null);
+  check("rewound notes", C.rewoundNote([]) === "Nothing to rewind" && C.rewoundNote(["a"]) === "Rewound 1 file: a");
+  check("compacting without a summary warns", C.compactedNote("").tone === "warn" && C.compactedNote("x").tone === "dim");
+  check("the header shows provider and folder", C.metaText("DeepSeek", "/home/me/proj/") === "DeepSeek · proj");
+  check("toggling a mode off says so", C.toggleNote("build", "default") === "Build mode off");
+  check("toggling it on names it without the shortcut", !/shift\+tab/.test(C.toggleNote("build", "build")));
+  check("memory lives at the project root", C.memoryPath("/w/") === "/w/CLOSENI.md" && C.memoryPath("C:\\w\\") === "C:\\w/CLOSENI.md");
+  check("research is capped for the plan", C.researchPlanPrompt("x".repeat(7000)).length === "Using this research, plan how to apply it to this project:\n\n".length + 6000);
+  check("the plan offer starts with build mode", C.PLAN_OFFER_OPTIONS[0].mode === "build" && C.PLAN_OFFER_OPTIONS[3].mode === null);
+
+  const r1 = C.routeLine("research", "build me a snake game", "");
+  check("a build request in research switches to build", r1.mode === "build" && /Build mode is on/.test(r1.switched) && !r1.research);
+  const r2 = C.routeLine("research", "what is htmx", "");
+  check("a question in research is a search", r2.research === "what is htmx" && r2.wire === "");
+  const r3 = C.routeLine("ship", "", "");
+  check("enter on an empty ship line commits", r3.shown === "review, test and commit" && r3.wire.length > 0);
+  const r4 = C.routeLine("plan", "fix it", "shown text");
+  check("a line with its own label goes as is", r4.wire === "fix it" && r4.shown === "shown text");
+
+  const h = ["one", "two", "three"];
+  check("history up starts at the newest", C.historyUp(h, -1).index === 2 && C.historyUp(h, -1).text === "three");
+  check("and stops at the oldest", C.historyUp(h, 0).index === 0);
+  check("history down past the newest leaves history", C.historyDown(h, 2).index === -1 && C.historyDown(h, 2).text === "");
+  check("history down moves newer", C.historyDown(h, 0).text === "two");
+}
+
+function testRendererLogic() {
+  section("the renderer's decisions, without the renderer");
+  const R = require(path.join(JS, "renderer-logic.mjs"));
+
+  check("every rail mode has a title", Object.keys(R.MODE_TITLES).join(",") === "code,chat,build,test,research,push,settings");
+  check("the flow bar shows in the build modes only", R.FLOW_MODES.build && !R.FLOW_MODES.code && !R.FLOW_MODES.settings);
+  check("the unread badge", R.unreadBadge(0) === "" && R.unreadBadge(5) === "5" && R.unreadBadge(150) === "99+");
+  const snap = R.flowSnapshot(2, true, { total: 4, done: 1, failed: 1, running: true }, { tested: true });
+  check("the flow snapshot", snap.messages === 2 && snap.plan && snap.stepsTotal === 4 && snap.stepsFailed === 1 && snap.building && snap.tested && !snap.shipped);
+  check("an empty flow snapshot", R.flowSnapshot(0, null, null, null).stepsTotal === 0);
+  check("flow marks", R.flowMark({ status: "done" }, 0) === "\u2713" && R.flowMark({ status: "failed" }, 0) === "!" && R.flowMark({ status: "todo" }, 2) === "3");
+  check("flow titles", R.flowTitle({ status: "next", next: "plan it" }) === "Next: plan it" && R.flowTitle({ status: "done", label: "Plan" }) === "Plan - done");
+
+  check("html is escaped", R.escapeHtml("<a & b>") === "&lt;a &amp; b&gt;");
+  const md = R.renderMarkdown("# Title\n\n- one\n- **two**\n\ntext `code`\n```js\nx < 1\n```");
+  check("markdown: headings, lists, bold, code",
+    /<div class="md-h">Title<\/div>/.test(md) && /<ul class="md-ul"><li>one<\/li><li><strong>two<\/strong><\/li><\/ul>/.test(md) &&
+    /<code class="md-inline">code<\/code>/.test(md) && /<pre class="md-code">x &lt; 1\n<\/pre>/.test(md), md);
+
+  check("known phases are worded", R.phaseLabel({ phase: "writing", detail: "d" }).label === "writing reply" && R.phaseLabel({ phase: "writing" }).kind === "work");
+  check("an unknown phase is shown verbatim", R.phaseLabel({ phase: "dreaming" }).label === "dreaming" && R.phaseLabel({ phase: "dreaming" }).kind === "busy");
+  check("no phase is idle", R.phaseLabel(null).name === "idle");
+  check("provider names are shortened for the rail", R.shortProviderName("DeepSeek Chat (beta)") === "DeepSeek");
+  const ob = R.onboardingState([{ id: "ds", name: "DeepSeek Chat", termsUrl: "u" }], "ds", true, "/w", "on", 0, 1);
+  check("the onboarding state", ob.providerName === "DeepSeek" && ob.termsUrl === "u" && ob.chatted === true);
+  check("an unknown provider is 'your provider'", R.onboardingState([], "x", true, "", "unknown", 0, 0).providerName === "your provider");
+  check("the account light", R.accountFromStatus(null).state === "unknown" && R.accountFromStatus({ success: true, signedIn: true }).text === "signed in");
+  check("a thread label is never the URL", R.threadLabel({ url: "https://x/a/secret", label: "…cret" }) === "thread …cret" && R.threadLabel(null) === "");
+  const hl = R.healthLines({ summary: "2 ok", ok: false, findings: [{ selector: "input", health: "critical", matched: 0 }], resumed: false });
+  check("the selector check prints every finding", hl.length === 3 && hl[1].tone === "err" && /read path was not checked/.test(hl[2].text));
+
+  check("a recent workspace shows its tail", R.recentLabel("/home/me/code/proj") === "code/proj" && R.recentLabel("C:\\a\\b\\c") === "b/c");
+  check("controls are saved per provider", R.controlsKey("deepseek") === "closeni.controls.deepseek");
+  check("unreadable saved controls are none", Object.keys(R.parseSavedControls("{bad")).length === 0 && Object.keys(R.parseSavedControls(null)).length === 0);
+  const plist = [{ id: "p", controls: [{ id: "model", kind: "select", options: [{ value: "a" }, { value: "b" }], default: "a" }] }];
+  check("saved controls are applied", R.desiredControls(plist, "p", '{"model":"b"}').model === "b");
+  check("a provider without controls asks for nothing", Object.keys(R.desiredControls([{ id: "q" }], "q", "")).length === 0);
+  check("saving one control keeps the rest", R.saveControl('{"a":1}', "b", true) === '{"a":1,"b":true}');
+  check("chat titles", R.chatTitle({ title: "t" }, 0) === "t" && R.chatTitle({}, 2) === "Chat 3");
+
+  check("a plan is found in a fenced block", R.tryExtractPlan('here:\n```json\n{"steps":[1]}\n```').steps.length === 1);
+  check("or in surrounding prose", R.tryExtractPlan('ok {"steps":[]} done') !== null);
+  check("prose without a plan is none", R.tryExtractPlan("no plan here") === null && R.tryExtractPlan('{"a":1}') === null);
+  const plan = { summary: "s", steps: [{ title: "a" }, { title: "b", dependsOn: [0] }] };
+  const moved = R.applyPlanEdit(plan, "del", 0);
+  check("plan edits go through plan-edit", !moved.refused && moved.plan.steps.length === 1 && moved.plan.summary === "s");
+  check("an unknown edit is none", R.applyPlanEdit(plan, "zap", 0) === null);
+  check("the plan's scale", /^2 steps · /.test(R.planScaleText(plan)) && R.planScaleText({}) === "");
+  const p2 = { steps: [{ files: ["b.py", "a.js"], detail: "Use Flask" }, { files: ["a.js", "s.css"] }] };
+  check("plan files are sorted and once each", R.planFiles(p2).join(",") === "a.js,b.py,s.css");
+  check("the tech stack", R.planTechStack(p2).join(",") === "Python,JavaScript,Flask,CSS", R.planTechStack(p2).join(","));
+  const req = R.planRequest([{ role: "user", text: "hi" }, { role: "ai", text: "yo" }], { name: "o/r", readme: "R", files: ["x"] });
+  check("the plan request carries the reference and the chat",
+    req === "Reference project o/r:\nR\n\nIts file layout:\nx\n\n---\n\nUSER: hi\n\nAI: yo\n\n", JSON.stringify(req));
+  check("export takes step titles", R.exportRequest("/w", plan).steps.join(",") === "a,b" && R.exportRequest("/w", null).summary === "");
+
+  check("the manifest wins", R.chooseRunCommand("/w", { run: " a " }, { runCommand: "b" }, "c").source === "manifest");
+  check("then the plan", R.chooseRunCommand("/w", { run: " " }, { runCommand: "b" }, "c").command === "b");
+  check("then detection", R.chooseRunCommand("/w", null, null, "c").source === "detected");
+  check("no workspace finds nothing", R.chooseRunCommand("", { run: "a" }, null, null).source === "none");
+  check("every source is labelled", ["manifest", "plan", "detected", "none"].every(function (k) { return R.RUN_LABELS[k].length === 2; }));
+  let hist = [];
+  for (let i = 0; i < 8; i++) hist = R.pushHistory(hist, "r" + i, true);
+  check("the run history is newest first and short", hist.length === 6 && hist[0].label === "r7");
+  check("a behaviour summary", R.behaviourSummary({ passed: 1, failed: 0, skipped: 2 }) === "1 passed, 0 failed, 2 not run" && R.behaviourSummary({}) === "nothing to run");
+  check("a syntax summary", R.syntaxSummary({ passed: 3, failed: 1 }).history === "syntax check · 4 checks");
+  check("the last run is capped", R.lastRunFromResults("c", [{ x: "y".repeat(5000) }]).output.length === 4000);
+
+  check("a run in progress is running", R.runState({ status: "in_progress" }) === "running" && R.runState({ status: "completed" }) === "unknown");
+  check("a repository option", R.repoOption({ full_name: "o/r", private: true }).value === "https://github.com/o/r.git" && /\(private\)$/.test(R.repoOption({ full_name: "o/r", private: true }).label));
+  check("the clone confirmation names the licence", /carries MIT,/.test(R.cloneConfirmText({ owner: "o", repo: "r" }, "MIT")) && /an unknown licence/.test(R.cloneConfirmText({ owner: "o", repo: "r" })));
+  check("a reference needs a readme or a tree", R.referenceFrom({ owner: "o", repo: "r" }, { ok: false }, { ok: false }) === null);
+  const ref = R.referenceFrom({ owner: "o", repo: "r" }, { ok: true, result: "x".repeat(4000) }, { ok: false });
+  check("a reference is capped", ref.name === "o/r" && ref.readme.length === 3000 && ref.files.length === 0);
+  check("token storage is said plainly", /encrypted/.test(R.tokenStorageNote(true)) && /memory only/.test(R.tokenStorageNote(false)));
+  check("the token page asks for repo and workflow", /scopes=repo,workflow/.test(R.TOKEN_URL));
+
+  const provs = [{ id: "a", comingSoon: true }, { id: "b" }, { id: "c" }];
+  check("a saved provider is kept", R.pickProvider(provs, "c") === "c");
+  check("a gated saved provider is not", R.pickProvider(provs, "a") === "b");
+  check("no usable provider is none", R.pickProvider([{ id: "a", comingSoon: true }], null) === "");
+  check("coming soon is labelled", R.providerOptionLabel({ name: "X", comingSoon: true }) === "X — coming soon");
+  check("a skill import path", R.parseSkillImport("o/r/skills/a.md").path === "skills/a.md" && R.parseSkillImport("o/r") === null);
+  check("toggling skills", R.toggleSkill(["a"], "b", true).join(",") === "a,b" && R.toggleSkill(["a", "b"], "a", false).join(",") === "b");
+  check("unreadable saved skills are none", R.parseSkills("nope").length === 0 && R.parseSkills('["a"]')[0] === "a");
+}
+
 async function run(c, s, sk) {
   check = c; section = s; skipped = sk;
   testCssTokens();
@@ -1126,6 +1412,10 @@ async function run(c, s, sk) {
   testRendererLoadOrder();
   testFlow();
   testCodeView();
+  testNativePorts();
+  testBuilderLogic();
+  testCodeLogic();
+  testRendererLogic();
 }
 
 module.exports = { run };

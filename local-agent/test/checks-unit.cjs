@@ -323,7 +323,7 @@ async function testCommandTimeout() {
 
 function testEntrypoint() {
   section("entry point detection");
-  const { detectEntrypoint } = require(path.join(__dirname, "..", "..", "desktop", "entrypoint.js"));
+  const { detectEntrypoint } = require(path.join(__dirname, "..", "..", "native", "qml", "js", "entrypoint.mjs"));
 
   check("npm start wins when scripts.start exists",
     detectEntrypoint(["package.json", "index.js"], { scripts: { start: "node ." } }) === "npm start");

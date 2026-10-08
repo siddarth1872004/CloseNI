@@ -1,4 +1,5 @@
-#include "AgentProcess.h"
+#include "AgentService.h"
+#include "Bridge.h"
 
 #include <QCommandLineParser>
 #include <QDir>
@@ -19,28 +20,29 @@ void print(const QString &line)
 }
 
 /*
- * --exit-on-ready: report the session on stdout, close it once it is ready,
- * and exit 0 when it has closed, or 1 at once if it failed.
+ * --exit-on-ready: start a Code session through Agent, as the Code panel
+ * does, report it on stdout, close it once it is ready, and exit 0 when it has
+ * closed, or 1 at once if it failed.
  */
-void exitWhenReady(AgentProcess *agent)
+void exitWhenReady(QQmlEngine *engine, const QString &workspace, const QString &provider)
 {
-    QObject::connect(agent, &AgentProcess::logLine, agent, [](const QString &line) { print("[agent] " + line); });
-    auto check = [agent] {
-        if (agent->status() == QStringLiteral("ready")) {
-            const QJsonDocument info(QJsonObject::fromVariantMap(agent->readyInfo()));
-            print("CloseNI: agent ready " + QString::fromUtf8(info.toJson(QJsonDocument::Compact)));
-            agent->close();
-        } else if (agent->status() == QStringLiteral("failed")) {
-            print("CloseNI: agent failed: " + agent->error());
-            QCoreApplication::exit(1);
-        } else if (agent->status() == QStringLiteral("idle") && !agent->readyInfo().isEmpty()) {
-            QCoreApplication::exit(0);
-        }
+    auto *agent = engine->singletonInstance<AgentService *>("CloseNI", "Agent");
+    const QVariantMap payload{
+        {QStringLiteral("workspace"), workspace},
+        {QStringLiteral("provider"), provider},
+        {QStringLiteral("mode"), QStringLiteral("default")},
     };
-    QObject::connect(agent, &AgentProcess::statusChanged, agent, check);
-    // A start that failed at once did so while the window was loading, and an
-    // exit asked for before the event loop runs is ignored, so look once it is.
-    QMetaObject::invokeMethod(agent, check, Qt::QueuedConnection);
+    agent->codeStart(payload, CallbackSink::make(engine, [engine, agent](const QVariant &result) {
+        const QVariantMap r = result.toMap();
+        if (!r.value(QStringLiteral("ok")).toBool()) {
+            print("CloseNI: agent failed: " + r.value(QStringLiteral("error")).toString());
+            QCoreApplication::exit(1);
+            return;
+        }
+        const QJsonDocument info(QJsonObject::fromVariantMap(r));
+        print("CloseNI: agent ready " + QString::fromUtf8(info.toJson(QJsonDocument::Compact)));
+        agent->codeEnd(CallbackSink::make(engine, [](const QVariant &) { QCoreApplication::exit(0); }));
+    }));
 }
 
 }
@@ -69,14 +71,21 @@ int main(int argc, char *argv[])
     // For CI and scripts: the process exit code says whether the session came up.
     const QCommandLineOption exitOnReady(QStringLiteral("exit-on-ready"),
                                          QStringLiteral("Start the session, then exit 0 once it is ready or 1 if it fails."));
-    parser.addOptions({workspace, provider, start, exitOnReady});
+    // For tests only: no window; drive the services over stdin and stdout (see Bridge.h).
+    const QCommandLineOption bridge(QStringLiteral("bridge"), QStringLiteral("Test harness: drive the services over stdin and stdout."));
+    parser.addOptions({workspace, provider, start, exitOnReady, bridge});
     parser.process(app);
 
     QQmlApplicationEngine engine;
+    if (parser.isSet(bridge)) {
+        Bridge harness(&engine);
+        return app.exec();
+    }
+
     engine.setInitialProperties({
         {QStringLiteral("workspace"), QDir(parser.value(workspace)).absolutePath()},
         {QStringLiteral("provider"), parser.value(provider)},
-        {QStringLiteral("autoStart"), parser.isSet(start) || parser.isSet(exitOnReady)},
+        {QStringLiteral("autoStart"), parser.isSet(start)},
     });
     QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed, &app,
                      [] { QCoreApplication::exit(1); }, Qt::QueuedConnection);
@@ -84,13 +93,12 @@ int main(int argc, char *argv[])
     if (engine.rootObjects().isEmpty())
         return 1;
 
+    // Queued: an exit asked for before the event loop runs is ignored, and a
+    // start that fails at once replies at once.
     if (parser.isSet(exitOnReady)) {
-        auto *agent = engine.rootObjects().constFirst()->findChild<AgentProcess *>();
-        if (!agent) {
-            print("CloseNI: no agent in the window");
-            return 1;
-        }
-        exitWhenReady(agent);
+        QMetaObject::invokeMethod(&app, [&engine, ws = QDir(parser.value(workspace)).absolutePath(), id = parser.value(provider)] {
+            exitWhenReady(&engine, ws, id);
+        }, Qt::QueuedConnection);
     }
     return app.exec();
 }

@@ -1172,7 +1172,7 @@ async function main() {
   section("independent steps overlap in time");
   {
     const { createMutex, createPool } = require(path.join(__dirname, "..", "dist", "async-pool.js"));
-    const { runnableSteps } = require(path.join(__dirname, "..", "..", "desktop", "scheduler.js"));
+    const { runnableSteps } = require(path.join(__dirname, "..", "..", "native", "qml", "js", "scheduler.mjs"));
 
     // A diamond: 1 and 2 are independent, 3 waits for both. Each "step" sleeps,
     // so overlap is measurable. Everything else in this suite proves the
