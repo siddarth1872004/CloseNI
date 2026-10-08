@@ -130,8 +130,10 @@ protocol. This is the product, and everything else is secondary.
       was truncated at its first inner fence, silently, and a later edit to it
       leaked into the prose. The fix is a preamble rule telling the model to use
       four backticks when the payload contains fences
-      (`local-agent/src/agent/protocol.ts`). **Still to do:** confirm it on a
-      live run that writes a Markdown file.
+      (`local-agent/src/agent/protocol.ts`).
+      *8 Oct, confirmed live:* a README rewrite with nested fences came out
+      whole after one malformed reply. The rule now also says the opening line
+      itself must be ````tool, because the model wrapped only the payload.
 - [x] **1.2 Guard against silent truncation anyway** (S–M). The prompt rule
       is advice, not a guarantee. In `readBlock` (`protocol.ts`), refuse a
       `write` whose payload opens a fence and never closes it, and whose
@@ -142,6 +144,10 @@ protocol. This is the product, and everything else is secondary.
       open fence alone is enough for a `write`. For an `edit`, the open fence
       must be in a last section that has no closing marker, because a SEARCH
       may quote half a code block.
+      *8 Oct, two more guards, both seen live first:* a write whose payload is
+      empty or only whitespace is refused over a file with content (a ````
+      line had closed its block early), and a tool call stranded in plain text
+      by a broken fence is reported back to the model instead of vanishing.
 - [x] **1.3 False "pasted code" nudge.** A `$ command` demo block triggered an
       extra round trip. It is fixed, with a test. **Still to do:** confirm it
       live.
@@ -176,6 +182,17 @@ protocol. This is the product, and everything else is secondary.
       agent turns. **Decided (D1):** off for agent turns.
       *Done:* both agent modes force it off for their own process, as research
       forces search on, so Chat keeps your saved choice. Not yet seen live.
+      *7 Oct, superseded (0.2.0):* the agent follows the saved Deep thinking
+      choice again, still off when none is saved. *8 Oct:* the reasoning is
+      shown in the Code panel as it streams, and a thinking reply ran live.
+- [x] **1.15 Replies DeepSeek drops** (M). Seen live 8 Oct: a 9k-character
+      prompt got 0.3 s of thinking, the message was marked INCOMPLETE and the
+      stream closed, and the wait sat out 300 s. *Done:* a closed stream with
+      nothing on the page a few polls later counts as dropped, and the prompt
+      is sent once more (a second drop is reported). `resume_stream`, which the
+      page uses to finish a cut stream, is watched too. Checked live against
+      injected faults (empty stream, cut connection, INCOMPLETE, stall): each
+      got the right answer on the resend.
 
 ### 1B · Things that will break on longer sessions (not yet seen, but certain)
 
@@ -668,7 +685,7 @@ they name; the rule for each is fixed now so the run decides, not a debate.
 
 | # | Question | Decided | Why |
 |---|---|---|---|
-| D1 | Deep thinking on by default for agent turns? (1.7) | Off for agent turns; Chat keeps your choice | Agent turns are many and short, and thinking is what hit the 300 s wait |
+| D1 | Deep thinking on by default for agent turns? (1.7) | Off for agent turns; Chat keeps your choice. Revised in 0.2.0: the agent follows the saved choice, off when none is saved | Agent turns are many and short, and thinking is what hit the 300 s wait |
 | D2 | Browser weight: trim, system browser, or Lightpanda? (3.3) | Trim Chromium | The other two change the engine every selector was measured on |
 | D3 | Adopt or delete `src/web/`? (3.2) | Adopt for the agent if 3.1 passes live, delete if it fails | Two reply-reading paths is the worst of both |
 | D4 | Keep the planned build as a separate mode? (4.4) | Keep for 1.0 only if 4.1 and 4.2 pass, otherwise demote it behind the agent | The agent is the product; a mode that fails live costs trust |
@@ -696,7 +713,7 @@ at the top.
 - MCP servers as agent tools, not only as pre-build context
 - Images and screenshots in agent prompts
 - Sub-agents and parallel tool calls across providers
-- Qwen Studio and GLM, ungated (2.1, 2.2; they ship gated as coming soon)
+- Qwen Studio and GLM, proven live (2.1, 2.2; selectable as experimental since 0.2.0)
 - Ollama for the coding agent (2.3)
 
 ## Rules that still hold

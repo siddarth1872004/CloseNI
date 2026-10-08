@@ -193,7 +193,8 @@ Ask for a change and it reads your project, edits files, runs commands and check
 <li><code>/rewind</code> undoes the last turn&#39;s file changes.</li>
 <li><code>/init</code> writes a <code>CLOSENI.md</code> of project instructions, which is read at the start of every conversation (<code>AGENTS.md</code> and <code>CLAUDE.md</code> are read if there is no <code>CLOSENI.md</code>).</li>
 <li>Messages sent while the agent is working are queued. Esc stops it after the current reply.</li>
-<li>The persona, skills and MCP context from Settings apply here too, and so do the provider&#39;s controls, except Deep thinking, which is off for agent turns: they are many and short, and a thinking turn on a large prompt can outlast the wait.</li>
+<li>The persona, skills and MCP context from Settings apply here too, and so do the provider&#39;s controls, except Smart Search, which stays off for agent turns. Changing a control, the provider or Show Browser takes effect on the next message: the agent reopens the provider with the new settings and resumes the project&#39;s thread.</li>
+<li>With DeepSeek&#39;s Deep thinking on, the model&#39;s reasoning streams into the panel under a &quot;Thinking…&quot; line and folds away once the reply or a tool call arrives.</li>
 <li>From a terminal: <code>npm run agent -- &quot;fix the failing test&quot; ./project deepseek</code>.</li>
 </ul>
 <p>It works with any provider CloseNI can talk to, including a local model through Ollama.</p>
@@ -301,7 +302,7 @@ Ask for a change and it reads your project, edits files, runs commands and check
 <tbody><tr>
 <td><strong>DeepSeek Chat</strong></td>
 <td><img src="https://img.shields.io/badge/-ready-57d38c?style=flat-square" alt="ready"></td>
-<td>Driven end to end: plan, build, repair, verify. Its reply stream (<code>/api/v0/chat/completion</code>) is measured and used to know when an answer ended.</td>
+<td>Driven end to end: plan, build, repair, verify, and the coding agent. Its reply streams (<code>/api/v0/chat/completion</code>, and <code>resume_stream</code> when the page picks up a cut one) are measured and used to know when an answer ended. A reply it drops before writing any of it is asked for once more, and that was checked live against injected faults. Deep thinking&#39;s reasoning is shown as it streams.</td>
 </tr>
 <tr>
 <td><strong>Qwen Studio</strong></td>
@@ -826,7 +827,7 @@ scripts/            verification, asset generation, release and environment help
 <div align="center"><img src="assets/divider.svg" alt="" width="100%"></div><h2 id="current-limitations">Current limitations</h2>
 <p>Stated plainly, because a README that only lists strengths is not useful.</p>
 <ul>
-<li><strong>The coding agent has not met a live site yet.</strong> Its tool protocol, tools, permissions and loop are proven against a scripted model and, end to end, through a real browser against the mock chat. Whether DeepSeek follows the tool-block convention reliably over a long session is the first thing to measure on a signed-in machine.</li>
+<li><strong>The coding agent is proven on short DeepSeek sessions only.</strong> It has run live on DeepSeek, including nested-fence writes, dropped replies and broken fences. Whether DeepSeek follows the tool-block convention reliably over a long session is still to be measured.</li>
 <li><strong>One provider is proven.</strong> DeepSeek is driven end to end. Qwen Studio and GLM can be selected but are experimental and unconfirmed against their live sites. See <a href="#providers">providers</a>.</li>
 <li><strong>The browser-native layer has never met a live site.</strong> It passes every fixture scenario, but every live row so far is <code>BLOCKED</code> by the development machine&#39;s network, and builds still use the older controller.</li>
 <li><strong>Chat sites change.</strong> Provider control is per-site page automation. A redesign can break extraction until the selectors are updated, which is a JSON edit, not a code change.</li>

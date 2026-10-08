@@ -3,6 +3,78 @@
 All notable changes to CloseNI are recorded here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+DeepSeek is hardened for the coding agent and was checked against the live site
+on 8 October 2026. Its reasoning now shows while it thinks. When DeepSeek drops
+a reply, the agent asks again instead of waiting out the clock. Qwen Studio and
+GLM have not been touched since 0.2.0.
+
+### Thinking
+
+- **DeepSeek's reasoning shows in the Code panel.** With Deep thinking on, the
+  model's reasoning is copied from the page as it grows. It appears under a
+  "Thinking…" line, which folds to "Thought" once the reply or a tool call
+  follows. Click the line to open it again. Only the newest turn's reasoning is
+  read. DeepSeek removes a collapsed block from the page rather than hiding it,
+  so a collapsed block is expanded before it is read. `npm run agent` prints the
+  reasoning ahead of the reply it led to.
+- **The reply is never read from the reasoning.** DeepSeek renders its reasoning
+  as Markdown too, so a pause in the thinking could pass for a finished answer.
+  Reading the reply now skips the reasoning container.
+- **A changed control now reaches the agent.** The provider, its controls (Deep
+  thinking, Smart Search) and Show Browser are applied when the agent starts.
+  Before, a change did nothing until the app restarted. Now the next message
+  reopens the provider with the new settings, and the project's thread resumes.
+
+### Reliability
+
+- **A dropped reply is asked for again.** Seen live: DeepSeek gave a
+  9k-character prompt 0.3 s of thinking, marked the message INCOMPLETE and
+  closed the stream. The wait then sat out its full 300 s. Now, if the reply
+  stream has closed and nothing is on the page a few polls later, the reply
+  counts as dropped and the prompt is sent once more. A second drop is
+  reported. Checked live by injecting four faults: an empty stream, a cut
+  connection, an INCOMPLETE reply and a stall. Every one got the right answer on
+  the resend. The first three took about 28 s in all. The stall took 85 s,
+  because DeepSeek's own page ends it at about 60 s.
+- **DeepSeek's resumed streams are watched.** When a reply stream ends without
+  its close event, the page fetches the rest from `/api/v0/chat/resume_stream`.
+  That request was not watched. The wait could read a reply before it finished,
+  or resend a prompt the page was still fetching. The stream pattern now covers
+  both endpoints and nothing else.
+- **Navigation is retried when Chromium asks for it.** A headed browser's first
+  navigation could fail with `ERR_CERT_VERIFIER_CHANGED` while its certificate
+  store was still loading, and that failed the session before any prompt was
+  sent. These errors now retry the navigation.
+- **A provider that fails to open no longer holds the agent.** When start-up
+  fails, the browser is now closed, so the process exits and releases the
+  profile. The app no longer treats a failed start as a running session.
+
+### Tool calls
+
+- **An empty write over a real file is refused.** A ```` line inside a ```tool
+  block closes the block early, which leaves a write with no payload. That used
+  to empty the file. A write whose payload is empty or only whitespace is now
+  refused when the file has content, and the error names the likely cause. To
+  empty a file on purpose, run `: > file` with bash.
+- **A tool call lost to a broken fence is reported.** Calls that came after a
+  broken fence were read as plain text, so they never ran, and the model was not
+  told. Now each lost call goes back to the model as an error asking it to send
+  that call again. This covers a tool opener in a code block that never closed,
+  and one in any plain block after a malformed call or empty write in the same
+  reply. A closed example block in a clean reply is left alone.
+- **Clearer fence instructions.** The preamble and the resend message now say
+  that the opening line itself must be ````tool. Wrapping only the payload in
+  four backticks is not enough. Checked live: a README rewrite with nested
+  fences came out whole after one malformed reply.
+
+### Desktop
+
+- **Show Browser is saved and is on the rail.** It used to be off after every
+  restart. A second checkbox under the provider controls changes the same
+  setting.
+
 ## [0.2.0] — 2026-10-07
 
 Qwen Studio and GLM can be picked, and the coding agent respects the DeepSeek
