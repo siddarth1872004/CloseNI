@@ -11,7 +11,8 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Only what the app uses: no Widgets, no web engine of any kind.
-find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Network Qml Quick QuickControls2)
+# QuickDialogs2 only for the native file and folder dialogs.
+find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Network Qml Quick QuickControls2 QuickDialogs2)
 
 qt_standard_project_setup(REQUIRES 6.8)
 
@@ -22,6 +23,9 @@ file(GLOB CLOSENI_SOURCES CONFIGURE_DEPENDS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}
 file(GLOB_RECURSE CLOSENI_QML CONFIGURE_DEPENDS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}
     qml/*.qml qml/*.mjs)
 list(REMOVE_ITEM CLOSENI_SOURCES src/main.cpp)
+# Small images the QML draws (theme texture tiles), served from the module.
+file(GLOB_RECURSE CLOSENI_ASSETS CONFIGURE_DEPENDS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}
+    qml/assets/*.png)
 
 # Every file in qml/singletons/ (Theme, the stores) is a QML singleton.
 file(GLOB CLOSENI_QML_SINGLETONS CONFIGURE_DEPENDS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}
@@ -53,6 +57,7 @@ qt_add_qml_module(closeni
     URI CloseNI
     VERSION 1.0
     QML_FILES ${CLOSENI_QML}
+    RESOURCES ${CLOSENI_ASSETS}
     SOURCES ${CLOSENI_SOURCES}
 )
 
@@ -80,6 +85,7 @@ target_link_libraries(closeni PRIVATE
     Qt6::Qml
     Qt6::Quick
     Qt6::QuickControls2
+    Qt6::QuickDialogs2
 )
 
 if(WIN32)

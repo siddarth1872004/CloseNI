@@ -1,12 +1,21 @@
 import QtQuick
-import QtQuick.Controls
+import QtQuick.Controls.Basic
 import QtQuick.Dialogs
 import QtQuick.Layouts
 import CloseNI
 
 /*
- * Phase 0: pick a folder and a provider, start the agent session, and show
- * that it came up. The Code panel replaces the log in phase 1.
+ * The window: desktop/index.html's shell. The rail, the top bar with the flow,
+ * one Loader per panel (only the open one exists, plus Code once visited, so
+ * an idle window holds one screen), the console drawer, toasts, the approval
+ * modal, the browser gate and the folder picker.
+ *
+ * State shared between panels lives in the singletons (AppState, Providers,
+ * Notify, Theme); panels read and write it there, never each other.
+ *
+ * main.cpp sets workspace, provider and autoStart from --workspace, --provider
+ * and --start ("" when not given: the last project and the saved provider are
+ * used), and selfTestDir from --self-test.
  */
 ApplicationWindow {
     id: window
@@ -14,152 +23,159 @@ ApplicationWindow {
     required property string workspace
     required property string provider
     required property bool autoStart
+    property string selfTestDir: ""
+    // --self-test: main.cpp saves the window to `path` (see SelfTest.qml).
+    signal selfTestShot(string path)
 
-    width: 1000
-    height: 680
+    width: 1280
+    height: 800
+    minimumWidth: 760
+    minimumHeight: 520
     visible: true
-    title: "CloseNI"
+    title: AppState.workspace ? "CloseNI - " + AppState.pathTail(AppState.workspace) : "CloseNI"
+    color: Theme.bg
 
-    function log(line) {
-        logModel.append({ line: line })
-        // A long session must not grow the view without bound.
-        if (logModel.count > 2000)
-            logModel.remove(0, logModel.count - 2000)
-        logView.positionViewAtEnd()
-    }
+    font.family: Theme.ui
+    font.pixelSize: Theme.bodySize
+    // The attached ToolTip and other stock pieces read the palette.
+    palette.window: Theme.bg
+    palette.windowText: Theme.txt
+    palette.base: Theme.surface
+    palette.text: Theme.txt
+    palette.button: Theme.surface
+    palette.buttonText: Theme.txt
+    palette.highlight: Theme.lineStrong
+    palette.highlightedText: Theme.txt
+    palette.toolTipBase: Theme.surfaceRaised
+    palette.toolTipText: Theme.txt
+    palette.dark: Theme.lineStrong
+    palette.mid: Theme.line
+    palette.light: Theme.surfaceRaised
 
     // A local path to a file URL and back, with Windows drive letters.
     function toUrl(path) { return (path.startsWith("/") ? "file://" : "file:///") + path }
     function fromUrl(url) { return decodeURIComponent(url.toString().replace(/^file:\/\/(\/(?=[A-Za-z]:))?/, "")) }
 
-    // "idle", "starting", "ready", "closing" or "failed", from Agent's replies.
-    property string status: "idle"
-    property var readyInfo: ({})
-    property string error: ""
-
+    // --start: bring the agent session up at launch, as phase 0 did. The Code
+    // panel owns the session once it is ported.
     function startAgent() {
-        status = "starting"
-        Agent.codeStart({ workspace: workspace, provider: provider, mode: "default" }, function (r) {
-            if (r.ok) {
-                readyInfo = r
-                status = "ready"
-                log("ready: " + JSON.stringify(r))
+        var ws = AppState.workspace || window.workspace
+        if (!ws) { Notify.toast("Pick a workspace", "err"); return }
+        AppState.setStatus("starting the agent…")
+        Agent.codeStart({ workspace: ws, provider: window.provider || Providers.current, mode: "default" }, function (r) {
+            if (r && r.ok) {
+                AppState.setStatus("ready")
+                Notify.log("agent ready: " + r.provider + ", " + r.mode + " mode", "ok")
             } else {
-                error = r.error
-                status = "failed"
-                log("failed: " + r.error)
+                AppState.setStatus("idle")
+                Notify.log("agent failed: " + ((r && r.error) || "no answer"), "err")
             }
         })
     }
 
-    function stopAgent() {
-        status = "closing"
-        Agent.codeEnd(function () { status = "idle" })
+    Component.onCompleted: {
+        AppState.start(workspace, provider)
+        if (autoStart) startAgent()
+        if (selfTestDir) selfTest.begin()
     }
 
-    Connections {
-        target: Agent
-        function onLog(line) { window.log(line) }
-        function onCodeEvent(ev) {
-            if (ev.type === "closed" && window.status === "ready")
-                window.status = "idle"
-            else if (ev.type !== "ready")
-                window.log(JSON.stringify(ev))
-        }
-    }
+    // Pixel's starfield sits behind the content; scanlines go over it (below).
+    Texture { anchors.fill: parent; behind: true }
 
-    Component.onCompleted: if (autoStart) startAgent()
-
-    FolderDialog {
-        id: folderDialog
-        currentFolder: window.toUrl(window.workspace)
-        onAccepted: window.workspace = window.fromUrl(selectedFolder)
-    }
-
-    ColumnLayout {
+    RowLayout {
         anchors.fill: parent
-        anchors.margins: 12
-        spacing: 8
+        spacing: 0
 
-        RowLayout {
-            Layout.fillWidth: true
-            spacing: 8
-
-            Label { text: "Workspace" }
-            TextField {
-                Layout.fillWidth: true
-                text: window.workspace
-                onEditingFinished: window.workspace = text
-                enabled: window.status === "idle" || window.status === "failed"
-            }
-            Button {
-                text: "Browse…"
-                onClicked: folderDialog.open()
-                enabled: window.status === "idle" || window.status === "failed"
-            }
-            Label { text: "Provider" }
-            TextField {
-                Layout.preferredWidth: 120
-                text: window.provider
-                onEditingFinished: window.provider = text
-                enabled: window.status === "idle" || window.status === "failed"
-            }
-            Button {
-                text: window.status === "idle" || window.status === "failed" ? "Start" : "Stop"
-                enabled: window.status !== "closing"
-                onClicked: {
-                    if (window.status === "idle" || window.status === "failed")
-                        window.startAgent()
-                    else
-                        window.stopAgent()
-                }
-            }
+        Rail {
+            Layout.fillHeight: true
+            Layout.preferredWidth: 210
         }
 
-        Label {
-            Layout.fillWidth: true
-            wrapMode: Text.Wrap
-            font.bold: true
-            text: {
-                switch (window.status) {
-                case "starting": return "Starting the agent…"
-                case "ready": return "Ready: " + window.readyInfo.provider + ", " + window.readyInfo.mode + " mode, in " + window.readyInfo.workspace
-                case "closing": return "Closing…"
-                case "failed": return "Failed: " + window.error
-                default: return "Not running"
-                }
-            }
-        }
-
-        Frame {
+        ColumnLayout {
+            id: main
             Layout.fillWidth: true
             Layout.fillHeight: true
-            padding: 4
+            Layout.leftMargin: 18
+            Layout.rightMargin: 18
+            Layout.topMargin: 14
+            Layout.bottomMargin: 14
+            spacing: 12
 
-            ListView {
-                id: logView
-                anchors.fill: parent
-                clip: true
-                model: ListModel { id: logModel }
-                ScrollBar.vertical: ScrollBar {}
-                delegate: Text {
-                    required property string line
-                    width: logView.width
-                    text: line
-                    wrapMode: Text.WrapAnywhere
-                    font.family: "monospace"
-                    font.pixelSize: 12
-                    color: palette.text
+            TopBar { Layout.fillWidth: true }
+
+            Item {
+                id: panels
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+
+                Repeater {
+                    model: AppState.panels
+                    Loader {
+                        id: panel
+                        required property var modelData
+                        readonly property bool current: AppState.mode === modelData.mode
+                        // The agent is where people spend the session: once
+                        // opened it stays, so coming back from Settings costs
+                        // nothing and loses nothing.
+                        property bool kept: false
+                        onCurrentChanged: if (current && modelData.mode === "code") kept = true
+                        anchors.fill: parent
+                        active: current || kept
+                        visible: current
+                        asynchronous: false
+                        source: "panels/" + modelData.name + "Panel.qml"
+                        Component.onCompleted: if (current && modelData.mode === "code") kept = true
+                    }
                 }
             }
-        }
 
-        Label {
-            Layout.fillWidth: true
-            elide: Text.ElideMiddle
-            opacity: 0.6
-            font.pixelSize: 11
-            text: "Storage: " + App.storageRoot
+            ConsoleDrawer { Layout.fillWidth: true }
+        }
+    }
+
+    Texture { anchors.fill: parent; behind: false; z: 1 }
+
+    ToastStack {
+        anchors.top: parent.top
+        anchors.right: parent.right
+        anchors.topMargin: 14
+        anchors.rightMargin: 14
+        z: 2
+    }
+
+    ApprovalModal { id: approvalModal }
+    BrowserGate { id: gate }
+
+    // Made on first use: the native dialog pulls in the platform's dialog
+    // stack, which an idle window has no need for.
+    Loader {
+        id: folderDialog
+        active: false
+        sourceComponent: FolderDialog {
+            title: "Choose a workspace"
+            currentFolder: window.toUrl(AppState.workspace || window.workspace || "/")
+            onAccepted: AppState.openWorkspace(window.fromUrl(selectedFolder))
+        }
+    }
+    Connections {
+        target: AppState
+        function onBrowseRequested() {
+            folderDialog.active = true
+            folderDialog.item.open()
+        }
+    }
+
+    // --self-test <dir>: every theme, every panel, the console, a toast, both
+    // modals, three screenshots, then quit. main.cpp fails the run on any
+    // warning. Nothing here exists unless asked for.
+    Loader {
+        id: selfTest
+        active: false
+        function begin() { active = true }
+        sourceComponent: SelfTest {
+            root: window
+            outDir: window.selfTestDir
+            approval: approvalModal
         }
     }
 }
