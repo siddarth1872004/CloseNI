@@ -41,7 +41,21 @@ jobs:
       - name: Unit tests
         run: npm test
 
-      # verify audits the packaged app for session data, so there must be one.
+      # verify audits the packaged app for session data, so there must be one:
+      # the native app, staged by native/package/stage.mjs, which needs Qt and
+      # the libraries of the xcb platform plugin it bundles.
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.10.*"
+          cache: true
+
+      - name: Packaging tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build patchelf libgl1-mesa-dev libxkbcommon-x11-0 libxcb-cursor0 \
+            libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0 \
+            libxcb-xinerama0 libxcb-xkb1
+
       - name: Package
         run: npm run pack
 

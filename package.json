@@ -28,8 +28,8 @@
   "scripts": {
     "build": "npm run build --workspaces --if-present",
     "start": "electron .",
-    "pack": "electron-builder --dir",
-    "dist": "electron-builder",
+    "pack": "node native/package/stage.mjs",
+    "dist": "node native/package/stage.mjs --installers",
     "verify": "node scripts/verify.mjs",
     "verify:visual": "node scripts/verify-visual.mjs",
     "test:ui": "node scripts/ui-code.mjs",
