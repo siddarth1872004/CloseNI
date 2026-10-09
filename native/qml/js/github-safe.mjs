@@ -3,7 +3,8 @@
  * network or a credential.
  *
  * Ported from desktop/github-safe.js: an ES module imported by the QML app
- * and by the test harness. Keep the two in step until the Electron app goes.
+ * and by the test harness. desktop/ was deleted with Electron in 0.4.0, so
+ * this is the only copy.
  */
 /**
  * Remove a token from anything about to be logged or shown.

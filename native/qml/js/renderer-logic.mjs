@@ -1,8 +1,8 @@
 /*
  * The renderer's decisions, without the renderer.
  *
- * Extracted from desktop/renderer/*.js, which keep their own copies until the
- * Electron app goes. Those files share one global scope and read state (the
+ * Extracted from desktop/renderer/*.js (deleted with Electron in 0.4.0).
+ * Those files shared one global scope and read state (the
  * workspace, the provider, the plan) from it; here that state comes in as
  * arguments, and saved values come in as the strings Prefs holds rather than
  * being read from localStorage. Everything here is pure.

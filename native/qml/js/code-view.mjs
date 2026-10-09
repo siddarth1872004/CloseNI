@@ -3,7 +3,8 @@
  * slash commands, the modes, the spinner.
  *
  * Ported from desktop/code-view.js: an ES module imported by the QML app
- * and by the test harness. Keep the two in step until the Electron app goes.
+ * and by the test harness. desktop/ was deleted with Electron in 0.4.0, so
+ * this is the only copy.
  * Everything here is pure; drawing lives in the Code panel.
  *
  * The panel reads like a terminal coding agent's transcript: a line per thing

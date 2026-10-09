@@ -2,7 +2,8 @@
  * What should the preview show?
  *
  * Ported from desktop/preview-target.js: an ES module imported by the QML app
- * and by the test harness. Keep the two in step until the Electron app goes.
+ * and by the test harness. desktop/ was deleted with Electron in 0.4.0, so
+ * this is the only copy.
  *
  * Only local addresses count. A documentation link in a traceback is not a
  * server, and pointing the preview at the open internet is not what anyone

@@ -2,7 +2,8 @@
  * The project flow: describe, plan, build, test, ship.
  *
  * Ported from desktop/flow.js: an ES module imported by the QML app
- * and by the test harness. Keep the two in step until the Electron app goes.
+ * and by the test harness. desktop/ was deleted with Electron in 0.4.0, so
+ * this is the only copy.
  *
  * The app always had this order - chat produces a plan, the plan produces a
  * build, the build is run, the result is pushed - but nothing on screen said
