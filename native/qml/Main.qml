@@ -57,18 +57,22 @@ ApplicationWindow {
     function fromUrl(url) { return decodeURIComponent(url.toString().replace(/^file:\/\/(\/(?=[A-Za-z]:))?/, "")) }
 
     // --start: bring the agent session up at launch, as phase 0 did. The Code
-    // panel owns the session once it is ported.
+    // panel owns the session, so it opens through CodeStore and the panel
+    // shows it opening and then ready.
     function startAgent() {
         var ws = AppState.workspace || window.workspace
         if (!ws) { Notify.toast("Pick a workspace", "err"); return }
         AppState.setStatus("starting the agent…")
-        Agent.codeStart({ workspace: ws, provider: window.provider || Providers.current, mode: "default" }, function (r) {
-            if (r && r.ok) {
+        if (window.provider) CodeStore.pinnedProvider = window.provider
+        CodeStore.ensureSession().then(function (ok) {
+            if (ok) {
+                // No turn follows, so nothing else ends the "Opening" spinner.
+                if (!CodeStore.busy) CodeStore.spinnerOff()
                 AppState.setStatus("ready")
-                Notify.log("agent ready: " + r.provider + ", " + r.mode + " mode", "ok")
+                Notify.log("agent ready: " + CodeStore.provider + ", " + CodeStore.mode + " mode", "ok")
             } else {
                 AppState.setStatus("idle")
-                Notify.log("agent failed: " + ((r && r.error) || "no answer"), "err")
+                Notify.log("agent failed to start", "err")
             }
         })
     }
