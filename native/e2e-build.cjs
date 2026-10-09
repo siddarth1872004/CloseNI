@@ -97,6 +97,10 @@ async function main() {
     CLOSENI_STORAGE: path.join(tmp, "storage"),
     CLOSENI_NODE: process.execPath,
     QT_FORCE_STDERR_LOGGING: "1",
+    // No session bus: nothing reaches the real keyring, and the desktop
+    // portal (which warns when another app holds the connection's ID) stays
+    // out of a run that fails on any warning. tst_github does the same.
+    DBUS_SESSION_BUS_ADDRESS: "unix:path=/nonexistent/closeni-test-bus",
   });
   if (!env.QT_QPA_PLATFORM) env.QT_QPA_PLATFORM = "offscreen";
 
