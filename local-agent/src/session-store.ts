@@ -58,7 +58,7 @@ export function writeSessions(file: string, sessions: Sessions): void {
     // one can open the conversation in a browser that carries the session
     // cookie, so it should not be world-readable the way a config file is.
     //
-    // Not encrypted, deliberately. Electron's safeStorage lives in the main
+    // Not encrypted, deliberately. The OS keyring belongs to the app's own
     // process, and this file is written by the agent, which runs as plain Node.
     // Encrypting here would mean shipping a key next to the ciphertext, which
     // is worse than honest file permissions because it reads as protection

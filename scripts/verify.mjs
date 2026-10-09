@@ -9,8 +9,9 @@
  * so "everything passed" never gets read as "everything is verified".
  */
 
-import { readFileSync, existsSync, readdirSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync, lstatSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
+import { builtinModules } from 'node:module';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { renderSite } from './make-site.mjs';
@@ -30,14 +31,14 @@ function check(label, ok, detail = '') {
   current.rows.push({ label, ok, detail });
 }
 const read = (p) => readFileSync(join(ROOT, p), 'utf8');
-// The renderer is one script per panel under desktop/renderer/, read as one.
-const RENDERER_FILES = readdirSync(join(ROOT, 'desktop/renderer')).filter((f) => f.endsWith('.js')).sort()
-  .map((f) => 'desktop/renderer/' + f);
-const readRenderer = () => RENDERER_FILES.map(read).join('\n');
-// The main process likewise: main.js and the IPC domains under desktop/main/.
-const MAIN_FILES = ['desktop/main.js', ...readdirSync(join(ROOT, 'desktop/main')).filter((f) => f.endsWith('.js')).sort()
-  .map((f) => 'desktop/main/' + f)];
-const readMain = () => MAIN_FILES.map(read).join('\n');
+// The native app (native/): its QML (panels, singletons, shell and the pure
+// modules under qml/js/) and its C++ services under src/.
+const nativeFiles = (dir, exts) => readdirSync(join(ROOT, dir), { recursive: true })
+  .filter((f) => exts.some((x) => String(f).endsWith(x))).sort().map((f) => dir + '/' + f);
+const QML_FILES = nativeFiles('native/qml', ['.qml', '.mjs']);
+const CPP_FILES = nativeFiles('native/src', ['.cpp', '.h']);
+const readQml = () => QML_FILES.map(read).join('\n');
+const readCpp = () => CPP_FILES.map(read).join('\n');
 // The agent CLI: the dispatcher in index.ts, its I/O and workspace helpers, and
 // one module per mode under src/modes/.
 const AGENT_FILES = ['local-agent/src/index.ts', 'local-agent/src/cli-io.ts', 'local-agent/src/workspace-env.ts',
@@ -76,7 +77,7 @@ group('Documentation claims match the code');
 
 const planner = read('local-agent/src/verification/check-planner.ts');
 const langs = new Set([...planner.matchAll(/language: "([a-z+#]+)"/g)].map((m) => m[1]));
-const themeJs = read('desktop/theme.js');
+const themeJs = read('native/qml/js/theme.mjs');
 const themeCount = [...themeJs.matchAll(/\{ id: "/g)].length;
 const readme = read('README.md');
 const landing = read('docs/index.html');
@@ -97,19 +98,20 @@ const documented = ['c', 'cpp', 'csharp', 'go', 'java', 'javascript', 'php', 'py
 check('check-planner covers the 12 documented languages', documented.every((l) => langs.has(l)),
   documented.filter((l) => !langs.has(l)).join(' ') || `${langs.size}: ${[...langs].sort().join(' ')}`);
 check('README counts the unproven languages', readme.includes(`${langs.size - documented.length} more languages`), String(langs.size - documented.length));
-check('theme.js registers 11 themes', themeCount === 11, String(themeCount));
+check('theme.mjs registers 11 themes', themeCount === 11, String(themeCount));
 check('README says twelve languages', /twelve languages/i.test(readme));
 check('README says eleven themes', /[Ee]leven (built-in )?themes/.test(readme));
 check('README does not still claim nine languages', !/nine languages/i.test(readme));
 
-// Every theme in theme.js must have a block in styles.css, and vice versa.
-const css = read('desktop/styles.css');
-const cssThemes = new Set([...css.matchAll(/\[data-theme="([a-z-]+)"\]/g)].map((m) => m[1]));
-const jsThemes = [...themeJs.matchAll(/\{ id: "([a-z-]+)"/g)].map((m) => m[1]).filter((t) => t !== 'midnight');
-check('every registered theme has a CSS block',
-  jsThemes.every((t) => cssThemes.has(t)), jsThemes.filter((t) => !cssThemes.has(t)).join(',') || 'all present');
-check('every CSS theme block is registered',
-  [...cssThemes].every((t) => jsThemes.includes(t)), [...cssThemes].filter((t) => !jsThemes.includes(t)).join(',') || 'all registered');
+// Every theme in theme.mjs must have a palette in Theme.qml, and vice versa.
+const themeQml = read('native/qml/singletons/Theme.qml');
+const paletteBlock = themeQml.slice(themeQml.indexOf('readonly property var palettes'));
+const qmlThemes = new Set([...paletteBlock.matchAll(/^ {8}"([a-z-]+)": \{/gm)].map((m) => m[1]));
+const jsThemes = [...themeJs.matchAll(/\{ id: "([a-z-]+)"/g)].map((m) => m[1]);
+check('every registered theme has a palette',
+  jsThemes.every((t) => qmlThemes.has(t)), jsThemes.filter((t) => !qmlThemes.has(t)).join(',') || 'all present');
+check('every palette is registered',
+  [...qmlThemes].every((t) => jsThemes.includes(t)), [...qmlThemes].filter((t) => !jsThemes.includes(t)).join(',') || 'all registered');
 
 // Providers: what ships as ready must match what the registry will actually
 // drive. This is the claim most likely to drift, because gating a provider is
@@ -145,11 +147,11 @@ for (const p of gated) {
 // conversation. Every one of these claimed otherwise until it was hunted down
 // by hand; a grep is cheaper than the next hunt.
 const agentSrc = readAgent();
-const indexHtml = read('desktop/index.html');
 check('the build no longer spawns parallel workers',
   !/setThreadKind\("build"\)/.test(agentSrc) && !agentSrc.includes('attachTo('),
   'a worker path came back');
-check('Settings offers no parallelism control', !indexHtml.includes('concurrency-select'));
+check('Settings offers no parallelism control',
+  !/concurrency/i.test(read('native/qml/panels/SettingsPanel.qml') + read('native/qml/singletons/SettingsStore.qml')));
 // The changelog claimed parallel steps for a whole session after the code
 // stopped doing it, because the drift check only looked at README and the site.
 check('the changelog does not promise parallel steps',
@@ -163,9 +165,8 @@ check('the roadmap records the concurrency reversal',
 // Latin-1 instead of removing them, leaving "ðŸ”" in a source file. Em dashes,
 // bullets, ellipses and middots are deliberate typography and must not trip
 // this - the first version of this check flagged them and was wrong.
-const MOJIBAKE = /Ã[-ÿ]|â€|â€™|ðŸ|Â[ -¿]|Å’|Å¸/;
-const mojibakeTargets = [...AGENT_FILES, ...RENDERER_FILES, ...MAIN_FILES,
-  'desktop/builder.js', 'README.md'];
+const MOJIBAKE = /Ã[-ÿ]|â€|â€™|ðŸ|Â[ -¿]|Å’|Å¸/;
+const mojibakeTargets = [...AGENT_FILES, ...QML_FILES, ...CPP_FILES, 'README.md'];
 const garbled = mojibakeTargets.filter((f) => MOJIBAKE.test(read(f)));
 check('no mojibake in source', garbled.length === 0, garbled.join(', '));
 
@@ -178,31 +179,33 @@ check('README quotes the same budget', /[Tt]wo attempts/.test(readme));
 // The scheduler can run independent steps and block only what truly depended
 // on a failure. It spent its whole life unable to, because the renderer built
 // its step list without carrying dependsOn across - so every plan looked
-// undeclared and became a chain. That line has no DOM to test it against, so
-// it is pinned here.
-const builder = read('desktop/builder.js');
+// undeclared and became a chain. The wiring has no unit test, so it is pinned
+// here. BuildState.qml is the builder; builder-logic.mjs its pure half.
+const builder = read('native/qml/singletons/BuildState.qml');
+const builderLogic = read('native/qml/js/builder-logic.mjs');
 check('the step list carries dependsOn from the plan',
-  /steps = plan\.steps\.map\([\s\S]{0,400}?dependsOn:/.test(builder));
+  /function stepsFromPlan[\s\S]{0,800}?dependsOn:/.test(builderLogic) && /B\.stepsFromPlan\(plan\.steps\)/.test(builder));
 check('the build graph comes from the scheduler, not an inline map',
-  /CNSched\.graphFor\(steps\)/.test(builder));
+  /Sched\.graphFor\(build\.steps\)/.test(builder));
 check('a session pins concurrency to one composer',
-  /sessionOn \? 1 : CN\.getConcurrency\(\)/.test(builder));
+  /sessionOn \? 1 : build\.concurrency\(\)/.test(builder));
 check('a failed apply gets its own follow-up, not the test-failure one',
   /command === "apply patch"[\s\S]{0,120}buildApplyFollowUp/.test(agent));
 
-// Resuming a build. Every one of these is renderer wiring with a tested module
-// on either side of it - the shape of bug that killed dependsOn.
-const preload = read('desktop/preload.js');
+// Resuming a build. Every one of these is wiring with a tested module on
+// either side of it - the shape of bug that killed dependsOn.
+const builds = read('native/src/BuildStore.h');
+const agentService = read('native/src/AgentService.cpp');
 check('the build state is saved on every status change',
   /function setStatusOf[\s\S]{0,300}saveBuildState\(\)/.test(builder));
 check('and restored when a workspace is opened',
-  /restoreBuild/.test(readRenderer()));
+  /function onWorkspaceOpened[\s\S]{0,120}restoreBuild\(folder\)/.test(builder));
 check('the restored plan replaces the one in memory',
-  /restored\)\s*\{\s*currentPlan = restored/.test(readRenderer()));
-check('the build state is reachable from the renderer',
-  /readBuildState/.test(preload) && /writeBuildState/.test(preload));
+  /AppState\.currentPlan = restored/.test(builder));
+check('the build state is reachable from QML',
+  /Q_INVOKABLE void readBuildState/.test(builds) && /Q_INVOKABLE void writeBuildState/.test(builds));
 check('a resumed build keeps what the conversation has been shown',
-  /const resuming = steps\.some/.test(builder) && /AGENT_RESUMING/.test(readMain()));
+  /var resuming = steps\.some/.test(builder) && /"AGENT_RESUMING"/.test(agentService));
 check('a step is told whether the conversation still has the plan',
   /threadHasContext: resumed/.test(agent));
 check('full context is sent when the thread is cold, not only on step 0',
@@ -217,13 +220,14 @@ check('a checkpoint is taken before every apply, not just the first',
 check('a step that ran out of attempts undoes its own changes',
   /attempt > maxFollowUps[\s\S]{0,600}restoreFailedStep\(workspace, checkpoint, stepIndex\)[\s\S]{0,160}if \(restored\.unrestorable\.length\) writeCheckpoint\(workspace, checkpoint\)/.test(agent));
 check('the rollback is planned and applied as two steps',
-  /plan-rollback/.test(readMain()) && /apply-rollback/.test(readMain()));
+  /Q_INVOKABLE void planRollback/.test(builds) && /Q_INVOKABLE void applyRollback/.test(builds));
 check('rollback refuses paths outside the workspace',
-  /function inside\(rel\)[\s\S]{0,260}startsWith\('\.\.'\)|function inside\(rel\)[\s\S]{0,260}startsWith\("\.\."\)/.test(readMain()));
+  /QString inside\([\s\S]{0,400}startsWith\(QLatin1String\("\.\."\)\)/.test(read('native/src/BuildRules.cpp')) &&
+  /Workspace::inside\(workspace, rel\)/.test(read('native/src/BuildStore.cpp')));
 check('the user confirms before anything is written',
-  /if \(!confirm\(msg\)\) return;[\s\S]{0,120}applyRollback/.test(builder));
+  /confirm\(msg, function \(\) \{ build\._applyRollback/.test(builder));
 check('drifted files are named in that confirmation',
-  /plan\.drifted\.join/.test(builder));
+  /plan\.drifted\.join/.test(builderLogic));
 
 // Conversation rollover. The dangerous ordering is doing it mid-step, so what
 // is pinned is that the decision happens before anything is sent.
@@ -233,35 +237,36 @@ check('a rolled-over thread is seeded as a cold one',
   /startFreshConversation\(config\)[\s\S]{0,600}buildPrompt\(\{\s*task: effectivePrompt, tree: ctx\.tree,[\s\S]{0,200}isFirstStep: true/.test(agent));
 check('repairs count towards the conversation too',
   /const followUp = buildFollowUp[\s\S]{0,500}addTurn\(controller\.getConversationSize\(\), followUp\.length/.test(agent));
-// A skill name arrives from the renderer and becomes a path, so the refusal is
-// the security-relevant part. An MCP server is an arbitrary subprocess the user
+// A skill name arrives from the UI and becomes a path, so the refusal is the
+// security-relevant part. An MCP server is an arbitrary subprocess the user
 // configured, which is a new category of thing this app runs.
 check('a skill name is refused rather than sanitised',
-  /isSafeName/.test(readMain()) &&
+  /SkillStore::isSafeName/.test(read('native/src/LibraryService.cpp')) &&
   /[Rr]efused rather than sanitised/.test(read('local-agent/src/skill-store.ts')));
 check('MCP context is gathered once per build, not per step',
-  /gather-mcp-context/.test(readMain()) &&
-  !/gatherMcpContext/.test(read('desktop/builder.js')));
+  /gatherMcpContext/.test(builder) && !/gatherMcpContext/.test(builderLogic));
 check('the preamble travels as an environment variable, like provider controls',
-  /AGENT_PREAMBLE = JSON\.stringify/.test(readMain()));
+  /env\.insert\(QStringLiteral\("AGENT_PREAMBLE"\)/.test(agentService));
 check('a status probe sends no preamble',
-  /agentEnv\("0", null\)/.test(readMain()));
+  /agentEnv\(QStringLiteral\("0"\), QVariant\(\), QVariant\(\)\)/.test(agentService));
 
-// Recent workspaces, and the bug adding them exposed: renderPlanDocument hands
-// the plan to the builder, which resets every status to pending - correct for a
+// Recent workspaces, and the bug adding them exposed: showing the plan hands
+// it to the builder, which resets every status to pending - correct for a
 // new plan, destructive for a restored one. Resume had been silently broken
 // since it landed, and the wrong statuses were being written back to disk.
-const rendererSrc = readRenderer();
+const planState = read('native/qml/singletons/PlanState.qml');
+const appState = read('native/qml/singletons/AppState.qml');
 check('restoring a build does not reset its statuses',
-  /renderPlanDocument\(restored, \{ keepBuild: true \}\)/.test(rendererSrc) &&
-  /!\(opts && opts\.keepBuild\)/.test(rendererSrc));
+  /PlanState\.showPlan\(restored, true\)/.test(builder) &&
+  /if \(!keepBuild\) BuildState\.setPlan\(plan\)/.test(planState));
 check('Browse and the recent list share one switch path',
-  /\$\("browse-btn"\)\.onclick[\s\S]{0,200}openWorkspace\(f\)/.test(rendererSrc));
+  /onAccepted: AppState\.openWorkspace\(/.test(read('native/qml/Main.qml')) &&
+  /AppState\.openWorkspace\(modelData\)/.test(read('native/qml/shell/RecentList.qml')));
 check('the recent list stores paths only, not session data',
-  /closeni\.recent-workspaces/.test(rendererSrc) &&
+  /closeni\.recent-workspaces/.test(appState) &&
   !/recent-workspaces/.test(read('local-agent/src/session-store.ts')));
 check('a missing folder is named rather than dropped',
-  /missing/.test(read('desktop/recent-workspaces.js')));
+  /missing/.test(read('native/qml/js/recent-workspaces.mjs')));
 
 // Skills, personas and MCP context all arrive as one preamble. The risk is the
 // same one that kept the code-quality block to four lines: text in front of the
@@ -273,27 +278,29 @@ check('base is never truncated',
 check('what was dropped is reported', /Preamble over budget/.test(agent));
 check('a malformed preamble is not fatal', /AGENT_PREAMBLE[\s\S]{0,300}catch/.test(agent));
 
-// The headless CLI. Its value is that it runs the build path outside Electron,
-// so what is pinned is that it reuses the app's modules rather than
+// The headless CLI. Its value is that it runs the build path without a
+// window, so what is pinned is that it reuses the app's modules rather than
 // reimplementing them - a copy would drift and keep passing.
 const cli = read('bin/closeni.js');
 check('the CLI reuses the app scheduler rather than its own',
-  /require\(path\.join\(ROOT, "desktop", "scheduler\.js"\)\)/.test(cli) &&
+  /require\(path\.join\(ROOT, "native", "qml", "js", "scheduler\.mjs"\)\)/.test(cli) &&
   !/function runnableSteps/.test(cli));
-check('and the app timing module', /require\(path\.join\(ROOT, "desktop", "step-timing\.js"\)\)/.test(cli));
+check('and the app timing module', /require\(path\.join\(ROOT, "native", "qml", "js", "step-timing\.mjs"\)\)/.test(cli));
 check('it builds an existing plan and does not plan', !/"plan"/.test(cli) && /only builds an existing plan/.test(cli));
 check('a headless run defaults to running no commands',
   /autonomy: "never"/.test(cli));
-check('the CLI is shipped and installable',
-  !!JSON.parse(read('package.json')).bin.closeni &&
-  JSON.parse(read('package.json')).build.files.includes('bin/**/*'));
+// Installable through npm's `bin` from a checkout. The native package does
+// not ship it: it needs the native/qml/js modules from a checkout and a Node
+// on PATH, which an installed app has neither of.
+check('the CLI is installable',
+  JSON.parse(read('package.json')).bin.closeni === 'bin/closeni.js' && existsSync(join(ROOT, 'bin/closeni.js')));
 
 // Timing. The value is in separating "waiting on the model" from "running a
 // slow test suite", so what is pinned is that phases are measured rather than
 // step totals guessed at.
-const timing = read('desktop/step-timing.js');
+const timing = read('native/qml/js/step-timing.mjs');
 check('timing comes from observed phases, not inference',
-  /CN\.notePhase/.test(readRenderer()) && /markPhase\(stepTimer/.test(builder));
+  /signal phaseNoted/.test(read('native/qml/singletons/Providers.qml')) && /Timing\.markPhase\(build\._stepTimer/.test(builder));
 check('time nobody accounted for is named, not folded into a neighbour',
   /UNATTRIBUTED/.test(timing));
 check('timing survives a restart', /timing\?: \{ totalMs/.test(read('local-agent/src/build-state.ts')));
@@ -302,38 +309,38 @@ check('stored timing is re-validated on read', /function readTiming/.test(read('
 // The plan editor. dependsOn is index-based, so the danger is an edit that
 // silently produces an unschedulable graph - which falls back to the chain and
 // undoes the scheduler work rather than failing loudly.
-const planEdit = read('desktop/plan-edit.js');
-const rendererJs = readRenderer();
+const planEdit = read('native/qml/js/plan-edit.mjs');
+const qmlSrc = readQml();
 check('plan edits go through the remapping module, never the array directly',
-  /window\.CNPlanEdit\.(moveStep|deleteStep|mergeStepUp)/.test(rendererJs) &&
-  !/currentPlan\.steps\.splice/.test(rendererJs));
+  /PlanEdit\.(moveStep|deleteStep|mergeStepUp)/.test(read('native/qml/js/renderer-logic.mjs')) &&
+  /R\.applyPlanEdit\(AppState\.currentPlan/.test(planState) &&
+  !/currentPlan\.steps\.splice/.test(qmlSrc));
 check('deleting a step hands on its dependencies', /inherited/.test(planEdit));
 check('an invalid move is refused rather than silently dropping a dependency',
   /cannot run before it/.test(planEdit));
 check('an undeclared step is not turned into a declared one',
   /if \(!declared\) return Object\.assign\(\{\}, step\)/.test(planEdit));
-check('the editor is loaded before the renderer that uses it',
-  indexHtml.indexOf('<script src="plan-edit.js">') < indexHtml.indexOf('<script src="renderer/core.js">'));
 
 // Exporting a build as git history. Two of these are bugs that only showed up
 // by running it against a real repository.
-const mainJs = readMain();
+const gitSrc = read('native/src/GitService.cpp');
 check('every step stages every build path, not only what it touched',
   /const allPaths = Object\.keys\(touchedAt\)/.test(read('local-agent/src/export-branch.ts')));
 check('the working tree is restored whatever happens',
-  /\} finally \{[\s\S]{0,400}The project goes back to how it was found/.test(mainJs));
+  /The finally: the project goes back to how it was found/.test(gitSrc));
 check('the export refuses a dirty tree',
-  /You have uncommitted changes/.test(mainJs));
+  /You have uncommitted changes/.test(gitSrc));
+// QProcess takes the arguments as a list, so there is no shell to split them.
 check('git still runs without a shell',
-  /spawn\("git", safe, \{ cwd: cwd, shell: false/.test(mainJs));
+  /setProgram\(QStringLiteral\("git"\)\);\s*proc->setArguments\(args\)/.test(read('native/src/GitRunner.cpp')));
 
 // A gated tab and the prose describing it drifted apart for a whole session,
-// because gating is a markup edit and updating the docs is a separate act of
+// because gating is a one-line edit and updating the docs is a separate act of
 // will - the same failure the provider counter check exists for.
-const researchGated = /data-mode="research"[^>]*data-gated/.test(indexHtml);
+const researchGated = /mode: "research"[^}]*gated/.test(appState);
 check('the docs agree with whether Research is gated',
   researchGated === /Research (panel )?is gated|Research — gated/.test(readme),
-  researchGated ? 'gated in markup' : 'live in markup');
+  researchGated ? 'gated in the app' : 'live in the app');
 // Research must not scrape a search engine. That is the trap the whole project
 // is written against, and it would be an easy thing to reach for later.
 const research = readAgent();
@@ -341,7 +348,7 @@ const researchCode = research.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/
 check('research uses the provider search, not a scraped results page',
   /smart-search/.test(researchCode) && !/duckduckgo|google\.com\/search|bing\.com/i.test(researchCode));
 check('GitHub search is authenticated',
-  /searchRepos/.test(read('desktop/github-api.js')));
+  /searchRepos/.test(read('native/src/GitHubApi.cpp')) && /"Authorization", "Bearer "/.test(read('native/src/GitHubApi.cpp')));
 
 // The long-prompt path. A React composer shadows `value` with an own property,
 // so el.value = text is swallowed and nothing sends - which hung a real build
@@ -437,7 +444,7 @@ check('there is an opt-in interop check against a real server',
 check('a checkpoint records the step title, not the whole prompt',
   /req\.title \|\| stepDetail/.test(agent));
 check('and the title is sent by both the app and the CLI',
-  /title: payload\.title/.test(readMain()) &&
+  /\{QStringLiteral\("title"\), orString\(payload\.value\(QStringLiteral\("title"\)\)/.test(agentService) &&
   /title: steps\[i\]\.title/.test(read('bin/closeni.js')));
 
 // The stream tap wrapped fetch only, and DeepSeek's page never calls fetch -
@@ -468,21 +475,22 @@ check('the reply is checked for content, not presence', /reply\.includes\(expect
 check('it uses a thread of its own', /setThreadKind\("worker"\)[\s\S]{0,400}navigateFresh/.test(agent));
 check('npm run smoke exists', !!JSON.parse(read('package.json')).scripts.smoke);
 
-// Step review. All renderer code, and two of these are bugs that would only
-// show up at runtime: Electron has no window.prompt, and a build waiting on a
-// verdict nobody will give never ends.
+// Step review. Wiring with no unit test, and two of these are bugs that would
+// only show up at runtime: there is no blocking prompt() to ask for a reason
+// (the panel's dialog does), and a build waiting on a verdict nobody will give
+// never ends.
 check('review is opt-in, not opt-out',
-  /localStorage\.getItem\("closeni\.review-steps"\) === "on"/.test(builder));
+  /Prefs\.get\("closeni\.review-steps", "off"\) === "on"/.test(builder));
 check('a rejection asks for a reason and sends it on',
-  /A previous attempt at this step was rejected/.test(builder));
+  /A previous attempt at this step was rejected/.test(builderLogic) && /B\.stepPrompt\(plan, s, rejection\)/.test(builder));
 check('a rejected step is undone before it is redone',
-  /rollbackQuietly\(i\)[\s\S]{0,200}rejection = verdict\.reason/.test(builder));
-check('window.prompt is never called - Electron does not implement it',
+  /_rollbackQuietly\(i\)\.then\(function \(\) \{[\s\S]{0,200}var reason = verdict\.reason[\s\S]{0,400}return attempt\(reason\)/.test(builder));
+check('no blocking prompt() is called - a reason comes from the panel',
   !/(^|[^.\w])prompt\(/m.test(builder.replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '')));
 check('Stop releases a step waiting on review',
-  /stopRequested = true;[\s\S]{0,600}settleReview\(\{ accept: true \}\)/.test(builder));
+  /stopRequested = true[\s\S]{0,600}settleReview\(\{ accept: true \}\)/.test(builder));
 check('a step that changed nothing does not pause',
-  /!reviewOn\(\) \|\| !filesArr\.length \|\| stopRequested/.test(builder));
+  /!build\.reviewSteps \|\| !filesArr\.length \|\| build\.stopRequested/.test(builder));
 
 // Tests the model wrote. The plan declares which steps have behaviour worth
 // asserting, and that flag has to survive the same renderer journey dependsOn
@@ -495,8 +503,8 @@ check('a failing test gets its own follow-up',
   /command === "run tests"[\s\S]{0,200}buildTestFollowUp/.test(agent));
 check('the follow-up does not decide which is wrong',
   /either could be at fault/.test(read('local-agent/src/follow-up.ts')));
-check('testable survives the renderer', /testable: s\.testable === true/.test(builder));
-check('and the IPC to the session', /testable: !!payload\.testable/.test(readMain()));
+check('testable survives the builder', /testable: s\.testable === true/.test(builderLogic) && /testable: s\.testable/.test(builder));
+check('and the call to the session', /\{QStringLiteral\("testable"\), truthy\(payload\.value\(QStringLiteral\("testable"\)\)\)\}/.test(agentService));
 check('and a restart', /testable\?: boolean/.test(read('local-agent/src/build-state.ts')));
 
 // Type checking. The flags are the feature: without --ignore-missing-imports a
@@ -523,9 +531,9 @@ check('a failed probe does not stop a build',
 check('the read path is judged against a resumed conversation',
   /conversationResumed: resumed/.test(agent));
 check('there is an on-demand check too',
-  /provider-health/.test(readMain()) && /acct-health/.test(read('desktop/index.html')));
+  /void AgentService::providerHealth/.test(agentService) && /Providers\.checkSelectors\(\)/.test(read('native/qml/shell/Rail.qml')));
 check('the on-demand check is queued against the profile lock',
-  /refuseWhileBuilding\("The selector check"\)/.test(readMain()));
+  /refuseWhileBuilding\(QStringLiteral\("The selector check"\)\)/.test(agentService));
 
 check('the size is stored with the ledger, so both reset together',
   /entry\.buildLedger = \{\};[\s\S]{0,120}entry\.conversationSize/.test(read('local-agent/src/session-store.ts')));
@@ -577,24 +585,49 @@ for (const f of assets) {
 
 group('Release configuration');
 const pkg = JSON.parse(read('package.json'));
+const appMeta = JSON.parse(read('native/package/app.json'));
 check('version is set', /^\d+\.\d+\.\d+$/.test(pkg.version), pkg.version);
-check('linux deb has a maintainer', !!(pkg.build?.linux?.maintainer), pkg.build?.linux?.maintainer || 'MISSING — the .deb target refuses to build without it');
-check('files list is an allow-list, not a glob',
-  Array.isArray(pkg.build?.files) && !pkg.build.files.includes('**/*'), (pkg.build?.files || []).join(' '));
-check('storage is never in the files list',
-  !(pkg.build?.files || []).some((f) => /storage/.test(f)));
-check('publish is a draft', pkg.build?.publish?.releaseType === 'draft');
+// One home for the version: CMake reads package.json, so the app, its
+// installers and the release tag cannot disagree.
+check('CMake takes its version from package.json',
+  /string\(JSON CLOSENI_PACKAGE_VERSION GET \$\{CLOSENI_PACKAGE_JSON\} version\)/.test(read('native/CMakeLists.txt')) &&
+  /project\(CloseNI VERSION \$\{CLOSENI_PACKAGE_VERSION\}/.test(read('native/CMakeLists.txt')));
+check('linux deb has a maintainer', /^[^<>]+ <[^@\s<>]+@[^\s<>]+>$/.test(appMeta.maintainer || ''),
+  appMeta.maintainer || 'MISSING — a .deb without a Maintainer field is refused by dpkg');
+// stage.mjs copies only local-agent/dist and config (the unit suite pins
+// that), and what actually lands in the stage is audited below, which is the
+// stronger check.
+check('the bundled Node is a 22 LTS pinned by checksum for every target',
+  /^22\.\d+\.\d+$/.test(appMeta.node?.version || '') &&
+  ['linux-x64.tar.gz', 'win-x64.zip', 'darwin-arm64.tar.gz', 'darwin-x64.tar.gz']
+    .every((k) => /^[0-9a-f]{64}$/.test(appMeta.node?.sha256?.[k] || '')), appMeta.node?.version);
+check('packaging tools are downloaded over https and pinned by checksum',
+  Object.values(appMeta.tools || {}).length > 0 &&
+  Object.values(appMeta.tools).every((t) => /^https:\/\//.test(t.url) && /^[0-9a-f]{64}$/.test(t.sha256)));
 
 const wf = read('.github/workflows/release.yml');
+// The jobs, split on their two-space-indented keys under `jobs:`.
+const jobs = Object.fromEntries((wf.split(/^jobs:\n/m)[1] || '').split(/^(?=  [a-z][\w-]*:\n)/m)
+  .map((j) => [(j.match(/^  ([a-z][\w-]*):/) || [])[1], j]).filter(([k]) => k));
 check('release workflow checks the tag against package.json', /does not match package.json version/.test(wf));
-check('release workflow serialises the two OS jobs', /max-parallel:\s*1/.test(wf));
-// Compare the executed `run:` lines, not any mention - electron-builder is
-// named in a comment near the top, which made this pass/fail on prose.
-const runLines = [...wf.matchAll(/^\s*run:\s*(.+)$/gm)].map((m) => m[1]);
-const iTests = runLines.findIndex((l) => l.includes('run-tests.cjs'));
-const iPack = runLines.findIndex((l) => l.includes('electron-builder'));
+check('installers are built for windows, linux and both macs',
+  ['linux-x64', 'win-x64', 'mac-arm64', 'mac-x64'].every((t) => new RegExp(`target: ${t}\\b`).test(jobs.package || '')));
+// Replaces "serialises the two OS jobs" (max-parallel: 1). That guarded
+// electron-builder publishing from each job and racing to create the release;
+// now the build jobs only upload artifacts and one job publishes after them all.
+check('one job publishes, after every installer is built',
+  /needs: package\b/.test(jobs.publish || '') && (wf.match(/gh release create/g) || []).length === 1 &&
+  !/gh release/.test(jobs.package || ''), Object.keys(jobs).join(', '));
+check('publish is a draft', /gh release create [^\n]*--draft/.test(jobs.publish || ''));
+check('only the publish job can write to the repository',
+  /^permissions:\n\s+contents: read/m.test(wf) && /contents: write/.test(jobs.publish || '') &&
+  (wf.match(/contents: write/g) || []).length === 1);
+// Compare the executed `run:` lines, not any mention, so prose in a comment
+// cannot make this pass or fail.
+const runLines = (j) => [...(j || '').matchAll(/^\s*run:\s*(.+)$/gm)].map((m) => m[1]);
 check('release workflow runs unit tests before packaging',
-  iTests !== -1 && iPack !== -1 && iTests < iPack, `tests step ${iTests}, package step ${iPack}`);
+  runLines(jobs.test).some((l) => l.includes('run-tests.cjs')) && /needs: test\b/.test(jobs.package || '') &&
+  runLines(jobs.package).some((l) => l.includes('native/package/stage.mjs --installers')));
 
 // gitignore must still exclude live session state.
 const ignore = read('.gitignore');
@@ -611,18 +644,99 @@ try {
 
 if (!QUICK) {
   group('Packaged artifact');
-  const asar = 'dist/linux-unpacked/resources/app.asar';
-  if (!existsSync(join(ROOT, asar))) {
-    check('a packaged build exists to audit', false, 'run `npx electron-builder --linux` first');
+  // The native app as native/package/stage.mjs staged it (npm run pack): the
+  // AppDir, CloseNI.app or install directory the installers are made from.
+  // The stage itself is walked, for what the native app needs and for what
+  // must never ship.
+  const manifestFile = 'dist/native/stage.json';
+  if (!existsSync(join(ROOT, manifestFile))) {
+    check('a packaged build exists to audit', false, 'run `npm run pack` first');
   } else {
-    const list = sh('npx', ['asar', 'list', asar]).split('\n');
-    const leaked = list.filter((f) => /storage\/|sessions\.json|last-chat-url|browser-profiles/.test(f));
-    check('no session data in the artifact', leaked.length === 0, leaked.slice(0, 5).join(', '));
-    for (const need of ['/local-agent/dist/index.js', '/desktop/main.js', '/desktop/main/github.js',
-      '/desktop/renderer/core.js', '/desktop/theme.js', '/build/icon.png']) {
-      check(`artifact contains ${need}`, list.includes(need));
+    const m = JSON.parse(read(manifestFile));
+    const stage = join(ROOT, m.stage);
+    const res = join(ROOT, m.resources);
+    const walk = (dir) => readdirSync(dir).flatMap((n) => {
+      const p = join(dir, n);
+      return lstatSync(p).isDirectory() ? walk(p) : [p];
+    });
+    const files = existsSync(stage) ? walk(stage).map((p) => p.slice(stage.length + 1).split('\\').join('/')) : [];
+    const resRel = res.slice(stage.length + 1).split('\\').join('/');
+    const inRes = (p) => (resRel ? resRel + '/' : '') + p;
+    check('the stage exists', files.length > 0, m.stage);
+    check('the stage is this version', m.version === pkg.version, `${m.version} vs ${pkg.version}`);
+
+    const leaked = files.filter((f) => /(^|\/)(storage|browser-profiles|\.git)\/|sessions\.json|last-chat-url|(^|\/)\.env(\.|$)/.test(f));
+    check('no session data, .env or .git in the artifact', leaked.length === 0, leaked.slice(0, 5).join(', '));
+    check('no source maps or type declarations', !files.some((f) => /\.(map|d\.[cm]?ts)$/.test(f)),
+      files.filter((f) => /\.(map|d\.[cm]?ts)$/.test(f)).slice(0, 3).join(', '));
+    check('only the agent\'s dist, config and runtime packages are shipped',
+      files.filter((f) => f.startsWith(inRes('local-agent/')))
+        .every((f) => /^(dist|config|node_modules)\/|^package\.json$/.test(f.slice(inRes('local-agent/').length))));
+
+    for (const need of ['local-agent/dist/index.js', 'local-agent/package.json', 'local-agent/node_modules/playwright/cli.js']) {
+      check(`artifact contains ${need}`, files.includes(inRes(need)));
     }
-    check('artifact bundles playwright', list.some((f) => f.startsWith('/node_modules/playwright')));
+    check('artifact contains the provider configs', files.some((f) => f.startsWith(inRes('local-agent/config/providers/')) && f.endsWith('.json')));
+    check('artifact contains the app', existsSync(join(ROOT, m.executable)), m.executable);
+    check('artifact contains Node', existsSync(join(ROOT, m.node.path)), m.node.path);
+    check('the bundled Node is 22', /^22\./.test(m.node.version) && m.node.version === appMeta.node.version, m.node.version);
+    const host = { linux: 'linux-x64', win32: 'win-x64', darwin: process.arch === 'arm64' ? 'mac-arm64' : 'mac-x64' }[process.platform];
+    if (m.target === host) {
+      let said = '';
+      try { said = sh(join(ROOT, m.node.path), ['--version']).trim(); } catch (e) { said = String(e.message).slice(0, 100); }
+      check('and it runs', said === `v${m.node.version}`, said);
+    }
+
+    // Exactly the packages the agent needs at run time, resolved from its own
+    // package.json the way Node resolves them, and nothing it requires missing.
+    const agentPkg = JSON.parse(read('local-agent/package.json'));
+    const closure = new Set();
+    const queue = Object.keys(agentPkg.dependencies || {}).filter((d) => !d.startsWith('@agentic/'));
+    while (queue.length) {
+      const name = queue.shift();
+      if (closure.has(name)) continue;
+      const dir = ['local-agent/node_modules/' + name, 'node_modules/' + name].find((d) => existsSync(join(ROOT, d, 'package.json')));
+      if (!dir) continue;
+      closure.add(name);
+      const meta = JSON.parse(read(dir + '/package.json'));
+      queue.push(...Object.keys(meta.dependencies || {}));
+      queue.push(...Object.keys(meta.optionalDependencies || {}).filter((o) => existsSync(join(ROOT, 'node_modules', o))));
+    }
+    const modulesDir = join(res, 'local-agent', 'node_modules');
+    const shipped = existsSync(modulesDir) ? readdirSync(modulesDir).flatMap((n) => n.startsWith('@')
+      ? readdirSync(join(modulesDir, n)).map((s) => n + '/' + s) : [n]).sort() : [];
+    check('node_modules is exactly the agent\'s runtime closure', JSON.stringify(shipped) === JSON.stringify([...closure].sort()),
+      `shipped ${shipped.join(' ')}; needed ${[...closure].sort().join(' ')}`);
+    const required = new Set();
+    for (const f of files.filter((p) => p.startsWith(inRes('local-agent/dist/')) && p.endsWith('.js'))) {
+      for (const r of readFileSync(join(stage, f), 'utf8').matchAll(/require\("([^".][^"]*)"\)/g)) {
+        const id = r[1].replace(/^node:/, '');
+        required.add(id.startsWith('@') ? id.split('/').slice(0, 2).join('/') : id.split('/')[0]);
+      }
+    }
+    const builtin = new Set(builtinModules);
+    const unmet = [...required].filter((n) => !builtin.has(n) && !shipped.includes(n));
+    check('everything the agent requires is shipped', unmet.length === 0, unmet.join(', '));
+
+    // Lightweight by construction: Qt Quick's Basic style only, no web engine,
+    // no translations, no software OpenGL fallback.
+    check('Qt Quick Controls\' Basic style is shipped', files.some((f) => /\/qml\/QtQuick\/Controls\/Basic\/qmldir$/.test('/' + f)));
+    const otherStyles = files.filter((f) => /\/QtQuick\/Controls\/(Material|Universal|Fusion|Imagine|FluentWinUI3|Windows|macOS|iOS)\//.test('/' + f));
+    check('no other Qt Quick Controls style', otherStyles.length === 0, otherStyles.slice(0, 3).join(', '));
+    const web = files.filter((f) => /webengine|webview|webchannel/i.test(f));
+    check('no web engine or web view', web.length === 0, web.slice(0, 3).join(', '));
+    check('no translations', !files.some((f) => /\.qm$/.test(f) || /(^|\/)translations\//.test(f)));
+    check('no software OpenGL', !files.some((f) => /opengl32sw\.dll$/i.test(f)));
+    check('a platform plugin is shipped', files.some((f) => /platforms\/(libqxcb\.so|qwindows\.dll|libqcocoa\.dylib)$/.test(f)));
+    // The file and folder pickers (QtQuick.Dialogs) load these at run time;
+    // without them a dialog fails only when someone opens it. The qml/assets
+    // textures need no check: they are compiled into the executable.
+    for (const p of ['qtquickdialogsplugin', 'qtquickdialogs2quickimplplugin']) {
+      check(`QtQuick.Dialogs plugin ${p} is shipped`, files.some((f) => new RegExp(`(^|/)(lib)?${p}\\.(so|dll|dylib)$`).test(f)));
+    }
+    // Electron's linux-unpacked was 283 MB; the native app must stay well under it.
+    check('the stage is smaller than the Electron build it replaces (283 MB)', m.bytes < 283 * 1048576,
+      `${(m.bytes / 1048576).toFixed(1)} MB`);
   }
 }
 
@@ -646,8 +760,10 @@ console.log(`
 ${'-'.repeat(W)}
   NOT covered by this script, and still unverified:
 
-    · The Windows installer. No Windows machine here; the first .exe the
-      release workflow builds is unverified until someone installs it.
+    · The Windows installer and the macOS disk images. No Windows or Mac
+      here; the first .exe and .dmg the release workflow builds are
+      unverified until someone installs them. The packaging audit above
+      covers only the stage built on this machine.
     · Qwen and GLM are selectable as experimental, not verified. Qwen's 300s
       completion wait has not been re-run live with a build-sized prompt;
       GLM's live site declined the build prompts when last tried. Only

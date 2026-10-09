@@ -3,6 +3,55 @@
 All notable changes to CloseNI are recorded here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] — 2026-10-09
+
+CloseNI is now a native Qt app. The Electron app is gone. Every screen is
+Qt Quick, with no web view anywhere. The agent is the same Node and Playwright
+process as before, started the same way. Installers are built by CI for
+Windows, Linux and, for the first time, macOS. They are unsigned, as before.
+
+### The native app
+
+- **Smaller and lighter.** The unpacked Linux app is 233.5 MB, down from
+  283 MB with Electron. The AppImage is 78.5 MB. At idle the app holds about
+  95 MB of resident memory. The packages bundle only the Qt modules the app
+  uses, Node 22 and the agent. Chromium is still downloaded on first use.
+- **Build preview is now the run console plus Open in browser.** The Electron
+  app showed a running project in an embedded page. The native app has no web
+  view. The run window is a native console for the program's output, and
+  **Open in browser** hands the address to your system browser.
+- **macOS builds.** Apple silicon and Intel disk images. They are unsigned, so
+  Gatekeeper has to be told to allow the app the first time.
+
+### Upgrading from 0.3.0
+
+- **GitHub needs one sign-in again.** The Electron app encrypted the token
+  with Electron's safeStorage, and the native app cannot read that copy. The
+  new token goes in the OS keyring: DPAPI on Windows, the keychain on macOS,
+  and the Secret Service on Linux.
+- **Settings are imported once.** On first run the native app copies the
+  Electron app's settings (theme, provider, autonomy, persona, skills, recent
+  workspaces and the like) from its localStorage. This is best-effort. Anything
+  it cannot read keeps its default. Sign-ins, sessions and downloaded browsers
+  were never in localStorage. They stay where they were, because the storage
+  directory is the same.
+- **The installers replace the Electron app.** On Windows, the old per-user
+  install is uninstalled first and its data is kept. On Linux, the .deb
+  replaces the old `closeni` package.
+
+### For developers
+
+- `npm start` runs the native build (`cmake -S native -B build-native -G Ninja
+  && cmake --build build-native`). `desktop/`, `electron` and
+  `electron-builder` are removed.
+- The unit suite checks the native sources. The old `desktop-unit.cjs` is now
+  `app-unit.cjs`, and it also checks every theme's contrast. `test:ui` and
+  `verify:visual` are retired. The Code panel and build flows run end to end
+  in CI against the mock provider (`native/tests/code-e2e.cjs`,
+  `native/e2e-build.cjs`). The site and SVG checks are `npm run verify:site`.
+- `closeni build` (headless) uses the app's own scheduler from
+  `native/qml/js/`.
+
 ## [0.3.0] — 2026-10-08
 
 DeepSeek is hardened for the coding agent and was checked against the live site

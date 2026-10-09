@@ -1,7 +1,7 @@
 {
   "name": "closeni",
   "productName": "CloseNI",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "description": "A desktop agent that drives web-based AI chats through a real browser to plan, build and verify software projects. No API keys.",
   "license": "MIT",
@@ -14,28 +14,25 @@
   "keywords": [
     "ai",
     "agent",
-    "electron",
     "playwright",
     "code-generation",
-    "desktop"
+    "desktop",
+    "qt"
   ],
-  "main": "desktop/main.js",
   "workspaces": [
     "shared",
-    "local-agent",
-    "desktop"
+    "local-agent"
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
-    "start": "electron .",
-    "pack": "electron-builder --dir",
-    "dist": "electron-builder",
+    "start": "node scripts/start.mjs",
+    "pack": "node native/package/stage.mjs",
+    "dist": "node native/package/stage.mjs --installers",
     "verify": "node scripts/verify.mjs",
-    "verify:visual": "node scripts/verify-visual.mjs",
-    "test:ui": "node scripts/ui-code.mjs",
     "test": "node local-agent/test/run-tests.cjs",
     "test:e2e": "node local-agent/test/run-e2e.cjs",
-    "assets": "node scripts/make-svg-assets.mjs && node scripts/make-screenshots.mjs",
+    "assets": "node scripts/make-svg-assets.mjs",
+    "verify:site": "node scripts/verify-site.mjs",
     "site": "node scripts/make-site.mjs",
     "trial": "node scripts/trial-build.mjs",
     "edge": "node scripts/edge-cases.mjs",
@@ -54,64 +51,18 @@
     "test:extraction": "node local-agent/test/web-unit.cjs && node local-agent/test/run-web.cjs extraction",
     "test:chaos": "node local-agent/test/run-web.cjs chaos",
     "test:web": "node local-agent/test/web-unit.cjs && node local-agent/test/run-web.cjs",
-    "test:all": "npm test && npm run test:web && npm run test:ui && npm run test:e2e",
+    "test:all": "npm test && npm run test:web && npm run test:e2e",
     "web:report": "node scripts/web-report.mjs",
     "webtest": "node local-agent/dist/index.js webtest",
     "agent": "node local-agent/dist/index.js agent"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
-    "electron": "^44.5.1",
-    "electron-builder": "^26.15.3",
     "marked": "^18.0.14",
     "typescript": "^5.5.4"
   },
   "dependencies": {
     "playwright": "^1.63.0"
-  },
-  "build": {
-    "appId": "com.siddarth.closeni",
-    "productName": "CloseNI",
-    "icon": "build/icon.png",
-    "files": [
-      "package.json",
-      "desktop/**/*",
-      "local-agent/dist/**/*",
-      "local-agent/config/**/*",
-      "build/icon.png",
-      "bin/**/*"
-    ],
-    "asarUnpack": [
-      "local-agent/**",
-      "node_modules/playwright/**",
-      "node_modules/playwright-core/**"
-    ],
-    "win": {
-      "target": [
-        "nsis"
-      ],
-      "icon": "build/icon.png"
-    },
-    "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
-      "artifactName": "CloseNI-Setup-${version}.${ext}"
-    },
-    "linux": {
-      "target": [
-        "AppImage",
-        "deb"
-      ],
-      "icon": "build/icon.png",
-      "category": "Development",
-      "maintainer": "Siddarth S <sid1872004@gmail.com>",
-      "synopsis": "Drive web AI chats as a build pipeline",
-      "description": "A desktop agent that drives web-based AI chats through a real browser to plan, build and verify software projects. No API keys."
-    },
-    "publish": {
-      "provider": "github",
-      "releaseType": "draft"
-    }
   },
   "bin": {
     "closeni": "bin/closeni.js"

@@ -7,10 +7,10 @@
 **Free web AI chats, turned into a coding agent.**<br>
 Ask for a change and it reads your project, edits files, runs commands and checks its work, asking before anything it should. The model is a chat site driven in a real browser, the way you would use it.
 
-[![Electron](https://img.shields.io/badge/Electron-31-47848F?style=flat-square&logo=electron&logoColor=white)](https://www.electronjs.org/)
+[![Qt](https://img.shields.io/badge/Qt-6.10-41CD52?style=flat-square&logo=qt&logoColor=white)](https://www.qt.io/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Playwright](https://img.shields.io/badge/Playwright-1.62-2EAD33?style=flat-square&logo=playwright&logoColor=white)](https://playwright.dev/)
-[![Node](https://img.shields.io/badge/Node-18%2B-5FA04E?style=flat-square&logo=nodedotjs&logoColor=white)](https://nodejs.org/)
+[![Node](https://img.shields.io/badge/Node-22%2B-5FA04E?style=flat-square&logo=nodedotjs&logoColor=white)](https://nodejs.org/)
 [![API keys](https://img.shields.io/badge/API%20keys-none-ff7b72?style=flat-square)](#what-it-is)
 [![License](https://img.shields.io/badge/license-MIT-bc8cff?style=flat-square)](LICENSE)
 
@@ -157,12 +157,12 @@ Nothing is written before you approve the plan, and every step reports what it t
 
 ```mermaid
 flowchart TB
-    subgraph desktop["desktop/ · Electron host"]
-        R["renderer/<br/>panels, plans, diffs"]
-        B["builder.js<br/>runs the steps"]
-        S["scheduler.js<br/>dependency graph, resume"]
-        T["theme.js<br/>eleven themes"]
-        M["main.js<br/>IPC, git, keystore"]
+    subgraph desktop["native/ · Qt/QML app"]
+        R["qml/panels/<br/>panels, plans, diffs"]
+        B["BuildState.qml<br/>runs the steps"]
+        S["scheduler.mjs<br/>dependency graph, resume"]
+        T["Theme.qml<br/>eleven themes"]
+        M["src/ C++ services<br/>agent, git, keyring"]
         R <--> M
         B <--> M
         B --> S
@@ -211,7 +211,7 @@ flowchart TB
 
 </details>
 
-There is no bundler. Renderer modules are written UMD-style: they attach to `window` in the browser and export under Node. That makes scheduling, theming, diffing and entry-point detection unit-testable without a build step or a headless Electron instance.
+There is no web view and no bundler. The window is Qt Quick, and the services behind it (the agent and run processes, git, GitHub, files, the keyring) are C++. The pure logic, such as scheduling, theming, diffing and entry-point detection, is plain ES modules in `native/qml/js/`. The QML engine loads them and Node 22 `require()`s the same files, so they are unit-testable without a build step or a window.
 
 The TypeScript core compiles to CommonJS in `local-agent/dist/`, and tests run against the compiled output rather than the source, so what is tested is what ships.
 
@@ -604,7 +604,7 @@ flowchart LR
     end
     subgraph meta["claims vs code"]
         VF["npm run verify"]
-        VV["npm run verify:visual"]
+        VV["npm run verify:site"]
         LG["npm run languages"]
     end
     WEB --> FR[("fixture-results.json")]
@@ -624,7 +624,10 @@ npm run test:chaos        #   killed browser, closed tab, removed selector, view
 npm run webtest -- all    # the same scenarios against the live sites (never signs in)
 npm run web:report        # regenerate the provider matrix from recorded results
 npm run verify            # structural checks: claims vs code, assets, release config, packaging
-npm run verify:visual     # all eleven themes rendered and contrast-checked, plus the site
+npm run verify:site       # the Pages site and every pixel-art SVG, rendered in Chromium
+ctest --test-dir build-native        # the native app's C++ and QML tests
+node native/e2e-build.cjs            # the app runs a build end to end against the mock provider
+node native/tests/code-e2e.cjs       # the Code panel: a turn, a permission, the prompt's keys
 npm run languages         # every language check against the real compiler, good and broken code
 ```
 
@@ -635,7 +638,7 @@ npm run languages         # every language check against the real compiler, good
   - every image and anchor in this file resolves;
   - no SVG carries a script or an external reference;
   - the packaged artifact contains nothing from `local-agent/storage/`.
-- **`verify-visual.mjs`.** [`scripts/verify-visual.mjs`](scripts/verify-visual.mjs) renders the app under each of the eleven themes and measures the real contrast of every element that carries meaning.
+- **`verify-site.mjs`.** [`scripts/verify-site.mjs`](scripts/verify-site.mjs) renders the site at desktop and phone widths and checks that every pixel-art SVG has something drawn on its first frame. The contrast of every theme's meaningful colour pairs is checked by the unit suite, from the palettes in `Theme.qml`.
 
 Each verification script prints, at the end, what it does **not** cover.
 
@@ -654,15 +657,20 @@ npm run build
 # the browser CloseNI drives
 npx playwright install chromium
 
+# the app (Qt 6.10, CMake and Ninja)
+cmake -S native -B build-native -G Ninja
+cmake --build build-native
+
 # launch
-cd desktop && npm start
+npm start
 ```
 
 **Requirements:**
 
 - Node.js 22.12 or newer.
+- From source: Qt 6.8 or newer (CI uses 6.10), CMake 3.21+ and Ninja. The installers bundle Qt and Node.
 - Around 650 MB of disk for the Playwright Chromium download.
-- Windows 10+, or a Linux desktop with a keyring available for encrypted token storage. On a desktop Chromium does not recognise (Hyprland, sway, i3), CloseNI asks for the Secret Service (gnome-keyring, KeePassXC); pass `--password-store=` to choose another.
+- Windows 10+, macOS, or a Linux desktop. The GitHub token is kept in the OS keyring: DPAPI on Windows, the keychain on macOS, the Secret Service on Linux (GNOME Keyring, KWallet, KeePassXC). Without one CloseNI still runs, but asks you to sign in to GitHub each launch.
 
 #### Downloads
 
@@ -694,7 +702,7 @@ A **Getting started** checklist above the chat walks through these steps in orde
 source scripts/wsl-env.sh
 ```
 
-This sets up the display and library paths Electron and Chromium need under WSL2.
+This puts a Linux node first on the PATH and adds the library paths Chromium needs under WSL2.
 
 #### Reporting a bug
 
@@ -704,35 +712,34 @@ This sets up the display and library paths Electron and Chromium need under WSL2
 
 ## Distribution builds
 
-Releases are driven by a tag. `npm version 1.0.1 -m "Release %s"` followed by `git push --tags` builds on `windows-latest` and `ubuntu-latest`, and attaches the installers to a draft release. The full process, including how to verify an artifact before publishing, is in [docs/RELEASING.md](docs/RELEASING.md).
+Releases are driven by a tag. `npm version 1.0.1 -m "Release %s"` followed by `git push --tags` builds the native app's installers on Windows, Linux and macOS, and attaches them to a draft release. The full process, including how to verify an artifact before publishing, is in [docs/RELEASING.md](docs/RELEASING.md).
 
 | Platform | Artifact |
 |---|---|
-| Windows | `CloseNI-Setup-<version>.exe` (NSIS, chooses its own install directory) |
-| Linux | `CloseNI-<version>.AppImage` |
-| Linux | `closeni_<version>_amd64.deb` |
+| Windows x64 | `CloseNI-Setup-<version>.exe` (NSIS, per user, chooses its own install directory) |
+| Linux x64 | `CloseNI-<version>.AppImage` |
+| Linux x64 | `closeni_<version>_amd64.deb` |
+| macOS | `CloseNI-<version>-arm64.dmg`, `CloseNI-<version>-x64.dmg` (unsigned) |
 
 ```bash
-npm run pack   # unpacked distribution directory
-npm run dist   # platform installer (.exe / .deb / AppImage)
+npm run pack   # stage the app into dist/native/ (needs Qt 6.8+ and CMake)
+npm run dist   # and build this system's installers
 ```
 
-The packaged `files` list is an explicit allow-list. Widening it to a glob would sweep `local-agent/storage/` (live session cookies and private chat URLs) into a shipped artifact.
+The stager copies only `local-agent/dist`, its config and the packages the agent requires at run time, and `npm run verify` audits the staged app, so `local-agent/storage/` (live session cookies and private chat URLs) cannot reach a shipped artifact.
 
 ---
 
 ## Directory tree
 
 ```
-desktop/            Electron UI host, IPC handlers, and renderer
-  main.js             process host: window, agent lifecycle, sessions, sign-in
-  main/               IPC by domain: GitHub, git, build state, settings, files
-  renderer/           one script per panel, loaded in order; startup.js last
-  builder.js          step orchestration
-  scheduler.js        dependency graph, runnable set, resume state
-  theme.js            theme registry and persistence
-  github-safe.js      token redaction, argument validation, URL parsing
-  entrypoint.js       entry-point detection across languages
+native/             the app: Qt 6 and QML, no web view
+  src/                C++ services: agent and run processes, git, GitHub, files, builds, keyring
+  qml/                the window: panels, components, the shell, state and theme singletons
+  qml/js/             pure logic as ES modules shared with Node: scheduler, themes, diffs, entry points
+  package/            staging and the installers: NSIS, AppImage, .deb, dmg
+  tests/              Qt tests and the end-to-end flows
+bin/closeni.js      headless builds, on the app's own scheduler
 
 local-agent/        the TypeScript core
   src/providers/      PlaywrightController, per-provider page control, the shared stream tap
@@ -783,7 +790,7 @@ Stated plainly, because a README that only lists strengths is not useful.
 
 MIT. See [LICENSE](LICENSE). Copyright (c) 2026 Siddarth S.
 
-Packaged builds ship the Electron and Chromium licence files and Playwright's licence and third-party notices. The Chromium that Playwright drives is downloaded at first run, not bundled.
+Packaged builds bundle Qt (LGPL-3.0), Node.js and Playwright, each under its own licence, with Node's and Playwright's licence files beside them. The Chromium that Playwright drives is downloaded at first run, not bundled.
 
 <div align="center">
 <sub>Every animation above is pixel art generated by a script. No GIFs and no JavaScript, and every one of them loops forever.</sub>

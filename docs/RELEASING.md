@@ -1,7 +1,9 @@
 # Releasing CloseNI
 
 The release is driven by a tag. Everything else is automated by
-[`.github/workflows/release.yml`](../.github/workflows/release.yml).
+[`.github/workflows/release.yml`](../.github/workflows/release.yml), which
+builds the native Qt app's installers with
+[`native/package/stage.mjs`](../native/package/stage.mjs).
 
 ## Cutting a release
 
@@ -10,95 +12,126 @@ The release is driven by a tag. Everything else is automated by
 npm run build
 node local-agent/test/run-tests.cjs      # ~15s
 node local-agent/test/run-e2e.cjs        # ~20min, drives a real browser
+cmake -S native -B build-native -G Ninja && cmake --build build-native
+ctest --test-dir build-native
+node native/e2e-build.cjs                # the app runs a build, mock provider
+node native/tests/code-e2e.cjs           # the Code panel, mock provider
 
 # 2. Write the release into CHANGELOG.md before tagging.
 #    The tag is what people land on; an empty changelog entry is permanent.
 
 # 3. Bump and tag. `npm version` edits package.json and creates the tag
-#    together, which is what keeps the two from drifting.
+#    together, which is what keeps the two from drifting. CMake reads its
+#    version from package.json, so the app reports the same one.
 npm version 1.0.1 -m "Release %s"
 
 # 4. Push the commit and the tag
 git push && git push --tags
 ```
 
-The workflow then runs on `windows-latest` and `ubuntu-latest`, and publishes a
-**draft** release with the installers attached. Review it, paste the changelog
-entry in as the release notes, and publish.
+The workflow runs the unit suite, builds each system's installers on that
+system, and publishes one **draft** release with all of them attached, plus
+`SHA256SUMS.txt`. Review it, paste the changelog entry in as the release notes,
+and publish.
 
 ## What the workflow guards
 
 - **The tag must match `package.json`.** A `v1.0.1` tag on a `1.0.0`
   `package.json` produces installers named `1.0.0`, which is only ever noticed
-  after publishing. The job fails instead.
-- **Unit tests run before packaging**, so a broken build config never produces
-  an artifact.
-- **The two OS jobs are serialised** (`max-parallel: 1`). Both publish into the
-  same release and electron-builder creates it when missing; run them at once
-  and they race, leaving one job's artifacts on a release the other replaced.
-- **Installers are also uploaded as workflow artifacts**, kept 30 days, so a
-  draft deleted by accident does not mean rebuilding from the tag.
+  after publishing. The job fails instead, and `stage.mjs` also checks that
+  the built app reports the `package.json` version.
+- **Unit tests run before packaging**, so a broken build never produces an
+  artifact.
+- **One job publishes**, after every installer is built. The build jobs only
+  upload workflow artifacts; they cannot write to the repository. A re-run
+  replaces the files on the draft it already made.
+- **The Linux AppImage is smoke-tested as shipped**: bundled Node and agent,
+  Chromium in the storage directory, a Code session against the mock provider
+  (`node native/smoke.cjs --packaged <AppImage>`).
+- **Installers are also kept as workflow artifacts** for 30 days, so a draft
+  deleted by accident does not mean rebuilding from the tag.
+- **Every download is pinned.** Node and the AppImage tools are fetched by
+  `stage.mjs` and checked against SHA-256 sums in
+  [`native/package/app.json`](../native/package/app.json); Node is also checked
+  against its release's `SHASUMS256.txt`.
 
 ## Artifacts
 
 | Platform | File | Built on |
 |---|---|---|
-| Windows | `CloseNI-Setup-<version>.exe` (NSIS) | `windows-latest` |
-| Linux | `CloseNI-<version>.AppImage` | `ubuntu-latest` |
-| Linux | `closeni_<version>_amd64.deb` | `ubuntu-latest` |
+| Windows x64 | `CloseNI-Setup-<version>.exe` (NSIS, per user) | `windows-latest` |
+| Linux x64 | `CloseNI-<version>.AppImage` | `ubuntu-22.04` |
+| Linux x64 | `closeni_<version>_amd64.deb` | `ubuntu-22.04` |
+| macOS Apple silicon | `CloseNI-<version>-arm64.dmg` | `macos-15` |
+| macOS Intel | `CloseNI-<version>-x64.dmg` | `macos-15` |
 
-Installers are **unsigned**. Windows SmartScreen will warn about an
-unrecognised publisher, and that warning is correct — say so in the release
-notes rather than leaving people to guess.
+Linux is built on the oldest supported runner so the AppImage and the .deb run
+on any distribution with glibc 2.35 or newer.
+
+Each package holds the app, the Qt it uses (Qt Quick with the Basic style, no
+web engine, no translations), Node 22 and the compiled agent with the one
+package it needs at run time (Playwright). Chromium is not bundled: the app
+downloads it into `<storage>/browsers` on first use, as before.
+
+Installers are **unsigned**. Windows SmartScreen warns about an unrecognised
+publisher, and macOS Gatekeeper refuses to open an app from an unidentified
+developer until it is allowed in System Settings > Privacy & Security (the
+.app is signed ad hoc, which is all an unsigned build can be). Say so in the
+release notes rather than leaving people to guess.
+
+### Upgrading from the Electron app (0.3.0 and before)
+
+- **Windows:** the installer runs the Electron version's uninstaller first,
+  with `/KEEP_APP_DATA`, then installs into the same
+  `%LOCALAPPDATA%\Programs\CloseNI`. An Electron version installed for all
+  users needs administrator rights to remove, so it is left in place and the
+  installer says so.
+- **Linux:** the .deb replaces the old package (`closeni`), and installs to
+  `/opt/CloseNI` with `closeni` on PATH.
+- **All systems:** sign-ins, sessions and downloaded browsers stay where they
+  were, since the native app uses the same storage directory. Settings the
+  Electron app kept in its localStorage are imported once, on first run,
+  best-effort. The GitHub token has to be entered once more: Electron's
+  safeStorage copy cannot be read outside Electron, and the new one goes in
+  the OS keyring.
 
 ## Building locally
 
 ```bash
-npm run pack     # unpacked directory only, fastest way to check packaging
-npm run dist     # installers for the current platform
+npm run build    # the agent, which every package bundles
+npm run pack     # stage the app into dist/native/ (no installers)
+npm run dist     # stage it and build this system's installers
 ```
 
-Windows installers cannot be produced from Linux without Wine; that asymmetry
-is the reason the workflow exists.
+Both need Qt 6.8 or newer (`qtpaths` on PATH, or `QT_ROOT_DIR`), CMake, and on
+Linux `patchelf`; on Windows NSIS (`choco install nsis`). The header of `stage.mjs`
+lists the options; `--exe <built CloseNI>` stages an existing build instead of
+building one. Each system's installers can only be built on that system.
 
 ## Verifying a build before publishing
 
-The packaged `files` list is an **allow-list**. Widening it to a glob would
-sweep `local-agent/storage/` — live session cookies and private chat URLs —
-into a public artifact. Confirm that has not happened:
+`npm run verify` audits the staged app (`dist/native/stage.json` and the
+directory it names): no session data, `.env` or `.git`; the agent's dist,
+config and exactly its run-time packages; Node 22; the Basic style only; no
+web engine, translations or software OpenGL.
+
+Then run the packaged app the way a user gets it, against the mock provider:
 
 ```bash
-# Nothing from storage/ may appear. Expect no output.
-npx asar list dist/linux-unpacked/resources/app.asar \
-  | grep -iE "storage/|sessions\.json|last-chat-url|browser-profiles"
-
-# And the things that must be there
-npx asar list dist/linux-unpacked/resources/app.asar \
-  | grep -E "local-agent/dist/index.js|desktop/main.js|node_modules/playwright"
+CLOSENI_SMOKE_BROWSERS=~/.cache/ms-playwright \
+  node native/smoke.cjs --packaged dist/native/out/CloseNI-<version>.AppImage
 ```
 
-Then confirm the packaged app actually starts and its renderer loads, rather
-than only that the process survives:
+Without `CLOSENI_SMOKE_BROWSERS` the app downloads Chromium itself, as a first
+run does.
 
-```bash
-./dist/linux-unpacked/closeni --no-sandbox --remote-debugging-port=9333 &
-curl -s http://127.0.0.1:9333/json/list | grep -o '"title":"[^"]*"'
-# → "title":"CloseNI"
-```
+## Status of the native packages
 
-On WSL, `ERROR:viz_main_impl.cc … Exiting GPU process` is software-rendering
-noise and not a failure.
+| Check | Linux | Windows | macOS |
+|---|---|---|---|
+| Installer builds | verified locally | CI only | CI only |
+| Staged app passes the audit | verified | not yet | not yet |
+| Packaged app runs a Code session | verified (AppImage and .deb payload) | not yet | not yet |
+| Installer installs, upgrades, uninstalls | n/a (AppImage); .deb not installed | **not yet** | **not yet** |
 
-## Status of the 1.0.0 verification
-
-| Check | Linux | Windows |
-|---|---|---|
-| Installer builds | verified | verified — CI, v1.0.0 |
-| No session data in the artifact | verified | verified |
-| Packaged app launches, renderer loads | verified | verified — started on Windows 11 |
-| Installer actually installs | n/a (AppImage) | **not yet — nobody has run it** |
-
-The Windows *application* has been packaged and started on a real machine. The
-NSIS *installer* that wraps it was first produced by CI for v1.0.0 and has not
-been installed by anyone. That is the one remaining unknown on Windows, and it
-stays listed until someone runs it.
+Windows and macOS stay unverified until someone installs the first CI build.

@@ -299,6 +299,8 @@ never inside a real project.
       pytest when the project made none). A turn that doesn't end as expected
       fails the scenario. `--record` appends the table to
       `docs/testing/agent-live.md`. Tried live in auto mode: 3 and 12 passed.
+      *9 Oct:* removed with Electron. It drove the Electron renderer over CDP;
+      bringing it back needs a scenario-driven native self-test flow.
       9's plan approval and 10's `/rewind` step are still unproven, because
       DeepSeek signed out partway through.
 - [ ] **1.14 Run the suite twice**, and fix whatever falls apart between runs (L,
@@ -476,8 +478,8 @@ throwaway GitHub account or repo.
 - [ ] **7.2 Themes** (M). Eleven themes, most never seen. **Recommendation:** ship
       three to four themes you've actually looked at (for example Terminal,
       Pixel, one light theme and one high-contrast theme) and cut the rest. Every
-      theme multiplies the UI's test surface. `verify:visual` checks contrast,
-      not whether the layout looks right.
+      theme multiplies the UI's test surface. The unit suite checks each
+      palette's contrast, not whether the layout looks right.
 - [ ] **7.3 Code panel details** (M):
   - long transcripts: scrolling performance after 500 or more tool lines;
   - copying code out of results;
@@ -697,6 +699,7 @@ they name; the rule for each is fixed now so the run decides, not a debate.
 | D10 | Auto-update, or remote provider configs? (10.5) | Remote provider configs first | Most fixes are selector JSON, and this ships them without a release |
 | D11 | e2e in CI? (0.4) | On pull requests and by hand, not on every push | The repo is public, so minutes are free, and a PR is where a break should be caught |
 | D12 | Windows shell for `bash`? (1.11) | Git Bash when it is installed, else `cmd.exe`, and the preamble names the one in use | The model writes bash; when it can't have bash, it must be told |
+| D13 | Replace Electron with a native app, and support macOS? | Yes, decided 8 Oct: Qt 6 with a QML UI, the agent stays Node, macOS unsigned. Electron ships until the Qt app matches it. *9 Oct, done:* 0.4.0 ships the Qt app, and Electron is deleted (`desktop/`, `electron`, `electron-builder`, `test:ui`) | The owner's call. Spec: `superpowers/specs/2026-10-08-native-qt-design.md` |
 
 ---
 
@@ -709,7 +712,7 @@ at the top.
 - Reading reply text from the network stream (investigated and declined; see `archive/NEXT.md` §1)
 - Content-refusal detection (Needle named refusals; it was removed with 5.3)
 - An agent inside VS Code (see 8.5)
-- macOS builds (no Mac to test on; unsigned macOS apps are a worse experience than Windows)
+- macOS builds: moved into scope by D13 (the native Qt app); still no Mac to test on
 - MCP servers as agent tools, not only as pre-build context
 - Images and screenshots in agent prompts
 - Sub-agents and parallel tool calls across providers

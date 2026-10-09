@@ -468,7 +468,7 @@ function testDelta() {
 
 function testDiff() {
   section("line diff");
-  const { diffLines } = require(path.join(__dirname, "..", "..", "desktop", "diff.js"));
+  const { diffLines } = require(path.join(__dirname, "..", "..", "native", "qml", "js", "diff.mjs"));
   const types = (rows) => rows.map((r) => r.type).join(",");
   const texts = (rows, t) => rows.filter((r) => r.type === t).map((r) => r.text);
 

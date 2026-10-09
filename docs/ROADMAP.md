@@ -5,7 +5,8 @@ and implementation plan under `docs/superpowers/`, and is expected to leave the
 application working on its own.
 
 Two items from the original list were cut: replacing Electron with a native
-toolkit, and using the discrete GPU when opening a project.
+toolkit, and using the discrete GPU when opening a project. (The first came
+back as D13 in `ROADMAP-1.0.md`: 0.4.0 replaced Electron with a Qt app.)
 
 **Status vocabulary:** `todo` — not started. `partial` — real groundwork exists,
 listed per item. `done` — finished and verified by tests.

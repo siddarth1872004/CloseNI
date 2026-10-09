@@ -69,7 +69,7 @@ function testControlDecisions() {
 
 function testControlSettings() {
   section("provider control settings");
-  const { resolveControls, labelFor } = require(path.join(__dirname, "..", "..", "desktop", "controls-settings.js"));
+  const { resolveControls, labelFor } = require(path.join(__dirname, "..", "..", "native", "qml", "js", "controls-settings.mjs"));
 
   const controls = [
     { id: "mode", kind: "select", default: "default", options: [{ value: "default" }, { value: "expert" }] },
@@ -364,7 +364,7 @@ async function testSelectorSyntax() {
   // kind: "dom" goes to querySelector; "pw" to Playwright; "shared" is a config
   // or property value, which may reach either.
   const found = [];
-  for (const f of walk(path.join(ROOT, "local-agent", "src"), []).concat(walk(path.join(ROOT, "desktop"), []))) {
+  for (const f of walk(path.join(ROOT, "local-agent", "src"), [])) {
     const sf = ts.createSourceFile(f, fs.readFileSync(f, "utf8"), ts.ScriptTarget.Latest, true, f.endsWith(".ts") ? ts.ScriptKind.TS : ts.ScriptKind.JS);
     const at = (n) => path.relative(ROOT, f) + ":" + (sf.getLineAndCharacterOfPosition(n.getStart()).line + 1);
     (function visit(n) {
@@ -714,7 +714,6 @@ async function testLocalModels() {
 
 function testResearch() {
   section("research through the provider's own search");
-  const GH = require(path.join(__dirname, "..", "..", "desktop", "github-api.js"));
 
   // Sources are how a research answer is checked rather than trusted.
   // Its own module, because requiring index.js runs main().
@@ -742,29 +741,8 @@ function testResearch() {
   check("one without it is not",
     idx.hasSearchControl({ controls: [{ id: "mode" }] }) === false);
   check("no controls at all is not", idx.hasSearchControl({}) === false);
-
-  // GitHub search, authenticated, shaped down to what the panel shows.
-  const calls = [];
-  const api = GH.createGitHubApi(function (method, apiPath) {
-    calls.push(method + " " + apiPath);
-    return Promise.resolve({ status: 200, body: { items: [
-      { full_name: "pallets/flask", description: "d", stargazers_count: 68000,
-        language: "Python", html_url: "https://github.com/pallets/flask", pushed_at: "2026-08-01" },
-    ] } });
-  });
-  return api.searchRepos("flask session", 5).then(function (rows) {
-    check("the search hits the repositories endpoint", /\/search\/repositories/.test(calls[0]), calls[0]);
-    check("the query is encoded", /q=flask%20session/.test(calls[0]), calls[0]);
-    check("the limit is passed", /per_page=5/.test(calls[0]), calls[0]);
-    check("only the fields the panel shows come back",
-      JSON.stringify(Object.keys(rows[0]).sort()) ===
-      JSON.stringify(["description", "fullName", "language", "stars", "updatedAt", "url"]),
-      JSON.stringify(Object.keys(rows[0])));
-    check("stars survive", rows[0].stars === 68000);
-    return api.searchRepos("  ").then(function (empty) {
-      check("an empty query makes no request", empty.length === 0 && calls.length === 1);
-    });
-  });
+  // GitHub search (searchRepos) is the native app's C++ GitHubApi now, tested
+  // in native/tests/tst_github.cpp.
 }
 
 function testStreamStatus() {

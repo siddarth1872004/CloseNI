@@ -1,0 +1,103 @@
+# Builds the native Qt app on Linux, Windows and macOS (design D13), and on
+# Linux runs it against the mock provider: the agent session comes up, a
+# build runs end to end, and the Code panel takes a turn and its keys work.
+# The unit suites, verify and test:web are in test.yml.
+name: native
+
+on:
+  push:
+    paths:
+      - "native/**"
+      - "local-agent/**"
+      - ".github/workflows/native.yml"
+  pull_request:
+    paths:
+      - "native/**"
+      - "local-agent/**"
+      - ".github/workflows/native.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # 6.10: the 6.8 builds still link the AGL framework, which current macOS SDKs
+      # no longer ship.
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.10.*"
+          cache: true
+
+      - name: Configure
+        run: cmake -S native -B build-native -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build-native --config Release
+
+      - name: Version
+        if: runner.os == 'Linux'
+        run: QT_QPA_PLATFORM=offscreen build-native/bin/CloseNI --version
+
+      # The session check needs the compiled agent and Playwright's Chromium.
+      - uses: actions/setup-node@v4
+        if: runner.os == 'Linux'
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install
+        if: runner.os == 'Linux'
+        run: npm ci
+
+      - name: Install Chromium
+        if: runner.os == 'Linux'
+        run: npx playwright install --with-deps chromium
+
+      - name: Compile the agent
+        if: runner.os == 'Linux'
+        run: npm run build
+
+      - name: Agent session smoke test
+        if: runner.os == 'Linux'
+        run: node native/smoke.cjs
+
+      # Both drive the window offscreen against the mock provider, with the
+      # Chromium installed above.
+      - name: Build end to end
+        if: runner.os == 'Linux'
+        run: node native/e2e-build.cjs build-native/bin/CloseNI
+
+      - name: Code panel end to end
+        if: runner.os == 'Linux'
+        run: node native/tests/code-e2e.cjs build-native/bin/CloseNI
+
+      # The staged app the installers wrap (native/package/stage.mjs): pruned
+      # Qt, bundled Node and agent, run as a user gets it. The installers
+      # themselves are built by release.yml on a tag.
+      - name: Packaging tools
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y patchelf libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 libxcb-image0 \
+            libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0 libxcb-xinerama0 libxcb-xkb1
+
+      - name: Stage
+        if: runner.os == 'Linux'
+        run: node native/package/stage.mjs --exe build-native/bin/CloseNI
+
+      - name: Packaged smoke test
+        if: runner.os == 'Linux'
+        run: CLOSENI_SMOKE_BROWSERS="$HOME/.cache/ms-playwright" node native/smoke.cjs --packaged dist/native/linux-x64/AppDir/usr/bin/CloseNI
