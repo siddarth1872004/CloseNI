@@ -480,6 +480,50 @@ function parseSkills(raw) {
   try { return JSON.parse(raw || "[]") || []; } catch (e) { return []; }
 }
 
+/**
+ * Why the MCP configuration cannot be saved, or "" when it can. Parsed before
+ * saving so a typo is caught now rather than by a build that depends on it.
+ * Empty is fine: it means no MCP at all.
+ */
+function mcpConfigError(text) {
+  if (!String(text || "").trim()) return "";
+  try { JSON.parse(text); } catch (e) { return "That is not valid JSON"; }
+  return "";
+}
+
+/**
+ * The preamble for a run (buildPreamble in skills.js), from what was read:
+ * the persona's readSkill reply, each ticked skill's reply in order, and
+ * gatherMcpContext's. A file that is missing, unreadable or blank adds nothing,
+ * so a skill deleted outside the app simply stops being read.
+ */
+function composePreamble(persona, skills, mcp) {
+  var parts = {};
+  function usable(r) { return !!(r && r.ok && typeof r.text === "string" && r.text.trim()); }
+  if (usable(persona)) parts.persona = persona.text;
+  var texts = (skills || []).filter(usable).map(function (s) { return s.text; });
+  if (texts.length) parts.skills = texts;
+  if (mcp && mcp.texts && mcp.texts.length) parts.mcpContext = mcp.texts;
+  return parts;
+}
+
+// -------------------------------------------------------------- settings.js
+
+/** The permission policy's choices, as #autonomy-select listed them. */
+var AUTONOMY_OPTIONS = [
+  { value: "ask", label: "Ask each command" },
+  { value: "auto", label: "Auto-allow" },
+  { value: "never", label: "Never run commands" },
+];
+
+/**
+ * The saved permission policy, or "ask". A value the select does not offer
+ * left it blank in Electron, and getAutonomy read a blank select as "ask".
+ */
+function resolveAutonomy(saved) {
+  return AUTONOMY_OPTIONS.some(function (o) { return o.value === saved; }) ? saved : "ask";
+}
+
 export {
   MODE_TITLES,
   FLOW_MODES,
@@ -526,4 +570,8 @@ export {
   parseSkillImport,
   toggleSkill,
   parseSkills,
+  mcpConfigError,
+  composePreamble,
+  AUTONOMY_OPTIONS,
+  resolveAutonomy,
 };
