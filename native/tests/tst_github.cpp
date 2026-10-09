@@ -141,6 +141,8 @@ void TestGitHub::apiShapes()
         calls << Call{method, path, body};
         if (path.contains("/readme"))
             return reply({200, QJsonObject{{"content", QString::fromLatin1(QByteArray("# Hi").toBase64())}}, {}});
+        if (path.contains("/contents/"))
+            return reply({200, QJsonObject{{"content", QString::fromLatin1(QByteArray("SKILL TEXT").toBase64())}}, {}});
         if (path.contains("/git/trees/"))
             return reply({200, QJsonObject{{"tree", QJsonArray{QJsonObject{{"path", "a.py"}, {"type", "blob"}},
                                                                QJsonObject{{"path", "src"}, {"type", "tree"}}}}}, {}});
@@ -177,6 +179,31 @@ void TestGitHub::apiShapes()
     CHECK(calls[5].method == QStringLiteral("POST") && calls[5].path == QStringLiteral("/user/repos"));
     CHECK(calls[5].body.toObject().value("name") == QStringLiteral("newthing"));
     CHECK(calls[5].body.toObject().value("private") == true);
+
+    // Skill import fetches one file by path, decoded from base64.
+    api.getFile("o", "r", "docs/skill.md", into(&o));
+    CHECK2(calls[6].path == QStringLiteral("/repos/o/r/contents/docs/skill.md"), calls[6].path);
+    CHECK2(o.result == QStringLiteral("SKILL TEXT"), compact(o.result));
+
+    // Research's GitHub search, shaped down to what the panel shows.
+    QStringList searches;
+    GitHubApi search([&searches](const QString &method, const QString &path, const QJsonValue &, GitHubApi::Reply reply) {
+        searches << method + QLatin1Char(' ') + path;
+        reply({200, QJsonObject{{"items", QJsonArray{QJsonObject{
+            {"full_name", "pallets/flask"}, {"description", "d"}, {"stargazers_count", 68000}, {"language", "Python"},
+            {"html_url", "https://github.com/pallets/flask"}, {"pushed_at", "2026-08-01"}}}}}, {}});
+    });
+    search.searchRepos("flask session", 5, into(&o));
+    CHECK2(searches.size() == 1 && searches[0].contains("/search/repositories"), searches.join(" | "));
+    CHECK2(searches.value(0).contains("q=flask%20session"), searches.value(0));
+    CHECK2(searches.value(0).contains("per_page=5"), searches.value(0));
+    const QJsonObject row = o.result.toArray().at(0).toObject();
+    QStringList rowKeys = row.keys();
+    rowKeys.sort();
+    CHECK2(rowKeys.join(',') == QStringLiteral("description,fullName,language,stars,updatedAt,url"), rowKeys.join(','));
+    CHECK(row.value("stars").toInt() == 68000);
+    search.searchRepos("  ", 5, into(&o));
+    CHECK2(o.ok && o.result.toArray().isEmpty() && searches.size() == 1, searches.join(" | "));
 
     auto failing = [](int status, const QString &message) {
         GitHubApi api([status, message](const QString &, const QString &, const QJsonValue &, GitHubApi::Reply reply) {

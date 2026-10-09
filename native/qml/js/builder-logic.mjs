@@ -1,8 +1,8 @@
 /*
  * The Build panel's decisions, without the panel.
  *
- * Extracted from desktop/builder.js, which keeps its own copies until the
- * Electron app goes. Everything here is pure: the step list, the plan and the
+ * Extracted from desktop/builder.js (deleted with Electron in 0.4.0).
+ * Everything here is pure: the step list, the plan and the
  * run state come in as arguments, and text or plain objects come back. Timers,
  * the agent session and drawing stay with the Build panel.
  */

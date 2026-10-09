@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /*
- * Makes the Windows and macOS icons from build/icon.png, the 512x512 PNG the
- * Electron build used.
+ * Makes the Windows and macOS icons from build/icon.png, the 512x512 PNG
+ * scripts/make-icon.mjs rasterises from build/icon.svg.
  *
  *   node native/package/icons.mjs
  *

@@ -88,7 +88,7 @@ function testSessionStore() {
   check("resetBuildRun clears the legacy build thread",
     (store.readSessions(lf)["/ws"].activeBuildThread ?? null) === null);
 
-  // The desktop app's fields must survive a reset.
+  // The app's fields must survive a reset.
   const s2 = store.readSessions(lf);
   s2["/ws"].activeChat = "https://chat.example.com/c/keepme";
   store.writeSessions(lf, s2);
@@ -163,8 +163,8 @@ function testPlanScale() {
   check("a plan without runCommand still parses",
     !!parsePlanRobust(F + 'json\n{"summary":"x","steps":[{"title":"t","detail":"d","files":["a.py"]}]}\n' + F));
 
-  // The renderer cannot require the agent's module - no bundler, no require -
-  // so the estimate is duplicated in desktop/plan-scale.js. Duplication is only
+  // The QML app cannot require the agent's module - no bundler, no require -
+  // so the estimate is duplicated in native/qml/js/plan-scale.mjs. Duplication is only
   // acceptable while something proves the copies agree.
   const ui = require(path.join(__dirname, "..", "..", "native", "qml", "js", "plan-scale.mjs"));
   [0, 1, 3, 8, 20, 40, 100].forEach(function (n) {
@@ -464,7 +464,7 @@ async function testAsyncPool() {
 async function testAgentQueue() {
   section("agent run queue");
 
-  // Mirrors queueAgentRun in desktop/main.js. Every agent run opens the same
+  // Mirrors queueAgentRun in native/src/AgentService.cpp. Every agent run opens the same
   // Chromium profile directory, and Chromium locks it - two runs at once means
   // the second gets a profile it cannot own, an empty page, and a "Chat input
   // not found" that looks like a broken selector. So runs must not overlap.
@@ -511,7 +511,7 @@ async function testAgentQueue() {
   check("a failed run does not stall the queue", events.indexOf("after:end") !== -1);
 
   // --- session handoff -----------------------------------------------------
-  // Mirrors end-session / start-session in desktop/main.js. end-session used to
+  // Mirrors endSession / startSession in native/src/AgentService.cpp. end-session used to
   // null the handle and return at once, so starting another build immediately
   // spawned a second agent onto a Chromium profile the first still held. The
   // dying session's in-flight step then failed with "Target page, context or

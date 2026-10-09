@@ -43,7 +43,7 @@ export function storagePaths(root: string | undefined, config: { id: string; pro
 }
 
 /**
- * Where the desktop app keeps its storage, worked out without Electron.
+ * Where the desktop app keeps its storage, worked out without the app.
  *
  * The desktop app passes CLOSENI_STORAGE down to every agent it spawns, so an
  * agent started by the app finds the profile the user signed in to. A CLI entry
@@ -56,10 +56,12 @@ export function storagePaths(root: string | undefined, config: { id: string; pro
  * here - the smoke test, the selector check, the headless build - had the same
  * problem.
  *
- * This reproduces Electron's app.getPath("userData") convention: the platform's
- * per-user config directory plus the product name. It must agree with what
- * Electron actually creates, so APP_NAME is asserted against package.json's
- * productName in the tests rather than being a hopeful constant.
+ * This reproduces the app's storage root (native/src/Paths.cpp, which kept the
+ * Electron app's userData convention so existing profiles carry over): the
+ * platform's per-user config directory plus the product name. It must agree
+ * with what the app actually creates, so APP_NAME is asserted against
+ * package.json's productName and Paths.cpp in the tests rather than being a
+ * hopeful constant.
  *
  * Returns "" when there is no home directory to work from, so the caller can
  * leave CLOSENI_STORAGE unset and keep today's behaviour rather than being

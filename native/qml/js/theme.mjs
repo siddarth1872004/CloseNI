@@ -2,7 +2,8 @@
  * Which theme to use.
  *
  * Ported from desktop/theme.js: an ES module imported by the QML app
- * and by the test harness. Keep the two in step until the Electron app goes.
+ * and by the test harness. desktop/ was deleted with Electron in 0.4.0, so
+ * this is the only copy.
  *
  * Applying a theme is setting one attribute on <html>; the styling itself is
  * entirely CSS. Nothing here knows what a colour is.

@@ -6,17 +6,16 @@
  *
  * Runs a plan that already exists - the .closeni/build.json the app writes -
  * with the same scheduling, dependencies, checkpoints and resume as the
- * desktop build. Deliberately does NOT plan: the plan is the thing most worth a
+ * app's build. Deliberately does NOT plan: the plan is the thing most worth a
  * human eye before eighteen steps run against it, and a headless command is the
  * one place nobody looks at it.
  *
- * No refactor was needed to get here, which was the surprise. desktop/
- * scheduler.js was already pure and already require()able from Node - the unit
- * suite has been loading it that way for weeks. The renderer's step loop is
- * DOM-bound and 772 lines, but the part that decides what runs next never was.
+ * The app's scheduler and step timing are pure ES modules
+ * (native/qml/js/*.mjs) that the QML engine and Node both load, so this runs
+ * the same decisions the app does. Node 22 require()s them directly.
  *
- * This is also the first way the whole build path can run outside Electron,
- * which is exactly the surface nothing could test.
+ * This is also the one way the whole build path runs without a window, which
+ * is exactly the surface nothing else can test.
  */
 
 const fs = require("fs");
@@ -24,8 +23,8 @@ const path = require("path");
 const { spawn } = require("child_process");
 
 const ROOT = path.resolve(__dirname, "..");
-const sched = require(path.join(ROOT, "desktop", "scheduler.js"));
-const timing = require(path.join(ROOT, "desktop", "step-timing.js"));
+const sched = require(path.join(ROOT, "native", "qml", "js", "scheduler.mjs"));
+const timing = require(path.join(ROOT, "native", "qml", "js", "step-timing.mjs"));
 const buildState = require(path.join(ROOT, "local-agent", "dist", "build-state.js"));
 
 function usage(code) {
@@ -71,7 +70,7 @@ const workspace = path.resolve(args.workspace);
 /*
  * "never" rather than "auto" by default.
  *
- * The desktop app can ask. A headless run cannot, so the choice is between
+ * The app can ask. A headless run cannot, so the choice is between
  * running whatever the model suggests unattended and running none of it. Nobody
  * is watching, so the default is the one that cannot surprise you; --autonomy
  * auto is there for when you have decided otherwise.

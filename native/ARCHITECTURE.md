@@ -1,7 +1,9 @@
 # CloseNI native app: architecture and porting rules
 
-The Qt app in `native/` replaces the Electron app in `desktop/` completely.
-Electron is deleted once the Qt app has every feature. The design is in
+The Qt app in `native/` replaced the Electron app that lived in `desktop/`.
+Electron is deleted (0.4.0). `desktop/` survives in git history (last at
+e61aaae, `git show e61aaae:desktop/<file>`), so every mention of it below and
+in `src/` comments is provenance: where a rule or a guard came from. The design is in
 `docs/superpowers/specs/2026-10-08-native-qt-design.md`. Where this file
 disagrees with that spec, this file wins: it records later decisions.
 
@@ -9,7 +11,7 @@ disagrees with that spec, this file wins: it records later decisions.
 
 1. **No web engine, anywhere.** No QtWebEngine, QtWebView, WebView2 or WKWebView,
    and no HTML rendering of app UI. Every screen is native QML.
-   - The Electron preview pane and the run window's `<webview>` become:
+   - The Electron app's preview pane and the run window's `<webview>` became:
      - a native run console;
      - an "Open in browser" action, `App.openExternal(url)`, that hands the page
        to the system browser.
@@ -31,15 +33,16 @@ disagrees with that spec, this file wins: it records later decisions.
    - **Release builds:** strip them, and deploy only the plugins in use (see
      packaging).
 3. **Nothing is lost or broken.**
-   - Every feature, message, edge case and guard in `desktop/` is ported.
-   - The long comments in `desktop/` explain bugs that were really hit. Keep
-     the reasoning next to the ported code.
-   - When unsure, `desktop/` is the spec. `npm run test:ui` and the README's
-     feature list describe what users rely on.
+   - Every feature, message, edge case and guard in `desktop/` was ported.
+   - The long comments in `desktop/` explained bugs that were really hit. The
+     reasoning stays next to the ported code; keep it there.
+   - When unsure how something behaved, the Electron source in git history is
+     the reference. The README's feature list, `local-agent/test/app-unit.cjs`,
+     `scripts/verify.mjs` and the end-to-end flows describe what users rely on.
 4. **The agent is unchanged.** `local-agent/` (Node and Playwright) is spawned
-   exactly as `desktop/main.js` spawns it. It uses the same args, env,
-   stdin/stdout protocol and storage directory. Do not modify `local-agent/`
-   except to remove Electron-specific code during cut-over.
+   exactly as `desktop/main.js` spawned it. It uses the same args, env,
+   stdin/stdout protocol and storage directory. Do not change that protocol to
+   suit the app.
 
 ## Layout
 
@@ -47,9 +50,9 @@ disagrees with that spec, this file wins: it records later decisions.
 native/
   CMakeLists.txt        globs src/*.{h,cpp} and qml/**/*.{qml,mjs}; adding a file needs no edit
   src/main.cpp          parses the command line, then loads CloseNI/Main
-  src/Paths.*           storage root (same as Electron userData), Node, agent lookup
+  src/Paths.*           storage root (the Electron app's userData), Node, agent lookup
   src/Js.h              Js::reply(this, callback, result)
-  src/<X>Service.*      one QML singleton per Electron main-process module (table below)
+  src/<X>Service.*      one QML singleton per former Electron main-process module (table below)
   src/Prefs.*           localStorage replacement
   src/platform/         SecretStore_{win,mac,linux}.cpp (picked by CMake)
   qml/Main.qml          the window: rail, top bar, panels, console, toasts, modals
@@ -57,9 +60,11 @@ native/
   qml/components/*.qml  shared controls styled from Theme
   qml/panels/*.qml      one per panel (Code, Chat, Plan, Build, Test, Research, Push, Settings)
   qml/windows/*.qml     secondary windows (run console)
-  qml/js/*.mjs          pure logic ported from desktop/*.js, as ES modules
+  qml/js/*.mjs          pure logic (ported from desktop/*.js) as ES modules, shared with Node
   tests/                Qt Test suites (CMake picks up tests/CMakeLists.txt)
   smoke.cjs             starts the app against the mock provider
+  e2e-build.cjs         a build end to end against the mock provider
+  tests/code-e2e.cjs    the Code panel end to end against the mock provider
 ```
 
 QML type names must be unique across the whole module, because subdirectories
@@ -67,8 +72,8 @@ do not namespace them.
 
 ## Services
 
-Each Electron `ipcMain.handle` becomes a method on a C++ singleton with the
-same arguments. Each `webContents.send(channel)` becomes a signal.
+Each Electron `ipcMain.handle` became a method on a C++ singleton with the
+same arguments. Each `webContents.send(channel)` became a signal.
 
 | QML name | Class | Ports | Owner |
 |---|---|---|---|
@@ -82,10 +87,10 @@ same arguments. Each `webContents.send(channel)` becomes a signal.
 | `Prefs` | Prefs | renderer localStorage | data-backend (Electron import) |
 | `App` | AppService | process.platform, shell.openExternal, clipboard | done |
 
-The headers in `src/` are the contract, and the method list mirrors
-`desktop/preload.js`.
-- **Owners** may add private members and helpers. Add public methods only when
-  the Electron renderer used something the table missed.
+The headers in `src/` are the contract. The method list started as a mirror
+of `desktop/preload.js`.
+- **Owners** may add private members and helpers. Add a public method when
+  the UI needs one.
 - **Never** rename or remove a public method, because the UI calls it.
 - **Stubs** reply `{ok:false, success:false, error:"not implemented yet: ..."}`.
 
@@ -138,10 +143,10 @@ template literals, optional chaining (`?.`), `??` and ES modules (`.mjs`).
 - Object spread and rest (`{...a}`): use `Object.assign`.
 - `Array.prototype.flat`, `Object.fromEntries` and `globalThis`.
 
-The pure modules in `desktop/*.js` are UMD wrappers around plain functions.
-Port each one to `qml/js/<name>.mjs` with `export`.
-`local-agent/test/desktop-unit.cjs` must then test the `.mjs` copies, either
-through `import()` or through Node 22's `require(esm)`.
+The pure modules that were UMD wrappers in `desktop/*.js` are now
+`qml/js/<name>.mjs` with `export`. The unit suites test them through Node
+22's `require(esm)`, and `local-agent/test/app-unit.cjs` checks that every
+one stays inside what this engine supports.
 
 ## Running and testing
 
@@ -164,6 +169,6 @@ through `import()` or through Node 22's `require(esm)`.
 - **Worktrees.** `local-agent/dist` and `node_modules` are not present in a
   fresh worktree. Point at the main checkout with
   `CLOSENI_AGENT=/home/sidhu/Projects/CloseNI/local-agent/dist/index.js`.
-- **Never** `pkill -f electron`. Never kill processes you did not start.
+- **Never** `pkill` by pattern. Never kill processes you did not start.
 - **Commits.** Commit in your own branch. Use no co-author trailer, and do
   not push.

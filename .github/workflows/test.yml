@@ -30,8 +30,8 @@ jobs:
       - name: Install
         run: npm ci
 
-      # test:web and test:ui drive Playwright's own Chromium, which npm ci does
-      # not download.
+      # test:web drives Playwright's own Chromium, which npm ci does not
+      # download.
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
 
@@ -66,9 +66,6 @@ jobs:
       # display.
       - name: Browser tests
         run: xvfb-run -a npm run test:web
-
-      - name: Panel tests
-        run: xvfb-run -a npm run test:ui
 
   e2e:
     if: github.event_name != 'push'

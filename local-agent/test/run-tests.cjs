@@ -3,7 +3,7 @@
  *
  * Run against the compiled output:   npm run build && npm test
  *
- * Each area is its own file (parse-, build-, checks-, provider-, desktop-,
+ * Each area is its own file (parse-, build-, checks-, provider-, app-,
  * web-, extract- and agent-unit.cjs) exporting run(check, section). The
  * provider area drives a real page and needs Playwright's chromium ("npx
  * playwright install chromium"); without it those sections are skipped rather
@@ -35,7 +35,7 @@ function section(name) {
   await require("./build-unit.cjs").run(check, section, skipped);
   await require("./checks-unit.cjs").run(check, section, skipped);
   await require("./provider-unit.cjs").run(check, section, skipped);
-  await require("./desktop-unit.cjs").run(check, section, skipped);
+  await require("./app-unit.cjs").run(check, section, skipped);
   // The browser-native layer's pure logic (src/web). Its browser suite is
   // run-web.cjs, which needs Chromium and is run separately.
   await require("./web-unit.cjs").run(check, section);

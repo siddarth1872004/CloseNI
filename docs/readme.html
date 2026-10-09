@@ -68,10 +68,10 @@ td img{background:transparent}
 <div align="center"><img src="assets/hero.svg" alt="CloseNI: a pixel-art logo boots up over a CRT screen, above the four providers and their status" width="100%"><h1 id="closeni">CloseNI</h1>
 <p><strong>Free web AI chats, turned into a coding agent.</strong><br>
 Ask for a change and it reads your project, edits files, runs commands and checks its work, asking before anything it should. The model is a chat site driven in a real browser, the way you would use it.</p>
-<p><a href="https://www.electronjs.org/"><img src="https://img.shields.io/badge/Electron-31-47848F?style=flat-square&amp;logo=electron&amp;logoColor=white" alt="Electron"></a>
+<p><a href="https://www.qt.io/"><img src="https://img.shields.io/badge/Qt-6.10-41CD52?style=flat-square&amp;logo=qt&amp;logoColor=white" alt="Qt"></a>
 <a href="https://www.typescriptlang.org/"><img src="https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&amp;logo=typescript&amp;logoColor=white" alt="TypeScript"></a>
 <a href="https://playwright.dev/"><img src="https://img.shields.io/badge/Playwright-1.62-2EAD33?style=flat-square&amp;logo=playwright&amp;logoColor=white" alt="Playwright"></a>
-<a href="https://nodejs.org/"><img src="https://img.shields.io/badge/Node-18%2B-5FA04E?style=flat-square&amp;logo=nodedotjs&amp;logoColor=white" alt="Node"></a>
+<a href="https://nodejs.org/"><img src="https://img.shields.io/badge/Node-22%2B-5FA04E?style=flat-square&amp;logo=nodedotjs&amp;logoColor=white" alt="Node"></a>
 <a href="#what-it-is"><img src="https://img.shields.io/badge/API%20keys-none-ff7b72?style=flat-square" alt="API keys"></a>
 <a href="https://github.com/siddarth1872004/CloseNI/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-bc8cff?style=flat-square" alt="License"></a></p>
 <p><a href="https://siddarth1872004.github.io/CloseNI/"><strong>Site</strong></a> · <a href="#how-it-works"><strong>How it works</strong></a> · <a href="#architecture"><strong>Architecture</strong></a> · <a href="#the-browser-native-layer"><strong>Browser layer</strong></a> · <a href="#research"><strong>Research</strong></a> · <a href="#getting-started"><strong>Get started</strong></a> · <a href="#current-limitations"><strong>Limitations</strong></a></p>
@@ -235,12 +235,12 @@ Ask for a change and it reads your project, edits files, runs commands and check
 <h2 id="architecture">Architecture</h2>
 <div align="center"><img src="assets/architecture.svg" alt="Architecture: the desktop app spawns the local agent, which drives Chromium, writes to the workspace, and has the src/web layer beside it for research and live tests" width="100%"></div><details>
 <summary><b>The same thing, as a Mermaid diagram</b></summary><pre><code class="language-mermaid">flowchart TB
-    subgraph desktop[&quot;desktop/ · Electron host&quot;]
-        R[&quot;renderer/&lt;br/&gt;panels, plans, diffs&quot;]
-        B[&quot;builder.js&lt;br/&gt;runs the steps&quot;]
-        S[&quot;scheduler.js&lt;br/&gt;dependency graph, resume&quot;]
-        T[&quot;theme.js&lt;br/&gt;eleven themes&quot;]
-        M[&quot;main.js&lt;br/&gt;IPC, git, keystore&quot;]
+    subgraph desktop[&quot;native/ · Qt/QML app&quot;]
+        R[&quot;qml/panels/&lt;br/&gt;panels, plans, diffs&quot;]
+        B[&quot;BuildState.qml&lt;br/&gt;runs the steps&quot;]
+        S[&quot;scheduler.mjs&lt;br/&gt;dependency graph, resume&quot;]
+        T[&quot;Theme.qml&lt;br/&gt;eleven themes&quot;]
+        M[&quot;src/ C++ services&lt;br/&gt;agent, git, keyring&quot;]
         R &lt;--&gt; M
         B &lt;--&gt; M
         B --&gt; S
@@ -286,7 +286,7 @@ Ask for a change and it reads your project, edits files, runs commands and check
     SM --&gt; D &amp; Q &amp; G
     RS --&gt; NET
 </code></pre>
-</details><p>There is no bundler. Renderer modules are written UMD-style: they attach to <code>window</code> in the browser and export under Node. That makes scheduling, theming, diffing and entry-point detection unit-testable without a build step or a headless Electron instance.</p>
+</details><p>There is no web view and no bundler. The window is Qt Quick, and the services behind it (the agent and run processes, git, GitHub, files, the keyring) are C++. The pure logic, such as scheduling, theming, diffing and entry-point detection, is plain ES modules in <code>native/qml/js/</code>. The QML engine loads them and Node 22 <code>require()</code>s the same files, so they are unit-testable without a build step or a window.</p>
 <p>The TypeScript core compiles to CommonJS in <code>local-agent/dist/</code>, and tests run against the compiled output rather than the source, so what is tested is what ships.</p>
 <hr>
 <h2 id="providers">Providers</h2>
@@ -688,7 +688,7 @@ Ask for a change and it reads your project, edits files, runs commands and check
     end
     subgraph meta[&quot;claims vs code&quot;]
         VF[&quot;npm run verify&quot;]
-        VV[&quot;npm run verify:visual&quot;]
+        VV[&quot;npm run verify:site&quot;]
         LG[&quot;npm run languages&quot;]
     end
     WEB --&gt; FR[(&quot;fixture-results.json&quot;)]
@@ -706,7 +706,10 @@ npm run test:chaos        #   killed browser, closed tab, removed selector, view
 npm run webtest -- all    # the same scenarios against the live sites (never signs in)
 npm run web:report        # regenerate the provider matrix from recorded results
 npm run verify            # structural checks: claims vs code, assets, release config, packaging
-npm run verify:visual     # all eleven themes rendered and contrast-checked, plus the site
+npm run verify:site       # the Pages site and every pixel-art SVG, rendered in Chromium
+ctest --test-dir build-native        # the native app&#39;s C++ and QML tests
+node native/e2e-build.cjs            # the app runs a build end to end against the mock provider
+node native/tests/code-e2e.cjs       # the Code panel: a turn, a permission, the prompt&#39;s keys
 npm run languages         # every language check against the real compiler, good and broken code
 </code></pre>
 <ul>
@@ -719,7 +722,7 @@ npm run languages         # every language check against the real compiler, good
 <li>the packaged artifact contains nothing from <code>local-agent/storage/</code>.</li>
 </ul>
 </li>
-<li><strong><code>verify-visual.mjs</code>.</strong> <a href="https://github.com/siddarth1872004/CloseNI/blob/main/scripts/verify-visual.mjs"><code>scripts/verify-visual.mjs</code></a> renders the app under each of the eleven themes and measures the real contrast of every element that carries meaning.</li>
+<li><strong><code>verify-site.mjs</code>.</strong> <a href="https://github.com/siddarth1872004/CloseNI/blob/main/scripts/verify-site.mjs"><code>scripts/verify-site.mjs</code></a> renders the site at desktop and phone widths and checks that every pixel-art SVG has something drawn on its first frame. The contrast of every theme&#39;s meaningful colour pairs is checked by the unit suite, from the palettes in <code>Theme.qml</code>.</li>
 </ul>
 <p>Each verification script prints, at the end, what it does <strong>not</strong> cover.</p>
 <hr>
@@ -733,14 +736,19 @@ npm run build
 # the browser CloseNI drives
 npx playwright install chromium
 
+# the app (Qt 6.10, CMake and Ninja)
+cmake -S native -B build-native -G Ninja
+cmake --build build-native
+
 # launch
-cd desktop &amp;&amp; npm start
+npm start
 </code></pre>
 <p><strong>Requirements:</strong></p>
 <ul>
 <li>Node.js 22.12 or newer.</li>
+<li>From source: Qt 6.8 or newer (CI uses 6.10), CMake 3.21+ and Ninja. The installers bundle Qt and Node.</li>
 <li>Around 650 MB of disk for the Playwright Chromium download.</li>
-<li>Windows 10+, or a Linux desktop with a keyring available for encrypted token storage. On a desktop Chromium does not recognise (Hyprland, sway, i3), CloseNI asks for the Secret Service (gnome-keyring, KeePassXC); pass <code>--password-store=</code> to choose another.</li>
+<li>Windows 10+, macOS, or a Linux desktop. The GitHub token is kept in the OS keyring: DPAPI on Windows, the keychain on macOS, the Secret Service on Linux (GNOME Keyring, KWallet, KeePassXC). Without one CloseNI still runs, but asks you to sign in to GitHub each launch.</li>
 </ul>
 <h4 id="downloads">Downloads</h4>
 <p>Installers are built by CI from a version tag and attached to the <a href="https://github.com/siddarth1872004/CloseNI/releases/latest">latest release</a>: a Windows <code>.exe</code>, a Linux AppImage and a <code>.deb</code>. They are <strong>unsigned</strong>, so Windows SmartScreen will warn. The Linux AppImage has been run here; the Windows installer is built by CI and has not yet been installed on a clean machine. Treat it as unproven.</p>
@@ -763,7 +771,7 @@ cd desktop &amp;&amp; npm start
 <h4 id="wsl">WSL</h4>
 <pre><code class="language-bash">source scripts/wsl-env.sh
 </code></pre>
-<p>This sets up the display and library paths Electron and Chromium need under WSL2.</p>
+<p>This puts a Linux node first on the PATH and adds the library paths Chromium needs under WSL2.</p>
 <h4 id="reporting-a-bug">Reporting a bug</h4>
 <p><a href="https://github.com/siddarth1872004/CloseNI/issues/new/choose">Open an issue</a> with the bug report form. It asks for the provider, your OS, the version and the last 50 lines of the Console bar, which usually name the selector that failed. Check those lines for anything private before posting.</p>
 <hr>
@@ -799,15 +807,13 @@ npm run dist   # and build this system&#39;s installers
 <p>The stager copies only <code>local-agent/dist</code>, its config and the packages the agent requires at run time, and <code>npm run verify</code> audits the staged app, so <code>local-agent/storage/</code> (live session cookies and private chat URLs) cannot reach a shipped artifact.</p>
 <hr>
 <h2 id="directory-tree">Directory tree</h2>
-<pre><code>desktop/            Electron UI host, IPC handlers, and renderer
-  main.js             process host: window, agent lifecycle, sessions, sign-in
-  main/               IPC by domain: GitHub, git, build state, settings, files
-  renderer/           one script per panel, loaded in order; startup.js last
-  builder.js          step orchestration
-  scheduler.js        dependency graph, runnable set, resume state
-  theme.js            theme registry and persistence
-  github-safe.js      token redaction, argument validation, URL parsing
-  entrypoint.js       entry-point detection across languages
+<pre><code>native/             the app: Qt 6 and QML, no web view
+  src/                C++ services: agent and run processes, git, GitHub, files, builds, keyring
+  qml/                the window: panels, components, the shell, state and theme singletons
+  qml/js/             pure logic as ES modules shared with Node: scheduler, themes, diffs, entry points
+  package/            staging and the installers: NSIS, AppImage, .deb, dmg
+  tests/              Qt tests and the end-to-end flows
+bin/closeni.js      headless builds, on the app&#39;s own scheduler
 
 local-agent/        the TypeScript core
   src/providers/      PlaywrightController, per-provider page control, the shared stream tap
@@ -846,7 +852,7 @@ scripts/            verification, asset generation, release and environment help
 <hr>
 <h2 id="license">License</h2>
 <p>MIT. See <a href="https://github.com/siddarth1872004/CloseNI/blob/main/LICENSE">LICENSE</a>. Copyright (c) 2026 Siddarth S.</p>
-<p>Packaged builds ship the Electron and Chromium licence files and Playwright&#39;s licence and third-party notices. The Chromium that Playwright drives is downloaded at first run, not bundled.</p>
+<p>Packaged builds bundle Qt (LGPL-3.0), Node.js and Playwright, each under its own licence, with Node&#39;s and Playwright&#39;s licence files beside them. The Chromium that Playwright drives is downloaded at first run, not bundled.</p>
 <div align="center">
 <sub>Every animation above is pixel art generated by a script. No GIFs and no JavaScript, and every one of them loops forever.</sub>
 </div>

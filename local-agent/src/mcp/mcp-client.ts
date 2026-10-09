@@ -4,7 +4,7 @@
  * This needs exactly three methods - initialize, tools/list, tools/call -
  * against a well-specified protocol. Taking the official SDK for three methods
  * would be the larger commitment in a project whose only runtime dependencies
- * are Playwright and Electron.
+ * are Playwright and Qt.
  *
  * Nothing here throws at the caller. A server that will not start, one that
  * answers with an error, one that never answers at all: each comes back as
@@ -13,8 +13,17 @@
  * the situation today.
  */
 import { spawn, ChildProcess } from "child_process";
+import { readFileSync } from "fs";
+import { join } from "path";
 
 export const MCP_TIMEOUT_MS = 20000;
+
+// Told to servers in clientInfo. dist/mcp/ sits two levels under the agent's
+// package.json, in the repo and in the packaged app alike.
+const CLIENT_VERSION: string = (() => {
+  try { return JSON.parse(readFileSync(join(__dirname, "..", "..", "package.json"), "utf8")).version || "0.0.0"; }
+  catch { return "0.0.0"; }
+})();
 
 export interface ServerSpec {
   command: string;
@@ -115,7 +124,7 @@ function rpc(
       const init = await send("initialize", {
         protocolVersion: "2024-11-05",
         capabilities: {},
-        clientInfo: { name: "CloseNI", version: "0.3.0" },
+        clientInfo: { name: "CloseNI", version: CLIENT_VERSION },
       });
       if (settled) return;
       if (init && init.error) {

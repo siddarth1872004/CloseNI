@@ -200,8 +200,12 @@ ApplicationWindow {
         // so this window comes forward. The Code panel turns the prompt into
         // a task (Electron's code.js onRunFix).
         function onRunFix(detail) {
-            window.raise()
-            window.requestActivate()
+            // The offscreen platform (the self-test flows) has no windows to
+            // raise and warns if asked, which fails a flow.
+            if (Qt.platform.pluginName !== "offscreen") {
+                window.raise()
+                window.requestActivate()
+            }
             AppState.switchTab("code")
         }
     }

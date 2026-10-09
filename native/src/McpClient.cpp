@@ -2,6 +2,7 @@
 
 #include "NodeCompat.h"
 
+#include <QCoreApplication>
 #include <QFileInfo>
 #include <QHash>
 #include <QJsonArray>
@@ -104,7 +105,7 @@ private:
              QJsonObject{{QStringLiteral("protocolVersion"), QStringLiteral("2024-11-05")},
                          {QStringLiteral("capabilities"), QJsonObject()},
                          {QStringLiteral("clientInfo"), QJsonObject{{QStringLiteral("name"), QStringLiteral("CloseNI")},
-                                                                    {QStringLiteral("version"), QStringLiteral("0.3.0")}}}},
+                                                                    {QStringLiteral("version"), QCoreApplication::applicationVersion()}}}},
              [this](const QJsonObject &init) {
                  if (m_settled)
                      return;
