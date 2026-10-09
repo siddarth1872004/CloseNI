@@ -43,9 +43,13 @@ QtObject {
     readonly property bool isPixel: current === "pixel"
     // Pixel squares every corner (rail cards, buttons, inputs, toasts, flow, console).
     readonly property bool square: isPixel
-    // Decoration that moves runs only while the window is in front: a
+    // Event-driven motion (a card arriving, a status stamping in): on with the
+    // decoration, and off for anyone who asked the OS for less motion - both
+    // switches turn everything off, each on its own, as in the stylesheet.
+    readonly property bool motion: decor && !App.reducedMotion
+    // Decoration that loops runs only while the window is in front as well: a
     // backgrounded app has no business waking the GPU for a blinking cursor.
-    readonly property bool animate: decor && Qt.application.state === Qt.ApplicationActive
+    readonly property bool animate: motion && Qt.application.state === Qt.ApplicationActive
 
     // ---- Structural scale (identical in every theme) --------------------
     readonly property int sp1: 4

@@ -21,7 +21,7 @@ Item {
 
     // The boot sweep: how many ninths are revealed.
     property int boot: 9
-    function sweep() { if (px && Theme.decor) boot = 0 }
+    function sweep() { if (px && Theme.motion) boot = 0 }
     onPxChanged: sweep()
     Component.onCompleted: sweep()
     Timer {

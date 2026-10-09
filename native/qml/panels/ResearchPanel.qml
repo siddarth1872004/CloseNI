@@ -20,6 +20,11 @@ ColumnLayout {
         property int tile: 0
         default property alias content: inner.data
         implicitHeight: inner.implicitHeight + 20 + (Theme.isPixel ? 2 : 0)
+        // Arrives (pix-in) with the results that made it.
+        PixMotion { id: arrive; duration: 140 }
+        opacity: arrive.opacity
+        transform: Translate { y: arrive.shift }
+        Component.onCompleted: arrive.play()
         Rectangle {
             visible: Theme.isPixel
             x: 3; y: 3; width: parent.width; height: parent.height

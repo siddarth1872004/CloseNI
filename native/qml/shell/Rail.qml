@@ -64,7 +64,7 @@ Rectangle {
                 Layout.rightMargin: 14
                 Layout.topMargin: Theme.sp4
                 title: "Provider"
-                index: 0
+                tile: 0
 
                 // .acct: the light, the name and its state.
                 GridLayout {
@@ -167,7 +167,7 @@ Rectangle {
                 Layout.rightMargin: 14
                 Layout.topMargin: Theme.sp2
                 title: "Project"
-                index: 1
+                tile: 1
 
                 Text {
                     id: wsLabel
@@ -200,7 +200,7 @@ Rectangle {
                 Layout.topMargin: Theme.sp2
                 Layout.bottomMargin: 20
                 title: "Conversation"
-                index: 2
+                tile: 2
 
                 Select {
                     id: chatSelect

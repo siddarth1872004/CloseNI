@@ -50,7 +50,7 @@ Item {
     }
 
     // Arrival: pix-slide, 10px from the right in four steps.
-    property int slide: Theme.decor ? 4 : 0
+    property int slide: Theme.motion ? 4 : 0
     transform: Translate { x: toast.slide * 2.5 }
     property real fade: 1
     opacity: (1 - toast.slide / 4) * fade

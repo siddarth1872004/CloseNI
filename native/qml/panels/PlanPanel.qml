@@ -72,6 +72,10 @@ Rectangle {
             leftMargin: 16
             rightMargin: 16
             ScrollBar.vertical: ThinScrollBar {}
+            // Steps arrive (pix-in) when the plan is drawn, as the CSS did on
+            // each render - not when scrolling brings a delegate into being.
+            property double drawnAt: Date.now()
+            onModelChanged: drawnAt = Date.now()
 
             header: ColumnLayout {
                 width: list.width - list.leftMargin - list.rightMargin
@@ -186,18 +190,31 @@ Rectangle {
                 ground: "surface"
                 padding: 12
                 radius: Theme.isPixel ? 0 : 4
+                // nth-child counts the "Implementation Steps" title above, so
+                // the first step is the second tile.
+                tile: index + 1
+
+                PixMotion { id: arrive }
+                opacity: arrive.opacity
+                transform: Translate { y: arrive.shift }
+                Component.onCompleted: if (Date.now() - list.drawnAt < 300) arrive.play()
 
                 HoverHandler { id: hover }
 
                 // .plan-step-head. In the narrow sidebar the edit buttons
                 // would squeeze the title to a word per line, so there they
-                // take a line of their own under it.
+                // take a line of their own under it - and while they are
+                // hidden that line closes up, rather than leaving a blank row
+                // in every step. Closed, the row is still there at no height,
+                // so Tab still reaches the buttons and focus opens it again.
                 GridLayout {
+                    id: headGrid
                     readonly property bool roomy: stepCard.width - 24 >= num.implicitWidth + title.implicitWidth + edit.implicitWidth + 16
+                    readonly property bool folded: !roomy && !edit.shown
                     Layout.fillWidth: true
                     columns: roomy ? 3 : 2
                     columnSpacing: 8
-                    rowSpacing: 4
+                    rowSpacing: folded ? 0 : 4
                     Text {
                         id: num
                         text: "0" + (stepCard.index + 1)
@@ -220,11 +237,14 @@ Rectangle {
                     // while reading it. Shown on hover or keyboard focus.
                     Row {
                         id: edit
-                        Layout.columnSpan: parent.roomy ? 1 : 2
+                        Layout.columnSpan: headGrid.roomy ? 1 : 2
                         Layout.alignment: Qt.AlignRight
+                        Layout.preferredHeight: headGrid.folded ? 0 : implicitHeight
+                        clip: headGrid.folded
                         spacing: 4
                         readonly property bool focused: up.activeFocus || down.activeFocus || merge.activeFocus || del.activeFocus
-                        opacity: hover.hovered || focused ? 1 : 0
+                        readonly property bool shown: hover.hovered || focused
+                        opacity: shown ? 1 : 0
                         Btn { id: up; small: true; text: "^"; tip: "Move earlier"; onClicked: PlanState.editPlanStep("up", stepCard.index) }
                         Btn { id: down; small: true; text: "v"; tip: "Move later"; onClicked: PlanState.editPlanStep("down", stepCard.index) }
                         Btn { id: merge; small: true; text: "merge up"; tip: "Merge into the step above"; onClicked: PlanState.editPlanStep("merge", stepCard.index) }

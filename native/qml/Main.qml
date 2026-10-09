@@ -127,7 +127,14 @@ ApplicationWindow {
                         // opened it stays, so coming back from Settings costs
                         // nothing and loses nothing.
                         property bool kept: false
-                        onCurrentChanged: if (current && modelData.mode === "code") kept = true
+                        onCurrentChanged: {
+                            if (current && modelData.mode === "code") kept = true
+                            if (current) arrive.play()
+                        }
+                        // .panel.active: the panel opened steps in (pix-in).
+                        PixMotion { id: arrive }
+                        opacity: arrive.opacity
+                        transform: Translate { y: arrive.shift }
                         anchors.fill: parent
                         active: current || kept
                         visible: current
