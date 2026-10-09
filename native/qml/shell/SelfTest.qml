@@ -16,6 +16,11 @@ import "../js/code-transcript.mjs" as T
  * (code-terminal, code-paper, code-pixel). Run with --start, --provider mock
  * and a --workspace (native/tests/code-e2e.cjs), it then drives a real session
  * through the panel's own keys: send, the permission prompt, allow, done.
+ *
+ * Settings also opens each of its sections in every theme, runs its exercise
+ * (SettingsCheck.qml) and is saved in three themes as settings-*.png. A step
+ * that returns false is waiting on something asynchronous and is run again on
+ * the next tick, for up to ten seconds (waitFor keeps its own, longer deadline).
  */
 Item {
     id: test
@@ -27,15 +32,16 @@ Item {
     property var steps: []
     property int at: 0
     property int shots: 0
-    property int expected: 0
-    // A step that returns false runs again on the next tick (see waitFor).
+    property int planned: 0
+    property int waits: 0
+    // When the running waitFor step began (see waitFor).
     property double waitStart: 0
     property var codeEvents: []
     readonly property string savedTheme: Theme.current
     readonly property bool savedDecor: Theme.decor
 
     function shot(name) {
-        expected++
+        planned++
         // main.cpp saves the window synchronously and warns if it cannot.
         return function () {
             test.root.selfTestShot(test.outDir + "/" + name + ".png")
@@ -44,12 +50,13 @@ Item {
     }
 
     // Waits, a tick at a time, until cond() holds; a timeout is a warning,
-    // which fails the run.
+    // which fails the run. A model turn can take longer than the ticker's
+    // ten-second cap, so this keeps its own deadline and resets the cap's count.
     function waitFor(label, cond, ms) {
         return function () {
             if (!test.waitStart) test.waitStart = Date.now()
             if (cond()) { test.waitStart = 0; console.log("self-test: code e2e: " + label); return true }
-            if (Date.now() - test.waitStart < ms) return false
+            if (Date.now() - test.waitStart < ms) { test.waits = 0; return false }
             test.waitStart = 0
             console.warn("self-test: code e2e: timed out waiting for " + label)
             return true
@@ -132,12 +139,17 @@ Item {
     // A real session through the panel's own keys, against the mock provider.
     function codeSession(s) {
         var panel = null
+        // --start brought the session up through CodeStore, as the panel does,
+        // but the settings exercise has since picked another provider (which
+        // unpins --provider) and may have closed it: pin the mock again and
+        // open it the way the next message would.
         s.push(function () {
             test.unseedCode()
             AppState.switchTab("code")
+            CodeStore.pinnedProvider = test.root.provider
+            CodeStore.ensureSession()
         })
-        // --start brought the session up through CodeStore, as the panel does.
-        s.push(waitFor("ready", function () { return CodeStore.up }, 90000))
+        s.push(waitFor("ready", function () { return CodeStore.up && !CodeStore.starting }, 90000))
         s.push(function () {
             panel = test.find(test.root.contentItem, "codePanel")
             var input = test.find(panel, "codeInput")
@@ -176,12 +188,18 @@ Item {
         var panels = AppState.panels
         function themeStep(id) { return function () { Theme.setTheme(id) } }
         function panelStep(m) { return function () { AppState.switchTab(m) } }
+        function sectionStep(id) { return function () { SettingsStore.showSection(id) } }
         s.push(function () { test.seedCode() })
         for (var d = 0; d < 2; d++) {
             s.push(function (on) { return function () { Theme.setDecor(on) } }(d === 0))
             for (var i = 0; i < Theme.themes.length; i++) {
                 s.push(themeStep(Theme.themes[i].id))
-                for (var p = 0; p < panels.length; p++) s.push(panelStep(panels[p].mode))
+                for (var p = 0; p < panels.length; p++) {
+                    s.push(panelStep(panels[p].mode))
+                    if (panels[p].mode !== "settings") continue
+                    for (var q = 0; q < SettingsStore.sections.length; q++) s.push(sectionStep(SettingsStore.sections[q].id))
+                    s.push(sectionStep("provider"))
+                }
             }
         }
         s.push(function () { Theme.setDecor(true) })
@@ -206,6 +224,18 @@ Item {
             s.push(shot("code-" + codeThemes[c]))
         }
         s.push(function () { test.unseedCode() })
+
+        // Settings: every control, then the panel in three themes.
+        s = s.concat(settingsCheck.steps())
+        var settingsShots = [["terminal", "skills"], ["paper", "appearance"], ["pixel", "provider"]]
+        for (var k = 0; k < settingsShots.length; k++) {
+            s.push(themeStep(settingsShots[k][0]))
+            s.push(panelStep("settings"))
+            s.push(sectionStep(settingsShots[k][1]))
+            for (var w = 0; w < 25; w++) s.push(function () {})   // let animations settle
+            s.push(shot("settings-" + settingsShots[k][0]))
+        }
+        s.push(sectionStep("provider"))
 
         // Terminal: the agent panel, the console with both logs, a toast.
         s.push(themeStep("terminal"))
@@ -253,10 +283,12 @@ Item {
         })
         s.push(function () {
             console.log("self-test: " + test.at + " steps, " + test.shots + " screenshots")
-            Qt.exit(test.shots === test.expected ? 0 : 1)
+            Qt.exit(test.shots === test.planned ? 0 : 1)
         })
         return s
     }
+
+    SettingsCheck { id: settingsCheck; root: test.root }
 
     Timer {
         id: ticker
@@ -266,7 +298,10 @@ Item {
             if (test.at >= test.steps.length) { stop(); return }
             var step = test.steps[test.at]
             test.at++
-            if (step() === false) test.at--
+            if (step() !== false) { test.waits = 0; return }
+            if (++test.waits < 250) { test.at--; return }
+            console.warn("self-test: step " + (test.at - 1) + " is still waiting after ten seconds")
+            test.waits = 0
         }
     }
 

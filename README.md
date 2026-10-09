@@ -704,20 +704,21 @@ This sets up the display and library paths Electron and Chromium need under WSL2
 
 ## Distribution builds
 
-Releases are driven by a tag. `npm version 1.0.1 -m "Release %s"` followed by `git push --tags` builds on `windows-latest` and `ubuntu-latest`, and attaches the installers to a draft release. The full process, including how to verify an artifact before publishing, is in [docs/RELEASING.md](docs/RELEASING.md).
+Releases are driven by a tag. `npm version 1.0.1 -m "Release %s"` followed by `git push --tags` builds the native app's installers on Windows, Linux and macOS, and attaches them to a draft release. The full process, including how to verify an artifact before publishing, is in [docs/RELEASING.md](docs/RELEASING.md).
 
 | Platform | Artifact |
 |---|---|
-| Windows | `CloseNI-Setup-<version>.exe` (NSIS, chooses its own install directory) |
-| Linux | `CloseNI-<version>.AppImage` |
-| Linux | `closeni_<version>_amd64.deb` |
+| Windows x64 | `CloseNI-Setup-<version>.exe` (NSIS, per user, chooses its own install directory) |
+| Linux x64 | `CloseNI-<version>.AppImage` |
+| Linux x64 | `closeni_<version>_amd64.deb` |
+| macOS | `CloseNI-<version>-arm64.dmg`, `CloseNI-<version>-x64.dmg` (unsigned) |
 
 ```bash
-npm run pack   # unpacked distribution directory
-npm run dist   # platform installer (.exe / .deb / AppImage)
+npm run pack   # stage the app into dist/native/ (needs Qt 6.8+ and CMake)
+npm run dist   # and build this system's installers
 ```
 
-The packaged `files` list is an explicit allow-list. Widening it to a glob would sweep `local-agent/storage/` (live session cookies and private chat URLs) into a shipped artifact.
+The stager copies only `local-agent/dist`, its config and the packages the agent requires at run time, and `npm run verify` audits the staged app, so `local-agent/storage/` (live session cookies and private chat URLs) cannot reach a shipped artifact.
 
 ---
 

@@ -102,9 +102,6 @@ QtObject {
     property var pendingClone: null
     property string cloneText: ""
 
-    // /model and /theme: the Settings section to land on.
-    property string settingsSection: ""
-
     // The @ file popup's list, per workspace.
     property var _files: null
 
@@ -728,8 +725,10 @@ QtObject {
         note(C.toggleNote(m, mode), "dim")
     }
 
+    // /model and /theme land on their Settings section; /settings keeps the
+    // one last shown (showSection ignores "").
     function openSettings(section) {
-        settingsSection = section || ""
+        if (section) SettingsStore.showSection(section)
         AppState.switchTab("settings")
     }
 

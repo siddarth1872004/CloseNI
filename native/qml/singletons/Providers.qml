@@ -18,6 +18,8 @@ QtObject {
     id: providers
 
     // [{ id, name, comingSoon, controls, termsUrl, ... }] from Files.listProviders.
+    // The picker lists whatever is enabled in local-agent/config/providers, so
+    // adding a provider is a JSON file rather than a markup edit.
     property var list: []
     property string current: "deepseek"
     readonly property var info: {
@@ -39,7 +41,10 @@ QtObject {
 
     // The live phase readout: { name, label, kind (idle|busy|work), detail }.
     property var phase: R.phaseLabel(null)
-    // For the build panel's per-step timer (window.CN.notePhase).
+    // For the build panel's per-step timer (window.CN.notePhase). Every phase
+    // is reported at the moment it was observed on the page, so the clock
+    // there is measuring the real thing rather than an inference. The builder
+    // owns the per-step timer; this only forwards the transition.
     signal phaseNoted(string name)
 
     // Show Browser: one setting, shown in the rail and in Settings, saved.
@@ -68,7 +73,13 @@ QtObject {
      */
     function load(preferred) {
         return Api.call(Files, "listProviders").then(function (r) {
-            var l = Array.isArray(r) ? r : (r && Array.isArray(r.providers) ? r.providers : [])
+            // Files replies with a QVariantList, which reaches QML as a sequence
+            // rather than an Array: Array.isArray alone dropped every provider
+            // and left only the fallback below, with no controls.
+            function asArray(v) {
+                return v && typeof v === "object" && typeof v.length === "number" ? Array.prototype.slice.call(v) : null
+            }
+            var l = asArray(r) || (r && asArray(r.providers)) || []
             if (!l.length) l = [{ id: "deepseek", name: "DeepSeek Chat" }]
             var pick = R.pickProvider(l, preferred)
             if (!preferred || pick !== preferred) pick = R.pickProvider(l, Prefs.get("closeni.provider", ""))

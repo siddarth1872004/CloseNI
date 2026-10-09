@@ -7,6 +7,19 @@ import CloseNI
  * renderProviderControls in renderer/providers.js. Two copies exist - the
  * rail's (`compact`, no heading) and Settings' - and both read and write the
  * same saved value through Providers, so they cannot disagree.
+ *
+ * Built from whatever the selected provider declares. The user chooses and
+ * the agent applies. Deciding a model per task would be an invisible decision
+ * - the kind you only discover by reading a log.
+ *
+ * Rendered twice - once in Settings and once in the rail - because switching
+ * model or turning deep thinking off is something people do between prompts,
+ * and burying it two tabs deep meant it never got used.
+ *
+ * No heading in the rail: every control already carries its own label, and
+ * "Model" sitting directly above "Mode" read as a mislabelled field. (The
+ * web version also had to keep element ids unique across the two copies so
+ * labels did not point at each other; QML ids are scoped per copy.)
  */
 ColumnLayout {
     id: root

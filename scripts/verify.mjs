@@ -9,8 +9,9 @@
  * so "everything passed" never gets read as "everything is verified".
  */
 
-import { readFileSync, existsSync, readdirSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync, lstatSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
+import { builtinModules } from 'node:module';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { renderSite } from './make-site.mjs';
@@ -284,9 +285,12 @@ check('and the app timing module', /require\(path\.join\(ROOT, "desktop", "step-
 check('it builds an existing plan and does not plan', !/"plan"/.test(cli) && /only builds an existing plan/.test(cli));
 check('a headless run defaults to running no commands',
   /autonomy: "never"/.test(cli));
-check('the CLI is shipped and installable',
-  !!JSON.parse(read('package.json')).bin.closeni &&
-  JSON.parse(read('package.json')).build.files.includes('bin/**/*'));
+// Installable through npm's `bin` from a checkout. This used to also require
+// bin/** in electron-builder's `files`, which put the CLI inside app.asar,
+// where nothing could run it. The native package does not ship it: it needs
+// the desktop/ modules and a Node on PATH, which an installed app has neither of.
+check('the CLI is installable',
+  JSON.parse(read('package.json')).bin.closeni === 'bin/closeni.js' && existsSync(join(ROOT, 'bin/closeni.js')));
 
 // Timing. The value is in separating "waiting on the model" from "running a
 // slow test suite", so what is pinned is that phases are measured rather than
@@ -577,24 +581,49 @@ for (const f of assets) {
 
 group('Release configuration');
 const pkg = JSON.parse(read('package.json'));
+const appMeta = JSON.parse(read('native/package/app.json'));
 check('version is set', /^\d+\.\d+\.\d+$/.test(pkg.version), pkg.version);
-check('linux deb has a maintainer', !!(pkg.build?.linux?.maintainer), pkg.build?.linux?.maintainer || 'MISSING — the .deb target refuses to build without it');
-check('files list is an allow-list, not a glob',
-  Array.isArray(pkg.build?.files) && !pkg.build.files.includes('**/*'), (pkg.build?.files || []).join(' '));
-check('storage is never in the files list',
-  !(pkg.build?.files || []).some((f) => /storage/.test(f)));
-check('publish is a draft', pkg.build?.publish?.releaseType === 'draft');
+// One home for the version: CMake reads package.json, so the app, its
+// installers and the release tag cannot disagree.
+check('CMake takes its version from package.json',
+  /string\(JSON CLOSENI_PACKAGE_VERSION GET \$\{CLOSENI_PACKAGE_JSON\} version\)/.test(read('native/CMakeLists.txt')) &&
+  /project\(CloseNI VERSION \$\{CLOSENI_PACKAGE_VERSION\}/.test(read('native/CMakeLists.txt')));
+check('linux deb has a maintainer', /^[^<>]+ <[^@\s<>]+@[^\s<>]+>$/.test(appMeta.maintainer || ''),
+  appMeta.maintainer || 'MISSING — a .deb without a Maintainer field is refused by dpkg');
+// electron-builder's `files` allow-list checks are gone with electron-builder:
+// stage.mjs copies only local-agent/dist and config, and what actually lands
+// in the stage is audited below, which is the stronger check.
+check('the bundled Node is a 22 LTS pinned by checksum for every target',
+  /^22\.\d+\.\d+$/.test(appMeta.node?.version || '') &&
+  ['linux-x64.tar.gz', 'win-x64.zip', 'darwin-arm64.tar.gz', 'darwin-x64.tar.gz']
+    .every((k) => /^[0-9a-f]{64}$/.test(appMeta.node?.sha256?.[k] || '')), appMeta.node?.version);
+check('packaging tools are downloaded over https and pinned by checksum',
+  Object.values(appMeta.tools || {}).length > 0 &&
+  Object.values(appMeta.tools).every((t) => /^https:\/\//.test(t.url) && /^[0-9a-f]{64}$/.test(t.sha256)));
 
 const wf = read('.github/workflows/release.yml');
+// The jobs, split on their two-space-indented keys under `jobs:`.
+const jobs = Object.fromEntries((wf.split(/^jobs:\n/m)[1] || '').split(/^(?=  [a-z][\w-]*:\n)/m)
+  .map((j) => [(j.match(/^  ([a-z][\w-]*):/) || [])[1], j]).filter(([k]) => k));
 check('release workflow checks the tag against package.json', /does not match package.json version/.test(wf));
-check('release workflow serialises the two OS jobs', /max-parallel:\s*1/.test(wf));
-// Compare the executed `run:` lines, not any mention - electron-builder is
-// named in a comment near the top, which made this pass/fail on prose.
-const runLines = [...wf.matchAll(/^\s*run:\s*(.+)$/gm)].map((m) => m[1]);
-const iTests = runLines.findIndex((l) => l.includes('run-tests.cjs'));
-const iPack = runLines.findIndex((l) => l.includes('electron-builder'));
+check('installers are built for windows, linux and both macs',
+  ['linux-x64', 'win-x64', 'mac-arm64', 'mac-x64'].every((t) => new RegExp(`target: ${t}\\b`).test(jobs.package || '')));
+// Replaces "serialises the two OS jobs" (max-parallel: 1). That guarded
+// electron-builder publishing from each job and racing to create the release;
+// now the build jobs only upload artifacts and one job publishes after them all.
+check('one job publishes, after every installer is built',
+  /needs: package\b/.test(jobs.publish || '') && (wf.match(/gh release create/g) || []).length === 1 &&
+  !/gh release/.test(jobs.package || ''), Object.keys(jobs).join(', '));
+check('publish is a draft', /gh release create [^\n]*--draft/.test(jobs.publish || ''));
+check('only the publish job can write to the repository',
+  /^permissions:\n\s+contents: read/m.test(wf) && /contents: write/.test(jobs.publish || '') &&
+  (wf.match(/contents: write/g) || []).length === 1);
+// Compare the executed `run:` lines, not any mention, so prose in a comment
+// cannot make this pass or fail.
+const runLines = (j) => [...(j || '').matchAll(/^\s*run:\s*(.+)$/gm)].map((m) => m[1]);
 check('release workflow runs unit tests before packaging',
-  iTests !== -1 && iPack !== -1 && iTests < iPack, `tests step ${iTests}, package step ${iPack}`);
+  runLines(jobs.test).some((l) => l.includes('run-tests.cjs')) && /needs: test\b/.test(jobs.package || '') &&
+  runLines(jobs.package).some((l) => l.includes('native/package/stage.mjs --installers')));
 
 // gitignore must still exclude live session state.
 const ignore = read('.gitignore');
@@ -611,18 +640,100 @@ try {
 
 if (!QUICK) {
   group('Packaged artifact');
-  const asar = 'dist/linux-unpacked/resources/app.asar';
-  if (!existsSync(join(ROOT, asar))) {
-    check('a packaged build exists to audit', false, 'run `npx electron-builder --linux` first');
+  // The native app as native/package/stage.mjs staged it (npm run pack): the
+  // AppDir, CloseNI.app or install directory the installers are made from.
+  // Electron's app.asar is gone, so its asar listing is replaced by walking the
+  // stage itself, and the desktop/ files it looked for by what the native app
+  // needs instead.
+  const manifestFile = 'dist/native/stage.json';
+  if (!existsSync(join(ROOT, manifestFile))) {
+    check('a packaged build exists to audit', false, 'run `npm run pack` first');
   } else {
-    const list = sh('npx', ['asar', 'list', asar]).split('\n');
-    const leaked = list.filter((f) => /storage\/|sessions\.json|last-chat-url|browser-profiles/.test(f));
-    check('no session data in the artifact', leaked.length === 0, leaked.slice(0, 5).join(', '));
-    for (const need of ['/local-agent/dist/index.js', '/desktop/main.js', '/desktop/main/github.js',
-      '/desktop/renderer/core.js', '/desktop/theme.js', '/build/icon.png']) {
-      check(`artifact contains ${need}`, list.includes(need));
+    const m = JSON.parse(read(manifestFile));
+    const stage = join(ROOT, m.stage);
+    const res = join(ROOT, m.resources);
+    const walk = (dir) => readdirSync(dir).flatMap((n) => {
+      const p = join(dir, n);
+      return lstatSync(p).isDirectory() ? walk(p) : [p];
+    });
+    const files = existsSync(stage) ? walk(stage).map((p) => p.slice(stage.length + 1).split('\\').join('/')) : [];
+    const resRel = res.slice(stage.length + 1).split('\\').join('/');
+    const inRes = (p) => (resRel ? resRel + '/' : '') + p;
+    check('the stage exists', files.length > 0, m.stage);
+    check('the stage is this version', m.version === pkg.version, `${m.version} vs ${pkg.version}`);
+
+    const leaked = files.filter((f) => /(^|\/)(storage|browser-profiles|\.git)\/|sessions\.json|last-chat-url|(^|\/)\.env(\.|$)/.test(f));
+    check('no session data, .env or .git in the artifact', leaked.length === 0, leaked.slice(0, 5).join(', '));
+    check('no source maps or type declarations', !files.some((f) => /\.(map|d\.[cm]?ts)$/.test(f)),
+      files.filter((f) => /\.(map|d\.[cm]?ts)$/.test(f)).slice(0, 3).join(', '));
+    check('only the agent\'s dist, config and runtime packages are shipped',
+      files.filter((f) => f.startsWith(inRes('local-agent/')))
+        .every((f) => /^(dist|config|node_modules)\/|^package\.json$/.test(f.slice(inRes('local-agent/').length))));
+
+    for (const need of ['local-agent/dist/index.js', 'local-agent/package.json', 'local-agent/node_modules/playwright/cli.js']) {
+      check(`artifact contains ${need}`, files.includes(inRes(need)));
     }
-    check('artifact bundles playwright', list.some((f) => f.startsWith('/node_modules/playwright')));
+    check('artifact contains the provider configs', files.some((f) => f.startsWith(inRes('local-agent/config/providers/')) && f.endsWith('.json')));
+    check('artifact contains the app', existsSync(join(ROOT, m.executable)), m.executable);
+    check('artifact contains Node', existsSync(join(ROOT, m.node.path)), m.node.path);
+    check('the bundled Node is 22', /^22\./.test(m.node.version) && m.node.version === appMeta.node.version, m.node.version);
+    const host = { linux: 'linux-x64', win32: 'win-x64', darwin: process.arch === 'arm64' ? 'mac-arm64' : 'mac-x64' }[process.platform];
+    if (m.target === host) {
+      let said = '';
+      try { said = sh(join(ROOT, m.node.path), ['--version']).trim(); } catch (e) { said = String(e.message).slice(0, 100); }
+      check('and it runs', said === `v${m.node.version}`, said);
+    }
+
+    // Exactly the packages the agent needs at run time, resolved from its own
+    // package.json the way Node resolves them, and nothing it requires missing.
+    const agentPkg = JSON.parse(read('local-agent/package.json'));
+    const closure = new Set();
+    const queue = Object.keys(agentPkg.dependencies || {}).filter((d) => !d.startsWith('@agentic/'));
+    while (queue.length) {
+      const name = queue.shift();
+      if (closure.has(name)) continue;
+      const dir = ['local-agent/node_modules/' + name, 'node_modules/' + name].find((d) => existsSync(join(ROOT, d, 'package.json')));
+      if (!dir) continue;
+      closure.add(name);
+      const meta = JSON.parse(read(dir + '/package.json'));
+      queue.push(...Object.keys(meta.dependencies || {}));
+      queue.push(...Object.keys(meta.optionalDependencies || {}).filter((o) => existsSync(join(ROOT, 'node_modules', o))));
+    }
+    const modulesDir = join(res, 'local-agent', 'node_modules');
+    const shipped = existsSync(modulesDir) ? readdirSync(modulesDir).flatMap((n) => n.startsWith('@')
+      ? readdirSync(join(modulesDir, n)).map((s) => n + '/' + s) : [n]).sort() : [];
+    check('node_modules is exactly the agent\'s runtime closure', JSON.stringify(shipped) === JSON.stringify([...closure].sort()),
+      `shipped ${shipped.join(' ')}; needed ${[...closure].sort().join(' ')}`);
+    const required = new Set();
+    for (const f of files.filter((p) => p.startsWith(inRes('local-agent/dist/')) && p.endsWith('.js'))) {
+      for (const r of readFileSync(join(stage, f), 'utf8').matchAll(/require\("([^".][^"]*)"\)/g)) {
+        const id = r[1].replace(/^node:/, '');
+        required.add(id.startsWith('@') ? id.split('/').slice(0, 2).join('/') : id.split('/')[0]);
+      }
+    }
+    const builtin = new Set(builtinModules);
+    const unmet = [...required].filter((n) => !builtin.has(n) && !shipped.includes(n));
+    check('everything the agent requires is shipped', unmet.length === 0, unmet.join(', '));
+
+    // Lightweight by construction: Qt Quick's Basic style only, no web engine,
+    // no translations, no software OpenGL fallback.
+    check('Qt Quick Controls\' Basic style is shipped', files.some((f) => /\/qml\/QtQuick\/Controls\/Basic\/qmldir$/.test('/' + f)));
+    const otherStyles = files.filter((f) => /\/QtQuick\/Controls\/(Material|Universal|Fusion|Imagine|FluentWinUI3|Windows|macOS|iOS)\//.test('/' + f));
+    check('no other Qt Quick Controls style', otherStyles.length === 0, otherStyles.slice(0, 3).join(', '));
+    const web = files.filter((f) => /webengine|webview|webchannel/i.test(f));
+    check('no web engine or web view', web.length === 0, web.slice(0, 3).join(', '));
+    check('no translations', !files.some((f) => /\.qm$/.test(f) || /(^|\/)translations\//.test(f)));
+    check('no software OpenGL', !files.some((f) => /opengl32sw\.dll$/i.test(f)));
+    check('a platform plugin is shipped', files.some((f) => /platforms\/(libqxcb\.so|qwindows\.dll|libqcocoa\.dylib)$/.test(f)));
+    // The file and folder pickers (QtQuick.Dialogs) load these at run time;
+    // without them a dialog fails only when someone opens it. The qml/assets
+    // textures need no check: they are compiled into the executable.
+    for (const p of ['qtquickdialogsplugin', 'qtquickdialogs2quickimplplugin']) {
+      check(`QtQuick.Dialogs plugin ${p} is shipped`, files.some((f) => new RegExp(`(^|/)(lib)?${p}\\.(so|dll|dylib)$`).test(f)));
+    }
+    // Electron's linux-unpacked was 283 MB; the native app must stay well under it.
+    check('the stage is smaller than the Electron build it replaces (283 MB)', m.bytes < 283 * 1048576,
+      `${(m.bytes / 1048576).toFixed(1)} MB`);
   }
 }
 
@@ -646,8 +757,10 @@ console.log(`
 ${'-'.repeat(W)}
   NOT covered by this script, and still unverified:
 
-    · The Windows installer. No Windows machine here; the first .exe the
-      release workflow builds is unverified until someone installs it.
+    · The Windows installer and the macOS disk images. No Windows or Mac
+      here; the first .exe and .dmg the release workflow builds are
+      unverified until someone installs them. The packaging audit above
+      covers only the stage built on this machine.
     · Qwen and GLM are selectable as experimental, not verified. Qwen's 300s
       completion wait has not been re-run live with a build-sized prompt;
       GLM's live site declined the build prompts when last tried. Only

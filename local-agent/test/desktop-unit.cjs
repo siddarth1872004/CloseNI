@@ -1463,6 +1463,26 @@ function testRendererLogic() {
   check("a skill import path", R.parseSkillImport("o/r/skills/a.md").path === "skills/a.md" && R.parseSkillImport("o/r") === null);
   check("toggling skills", R.toggleSkill(["a"], "b", true).join(",") === "a,b" && R.toggleSkill(["a", "b"], "a", false).join(",") === "b");
   check("unreadable saved skills are none", R.parseSkills("nope").length === 0 && R.parseSkills('["a"]')[0] === "a");
+
+  // Settings: the MCP check before saving, the preamble and the permission policy.
+  check("blank MCP configuration saves", R.mcpConfigError("") === "" && R.mcpConfigError("  \n") === "");
+  check("valid MCP configuration saves", R.mcpConfigError('{"servers":{},"calls":[]}') === "");
+  check("a typo in the MCP configuration is caught", R.mcpConfigError('{"servers":') === "That is not valid JSON");
+  const ok = function (text) { return { ok: true, text: text }; };
+  const pre = R.composePreamble(ok("be terse"), [ok("tests first"), ok("  "), { ok: false, error: "gone" }, ok("small diffs")],
+    { ok: true, texts: ["schema"], notes: [] });
+  check("the preamble has the persona, readable skills in order and MCP text",
+    pre.persona === "be terse" && pre.skills.join("|") === "tests first|small diffs" && pre.mcpContext[0] === "schema",
+    JSON.stringify(pre));
+  check("nothing configured is an empty preamble",
+    Object.keys(R.composePreamble(null, [], { ok: true, texts: [], notes: [] })).length === 0);
+  check("a blank or missing persona is left out",
+    !("persona" in R.composePreamble(ok(" "), [], null)) && !("persona" in R.composePreamble({ ok: false }, [], null)));
+  check("the permission choices are Electron's",
+    R.AUTONOMY_OPTIONS.map(function (o) { return o.value; }).join(",") === "ask,auto,never");
+  check("a saved permission policy is kept", R.resolveAutonomy("never") === "never" && R.resolveAutonomy("auto") === "auto");
+  check("an unknown or missing permission policy is ask",
+    R.resolveAutonomy("yolo") === "ask" && R.resolveAutonomy("") === "ask" && R.resolveAutonomy(null) === "ask");
 }
 
 async function run(c, s, sk) {

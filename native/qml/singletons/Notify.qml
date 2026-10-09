@@ -66,4 +66,13 @@ QtObject {
         function onLog(line) { notify.log(line) }
         function onProjectLog(line) { notify.plog(line) }
     }
+    // The git buttons, export and clone stream into the project log too.
+    property Connections _git: Connections {
+        target: Git
+        function onProjectLog(line) { notify.plog(line) }
+    }
+    property Connections _github: Connections {
+        target: GitHub
+        function onProjectLog(line) { notify.plog(line) }
+    }
 }

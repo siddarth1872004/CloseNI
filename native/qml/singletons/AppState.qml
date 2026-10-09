@@ -103,8 +103,8 @@ QtObject {
     // The chat transcript the next plan is built from (chat panel), and the plan.
     property var chatHistory: []
     property var currentPlan: null
-    // A GitHub repository picked as reference ({ name, readme, files }), folded
-    // into the next plan prompt (research's "Use as reference").
+    // A GitHub repository taken as reference from Research ({ name, readme, files },
+    // R.referenceFrom): the next plan request folds it in (R.planRequest).
     property var repoReference: null
     signal chatCleared()
 

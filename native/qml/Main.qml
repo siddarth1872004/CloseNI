@@ -24,6 +24,8 @@ ApplicationWindow {
     required property string provider
     required property bool autoStart
     property string selfTestDir: ""
+    // --self-test-flow <name>: shell/<name>Flow.qml runs instead of SelfTest.
+    property string selfTestFlow: ""
     // --self-test: main.cpp saves the window to `path` (see SelfTest.qml).
     signal selfTestShot(string path)
 
@@ -80,7 +82,8 @@ ApplicationWindow {
     Component.onCompleted: {
         AppState.start(workspace, provider)
         if (autoStart) startAgent()
-        if (selfTestDir) selfTest.begin()
+        if (selfTestDir && selfTestFlow) flowTest.setSource("shell/" + selfTestFlow + "Flow.qml", { root: window, outDir: selfTestDir })
+        else if (selfTestDir) selfTest.begin()
     }
 
     // Pixel's starfield sits behind the content; scanlines go over it (below).
@@ -149,6 +152,7 @@ ApplicationWindow {
 
     ApprovalModal { id: approvalModal }
     BrowserGate { id: gate }
+    CloneConfirm { id: cloneConfirm }
 
     // Made on first use: the native dialog pulls in the platform's dialog
     // stack, which an idle window has no need for.
@@ -182,4 +186,5 @@ ApplicationWindow {
             approval: approvalModal
         }
     }
+    Loader { id: flowTest }
 }
