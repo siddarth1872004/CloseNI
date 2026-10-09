@@ -8,14 +8,14 @@
 const REPO = 'https://github.com/siddarth1872004/CloseNI';
 const RELEASES = REPO + '/releases/latest';
 
-/** "1902 unit tests, 192 end-to-end tests, 206 browser checks, ..." from the stats image alt. */
+/** "2111 unit tests, 13 native test suites, 197 verify checks, ..." from the stats image alt. */
 function stats(readme) {
   const alt = (readme.match(/<img src="docs\/assets\/stats\.svg" alt="([^"]+)"/) || [])[1] || '';
   const n = (re) => (alt.match(re) || [])[1] || '';
   return {
     unit: n(/(\d+) unit tests/),
-    e2e: n(/(\d+) end-to-end/),
-    browser: n(/(\d+) browser checks/),
+    suites: n(/(\d+) native test suites/),
+    checks: n(/(\d+) verify checks/),
   };
 }
 
@@ -167,11 +167,11 @@ footer .sp{flex:1}
     <a class="btn" href="readme.html">Read the docs</a>
   </div>
   <p class="sub" id="dl-sub">Windows installer · Linux AppImage and .deb · unsigned</p>
-  <div class="shot"><div class="chrome"><span></span><span></span><span></span></div><img src="screenshots/code.png" alt="The Code panel: a search, a read, an edit shown as a diff, a todo list, and a command waiting for permission"></div>
+  <div class="shot"><div class="chrome"><span></span><span></span><span></span></div><img src="screenshots/code.png" alt="The Code panel: a request, a read, and an edit shown as a diff waiting for permission"></div>
   <div class="stats">
     <div><b>${esc(st.unit)}</b><span>unit tests</span></div>
-    <div><b>${esc(st.e2e)}</b><span>end-to-end tests</span></div>
-    <div><b>${esc(st.browser)}</b><span>browser checks</span></div>
+    <div><b>${esc(st.suites)}</b><span>native test suites</span></div>
+    <div><b>${esc(st.checks)}</b><span>verify checks</span></div>
     <div><b>0</b><span>API keys</span></div>
   </div>
 </div></header>
