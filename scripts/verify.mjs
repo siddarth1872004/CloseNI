@@ -725,6 +725,12 @@ if (!QUICK) {
     check('no translations', !files.some((f) => /\.qm$/.test(f) || /(^|\/)translations\//.test(f)));
     check('no software OpenGL', !files.some((f) => /opengl32sw\.dll$/i.test(f)));
     check('a platform plugin is shipped', files.some((f) => /platforms\/(libqxcb\.so|qwindows\.dll|libqcocoa\.dylib)$/.test(f)));
+    // The file and folder pickers (QtQuick.Dialogs) load these at run time;
+    // without them a dialog fails only when someone opens it. The qml/assets
+    // textures need no check: they are compiled into the executable.
+    for (const p of ['qtquickdialogsplugin', 'qtquickdialogs2quickimplplugin']) {
+      check(`QtQuick.Dialogs plugin ${p} is shipped`, files.some((f) => new RegExp(`(^|/)(lib)?${p}\\.(so|dll|dylib)$`).test(f)));
+    }
     // Electron's linux-unpacked was 283 MB; the native app must stay well under it.
     check('the stage is smaller than the Electron build it replaces (283 MB)', m.bytes < 283 * 1048576,
       `${(m.bytes / 1048576).toFixed(1)} MB`);
