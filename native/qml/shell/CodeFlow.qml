@@ -9,7 +9,9 @@ import "../js/code-transcript.mjs" as T
  * handlers. The request is typed and sent with enter, the edit's permission
  * prompt is answered 1 (allow), and the turn finishes with the model's answer.
  * Then the run console's "Fix errors" (Runner.runFix): one from another folder
- * is declined, one from this project becomes a turn. Each check prints
+ * is declined, one from this project becomes a turn. Then the prompt's keys
+ * (keys()): history, mode cycling, popups, slash commands, a queued message
+ * and esc. Each check prints
  * "code-flow: ok <name>"; a failed one warns, which main.cpp counts and turns
  * into exit 1. Two screenshots: the permission prompt and the finished turn.
  *
@@ -131,6 +133,90 @@ Item {
             return waitFor("the run fix turn", turnDone, 90000)
         }).then(function () {
             check("the run fix answer is shown", flow.transcriptHas(/crash is fixed/))
+            return keys(panel, input)
+        })
+    }
+
+    // The prompt's keys, as the Electron panel test (scripts/ui-code.mjs)
+    // drove them: history, mode cycling, the command and file popups, slash
+    // commands, a queued message and esc. Events the agent would send are
+    // injected through CodeStore.onEvent where the mock cannot time them.
+    function keys(panel, input) {
+        var last = function () { return CodeStore.entry(CodeStore.items.get(CodeStore.items.count - 1).uid) }
+        var enter = function (text) { panel.setInput(text); panel.inputKey(key(Qt.Key_Return, "\r")) }
+        AppState.switchTab("code")
+        panel.setInput("")
+        input.cursorPosition = 0
+        panel.inputKey(key(Qt.Key_Up))
+        check("up recalls the last message", input.text === "fix the bug in calc.py", input.text)
+        panel.setInput("")
+
+        var seen = []
+        for (var i = 0; i < 7; i++) {
+            panel.inputKey({ key: Qt.Key_Backtab, text: "", modifiers: Qt.ShiftModifier, accepted: false })
+            seen.push(CodeStore.mode)
+        }
+        check("shift+tab walks accept edits, plan, the job modes and back",
+              seen.join() === "acceptEdits,plan,build,test,research,ship,default", seen.join())
+
+        panel.setInput("/pl")
+        check("typing / suggests commands",
+              !!panel.popup && panel.popup.kind === "cmd" && panel.popup.items[0].label === "/plan", JSON.stringify(panel.popup))
+        panel.inputKey(key(Qt.Key_Tab, "\t"))
+        check("tab completes the command", /^\/plan\s*$/.test(input.text), input.text)
+        panel.inputKey(key(Qt.Key_Return, "\r"))
+        check("/plan turns plan mode on", CodeStore.mode === "plan", CodeStore.mode)
+        enter("/plan")
+        check("and off again", CodeStore.mode === "default", CodeStore.mode)
+
+        enter("/help")
+        check("/help lists the commands", last().kind === "help" && /\/rewind/.test(last().text), last().kind)
+        enter("/frobnicate")
+        check("an unknown command says so", flow.transcriptHas("Unknown command /frobnicate"))
+
+        // updatePopup is what the input's onTextChanged runs; setInput puts
+        // the caret at the end only after the text has changed.
+        panel.setInput("explain @cal")
+        panel.updatePopup()
+        return waitFor("the file popup", function () { return !!panel.popup && panel.popup.kind === "file" }, 10000).then(function () {
+            check("@ suggests project files", panel.popup.items[0].label === "calc.py", JSON.stringify(panel.popup.items))
+            panel.inputKey(key(Qt.Key_Return, "\r"))
+            check("enter completes the file", /^explain @calc\.py\s*$/.test(input.text), input.text)
+            panel.setInput("")
+
+            enter("/clear")
+            return waitFor("the cleared transcript", function () { return flow.transcriptHas("Started a new conversation") }, 30000)
+        }).then(function () {
+            check("/clear empties the transcript", !flow.transcriptHas("fix the bug in calc.py"))
+
+            // A turn in progress: what is sent now waits for it.
+            CodeStore.onEvent({ type: "turn-start" })
+            flow.events = []
+            enter("also add a test")
+            var queued = false
+            for (var q = 0; q < CodeStore.items.count; q++) {
+                var e = CodeStore.entry(CodeStore.items.get(q).uid)
+                if (e && e.kind === "user" && e.queued && e.text === "also add a test") queued = true
+            }
+            check("a message sent while busy is queued, not sent",
+                  CodeStore.queue.length === 1 && queued, JSON.stringify(CodeStore.queue))
+            CodeStore.onEvent({ type: "done", reason: "complete" })
+            return waitFor("the queued turn", turnDone, 90000)
+        }).then(function () {
+            check("the queued message goes out after the turn",
+                  CodeStore.queue.length === 0 && flow.transcriptHas(/test is added/))
+
+            // Last, as the agent's loop keeps the interrupt for its next turn.
+            CodeStore.onEvent({ type: "turn-start" })
+            panel.setInput("keep")
+            panel.inputKey(key(Qt.Key_Escape))
+            check("esc while working interrupts rather than clearing the line", input.text === "keep", input.text)
+            return waitFor("the agent's answer to the interrupt", function () { return CodeStore.spinnerVerb.indexOf("Stopping") === 0 }, 30000)
+        }).then(function () {
+            CodeStore.onEvent({ type: "done", reason: "interrupted" })
+            check("and the transcript says so", flow.transcriptHas("Interrupted by user"))
+            panel.inputKey(key(Qt.Key_Escape))
+            check("esc while idle clears the line", input.text === "", input.text)
         })
     }
 

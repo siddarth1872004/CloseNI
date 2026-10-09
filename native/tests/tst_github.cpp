@@ -141,6 +141,8 @@ void TestGitHub::apiShapes()
         calls << Call{method, path, body};
         if (path.contains("/readme"))
             return reply({200, QJsonObject{{"content", QString::fromLatin1(QByteArray("# Hi").toBase64())}}, {}});
+        if (path.contains("/contents/"))
+            return reply({200, QJsonObject{{"content", QString::fromLatin1(QByteArray("SKILL TEXT").toBase64())}}, {}});
         if (path.contains("/git/trees/"))
             return reply({200, QJsonObject{{"tree", QJsonArray{QJsonObject{{"path", "a.py"}, {"type", "blob"}},
                                                                QJsonObject{{"path", "src"}, {"type", "tree"}}}}}, {}});
@@ -177,6 +179,11 @@ void TestGitHub::apiShapes()
     CHECK(calls[5].method == QStringLiteral("POST") && calls[5].path == QStringLiteral("/user/repos"));
     CHECK(calls[5].body.toObject().value("name") == QStringLiteral("newthing"));
     CHECK(calls[5].body.toObject().value("private") == true);
+
+    // Skill import fetches one file by path, decoded from base64.
+    api.getFile("o", "r", "docs/skill.md", into(&o));
+    CHECK2(calls[6].path == QStringLiteral("/repos/o/r/contents/docs/skill.md"), calls[6].path);
+    CHECK2(o.result == QStringLiteral("SKILL TEXT"), compact(o.result));
 
     auto failing = [](int status, const QString &message) {
         GitHubApi api([status, message](const QString &, const QString &, const QJsonValue &, GitHubApi::Reply reply) {

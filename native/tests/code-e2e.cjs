@@ -5,7 +5,9 @@
  * types a request into the panel, presses enter, waits for the edit to ask,
  * answers 1 (allow) and waits for the turn to finish - all through the panel's
  * own key handlers. Then the run console's "Fix errors" (Runner.runFix):
- * declined for another folder, a turn for this one.
+ * declined for another folder, a turn for this one. Then the prompt's keys:
+ * history, mode cycling, the command and file popups, slash commands, a
+ * queued message and esc (what scripts/ui-code.mjs checked in Electron).
  *
  *   node native/tests/code-e2e.cjs [path/to/CloseNI] [screenshot dir]
  *
@@ -55,6 +57,7 @@ async function main() {
     F + "\n{\"tool\": \"edit\", \"path\": \"calc.py\"}\n---\n<<<<<<< SEARCH\n    return a - b\n=======\n    return a + b\n>>>>>>> REPLACE\n" + F,
     "Fixed: add() now adds.",
     "The crash is fixed: calc.py runs.",
+    "Done: the test is added.",
   ]);
 
   const env = Object.assign({}, process.env, {
@@ -84,7 +87,8 @@ async function main() {
   // The flow's own checks, as it printed them.
   const lines = out.split("\n").filter((l) => /code-flow: (ok|FAIL) /.test(l));
   for (const l of lines) check(l.replace(/^.*code-flow: (ok|FAIL) /, "flow: "), /code-flow: ok /.test(l));
-  check("the flow ran all ten of its checks", lines.length === 10, out);
+  check("the flow ran all 26 of its checks", lines.length === 26, out);
+  check("the queued message reaches the model", mock.prompts().some((p) => /also add a test/.test(p)));
   check("the run fix reaches the model", mock.prompts().some((p) => /NameError: name .ad. is not defined/.test(p)));
   check("the file is fixed on disk", /return a \+ b/.test(fs.readFileSync(path.join(workspace, "calc.py"), "utf-8")));
   check("the flow exits cleanly with no warnings", code === 0, "exit " + code + "\n" + out);
