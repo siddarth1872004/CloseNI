@@ -299,10 +299,20 @@ never inside a real project.
       pytest when the project made none). A turn that doesn't end as expected
       fails the scenario. `--record` appends the table to
       `docs/testing/agent-live.md`. Tried live in auto mode: 3 and 12 passed.
-      *9 Oct:* removed with Electron. It drove the Electron renderer over CDP;
-      bringing it back needs a scenario-driven native self-test flow.
-      9's plan approval and 10's `/rewind` step are still unproven, because
-      DeepSeek signed out partway through.
+      *9 Oct:* removed with Electron, which it drove over CDP, then brought
+      back on the native app with the same CLI, scenarios and record format.
+      Each scenario launches `CloseNI --live <scenario.json> --start
+      --workspace <dir>`; `native/qml/shell/LiveFlow.qml` types the steps
+      into the Code panel of a real window through the panel's own handlers
+      and reports turn ends and the transcript as `closeni-live:` lines. No
+      web engine is involved, and warnings fail nothing. `--app PATH` picks the
+      binary. `--mock` runs the scenarios that have scripted replies (9, 10
+      and 12) against the e2e mock provider in scratch storage. That proves
+      the plumbing (turns, `/mode`, `/rewind`, the plan approval and esc), and
+      all three pass in auto mode. In auto mode, 9's go-ahead now sets auto mode again
+      before it is typed: typed in plan mode, the turn stayed read-only. 9 and
+      10 are still unproven against a real provider, because DeepSeek signed
+      out partway through.
 - [ ] **1.14 Run the suite twice**, and fix whatever falls apart between runs (L,
       open-ended).
 
