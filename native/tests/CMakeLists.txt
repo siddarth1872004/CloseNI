@@ -75,3 +75,21 @@ foreach(suite buildstore files git github library prefs_import secretstore)
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_FORCE_STDERR_LOGGING=1;CLOSENI_REPO=${CMAKE_CURRENT_SOURCE_DIR}/../..")
 endforeach()
 # --- end data-backend -------------------------------------------------------
+
+# --- ship-panels: the Test, Research and Ship panels in the real window ------
+# Runs CloseNI --self-test-flow Ship against a scratch git workspace, a bare
+# push remote and the GitHub mock, and checks what reached git and GitHub.
+# The agent is found as the app finds it (CLOSENI_AGENT, else the checkout).
+qt_add_executable(tst_ship_ui tst_ship_ui.cpp data_harness.h mock_github.h)
+set_target_properties(tst_ship_ui PROPERTIES AUTOMOC ON)
+target_link_libraries(tst_ship_ui PRIVATE closeni_data_test)
+target_compile_definitions(tst_ship_ui PRIVATE
+    CLOSENI_EXE="$<TARGET_FILE:closeni>"
+    CLOSENI_SHIP_SHOTS="${CMAKE_CURRENT_BINARY_DIR}/ship-ui")
+add_dependencies(tst_ship_ui closeni)
+if(NOT MSVC)
+    target_compile_options(tst_ship_ui PRIVATE -Wall -Wextra)
+endif()
+add_test(NAME ship_ui COMMAND tst_ship_ui)
+set_tests_properties(ship_ui PROPERTIES TIMEOUT 300)
+# --- end ship-panels --------------------------------------------------------
