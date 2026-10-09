@@ -13,9 +13,17 @@
  *          code, Fix, restart and stop.
  *
  *   node native/smoke.cjs [path/to/CloseNI]
+ *   node native/smoke.cjs --packaged <staged CloseNI, or the AppImage>
  *
  * Needs a built agent (npm run build) and Playwright's Chromium. Storage and the
  * provider config go in temporary directories, so no real profile is touched.
+ *
+ * --packaged runs a staged build (native/package/stage.mjs) as a user gets it:
+ * no CLOSENI_NODE or CLOSENI_AGENT, so the bundled Node and agent are used, and
+ * the agent is once started with a broken `node` first on PATH. Chromium is looked
+ * for in <storage>/browsers, as in a real install: the entries of
+ * CLOSENI_SMOKE_BROWSERS (a Playwright cache, e.g. ~/.cache/ms-playwright) are
+ * linked there, or, without it, the app downloads Chromium itself.
  */
 const { spawn } = require("child_process");
 const fs = require("fs");
@@ -24,7 +32,9 @@ const path = require("path");
 const { createMockProvider } = require("../local-agent/test/mock-provider.cjs");
 
 const root = path.join(__dirname, "..");
-const exe = process.argv[2] || path.join(root, "build-native", "bin", process.platform === "win32" ? "CloseNI.exe" : "CloseNI");
+const packaged = process.argv.includes("--packaged");
+const exe = process.argv.slice(2).find((a) => !a.startsWith("--")) ||
+  path.join(root, "build-native", "bin", process.platform === "win32" ? "CloseNI.exe" : "CloseNI");
 const F = "```";
 
 let failed = 0;
@@ -90,7 +100,7 @@ function startBridge(env) {
   };
 }
 
-async function exitOnReady(env, workspace) {
+async function exitOnReady(env, workspace, name) {
   const proc = spawn(exe, ["--exit-on-ready", "--provider", "mock", "--workspace", workspace], { env: env });
   let out = "";
   proc.stdout.on("data", (d) => { out += d; });
@@ -99,7 +109,42 @@ async function exitOnReady(env, workspace) {
   const code = await new Promise((resolve) => proc.on("close", resolve));
   clearTimeout(timer);
   const ready = /CloseNI: agent ready .*"provider":"Mock Provider"/.test(out);
-  check("--exit-on-ready: the app starts the agent session", ready && code === 0, "exit " + code + "\n" + out.trim());
+  check(name || "--exit-on-ready: the app starts the agent session", ready && code === 0, "exit " + code + "\n" + out.trim());
+}
+
+// PATH with a broken `node` in front, so an app that fell back to the system
+// Node would fail. Taking Node off PATH instead would also take away what the
+// AppImage needs to mount itself (fusermount, in /usr/bin with Node).
+function pathWithBrokenNode(tmp) {
+  const dir = path.join(tmp, "broken-node");
+  fs.mkdirSync(dir);
+  if (process.platform === "win32") {
+    fs.writeFileSync(path.join(dir, "node.cmd"), "@echo the system Node was used 1>&2\r\n@exit /b 97\r\n");
+  } else {
+    fs.writeFileSync(path.join(dir, "node"), "#!/bin/sh\necho the system Node was used >&2\nexit 97\n", { mode: 0o755 });
+  }
+  return dir + path.delimiter + (process.env.PATH || "");
+}
+
+// A packaged app keeps Chromium in <storage>/browsers. Link a cache's
+// entries there, or let the app download it as a first run does.
+async function packagedBrowsers(app, storage) {
+  const dir = path.join(storage, "browsers");
+  const cache = process.env.CLOSENI_SMOKE_BROWSERS;
+  if (cache) {
+    fs.mkdirSync(dir, { recursive: true });
+    for (const e of fs.readdirSync(cache)) {
+      if (/^(chromium|ffmpeg)/.test(e)) fs.symlinkSync(path.join(cache, e), path.join(dir, e), process.platform === "win32" ? "junction" : "dir");
+    }
+  }
+  let status = await app.call("Agent", "browserStatus");
+  check("the packaged agent looks for Chromium in the storage directory", !!status && status.path === dir, JSON.stringify(status));
+  if (status && !status.ready) {
+    const installed = await app.call("Agent", "installBrowser");
+    check("installBrowser downloads Chromium with the bundled Playwright", !!installed && installed.ok === true, JSON.stringify(installed));
+    status = await app.call("Agent", "browserStatus");
+  }
+  check("Chromium is ready", !!status && status.ready === true, JSON.stringify(status));
 }
 
 async function codeSession(app, mock, ws) {
@@ -206,18 +251,34 @@ async function main() {
     profileDir: path.join(tmp, "profile"),
   }));
 
+  const storage = path.join(tmp, "storage");
   const env = Object.assign({}, process.env, {
     AGENT_PROVIDER_DIR: providers,
-    CLOSENI_STORAGE: path.join(tmp, "storage"),
+    CLOSENI_STORAGE: storage,
     CLOSENI_NODE: process.execPath,
   });
   // No display needed unless one is asked for.
   if (!env.QT_QPA_PLATFORM) env.QT_QPA_PLATFORM = "offscreen";
-
-  await exitOnReady(env, workspace);
+  if (packaged) {
+    delete env.CLOSENI_NODE;
+    delete env.CLOSENI_AGENT;
+    // An AppImage mounts itself with FUSE; without it, it extracts instead.
+    if (/\.AppImage$/.test(exe) && !fs.existsSync("/dev/fuse")) env.APPIMAGE_EXTRACT_AND_RUN = "1";
+  }
 
   const app = startBridge(env);
-  const timer = setTimeout(() => { console.log("FAIL the bridge run timed out"); app.proc.kill(); process.exit(1); }, 300000);
+  const timer = setTimeout(() => { console.log("FAIL the bridge run timed out"); app.proc.kill(); process.exit(1); }, packaged ? 900000 : 300000);
+  if (packaged) {
+    try {
+      await packagedBrowsers(app, storage);
+    } catch (e) {
+      check("Chromium is set up", false, e.stack);
+    }
+    await exitOnReady(Object.assign({}, env, { PATH: pathWithBrokenNode(tmp) }), workspace,
+      "--exit-on-ready: the bundled Node and agent start the session, not the system Node");
+  } else {
+    await exitOnReady(env, workspace);
+  }
   try {
     await codeSession(app, mock, workspace);
     await queuedRuns(app, mock, workspace);

@@ -72,3 +72,21 @@ jobs:
       - name: Agent session smoke test
         if: runner.os == 'Linux'
         run: node native/smoke.cjs
+
+      # The staged app the installers wrap (native/package/stage.mjs): pruned
+      # Qt, bundled Node and agent, run as a user gets it. The installers
+      # themselves are built by release.yml on a tag.
+      - name: Packaging tools
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y patchelf libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 libxcb-image0 \
+            libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0 libxcb-xinerama0 libxcb-xkb1
+
+      - name: Stage
+        if: runner.os == 'Linux'
+        run: node native/package/stage.mjs --exe build-native/bin/CloseNI
+
+      - name: Packaged smoke test
+        if: runner.os == 'Linux'
+        run: CLOSENI_SMOKE_BROWSERS="$HOME/.cache/ms-playwright" node native/smoke.cjs --packaged dist/native/linux-x64/AppDir/usr/bin/CloseNI
