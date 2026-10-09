@@ -1,10 +1,14 @@
-# Builds installers and attaches them to a GitHub Release.
+# Builds the native app's installers and attaches them to a draft GitHub Release.
 #
 #   npm version 1.0.1        # bumps package.json and tags v1.0.1
 #   git push && git push --tags
 #
-# Windows installers must be built on Windows, which is the whole reason this
-# exists: there is no Windows machine in the development environment.
+# Each system's installer is built on that system (native/package/stage.mjs):
+#   - Windows x64: CloseNI-Setup-x.y.z.exe (NSIS, per user)
+#   - Linux x64:   CloseNI-x.y.z.AppImage and closeni_x.y.z_amd64.deb
+#   - macOS:       CloseNI-x.y.z-arm64.dmg and CloseNI-x.y.z-x64.dmg (unsigned)
+# One job publishes them all at the end, so the release is created once and
+# no job races another to make it.
 name: release
 
 on:
@@ -13,7 +17,7 @@ on:
       - "v*"
 
 permissions:
-  contents: write
+  contents: read
 
 # Two tags pushed in quick succession would otherwise build against each other.
 concurrency:
@@ -21,17 +25,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build:
-    strategy:
-      fail-fast: false
-      # Serialised on purpose. Both jobs publish to the same release, and
-      # electron-builder creates it if it is missing - run them together and
-      # they race to create it, which ends with one job's artifacts orphaned on
-      # a release the other job replaced.
-      max-parallel: 1
-      matrix:
-        os: [windows-latest, ubuntu-latest]
-    runs-on: ${{ matrix.os }}
+  test:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -42,6 +37,7 @@ jobs:
 
       # A tag that disagrees with package.json produces installers named after
       # the wrong version, which is only ever noticed after they are published.
+      # CMake reads its version from package.json too, and stage.mjs checks it.
       - name: Check the tag matches package.json
         shell: bash
         run: |
@@ -63,29 +59,120 @@ jobs:
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
 
-      # The unit suite is fast and catches a broken build config before it
-      # produces an artifact. The end-to-end suite drives a real browser for
-      # around twenty minutes and stays a local gate.
+      # The unit suite is fast and catches a broken build before it produces
+      # an artifact. The end-to-end suite drives a real browser for around
+      # twenty minutes and stays a local gate.
       - name: Unit tests
         run: node local-agent/test/run-tests.cjs
 
-      - name: Build and publish
-        run: npx electron-builder --publish always
+  package:
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The oldest supported runner, so the AppImage and the .deb run on
+          # any distribution with glibc 2.35 or newer.
+          - target: linux-x64
+            os: ubuntu-22.04
+          - target: win-x64
+            os: windows-latest
+          # Qt for macOS is universal, so both architectures build on Apple
+          # silicon; the x64 app is thinned to x86_64 when it is staged.
+          - target: mac-arm64
+            os: macos-15
+          - target: mac-x64
+            os: macos-15
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.10.*"
+          cache: true
+
+      # The xcb platform plugin's libraries, which linuxdeploy copies into the
+      # AppImage, and patchelf to point the bundled libraries at each other.
+      - name: Linux build tools
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build patchelf libgl1-mesa-dev libxkbcommon-x11-0 libxcb-cursor0 \
+            libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0 \
+            libxcb-xinerama0 libxcb-xkb1
+
+      - name: NSIS
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if (-not (Get-Command makensis -ErrorAction SilentlyContinue) -and -not (Test-Path "${env:ProgramFiles(x86)}\NSIS\makensis.exe")) {
+            choco install nsis -y --no-progress
+          }
+
+      - name: Install
+        run: npm ci
+
+      - name: Compile the agent
+        run: npm run build
+
+      - name: Stage and build the installers
+        run: node native/package/stage.mjs --installers --target ${{ matrix.target }}
+
+      # The AppImage as a user gets it: bundled Node and agent, Chromium in
+      # the storage directory, the mock provider end to end.
+      - name: Install Chromium
+        if: runner.os == 'Linux'
+        run: npx playwright install --with-deps chromium
+
+      - name: Packaged smoke test
+        if: runner.os == 'Linux'
+        shell: bash
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+        run: CLOSENI_SMOKE_BROWSERS="$HOME/.cache/ms-playwright" node native/smoke.cjs --packaged dist/native/out/CloseNI-*.AppImage
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installers-${{ matrix.target }}
+          path: |
+            dist/native/out/*.exe
+            dist/native/out/*.AppImage
+            dist/native/out/*.deb
+            dist/native/out/*.dmg
+          if-no-files-found: error
+          retention-days: 30
+
+  publish:
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: installers-*
+          path: release
+          merge-multiple: true
+
+      # A draft: nothing is public until someone has looked at it. A re-run
+      # replaces the files on the draft it already made.
+      - name: Publish a draft release
+        shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      # Kept even when publishing succeeds: a draft release can be deleted by
-      # accident, and rebuilding an unsigned installer from a tag is slower than
-      # downloading the one CI already made.
-      - name: Keep the installers as workflow artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: installers-${{ matrix.os }}
-          path: |
-            dist/*.exe
-            dist/*.AppImage
-            dist/*.deb
-            dist/*.yml
-          if-no-files-found: ignore
-          retention-days: 30
+          GH_REPO: ${{ github.repository }}
+        run: |
+          cd release
+          sha256sum -- * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" --clobber -- *
+          else
+            gh release create "$GITHUB_REF_NAME" --draft --verify-tag --generate-notes --title "CloseNI ${GITHUB_REF_NAME#v}" -- *
+          fi

@@ -1,0 +1,35 @@
+{
+  "name": "CloseNI",
+  "id": "com.siddarth.closeni",
+  "executable": "CloseNI",
+  "debName": "closeni",
+  "maintainer": "Siddarth S <sid1872004@gmail.com>",
+  "homepage": "https://github.com/siddarth1872004/CloseNI",
+  "synopsis": "Drive web AI chats as a build pipeline",
+  "description": "A desktop agent that drives web-based AI chats through a real browser to plan, build and verify software projects. No API keys.",
+  "categories": "Development;",
+  "electronUninstallGuid": "abac2fcf-fbda-51a7-ad3c-1e343e21bebe",
+  "node": {
+    "version": "22.23.3",
+    "sha256": {
+      "linux-x64.tar.gz": "1084aa36196bba4c3a5e69a1ee388a6e4ff729dad09445fbcd434b28fe3c24af",
+      "win-x64.zip": "2b0ff57b049cda1bbcea2240eec20467018713c1efe1f7360c2681859b90ed71",
+      "darwin-arm64.tar.gz": "23b25245dcfb9af7262f8ff142e9e2e0af025368117329e7a7458a51e5922f53",
+      "darwin-x64.tar.gz": "8a677b0219178efd6eb0e475457c4afb452b521a92f6e67845a73bd85727f2a8"
+    }
+  },
+  "tools": {
+    "linuxdeploy": {
+      "url": "https://github.com/linuxdeploy/linuxdeploy/releases/download/1-alpha-20251107-1/linuxdeploy-x86_64.AppImage",
+      "sha256": "c20cd71e3a4e3b80c3483cef793cda3f4e990aca14014d23c544ca3ce1270b4d"
+    },
+    "appimagetool": {
+      "url": "https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage",
+      "sha256": "ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0"
+    },
+    "appimage-runtime": {
+      "url": "https://github.com/AppImage/type2-runtime/releases/download/20251108/runtime-x86_64",
+      "sha256": "2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d"
+    }
+  }
+}
