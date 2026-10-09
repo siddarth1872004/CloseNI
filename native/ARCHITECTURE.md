@@ -116,6 +116,17 @@ They use the same keys the renderer used:
 JSON values stay JSON strings, as they were in localStorage. The values live in
 `<storage>/native-prefs.json`.
 
+The agent panels read what Settings decides from the `SettingsStore` singleton:
+- `SettingsStore.autonomy` (`ask` | `auto` | `never`) is `CN.getAutonomy()`.
+- `SettingsStore.buildPreamble()` is `CN.buildPreamble()`: a Promise of
+  `{ persona?, skills?, mcpContext? }`.
+
+The provider, its controls and Show Browser stay in `Providers`.
+
+A callback whose result is a top-level list (for example `Files.listProviders`)
+receives a Qt sequence, not an Array, so `Array.isArray` is false. Test for
+`length` instead, or copy it with `Array.prototype.slice.call`.
+
 ## QML's JavaScript engine (Qt 6.11)
 
 **Supported:** Promises, arrow functions, classes, `const`/`let`, destructuring,
