@@ -1,6 +1,9 @@
 /*
- * Unit tests: The desktop app and its packaging: themes and marks, storage paths, the
- * browser gate, build and release config, GitHub, skills, MCP and onboarding.
+ * Unit tests: the native app and its packaging: themes and marks, storage
+ * paths, the browser gate, build and release config, GitHub, skills, MCP and
+ * onboarding. The app's pure logic lives in native/qml/js/*.mjs and is loaded
+ * here through Node's require(esm); its wiring is read from the QML and C++
+ * sources.
  *
  * Run by run-tests.cjs (npm test), against the compiled output.
  */
@@ -8,92 +11,147 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 
+const ROOT = path.join(__dirname, "..", "..");
 const DIST = path.join(__dirname, "..", "dist");
+const NATIVE = path.join(ROOT, "native");
+const JS = path.join(NATIVE, "qml", "js");
 
-// The renderer is one script per panel under desktop/renderer/, read as one.
-function readRenderer() {
-  const dir = path.join(__dirname, "..", "..", "desktop", "renderer");
-  return fs.readdirSync(dir).filter((f) => f.endsWith(".js")).sort()
-    .map((f) => fs.readFileSync(path.join(dir, f), "utf8")).join("\n");
+// One native source file, by its path under native/.
+function readNative(rel) {
+  return fs.readFileSync(path.join(NATIVE, rel), "utf8");
 }
 
-// The main process likewise: main.js and the IPC domains under desktop/main/.
-function readMain() {
-  const D = path.join(__dirname, "..", "..", "desktop");
-  return [path.join(D, "main.js")].concat(fs.readdirSync(path.join(D, "main")).filter((f) => f.endsWith(".js")).sort()
-    .map((f) => path.join(D, "main", f))).map((f) => fs.readFileSync(f, "utf8")).join("\n");
+// Every file under native/<sub> with one of the extensions, read as one.
+function readNativeTree(sub, exts) {
+  const out = [];
+  (function walk(dir) {
+    fs.readdirSync(dir, { withFileTypes: true }).forEach(function (e) {
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) walk(p);
+      else if (exts.some(function (x) { return e.name.endsWith(x); })) out.push({ file: path.relative(NATIVE, p), text: fs.readFileSync(p, "utf8") });
+    });
+  })(path.join(NATIVE, sub));
+  return out;
 }
 
 // Handed in by run-tests.cjs, which keeps the one count.
 let check, section, skipped;
 
-function testCssTokens() {
-  section("css tokens");
-  const { colorLiteralsOutsideThemes, themeBlocks } = require(path.join(__dirname, "css-lint.cjs"));
-  const css = fs.readFileSync(path.join(__dirname, "..", "..", "desktop", "styles.css"), "utf8");
+/*
+ * Theme.qml's palettes, as { id: { key: value-source } }. The block is a JS
+ * object literal of "id": { key: value, ... } entries; values are colour
+ * strings, rgba(...) calls or numbers, none of which contain a colon.
+ */
+function themePalettes(qml) {
+  const start = qml.indexOf("readonly property var palettes: ({");
+  if (start === -1) return {};
+  const end = qml.indexOf("\n    })", start);
+  const block = qml.slice(start, end === -1 ? undefined : end);
+  const out = {};
+  for (const m of block.matchAll(/^\s*"([a-z-]+)":\s*\{([\s\S]*?)^\s*\}/gm)) {
+    const keys = {};
+    for (const kv of m[2].matchAll(/([A-Za-z][A-Za-z0-9]*):\s*((?:[A-Za-z.]+\([^)]*\))|[^,\n]*)/g)) keys[kv[1]] = kv[2].trim();
+    out[m[1]] = keys;
+  }
+  return out;
+}
 
-  // The load-bearing check. A colour outside a theme block is a rule no theme
-  // can reach, and it fails silently - the app just looks wrong on that theme.
-  const stray = colorLiteralsOutsideThemes(css);
-  check("no colour literals outside theme blocks", stray.length === 0,
-    stray.slice(0, 6).map(function (o) { return "line " + o.line + ": " + o.text; }).join(" | "));
+// A colour written into a QML file. Only Theme.qml may hold one.
+const COLOR_LITERAL = /"#[0-9a-fA-F]{3,8}"|\bQt\.rgba\s*\(|\brgba\s*\(|\bQt\.hsla\s*\(/;
+function colourLiterals(qml) {
+  return qml.split("\n").map(function (text, i) { return { line: i + 1, text: text.trim() }; })
+    .filter(function (l) { return !/^(\/\/|\*|\/\*)/.test(l.text) && COLOR_LITERAL.test(l.text.replace(/\/\/.*$/, "")); });
+}
 
-  // Sanity-check the lint itself, so a broken detector cannot report success.
-  check("the lint detects a hex", colorLiteralsOutsideThemes(".a{color:#fff;}").length === 1);
-  check("the lint detects rgba", colorLiteralsOutsideThemes(".a{background:rgba(0,0,0,.5);}").length === 1);
-  check("the lint ignores colours inside :root", colorLiteralsOutsideThemes(":root{--x:#fff;}").length === 0);
-  check("the lint ignores colours inside a theme block",
-    colorLiteralsOutsideThemes('[data-theme="paper"]{--x:#fff;}').length === 0);
-  check("the lint sees a rule after a theme block closes",
-    colorLiteralsOutsideThemes(":root{--x:#fff;}\n.a{color:#000;}").length === 1);
-  check("the lint ignores var() references", colorLiteralsOutsideThemes(".a{color:var(--txt);}").length === 0);
+// Keys that describe structure, not appearance. A palette never holds these.
+const STRUCTURAL = /^(sp[A-Z0-9]|r[A-Z]|dur|ease)/;
 
-  const blocks = themeBlocks(css);
-  check("a :root block exists", blocks.some(function (b) { return b.name === ":root"; }));
+function testThemePalettes() {
+  section("theme palettes");
+  const qml = readNative("qml/singletons/Theme.qml");
+  const palettes = themePalettes(qml);
+  const { THEMES } = require(path.join(JS, "theme.mjs"));
 
-  // Every theme must redefine the whole palette. A theme that omits --err-bg
-  // inherits Midnight's near-black, which looks correct until the day a build
-  // fails - on Paper, that is dark red text on a near-black background.
-  const { STRUCTURAL_PREFIXES } = require(path.join(__dirname, "css-lint.cjs"));
-  const { THEMES } = require(path.join(__dirname, "..", "..", "native", "qml", "js", "theme.mjs"));
-  const rootBlock = blocks.find(function (b) { return b.name === ":root"; });
-  const palette = rootBlock.tokens.filter(function (t) {
-    return !STRUCTURAL_PREFIXES.some(function (p) { return t.indexOf(p) === 0; });
+  // The load-bearing check. A colour outside Theme.qml is one no theme can
+  // reach, and it fails silently - the app just looks wrong on that theme.
+  const stray = [];
+  readNativeTree("qml", [".qml"]).forEach(function (f) {
+    if (f.file === path.join("qml", "singletons", "Theme.qml")) return;
+    colourLiterals(f.text).forEach(function (o) { stray.push(f.file + ":" + o.line + ": " + o.text); });
   });
+  check("no colour literals outside Theme.qml", stray.length === 0, stray.slice(0, 6).join(" | "));
 
-  check("the palette is substantial", palette.length >= 25, String(palette.length));
-  check("structural tokens are excluded from the palette",
-    palette.indexOf("--sp-1") === -1 && palette.indexOf("--r-md") === -1);
+  // Sanity-check the lint and the parser, so a broken one cannot report success.
+  check("the lint detects a hex", colourLiterals('color: "#fff"').length === 1);
+  check("the lint detects Qt.rgba", colourLiterals("color: Qt.rgba(0, 0, 0, .5)").length === 1);
+  check("the lint ignores a comment", colourLiterals('// was "#fff"').length === 0);
+  check("the lint ignores a Theme reference", colourLiterals("color: Theme.txt").length === 0);
+  check("the parser reads a palette",
+    JSON.stringify(themePalettes('    readonly property var palettes: ({\n        "a": {\n            bg: "#000", overlay: rgba(0, 0, 0, .7),\n            glowRadius: 0\n        }\n    })'))
+      === JSON.stringify({ a: { bg: '"#000"', overlay: "rgba(0, 0, 0, .7)", glowRadius: "0" } }));
 
+  // Every theme must define the whole palette. A theme that omits errBg falls
+  // through to undefined, which looks correct until the day a build fails.
+  const base = Object.keys(palettes.midnight || {});
+  check("the palette is substantial", base.length >= 25, String(base.length));
   THEMES.forEach(function (t) {
-    if (t.id === "midnight") return;   // midnight IS :root
-    const block = blocks.find(function (b) { return b.name === t.id; });
-    if (!block) { check("theme " + t.id + " has a block", false); return; }
-    const missing = palette.filter(function (tok) { return block.tokens.indexOf(tok) === -1; });
-    check("theme " + t.id + " defines the whole palette", missing.length === 0, missing.join(" "));
+    const p = palettes[t.id];
+    if (!p) { check("theme " + t.id + " has a palette", false); return; }
+    const missing = base.filter(function (k) { return !(k in p); });
+    const extra = Object.keys(p).filter(function (k) { return base.indexOf(k) === -1; });
+    check("theme " + t.id + " defines the whole palette", missing.length === 0 && extra.length === 0,
+      missing.concat(extra).join(" "));
+    // Spacing and radii are Theme.qml's own properties; a palette redefining
+    // them would change layout, which is not what a theme is for.
+    const structural = Object.keys(p).filter(function (k) { return STRUCTURAL.test(k); });
+    check("theme " + t.id + " does not redefine structure", structural.length === 0, structural.join(" "));
   });
-
-  // Structural tokens belong to :root alone; a theme redefining spacing would
-  // change layout, which is not what a theme is for.
-  blocks.forEach(function (b) {
-    if (b.name === ":root") return;
-    const structural = b.tokens.filter(function (t) {
-      return STRUCTURAL_PREFIXES.some(function (p) { return t.indexOf(p) === 0; });
-    });
-    check("theme " + b.name + " does not redefine structure", structural.length === 0, structural.join(" "));
-  });
+  check("every palette is a theme the list offers",
+    Object.keys(palettes).every(function (id) { return THEMES.some(function (t) { return t.id === id; }); }),
+    Object.keys(palettes).join());
 
   // The decor flag drives whether Appearance offers a decoration toggle, so it
   // has to agree with which themes actually declare a texture. Drift between
   // the two shows up as a toggle that does nothing.
-  const textured = blocks.filter(function (b) {
-    return b.name !== ":root" && /--overlay-texture:\s*(?!none)/.test(
-      css.slice(css.indexOf('[data-theme="' + b.name + '"]'))
-         .slice(0, css.slice(css.indexOf('[data-theme="' + b.name + '"]')).indexOf("}")));
-  }).map(function (b) { return b.name; });
+  const textured = Object.keys(palettes).filter(function (id) { return palettes[id].texture && palettes[id].texture !== '""'; });
   const flagged = THEMES.filter(function (t) { return t.decor; }).map(function (t) { return t.id; });
-  check("the crt flag matches the themes with a texture",
+  check("the decor flag matches the themes with a texture",
     textured.sort().join() === flagged.sort().join(), "textured=" + textured.join() + " flagged=" + flagged.join());
+
+  // Complete is not legible: a theme can declare every key and still put dark
+  // red on near-black. The pairs are the ones that carry meaning - body text,
+  // muted labels, the inverted button, and each status on its own tint and on
+  // the page. 3.0 is the floor below which text is gone rather than muted;
+  // body text and dim labels are held to 4.5. (This was verify-visual.mjs,
+  // which measured the same pairs in the Electron renderer.)
+  const hex = function (v) {
+    const h = (String(v || "").match(/^"#([0-9a-fA-F]{6})"$/) || [])[1];
+    return h ? [0, 2, 4].map(function (i) { return parseInt(h.substr(i, 2), 16); }) : null;
+  };
+  const lum = function (c) {
+    const f = function (v) { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+    return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]);
+  };
+  const ratio = function (a, b) {
+    const l = [lum(a), lum(b)].sort(function (x, y) { return y - x; });
+    return (l[0] + 0.05) / (l[1] + 0.05);
+  };
+  check("the contrast maths is right", Math.abs(ratio([0, 0, 0], [255, 255, 255]) - 21) < 0.01);
+  const PAIRS = [["txt", "bg", 4.5], ["txt", "panel", 4.5], ["txt", "surface", 4.5], ["dim", "bg", 4.5],
+    ["dim", "panel", 4.5], ["mut", "bg", 3], ["inverse", "txt", 3], ["ok", "okBg", 3], ["warn", "warnBg", 3],
+    ["err", "errBg", 3], ["ok", "bg", 3], ["warn", "bg", 3], ["err", "bg", 3], ["accent", "bg", 3]];
+  THEMES.forEach(function (t) {
+    const p = palettes[t.id];
+    if (!p) return;
+    const bad = [];
+    PAIRS.forEach(function (pr) {
+      const fg = hex(p[pr[0]]), bg = hex(p[pr[1]]);
+      if (!fg || !bg) { bad.push(pr[0] + "/" + pr[1] + " is not a #rrggbb colour"); return; }
+      const r = ratio(fg, bg);
+      if (r < pr[2]) bad.push(pr[0] + "/" + pr[1] + " " + r.toFixed(2) + ":1");
+    });
+    check("theme " + t.id + " is legible", bad.length === 0, bad.join(", "));
+  });
 }
 
 function testTheme() {
@@ -124,29 +182,6 @@ function testTheme() {
   // token would go unresolved, which renders as black text on white.
   check("an unknown theme falls back", resolveTheme("vaporwave-deluxe") === "terminal");
   check("a non-string falls back", resolveTheme({ id: "paper" }) === "terminal");
-}
-
-function testRendererLoadOrder() {
-  section("renderer load order");
-  const { forwardRefs, rendererScripts } = require(path.join(__dirname, "load-order.cjs"));
-  const scripts = rendererScripts(path.join(__dirname, "..", "..", "desktop"));
-  check("index.html loads the renderer's scripts, core first and startup last",
-    scripts.length > 2 && scripts[0].name === "renderer/core.js" &&
-      scripts[scripts.length - 1].name === "renderer/startup.js", scripts.map((s) => s.name).join(", "));
-  const refs = forwardRefs(scripts);
-  check("no code that runs during load reaches a later script", refs.length === 0, refs.slice(0, 4).join(" | "));
-
-  // Sanity-check the scan itself, so a broken one cannot report success.
-  const a = { name: "a.js", source: "(async function () { await x(); later(); })();\nfunction early() { return 1; }\n" };
-  const b = { name: "b.js", source: "function later() { return early(); }\n" };
-  check("the scan finds a forward call after an await", forwardRefs([a, b]).length === 1);
-  check("and through a function it calls",
-    forwardRefs([{ name: "a.js", source: "function f() { later(); }\nf();\n" }, b]).length === 1);
-  check("a click handler is not load-time code",
-    forwardRefs([{ name: "a.js", source: "el.onclick = function () { later(); };\nel.onchange = later;\n" }, b]).length === 0);
-  check("a typeof guard is safe",
-    forwardRefs([{ name: "a.js", source: "if (typeof later === \"function\") {}\n" }, b]).length === 0);
-  check("calling backwards is fine", forwardRefs([b, a]).length === 0);
 }
 
 function testFlow() {
@@ -243,7 +278,8 @@ function testLogo() {
   check("it inherits its colour", svg.indexOf("currentColor") !== -1);
   check("no raster is embedded", svg.indexOf("data:image") === -1);
 
-  // electron-builder cannot read SVG. It needs a PNG of at least 512x512.
+  // The packaging stages build/icon.png, and the installers and the
+  // AppImage want one of at least 512x512.
   const png = fs.readFileSync(path.join(__dirname, "..", "..", "build", "icon.png"));
   check("the png is a png", png.slice(1, 4).toString() === "PNG");
   // IHDR puts width and height at bytes 16-23, big-endian. No library needed.
@@ -366,65 +402,71 @@ function testBrowserCheck() {
   check("a failure that is not the network does not blame the network",
     !/firewall/.test(B.describeInstallFailure("Error: ENOSPC: no space left on device", 1)));
   check("a very long reason is cut", B.describeInstallFailure("Error: " + "x".repeat(1000), 1).length < 300);
-  check("the gate uses it", /describeInstallFailure\(output, code\)/.test(readMain()));
+  // The gate is AgentService.cpp, which carries a C++ copy of both. No Qt test
+  // drives it, so the copy is held to the same patterns and sentences.
+  const agent = readNative("src/AgentService.cpp");
+  check("the gate uses them", /describeInstallFailure\(\*output/.test(agent) && /hasChromium\(entries\)/.test(agent));
+  check("the gate counts the same browser builds", agent.indexOf('"^chromium-\\\\d+$"') !== -1);
+  check("the gate skips the same generic lines",
+    agent.indexOf("^(Failed to install browsers|Error: Failed to download |Error: Download failure, code=)") !== -1);
+  check("the gate knows the same network failures",
+    agent.indexOf("(403|407|ENOTFOUND|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|blocked|proxy)") !== -1);
+  check("the gate says the same things",
+    agent.indexOf(". Check the connection and try again.") !== -1 &&
+      agent.indexOf(" The browser downloads from cdn.playwright.dev - a proxy or firewall has to allow it.") !== -1 &&
+      /reason\.left\(237\)/.test(agent));
 }
 
 function testBuildConfig() {
   section("build configuration");
-  const root = path.join(__dirname, "..", "..");
-  const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
-  const b = pkg.build || {};
+  const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"));
+  const app = JSON.parse(readNative("package/app.json"));
+  const stage = readNative("package/stage.mjs");
 
-  check("the app entry point is the desktop main", pkg.main === "desktop/main.js", String(pkg.main));
+  // The native app replaced Electron; nothing may quietly bring it back.
+  const dev = pkg.devDependencies || {};
+  check("Electron is not a dependency", !dev.electron && !dev["electron-builder"] && !(pkg.dependencies || {}).electron,
+    Object.keys(dev).join(","));
+  check("there is no electron-builder config", pkg.build === undefined);
+  check("there is no Electron entry point", pkg.main === undefined, String(pkg.main));
+  check("desktop is not a workspace", (pkg.workspaces || []).indexOf("desktop") === -1, (pkg.workspaces || []).join(","));
   // Was pinned to the literal "1.0.0", so the first patch release failed a test
   // that had nothing to do with the change. Nothing in the app hardcodes a
-  // version - it reads package.json - so what is worth asserting is that the
+  // version - CMake reads package.json - so what is worth asserting is that the
   // version is well formed and that the release workflow will accept a tag for
   // it, not what the digits happen to be.
   check("the version is semver", /^\d+\.\d+\.\d+$/.test(pkg.version), String(pkg.version));
+  check("the workspaces follow it",
+    ["local-agent", "shared"].every(function (w) {
+      return JSON.parse(fs.readFileSync(path.join(ROOT, w, "package.json"), "utf8")).version === pkg.version;
+    }));
   // Quoted literals only. The first version of this flagged a comment that
   // mentioned the release it was describing, which is prose, not a hardcoded
   // version - and a check that punishes explaining yourself is a bad check.
-  check("no source file hardcodes a version as a string literal", (() => {
-    const files = ["desktop/index.html"];
-    return files.map((f) => fs.readFileSync(path.join(root, f), "utf8")).concat(readMain(), readRenderer())
-      .every((src) => !/["'`]\d+\.\d+\.\d+["'`]/.test(src));
-  })());
-  check("desktop is a workspace", (pkg.workspaces || []).indexOf("desktop") !== -1);
-  check("electron-builder is a dev dependency", !!(pkg.devDependencies || {})["electron-builder"]);
-  check("electron is a dev dependency", !!(pkg.devDependencies || {}).electron);
+  const hard = readNativeTree("src", [".cpp", ".h"]).concat(readNativeTree("qml", [".qml", ".mjs"]))
+    .filter(function (f) { return /["'`]\d+\.\d+\.\d+["'`]/.test(f.text); }).map(function (f) { return f.file; });
+  check("no source file hardcodes a version as a string literal", hard.length === 0, hard.join(", "));
 
-  check("there is an app id", typeof b.appId === "string" && b.appId.length > 0);
-  check("windows builds nsis", JSON.stringify((b.win || {}).target || []).indexOf("nsis") !== -1);
-  check("linux builds an appimage", JSON.stringify((b.linux || {}).target || []).indexOf("AppImage") !== -1);
-  check("linux builds a deb", JSON.stringify((b.linux || {}).target || []).indexOf("deb") !== -1);
-
-  const icon = (b.win || {}).icon || b.icon;
-  check("an icon is configured", !!icon, String(icon));
-  check("the icon exists", fs.existsSync(path.join(root, String(icon))), String(icon));
-
-  // The agent is spawned as a child process, and the provider configs are meant
-  // to be edited by hand - glm.json says so in as many words.
-  check("the agent is unpacked from the asar",
-    JSON.stringify(b.asarUnpack || []).indexOf("local-agent") !== -1, JSON.stringify(b.asarUnpack));
+  check("there is an app id", typeof app.id === "string" && /^[a-z]+(\.[a-z]+)+$/.test(app.id), String(app.id));
+  check("windows builds an nsis installer", /makensis/.test(stage) && fs.existsSync(path.join(NATIVE, "package", "installer.nsi")));
+  check("linux builds an appimage", /\.AppImage`/.test(stage));
+  check("linux builds a deb", /\.deb\b/.test(stage) && typeof app.debName === "string");
+  check("the icon is staged from build/", /join\(ROOT, 'build', 'icon\.png'\)/.test(stage));
+  check("the icon exists", fs.existsSync(path.join(ROOT, "build", "icon.png")));
 
   // --- the check that matters most ---
-  // local-agent/storage holds live session cookies and private chat URLs, and
-  // .gitignore does not constrain electron-builder. An allow-list is used so a
-  // mistake is a missing file rather than a published credential.
-  const files = b.files || [];
-  check("there is a files allow-list", files.length > 0);
-  check("no catch-all glob", files.indexOf("**/*") === -1 && files.indexOf("**") === -1);
-  const agentGlobs = files.filter(function (f) { return String(f).indexOf("local-agent") === 0; });
-  check("only the agent's dist and config are included",
-    agentGlobs.length > 0 && agentGlobs.every(function (f) {
-      return f.indexOf("local-agent/dist") === 0 || f.indexOf("local-agent/config") === 0;
-    }), agentGlobs.join(" "));
-  ["local-agent/storage", ".superpowers", "docs", "samples", "app", "instance"]
-    .forEach(function (dir) {
-      check("nothing includes " + dir,
-        files.every(function (f) { return String(f).indexOf(dir) !== 0; }), dir);
-    });
+  // local-agent/storage holds live session cookies and private chat URLs. The
+  // stage copies named directories only, so a mistake is a missing file rather
+  // than a published credential. verify.mjs also walks a real stage for them.
+  const at = stage.indexOf("function stageAgent(");
+  const body = stage.slice(at, stage.indexOf("\n}\n", at));
+  const copies = [...body.matchAll(/cpSync\(join\(src, '([^']+)'\)/g)].map(function (m) { return m[1]; });
+  check("the agent's stage copies only its dist and config",
+    at !== -1 && copies.sort().join() === "config,dist", copies.join(","));
+  check("nothing copies the whole agent directory", !/cpSync\(src\b/.test(body));
+  ["storage", ".superpowers", "docs", "samples"].forEach(function (dir) {
+    check("the stage never names " + dir, body.indexOf("'" + dir + "'") === -1);
+  });
 }
 
 function testReleaseWorkflow() {
@@ -535,120 +577,15 @@ function testGitHubSafe() {
  */
 function testGitSpawnHardening() {
   section("git spawn hardening");
-  const main = readMain();
-  const at = main.indexOf('ipcMain.handle("git"');
-  const gitBlock = main.slice(at, at + 900);
+  const src = readNative("src/GitService.cpp");
+  const at = src.indexOf("void GitService::git(");
+  const gitBlock = src.slice(at, src.indexOf("\n}\n", at));
   check("the git handler exists", at !== -1 && gitBlock.length > 100);
-  check("git does not run through a shell", /shell:\s*false/.test(gitBlock), gitBlock.slice(0, 200));
-  check("git arguments are validated", /safeGitArgs/.test(gitBlock));
-  check("git output is redacted", /redactToken/.test(gitBlock));
-}
-
-async function testGitHubApi() {
-  section("github api shapes");
-  const { createGitHubApi } = require(path.join(__dirname, "..", "..", "desktop", "github-api.js"));
-
-  // The transport is injected, so every call shape is tested without a token
-  // and without touching GitHub - which matters, because there is no credential
-  // in this environment and there will not be one.
-  const calls = [];
-  const fake = function (method, apiPath, body) {
-    calls.push({ method: method, path: apiPath, body: body });
-    if (apiPath.indexOf("/readme") !== -1) {
-      return Promise.resolve({ status: 200, body: { content: Buffer.from("# Hi").toString("base64") } });
-    }
-    if (apiPath.indexOf("/git/trees/") !== -1) {
-      return Promise.resolve({ status: 200, body: { tree: [{ path: "a.py", type: "blob" }, { path: "src", type: "tree" }] } });
-    }
-    if (apiPath.indexOf("/actions/runs") !== -1) {
-      return Promise.resolve({ status: 200, body: { workflow_runs: [{ name: "ci", status: "completed", conclusion: "success", html_url: "u" }] } });
-    }
-    return Promise.resolve({ status: 200, body: [{ full_name: "me/x", private: false }] });
-  };
-  const api = createGitHubApi(fake);
-
-  await api.listRepos();
-  check("repos are listed for the signed-in user", calls[0].path.indexOf("/user/repos") === 0, calls[0].path);
-  check("and sorted by recent activity", /sort=updated/.test(calls[0].path));
-
-  const readme = await api.getReadme("pallets", "flask");
-  check("the readme path is right", calls[1].path === "/repos/pallets/flask/readme", calls[1].path);
-  // The API returns base64; a caller putting this in a prompt needs text.
-  check("the readme is decoded", readme === "# Hi", JSON.stringify(readme));
-
-  const tree = await api.getTree("pallets", "flask");
-  check("the tree is fetched recursively", /recursive=1/.test(calls[2].path), calls[2].path);
-  check("only files are returned", JSON.stringify(tree) === '["a.py"]', JSON.stringify(tree));
-
-  const runs = await api.listRuns("pallets", "flask");
-  check("runs are listed", calls[3].path.indexOf("/repos/pallets/flask/actions/runs") === 0);
-  check("and are simplified", runs[0].name === "ci" && runs[0].conclusion === "success");
-
-  await api.dispatchWorkflow("pallets", "flask", "ci.yml", "main");
-  check("a dispatch is a POST", calls[4].method === "POST");
-  check("to the workflow's dispatch path",
-    calls[4].path === "/repos/pallets/flask/actions/workflows/ci.yml/dispatches", calls[4].path);
-  check("carrying the ref", calls[4].body.ref === "main");
-
-  await api.createRepo("newthing", true);
-  check("creating a repo is a POST to /user/repos", calls[5].method === "POST" && calls[5].path === "/user/repos");
-  check("the name is sent", calls[5].body.name === "newthing");
-  check("privacy is honoured", calls[5].body.private === true);
-
-  // Failures must be legible rather than throwing something shapeless.
-  const failing = createGitHubApi(function () { return Promise.resolve({ status: 401, body: { message: "Bad credentials" } }); });
-  let msg = "";
-  try { await failing.listRepos(); } catch (e) { msg = e.message; }
-  check("a 401 is reported clearly", /token|401/i.test(msg), msg);
-
-  // A rate limit is a wait, not a breakage, and saying which is the difference
-  // between "try later" and "something is broken".
-  const limited = createGitHubApi(function () {
-    return Promise.resolve({ status: 403, body: { message: "API rate limit exceeded" } });
-  });
-  let rateMsg = "";
-  try { await limited.listRepos(); } catch (e) { rateMsg = e.message; }
-  check("a rate limit says so", /rate limit/i.test(rateMsg), rateMsg);
-
-  // A 403 that is not a rate limit is usually a missing scope, and saying so
-  // saves the user hunting for a problem that is one checkbox away.
-  const scoped = createGitHubApi(function () {
-    return Promise.resolve({ status: 403, body: { message: "Resource not accessible" } });
-  });
-  let scopeMsg = "";
-  try { await scoped.listRepos(); } catch (e) { scopeMsg = e.message; }
-  check("a plain 403 mentions scopes", /scope/i.test(scopeMsg), scopeMsg);
-}
-
-function testPackagedPaths() {
-  section("paths that must survive packaging");
-  const root = path.join(__dirname, "..", "..");
-  const main = readMain();
-  const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
-
-  // Packaged, __dirname is inside the archive, so path.join(__dirname, "..") is
-  // app.asar itself - a file. Spawning with that as cwd fails ENOENT, and Node
-  // blames the executable, which is how an installed build reported
-  // "spawn C:\Program Files\CloseNI\CloseNI.exe ENOENT" - the one path that was
-  // definitely fine.
-  const spawnCwds = [...main.matchAll(/cwd:\s*([^,\n]+)/g)].map((m) => m[1].trim());
-  check("no spawn uses an archive-relative cwd",
-    spawnCwds.every((c) => !/__dirname,\s*"\.\."/.test(c)), spawnCwds.join(" | "));
-  check("spawns use a real directory helper",
-    spawnCwds.some((c) => /spawnCwd\(\)/.test(c)), spawnCwds.join(" | "));
-  check("the helper points at resourcesPath when packaged",
-    /isPackaged\s*\?\s*process\.resourcesPath/.test(main));
-
-  // Anything reached through unpackedPath must actually be unpacked, or the
-  // helper falls back to a path inside the archive.
-  const unpacked = (pkg.build && pkg.build.asarUnpack) || [];
-  const referenced = [...main.matchAll(/unpackedPath\(path\.join\("([^"]+)"/g)].map((m) => m[1]);
-  for (const r of new Set(referenced)) {
-    check("asarUnpack covers " + r,
-      unpacked.some((u) => u.split("/")[0] === r), JSON.stringify(unpacked));
-  }
-  check("the agent is reached through the unpacked path",
-    /function agentPath\(\)[^\n]*unpackedPath/.test(main));
+  // QProcess passes arguments as a list: there is no shell to concatenate them.
+  check("git does not run through a shell",
+    /GitRunner::run\(/.test(gitBlock) && !/(\/bin\/sh|cmd\.exe|"-c"|bash)/.test(gitBlock), gitBlock.slice(0, 200));
+  check("git arguments are validated", /GitHubSafe::safeGitArgs/.test(gitBlock));
+  check("git output is redacted", /GitHubSafe::redactToken/.test(gitBlock));
 }
 
 function testPlaywrightCliResolution() {
@@ -668,14 +605,19 @@ function testPlaywrightCliResolution() {
   const cli = path.join(dir, "cli.js");
   check("the installer resolves via package.json", fs.existsSync(cli), cli);
 
+  // The app's Download button does the same.
+  const agent = readNative("src/AgentService.cpp");
+  check("the app resolves it the same way",
+    /node_modules\/playwright\/package\.json/.test(agent) && /cli\.js/.test(agent));
+
   // And the packaging must hand Playwright to the app as real files: it
-  // resolves and spawns executables, which cannot be done from inside an asar.
-  const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "..", "package.json"), "utf-8"));
-  const unpack = (pkg.build && pkg.build.asarUnpack) || [];
-  check("playwright is unpacked from the asar",
-    unpack.some(function (p) { return /node_modules\/playwright\/\*\*/.test(p); }), JSON.stringify(unpack));
-  check("playwright-core is unpacked too",
-    unpack.some(function (p) { return /playwright-core/.test(p); }), JSON.stringify(unpack));
+  // resolves and spawns executables. The stage ships the agent's dependency
+  // closure, so playwright and the playwright-core it requires both go.
+  const agentPkg = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "package.json"), "utf-8"));
+  check("playwright is an agent dependency, so it is staged", !!(agentPkg.dependencies || {}).playwright);
+  check("playwright-core comes with it",
+    !!(JSON.parse(fs.readFileSync(path.join(dir, "package.json"), "utf-8")).dependencies || {})["playwright-core"]);
+  check("the stage follows dependencies", /queue\.push\(\.\.\.Object\.keys\(meta\.dependencies/.test(readNative("package/stage.mjs")));
 }
 
 function testStorageRoot() {
@@ -701,10 +643,12 @@ function testStorageRoot() {
   check("no home anywhere yields nothing rather than a guess",
     S.defaultStorageRoot("linux", {}) === "");
 
-  // The name has to match what Electron actually created, or the CLI points at
+  // The name has to match the directory the app creates, or the CLI points at
   // a directory that has never been signed in to.
   check("the app name matches package.json productName",
     require(path.join(__dirname, "..", "..", "package.json")).productName === "CloseNI");
+  check("and the native app's storage root uses it",
+    /kAppName = "CloseNI"/.test(readNative("src/Paths.cpp")));
 
   // storagePaths itself is untouched: the e2e suite depends on the no-root
   // branch resolving profileDir relative to its fixture directory.
@@ -940,33 +884,27 @@ async function testMcpContext() {
 
 function testSkillsWiring() {
   section("skills reach the agent from the app");
-  const GH = require(path.join(__dirname, "..", "..", "desktop", "github-api.js"));
-  const D = path.join(__dirname, "..", "..", "desktop");
-  const main = readMain();
-  const preload = fs.readFileSync(path.join(D, "preload.js"), "utf8");
-  const renderer = readRenderer();
-  const html = fs.readFileSync(path.join(D, "index.html"), "utf8");
+  // Fetching a skill file from GitHub (getFile) is checked in
+  // native/tests/tst_github.cpp.
+  const lib = readNative("src/LibraryService.h");
+  const libSrc = readNative("src/LibraryService.cpp");
+  const agent = readNative("src/AgentService.cpp");
+  const settings = readNative("qml/panels/SettingsPanel.qml");
+  const store = readNative("qml/singletons/SettingsStore.qml");
+  const code = readNative("qml/singletons/CodeStore.qml");
+  const build = readNative("qml/singletons/BuildState.qml");
 
-  // Import needs a file fetch. getReadme existed; a general one did not.
-  const calls = [];
-  const api = GH.createGitHubApi(function (m, p2) {
-    calls.push(p2);
-    return Promise.resolve({ status: 200, body: { content: Buffer.from("SKILL TEXT").toString("base64") } });
-  });
-  return api.getFile("o", "r", "docs/skill.md").then(function (text) {
-    check("a file is fetched by path", /\/repos\/o\/r\/contents\/docs\/skill\.md/.test(calls[0]), calls[0]);
-    check("and decoded from base64", text === "SKILL TEXT", text);
-
-    check("the app exposes skill management",
-      /listSkills/.test(preload) && /writeSkill/.test(preload) && /deleteSkill/.test(preload));
-    check("and MCP configuration", /readMcpConfig/.test(preload) && /writeMcpConfig/.test(preload));
-    check("the main process refuses an unsafe skill name", /isSafeName/.test(main));
-    check("there is a Skills settings section", /data-section="skills"/.test(html));
-    check("the renderer sends the preamble as AGENT_PREAMBLE", /AGENT_PREAMBLE/.test(main));
-    check("the renderer builds one", /buildPreamble/.test(renderer));
-    check("MCP context is gathered before the build, not per step",
-      /gather-mcp-context/.test(main) && !/gatherMcpContext/.test(fs.readFileSync(path.join(D, "builder.js"), "utf8")));
-  });
+  check("the app exposes skill management",
+    /Q_INVOKABLE void listSkills/.test(lib) && /Q_INVOKABLE void writeSkill/.test(lib) && /Q_INVOKABLE void deleteSkill/.test(lib));
+  check("and MCP configuration", /Q_INVOKABLE void readMcpConfig/.test(lib) && /Q_INVOKABLE void writeMcpConfig/.test(lib));
+  check("the service refuses an unsafe skill name",
+    (libSrc.match(/SkillStore::isSafeName/g) || []).length >= 3);
+  check("there is a Skills settings section", /Library\.listSkills\(/.test(settings));
+  check("the agent gets the preamble as AGENT_PREAMBLE", /"AGENT_PREAMBLE"/.test(agent));
+  check("the app builds one", /function buildPreamble\(/.test(store) && /function buildPreamble\(/.test(code));
+  check("MCP context is gathered before the work, not per step",
+    /gatherMcpContext/.test(store) && /gatherMcpContext/.test(build) &&
+      !/gatherMcpContext/.test(fs.readFileSync(path.join(JS, "builder-logic.mjs"), "utf8")));
 }
 
 function testRecentWorkspaces() {
@@ -1068,23 +1006,24 @@ function testOnboarding() {
   check("the example names a file and a language", /convert\.py/.test(O.EXAMPLE_PROMPT) && /Python/.test(O.EXAMPLE_PROMPT));
   check("and asks for tests", /tests/.test(O.EXAMPLE_PROMPT));
 
-  // Wiring: the guide reads real state, never a flag of its own.
-  const D = path.join(__dirname, "..", "..", "desktop");
-  const html = fs.readFileSync(path.join(D, "index.html"), "utf8");
-  const renderer = readRenderer();
-  check("the page loads onboarding.js before the renderer",
-    html.indexOf('<script src="onboarding.js">') !== -1 &&
-      html.indexOf('<script src="onboarding.js">') < html.indexOf('<script src="renderer/core.js">'));
-  check("there is somewhere to draw it", /id="welcome"/.test(html));
-  check("Settings can bring it back", /id="welcome-reset"/.test(html));
-  check("the account light updates it", /acctNow = state;\s*renderOnboarding\(\)/.test(renderer));
-  check("opening a folder updates it", /renderRecent\(\);\s*renderOnboarding\(\);\s*\}/.test(renderer));
-  check("the browser gate updates it", /browserReady = false;\s*renderOnboarding\(\)/.test(renderer));
+  // Wiring: the guide reads real state, never a flag of its own. AppState's
+  // binding is what redraws it when the account light, the folder or the
+  // browser gate changes.
+  const appState = readNative("qml/singletons/AppState.qml");
+  const binding = (appState.match(/onboardingState: R\.onboardingState\(([^)]*)\)/) || [])[1] || "";
+  check("there is somewhere to draw it",
+    fs.existsSync(path.join(NATIVE, "qml", "components", "OnboardingGuide.qml")) &&
+      /OnboardingGuide\s*\{/.test(readNative("qml/panels/ChatPanel.qml")));
+  check("Settings can bring it back", /AppState\.resetOnboarding\(\)/.test(readNative("qml/panels/SettingsPanel.qml")));
+  check("the account light updates it", /Providers\.acct/.test(binding), binding);
+  check("opening a folder updates it", /\bworkspace\b/.test(binding), binding);
+  check("the browser gate updates it", /\bbrowserReady\b/.test(binding), binding);
+  check("and the provider list", /Providers\.list/.test(binding) && /Providers\.current/.test(binding), binding);
 
   // Every provider a person can sign in to has its terms on file, and they reach the guide.
-  const files = fs.readFileSync(path.join(D, "main", "files.js"), "utf8");
-  check("the provider list carries termsUrl to the renderer", /termsUrl: cfg\.termsUrl/.test(files));
-  check("the guide reads it from the provider", /termsUrl: p && p\.termsUrl/.test(renderer));
+  check("the provider list carries termsUrl to the app", /QStringLiteral\("termsUrl"\)/.test(readNative("src/FilesService.cpp")));
+  check("the guide reads it from the provider",
+    /termsUrl: p && p\.termsUrl/.test(fs.readFileSync(path.join(JS, "renderer-logic.mjs"), "utf8")));
   const provDir = path.join(__dirname, "..", "config", "providers");
   const noTerms = fs.readdirSync(provDir).filter(function (f) {
     const cfg = JSON.parse(fs.readFileSync(path.join(provDir, f), "utf8"));
@@ -1093,57 +1032,22 @@ function testOnboarding() {
   check("every selectable web provider links its terms", noTerms.length === 0, noTerms.join(", "));
   // A first launch lands on the Code panel, not the chat panel's guide, so the
   // sign-in and its terms are said there too.
-  const code = fs.readFileSync(path.join(D, "code.js"), "utf8");
-  check("the Code panel's welcome has a place for the terms", /id="code-terms"/.test(html));
-  check("and fills it from the guide's sign-in step", /CN\.signInStep\(\)/.test(code) && /step\.terms/.test(code) && /signInStep:/.test(renderer));
-  check("and redraws when the account light changes",
-    /CN\.onAccountChange = refreshWelcome/.test(code) && /acctNow = state;\s*renderOnboarding\(\);\s*if \(window\.CN && window\.CN\.onAccountChange\)/.test(renderer));
+  check("the Code panel's welcome has a place for the terms", /need\.termsUrl/.test(readNative("qml/panels/CodePanel.qml")));
+  // A binding on the guide's steps, so it redraws when the account light changes.
+  check("and fills it from the guide's sign-in step",
+    /welcomeNeed: T\.welcomeNeed\(AppState\.workspace, AppState\.onboardingSteps\)/.test(readNative("qml/singletons/CodeStore.qml")));
 }
 
-// The native app's copies of the pure modules (native/qml/js/*.mjs). The tests
-// above load those copies; this keeps the Electron originals, which still run
-// until cut-over, saying the same thing.
-const JS = path.join(__dirname, "..", "..", "native", "qml", "js");
-const PORTED = ["diff", "entrypoint", "controls-settings", "theme", "language-mark", "browser-check",
-  "plan-scale", "preview-target", "scheduler", "plan-edit", "step-timing", "recent-workspaces",
-  "github-safe", "onboarding", "flow", "code-view", "run-target"];
-
+// The QML engine runs native/qml/js/*.mjs, and lacks some of what Node has.
 function testNativePorts() {
-  section("the native app's modules match the Electron originals");
-  const squash = function (s) { return String(s).replace(/\s+/g, " ").trim(); };
-  PORTED.forEach(function (name) {
-    const before = require(path.join(__dirname, "..", "..", "desktop", name + ".js"));
-    const after = require(path.join(JS, name + ".mjs"));
-    const keys = Object.keys(before).sort().join(",");
-    check(name + ": the same exports", Object.keys(after).sort().join(",") === keys,
-      Object.keys(after).sort().join(","));
-    const drift = Object.keys(before).filter(function (k) {
-      const a = before[k], b = after[k];
-      return typeof a === "function" ? squash(a) !== squash(b) : JSON.stringify(a) !== JSON.stringify(b);
-    });
-    check(name + ": the same code", drift.length === 0, drift.join(", "));
-    const src = fs.readFileSync(path.join(JS, name + ".mjs"), "utf8");
+  section("the app's modules load in the QML engine");
+  fs.readdirSync(JS).filter(function (f) { return f.endsWith(".mjs"); }).sort().forEach(function (f) {
+    const src = fs.readFileSync(path.join(JS, f), "utf8");
     // The QML engine has none of these, and a module using one fails to load
     // in the app while passing every test here under Node.
-    check(name + ": nothing the QML engine lacks",
-      !/\basync\b|\bawait\b|\.flat\(|fromEntries|globalThis|\bwindow\.|\bdocument\.|localStorage\.|\brequire\(/.test(src.replace(/^\s*(\/\/|\*).*$/gm, "")));
-  });
-
-  ["builder-logic", "code-logic", "code-transcript", "renderer-logic"].forEach(function (name) {
-    const src = fs.readFileSync(path.join(JS, name + ".mjs"), "utf8");
-    check(name + ": nothing the QML engine lacks",
+    check(f + ": nothing the QML engine lacks",
       !/\basync\b|\bawait\b|\.flat\(|fromEntries|globalThis|\bwindow\.|\bdocument\.|localStorage\.|\brequire\(|\.\.\.[A-Za-z_({[]/.test(src.replace(/^\s*(\/\/|\*).*$/gm, "")));
   });
-
-  // Theme.qml holds the palettes the theme list names. Checked once it exists,
-  // because a theme in the list with no palette renders with none at all.
-  const themeQml = path.join(__dirname, "..", "..", "native", "qml", "singletons", "Theme.qml");
-  if (fs.existsSync(themeQml)) {
-    const qml = fs.readFileSync(themeQml, "utf8");
-    const { THEMES } = require(path.join(JS, "theme.mjs"));
-    const missing = THEMES.filter(function (t) { return qml.indexOf('"' + t.id + '"') === -1; }).map(function (t) { return t.id; });
-    check("Theme.qml has a palette for every theme in theme.mjs", missing.length === 0, missing.join(", "));
-  }
 }
 
 function testBuilderLogic() {
@@ -1487,18 +1391,16 @@ function testRendererLogic() {
 
 async function run(c, s, sk) {
   check = c; section = s; skipped = sk;
-  testCssTokens();
+  testThemePalettes();
   testStoragePaths();
   testGitHubSafe();
   testGitSpawnHardening();
-  await testGitHubApi();
   testBrowserCheck();
   testBuildConfig();
   testReleaseWorkflow();
   testTheme();
   testLogo();
   testLanguageMark();
-  testPackagedPaths();
   testPlaywrightCliResolution();
   testStorageRoot();
   testPromptCompose();
@@ -1508,7 +1410,6 @@ async function run(c, s, sk) {
   testSkillsWiring();
   testRecentWorkspaces();
   testOnboarding();
-  testRendererLoadOrder();
   testFlow();
   testCodeView();
   testNativePorts();
