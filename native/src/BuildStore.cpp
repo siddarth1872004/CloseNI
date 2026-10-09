@@ -39,6 +39,25 @@ QString checkpointDir(const QString &workspace)
     return Checkpoint::dirFor(workspace);
 }
 
+/*
+ * Make .closeni ignore itself: a .gitignore inside it that matches everything,
+ * itself included.
+ *
+ * Without it an untracked .closeni made a committed project look dirty: the
+ * export refused to run, the Code panel counted a changed file, and the Push
+ * panel's Commit (add -A) swept the build state and checkpoints into the
+ * project's history. Written inside CloseNI's own folder rather than into the
+ * project's .gitignore, which is the user's, and works whenever the repository
+ * is created. Left alone once it exists, so an edited one stays edited.
+ */
+void ignoreOwnFolder(const QString &workspace)
+{
+    const QString file = QDir(workspace).filePath(BuildState::kDir + QStringLiteral("/.gitignore"));
+    if (QFileInfo::exists(file))
+        return;
+    NodeCompat::writeText(file, QStringLiteral("# CloseNI's build state and checkpoints: not project history.\n*\n"));
+}
+
 QVariant fail(const QString &error)
 {
     return QVariantMap{{QStringLiteral("ok"), false}, {QStringLiteral("error"), error}};
@@ -125,6 +144,7 @@ void BuildStore::writeBuildState(const QVariantMap &payloadMap, QJSValue callbac
         Js::reply(this, callback, fail(errorString(error)));
         return;
     }
+    ignoreOwnFolder(workspace);
     Js::reply(this, callback, QVariantMap{{QStringLiteral("ok"), true},
                                           {QStringLiteral("startedAt"), state.value(QStringLiteral("startedAt")).toVariant()}});
 }

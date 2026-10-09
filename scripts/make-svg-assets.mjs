@@ -1304,9 +1304,9 @@ ${frame(0, 0, COLS, ROWS, C.edge)}
 
 function stats() {
   const tiles = [
-    [1902, 'UNIT TESTS', 'npm test', C.green],
-    [192, 'END-TO-END', 'real Chromium', C.blue],
-    [206, 'BROWSER CHECKS', 'npm run test:web', C.violet],
+    [2111, 'UNIT TESTS', 'npm test', C.green],
+    [13, 'NATIVE SUITES', 'ctest, Qt app', C.blue],
+    [197, 'VERIFY CHECKS', 'npm run verify', C.violet],
     [12, 'LANGUAGES', 'syntax + compile', C.amber],
     [11, 'THEMES', 'one palette each', C.blue],
     [0, 'API KEYS', 'none, ever', C.red],
@@ -1333,7 +1333,7 @@ function stats() {
     fill.push([CYCLE - 0.3, '0']);
     g += `<rect x="${(x + 1) * PX}" y="${(TY + TH - 2) * PX}" height="${PX}" width="0" fill="${col}">${track('width', CYCLE, fill)}</rect>`;
   });
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" shape-rendering="crispEdges" aria-label="1999 unit tests, 200 end-to-end tests, 206 browser checks, twelve languages, eleven themes, zero API keys">
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" shape-rendering="crispEdges" aria-label="2111 unit tests, 13 native test suites, 197 verify checks, twelve languages, eleven themes, zero API keys">
 <title>By the numbers</title>
 <rect width="${W}" height="${H}" fill="${C.bg}"/>
 <g font-family="${MONO}">${g}</g>

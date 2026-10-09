@@ -7,7 +7,10 @@
  * address), then stops and closes it. Screenshots of each screen in three
  * themes are saved along the way.
  *
- *   node native/e2e-build.cjs [path/to/CloseNI] [screenshot dir]
+ *   node native/e2e-build.cjs [path/to/CloseNI] [screenshot dir] [theme,theme,...]
+ *
+ * The themes default to terminal, paper and pixel; scripts/make-screenshots.mjs
+ * asks for the ones the docs show.
  *
  * This driver queues the provider's replies as the script announces each
  * stage, and checks what only the outside can see: the files on disk, the
@@ -24,6 +27,7 @@ const { createMockProvider } = require("../local-agent/test/mock-provider.cjs");
 const root = path.join(__dirname, "..");
 const exe = process.argv[2] || path.join(root, "build-native", "bin", process.platform === "win32" ? "CloseNI.exe" : "CloseNI");
 const F = "```";
+const themes = (process.argv[4] || "terminal,paper,pixel").split(",").filter(Boolean);
 
 let failed = 0;
 function check(name, cond, extra) {
@@ -105,7 +109,8 @@ async function main() {
   if (!env.QT_QPA_PLATFORM) env.QT_QPA_PLATFORM = "offscreen";
 
   const script = path.join(__dirname, "tests", "ui", "BuildFlow.qml");
-  const proc = spawn(exe, ["--workspace", workspace, "--provider", "mock", "--ui-script", script, shots], { env: env });
+  const proc = spawn(exe, ["--workspace", workspace, "--provider", "mock", "--ui-script", script, "themes=" + themes.join(","), shots],
+                     { env: env });
   const lines = [];
   const stages = [];
   function onLine(line) {
@@ -147,11 +152,11 @@ async function main() {
         opened.length === 2 && opened.every((u) => /^http:\/\/localhost:\d+\/$/.test(u)), JSON.stringify(opened));
   const names = ["chat", "plan", "build", "run"];
   const missing = [];
-  names.forEach((n) => ["terminal", "paper", "pixel"].forEach((t) => {
+  names.forEach((n) => themes.forEach((t) => {
     const f = path.join(shots, "build-" + n + "-" + t + ".png");
     if (!fs.existsSync(f) || fs.statSync(f).size < 1000) missing.push(path.basename(f));
   }));
-  check("twelve screenshots saved to " + shots, missing.length === 0, "missing " + missing.join(", "));
+  check(names.length * themes.length + " screenshots saved to " + shots, missing.length === 0, "missing " + missing.join(", "));
 
   await mock.close();
   fs.rmSync(path.join(tmp, "storage"), { recursive: true, force: true });
