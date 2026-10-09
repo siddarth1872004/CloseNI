@@ -121,7 +121,12 @@ int main(int argc, char *argv[])
     const QCommandLineOption selfTest(QStringLiteral("self-test"),
                                       QStringLiteral("Test harness: exercise the window, save screenshots to <dir>."),
                                       QStringLiteral("dir"));
-    parser.addOptions({workspace, provider, start, exitOnReady, bridge, selfTest});
+    // With --self-test: run shell/<name>Flow.qml instead of the theme walk, a
+    // scripted pass through one area's real flows (tests/tst_ship_ui.cpp).
+    const QCommandLineOption selfTestFlow(QStringLiteral("self-test-flow"),
+                                          QStringLiteral("Test harness: the flow --self-test runs, shell/<name>Flow.qml."),
+                                          QStringLiteral("name"));
+    parser.addOptions({workspace, provider, start, exitOnReady, bridge, selfTest, selfTestFlow});
     parser.process(app);
 
     QQmlApplicationEngine engine;
@@ -144,6 +149,7 @@ int main(int argc, char *argv[])
         {QStringLiteral("provider"), parser.isSet(provider) ? parser.value(provider) : QString()},
         {QStringLiteral("autoStart"), parser.isSet(start)},
         {QStringLiteral("selfTestDir"), testing ? QDir(parser.value(selfTest)).absolutePath() : QString()},
+        {QStringLiteral("selfTestFlow"), testing ? parser.value(selfTestFlow) : QString()},
     });
     QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed, &app,
                      [] { QCoreApplication::exit(1); }, Qt::QueuedConnection);
