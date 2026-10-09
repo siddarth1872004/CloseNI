@@ -768,7 +768,7 @@ cd desktop &amp;&amp; npm start
 <p><a href="https://github.com/siddarth1872004/CloseNI/issues/new/choose">Open an issue</a> with the bug report form. It asks for the provider, your OS, the version and the last 50 lines of the Console bar, which usually name the selector that failed. Check those lines for anything private before posting.</p>
 <hr>
 <h2 id="distribution-builds">Distribution builds</h2>
-<p>Releases are driven by a tag. <code>npm version 1.0.1 -m &quot;Release %s&quot;</code> followed by <code>git push --tags</code> builds on <code>windows-latest</code> and <code>ubuntu-latest</code>, and attaches the installers to a draft release. The full process, including how to verify an artifact before publishing, is in <a href="https://github.com/siddarth1872004/CloseNI/blob/main/docs/RELEASING.md">docs/RELEASING.md</a>.</p>
+<p>Releases are driven by a tag. <code>npm version 1.0.1 -m &quot;Release %s&quot;</code> followed by <code>git push --tags</code> builds the native app&#39;s installers on Windows, Linux and macOS, and attaches them to a draft release. The full process, including how to verify an artifact before publishing, is in <a href="https://github.com/siddarth1872004/CloseNI/blob/main/docs/RELEASING.md">docs/RELEASING.md</a>.</p>
 <table>
 <thead>
 <tr>
@@ -777,22 +777,26 @@ cd desktop &amp;&amp; npm start
 </tr>
 </thead>
 <tbody><tr>
-<td>Windows</td>
-<td><code>CloseNI-Setup-&lt;version&gt;.exe</code> (NSIS, chooses its own install directory)</td>
+<td>Windows x64</td>
+<td><code>CloseNI-Setup-&lt;version&gt;.exe</code> (NSIS, per user, chooses its own install directory)</td>
 </tr>
 <tr>
-<td>Linux</td>
+<td>Linux x64</td>
 <td><code>CloseNI-&lt;version&gt;.AppImage</code></td>
 </tr>
 <tr>
-<td>Linux</td>
+<td>Linux x64</td>
 <td><code>closeni_&lt;version&gt;_amd64.deb</code></td>
 </tr>
+<tr>
+<td>macOS</td>
+<td><code>CloseNI-&lt;version&gt;-arm64.dmg</code>, <code>CloseNI-&lt;version&gt;-x64.dmg</code> (unsigned)</td>
+</tr>
 </tbody></table>
-<pre><code class="language-bash">npm run pack   # unpacked distribution directory
-npm run dist   # platform installer (.exe / .deb / AppImage)
+<pre><code class="language-bash">npm run pack   # stage the app into dist/native/ (needs Qt 6.8+ and CMake)
+npm run dist   # and build this system&#39;s installers
 </code></pre>
-<p>The packaged <code>files</code> list is an explicit allow-list. Widening it to a glob would sweep <code>local-agent/storage/</code> (live session cookies and private chat URLs) into a shipped artifact.</p>
+<p>The stager copies only <code>local-agent/dist</code>, its config and the packages the agent requires at run time, and <code>npm run verify</code> audits the staged app, so <code>local-agent/storage/</code> (live session cookies and private chat URLs) cannot reach a shipped artifact.</p>
 <hr>
 <h2 id="directory-tree">Directory tree</h2>
 <pre><code>desktop/            Electron UI host, IPC handlers, and renderer

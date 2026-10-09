@@ -10,6 +10,7 @@
 #include <QJsonObject>
 #include <QQmlApplicationEngine>
 #include <QQuickItem>
+#include <QQuickStyle>
 #include <QQuickWindow>
 
 #include <cstdio>
@@ -109,6 +110,12 @@ int main(int argc, char *argv[])
     QGuiApplication app(argc, argv);
     QGuiApplication::setApplicationName(QStringLiteral("CloseNI"));
     QGuiApplication::setApplicationVersion(QStringLiteral(CLOSENI_VERSION));
+    // Matches closeni.desktop, so Wayland shells show the app's icon.
+    QGuiApplication::setDesktopFileName(QStringLiteral("closeni"));
+    // Packages ship the Basic style only (native/package/stage.mjs). Without
+    // this, an `import QtQuick.Controls` or the dialogs would pick the
+    // platform's default style (Fusion, FluentWinUI3, macOS), which is not there.
+    QQuickStyle::setStyle(QStringLiteral("Basic"));
 
     QCommandLineParser parser;
     parser.setApplicationDescription(QStringLiteral("CloseNI, the native app"));
@@ -137,7 +144,12 @@ int main(int argc, char *argv[])
     const QCommandLineOption uiScript(QStringLiteral("ui-script"),
                                       QStringLiteral("Test harness: run a QML file against the window."),
                                       QStringLiteral("file"));
-    parser.addOptions({workspace, provider, start, exitOnReady, bridge, selfTest, uiScript});
+    // With --self-test: run shell/<name>Flow.qml instead of the theme walk, a
+    // scripted pass through one area's real flows (tests/tst_ship_ui.cpp).
+    const QCommandLineOption selfTestFlow(QStringLiteral("self-test-flow"),
+                                          QStringLiteral("Test harness: the flow --self-test runs, shell/<name>Flow.qml."),
+                                          QStringLiteral("name"));
+    parser.addOptions({workspace, provider, start, exitOnReady, bridge, selfTest, selfTestFlow, uiScript});
     parser.process(app);
 
     QQmlApplicationEngine engine;
@@ -169,6 +181,7 @@ int main(int argc, char *argv[])
         {QStringLiteral("autoStart"), parser.isSet(start)},
         {QStringLiteral("selfTestDir"), testing ? QDir(parser.value(selfTest)).absolutePath() : QString()},
         {QStringLiteral("uiScript"), scripted ? QUrl::fromLocalFile(QFileInfo(parser.value(uiScript)).absoluteFilePath()).toString() : QString()},
+        {QStringLiteral("selfTestFlow"), testing ? parser.value(selfTestFlow) : QString()},
     });
     QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed, &app,
                      [] { QCoreApplication::exit(1); }, Qt::QueuedConnection);
