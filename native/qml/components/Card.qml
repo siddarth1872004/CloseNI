@@ -7,14 +7,14 @@ import CloseNI
  * column with a 6px gap under an optional micro heading.
  *
  * Pixel: panel ground, line-strong edge, a 3px top border cycling green,
- * blue, purple, amber, red by `index`, a hard 3px shadow, and three chrome
+ * blue, purple, amber, red by `tile`, a hard 3px shadow, and three chrome
  * squares before the heading. Terminal leaves rail cards unfilled.
  */
 Item {
     id: card
 
     property string title: ""
-    property int index: 0
+    property int tile: 0
     property int padding: Theme.sp3
     property int spacing: 6
     // "surface" (rail cards), "panel" (panel boxes) or "none".
@@ -44,7 +44,7 @@ Item {
     Rectangle {
         visible: Theme.isPixel
         width: parent.width; height: 3
-        color: Theme.pxCycle(card.index)
+        color: Theme.pxCycle(card.tile)
     }
 
     ColumnLayout {

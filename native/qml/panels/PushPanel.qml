@@ -27,6 +27,13 @@ ScrollArea {
         color: Theme.surface
         border.width: 1
         border.color: Theme.line
+        // The run arrives (pix-in), and its conclusion is worth one frame of
+        // attention: the verdict stamps in.
+        PixMotion { id: arrive; duration: 140 }
+        PixMotion { id: stamp; kind: "stamp"; frames: 3; duration: 180 }
+        opacity: arrive.opacity
+        transform: Translate { y: arrive.shift }
+        Component.onCompleted: { arrive.play(); stamp.play() }
         RowLayout {
             id: runLine
             x: 8; width: parent.width - 16
@@ -41,7 +48,10 @@ ScrollArea {
                 elide: Text.ElideRight
             }
             Text {
+                id: verdictText
                 text: run.verdict
+                opacity: stamp.opacity
+                transform: Scale { origin.x: verdictText.width / 2; origin.y: verdictText.height / 2; xScale: stamp.scale; yScale: stamp.scale }
                 color: run.verdict === "success" ? Theme.ok : run.verdict === "failure" ? Theme.err
                      : run.verdict === "running" ? Theme.warn : Theme.mut
                 font.family: Theme.mono

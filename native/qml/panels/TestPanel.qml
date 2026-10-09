@@ -23,12 +23,19 @@ ColumnLayout {
         property string verdict: ""
         property bool ok: false
         property string language: ""
+        // Arrives (pix-in) when made, unless the list says it is only being
+        // scrolled back into view.
+        property bool fresh: true
         width: parent ? parent.width : 0
         implicitHeight: rowLine.implicitHeight + 10
         radius: Theme.isPixel ? 0 : 3
         color: Theme.surface
         border.width: 1
         border.color: Theme.line
+        PixMotion { id: arrive; duration: 140 }
+        opacity: arrive.opacity
+        transform: Translate { y: arrive.shift }
+        Component.onCompleted: if (fresh) arrive.play()
         RowLayout {
             id: rowLine
             x: 8; width: parent.width - 16
@@ -171,6 +178,8 @@ ColumnLayout {
                         boundsBehavior: Flickable.StopAtBounds
                         model: ShipStore.testResults
                         ScrollBar.vertical: ThinScrollBar {}
+                        property double drawnAt: Date.now()
+                        onCountChanged: drawnAt = Date.now()
                         delegate: Loader {
                             id: cell
                             required property string kind
@@ -182,7 +191,10 @@ ColumnLayout {
                             sourceComponent: kind === "output" ? outputBlock : resultRow
                             Component {
                                 id: resultRow
-                                TestRow { command: cell.command; ok: cell.success; language: cell.language; verdict: cell.success ? "pass" : "fail" }
+                                TestRow {
+                                    command: cell.command; ok: cell.success; language: cell.language; verdict: cell.success ? "pass" : "fail"
+                                    fresh: Date.now() - results.drawnAt < 300
+                                }
                             }
                             Component {
                                 id: outputBlock
@@ -249,7 +261,8 @@ ColumnLayout {
                 boundsBehavior: Flickable.StopAtBounds
                 model: ShipStore.testChat
                 ScrollBar.vertical: ThinScrollBar {}
-                onCountChanged: Qt.callLater(positionViewAtEnd)
+                property double drawnAt: Date.now()
+                onCountChanged: { drawnAt = Date.now(); Qt.callLater(positionViewAtEnd) }
                 delegate: Item {
                     id: msg
                     required property string who
@@ -260,6 +273,11 @@ ColumnLayout {
                     width: ListView.view.width
                     implicitHeight: msgCol.implicitHeight + Theme.sp3 * 2 + 1
                     height: implicitHeight
+                    // .msg arrives (pix-in) when it is said, not when scrolled to.
+                    PixMotion { id: arrive }
+                    opacity: arrive.opacity
+                    transform: Translate { y: arrive.shift }
+                    Component.onCompleted: if (Date.now() - flow.drawnAt < 300) arrive.play()
                     Column {
                         id: msgCol
                         y: Theme.sp3

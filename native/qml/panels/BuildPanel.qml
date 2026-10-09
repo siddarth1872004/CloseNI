@@ -160,6 +160,10 @@ Item {
                         boundsBehavior: Flickable.StopAtBounds
                         model: BuildState.stepModel
                         ScrollBar.vertical: ThinScrollBar {}
+                        // Cards arrive (pix-in) when the list is drawn or grows,
+                        // not when scrolling brings a delegate into being.
+                        property double drawnAt: Date.now()
+                        onCountChanged: drawnAt = Date.now()
 
                         // .step-card
                         delegate: Rectangle {
@@ -168,15 +172,39 @@ Item {
                             required property string title
                             required property string status
                             readonly property bool active: index === panel.sel
-                            width: stepList.width
+                            // Pixel's hard shadow needs room inside the list's clip.
+                            width: stepList.width - (Theme.isPixel ? 3 : 0)
                             height: row.implicitHeight + 16
                             radius: Theme.isPixel ? 0 : 3
-                            color: active ? Theme.surfaceRaised : "transparent"
+                            color: active ? Theme.surfaceRaised : Theme.surface
                             border.width: 1
-                            border.color: active ? Theme.txt : hover.hovered ? Theme.lineStrong : Theme.line
+                            border.color: active ? (Theme.isPixel ? Theme.pxG2 : Theme.txt)
+                                        : hover.hovered ? Theme.lineStrong : Theme.line
                             activeFocusOnTab: true
                             Keys.onReturnPressed: BuildState.selectStep(index)
                             Keys.onSpacePressed: BuildState.selectStep(index)
+
+                            // Pixel motion marks the change: a finished step
+                            // stamps in, a running one spins, a failed one
+                            // flickers. No entry for pending or skipped: nothing
+                            // has happened to them, so nothing should move.
+                            readonly property string pixMotion: status === "done" ? "stamp" : status === "failed" ? "flicker"
+                                                              : status === "running" ? "spin" : ""
+                            PixMotion { id: arrive; duration: 120; frames: 2 }
+                            opacity: arrive.opacity
+                            transform: Translate { y: arrive.shift }
+                            Component.onCompleted: if (Date.now() - stepList.drawnAt < 300) { arrive.play(); statusChip.play() }
+
+                            // Pixel: a hard 2px shadow, 3px and green under the active card.
+                            Rectangle {
+                                visible: Theme.isPixel
+                                z: -1
+                                x: stepCard.active ? 3 : 2
+                                y: x
+                                width: parent.width
+                                height: parent.height
+                                color: stepCard.active ? Theme.pxG4 : Theme.pxShadow
+                            }
 
                             HoverHandler { id: hover; cursorShape: Qt.PointingHandCursor }
                             TapHandler { onTapped: BuildState.selectStep(stepCard.index) }
@@ -204,7 +232,7 @@ Item {
                                     style: stepCard.active && Theme.hasGlow ? Text.Outline : Text.Normal
                                     styleColor: Theme.glow
                                 }
-                                Chip { text: stepCard.status; kind: stepCard.status }
+                                Chip { id: statusChip; text: stepCard.status; kind: stepCard.status; motion: stepCard.pixMotion }
                             }
                         }
                     }
@@ -324,6 +352,14 @@ Item {
                         rightMargin: 14
                         model: BuildState.revision >= 0 && panel.sel >= 0 ? BuildState.detailRows(panel.sel, panel.openFiles) : []
                         ScrollBar.vertical: ThinScrollBar {}
+                        // A step's cards arrive (pix-in) when it is picked or
+                        // the panel opens - not on every build event that
+                        // redraws the rows, and not when scrolling makes one.
+                        property double drawnAt: Date.now()
+                        Connections {
+                            target: panel
+                            function onSelChanged() { detail.drawnAt = Date.now() }
+                        }
 
                         delegate: Item {
                             id: rowItem
@@ -333,23 +369,59 @@ Item {
                             readonly property bool isHead: r.k === "head"
                             readonly property bool first: !isHead && index > 0 && detail.model[index - 1].k === "head"
                             readonly property bool closes: !!r.last
+                            // Pixel's 3px top edge, 2px more than the line it replaces.
+                            readonly property int topEdge: isHead && Theme.isPixel ? 2 : 0
+                            readonly property bool diffLine: r.k === "diff" && (r.type === "add" || r.type === "remove")
                             width: detail.width - detail.leftMargin - detail.rightMargin
                             height: box.height + (closes ? 10 : 0)
+
+                            // .file-card arrives in three steps; a diff line
+                            // stamps in on its own, in two.
+                            PixMotion { id: arrive; frames: rowItem.diffLine ? 2 : 3; duration: rowItem.diffLine ? 120 : 160 }
+                            opacity: arrive.opacity
+                            transform: Translate { y: arrive.shift }
+                            Component.onCompleted: if (Date.now() - detail.drawnAt < 300) arrive.play()
+
+                            // Pixel: the card's hard 3px shadow, drawn per row
+                            // down its right side and under its last row.
+                            Rectangle {
+                                visible: Theme.isPixel
+                                x: box.width
+                                y: rowItem.isHead ? 3 : 0
+                                width: 3
+                                height: box.height - y + (rowItem.closes ? 3 : 0)
+                                color: Theme.pxShadow
+                            }
+                            Rectangle {
+                                visible: Theme.isPixel && rowItem.closes
+                                x: 3
+                                y: box.height
+                                width: box.width - 3
+                                height: 3
+                                color: Theme.pxShadow
+                            }
 
                             Rectangle {
                                 id: box
                                 width: parent.width
-                                height: rowItem.isHead ? headRow.implicitHeight + 16 + 1
+                                height: rowItem.isHead ? headRow.implicitHeight + 16 + 1 + rowItem.topEdge
                                         : body.implicitHeight + (rowItem.first ? 12 : 0) + (rowItem.closes ? 12 : 0)
                                 color: rowItem.isHead ? (headHover.hovered && rowItem.r.file >= 0 ? Theme.surfaceRaised : Theme.surface)
                                        : rowItem.r.k === "diff" && rowItem.r.type === "add" ? Theme.okBg
                                        : rowItem.r.k === "diff" && rowItem.r.type === "remove" ? Theme.errBg
                                        : Theme.surfaceSunken
 
-                                // The card's edges, drawn per row.
+                                // The card's edges, drawn per row. Pixel's top
+                                // edge cycles green, blue, purple, amber, red
+                                // down the step's cards.
                                 Rectangle { width: 1; height: parent.height; color: Theme.line }
                                 Rectangle { x: parent.width - 1; width: 1; height: parent.height; color: Theme.line }
-                                Rectangle { visible: rowItem.isHead; width: parent.width; height: 1; color: Theme.line }
+                                Rectangle {
+                                    visible: rowItem.isHead
+                                    width: parent.width
+                                    height: 1 + rowItem.topEdge
+                                    color: Theme.isPixel ? Theme.pxCycle(rowItem.r.card || 0) : Theme.line
+                                }
                                 Rectangle { visible: rowItem.closes || rowItem.isHead; y: parent.height - 1; width: parent.width; height: 1; color: Theme.line }
 
                                 // .file-card-head: a file's head opens and closes its body.
@@ -366,7 +438,7 @@ Item {
                                     id: headRow
                                     visible: rowItem.isHead
                                     x: 12
-                                    y: 8
+                                    y: 8 + rowItem.topEdge
                                     width: parent.width - 24
                                     spacing: 8
                                     // The mark's colour is data about the file, not
