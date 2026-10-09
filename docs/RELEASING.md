@@ -12,6 +12,10 @@ builds the native Qt app's installers with
 npm run build
 node local-agent/test/run-tests.cjs      # ~15s
 node local-agent/test/run-e2e.cjs        # ~20min, drives a real browser
+cmake -S native -B build-native -G Ninja && cmake --build build-native
+ctest --test-dir build-native
+node native/e2e-build.cjs                # the app runs a build, mock provider
+node native/tests/code-e2e.cjs           # the Code panel, mock provider
 
 # 2. Write the release into CHANGELOG.md before tagging.
 #    The tag is what people land on; an empty changelog entry is permanent.
@@ -84,10 +88,12 @@ release notes rather than leaving people to guess.
   installer says so.
 - **Linux:** the .deb replaces the old package (`closeni`), and installs to
   `/opt/CloseNI` with `closeni` on PATH.
-- **All systems:** settings, sign-ins, sessions and downloaded browsers stay
-  where they were, since the native app uses the same storage directory. The
-  GitHub token has to be entered once more: Electron's encrypted copy cannot be
-  read outside Electron.
+- **All systems:** sign-ins, sessions and downloaded browsers stay where they
+  were, since the native app uses the same storage directory. Settings the
+  Electron app kept in its localStorage are imported once, on first run,
+  best-effort. The GitHub token has to be entered once more: Electron's
+  safeStorage copy cannot be read outside Electron, and the new one goes in
+  the OS keyring.
 
 ## Building locally
 
