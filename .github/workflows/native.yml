@@ -1,6 +1,7 @@
-# Builds the native Qt app on Linux, Windows and macOS (design D13, phase 0),
-# and on Linux starts it against the mock provider to check the agent session
-# comes up. The Electron app's checks stay in test.yml.
+# Builds the native Qt app on Linux, Windows and macOS (design D13), and on
+# Linux runs it against the mock provider: the agent session comes up, a
+# build runs end to end, and the Code panel takes a turn and its keys work.
+# The unit suites, verify and test:web are in test.yml.
 name: native
 
 on:
@@ -72,6 +73,16 @@ jobs:
       - name: Agent session smoke test
         if: runner.os == 'Linux'
         run: node native/smoke.cjs
+
+      # Both drive the window offscreen against the mock provider, with the
+      # Chromium installed above.
+      - name: Build end to end
+        if: runner.os == 'Linux'
+        run: node native/e2e-build.cjs build-native/bin/CloseNI
+
+      - name: Code panel end to end
+        if: runner.os == 'Linux'
+        run: node native/tests/code-e2e.cjs build-native/bin/CloseNI
 
       # The staged app the installers wrap (native/package/stage.mjs): pruned
       # Qt, bundled Node and agent, run as a user gets it. The installers
