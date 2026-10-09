@@ -786,6 +786,21 @@ function testCheckpoints() {
   check("no checkpoints means nothing to undo", C.planRollback([], 0, {}).steps.length === 0);
   check("the file name sorts in step order",
     C.checkpointName(0) === "step-001.json" && C.checkpointName(11) === "step-012.json");
+
+  // .closeni is CloseNI's, not the project's: it ignores itself, so git does
+  // not count it as an uncommitted change. The project's .gitignore is left alone.
+  const { writeCheckpoint } = require(path.join(DIST, "modes/build-step.js"));
+  const ws = fs.mkdtempSync(path.join(os.tmpdir(), "agentic-cp-ignore-"));
+  fs.writeFileSync(path.join(ws, "app.py"), "v1\n");
+  writeCheckpoint(ws, C.mergeCheckpoint(null, 0, { "app.py": null }, { at: "T" }));
+  const marker = path.join(ws, ".closeni", ".gitignore");
+  check("a checkpoint is written", fs.existsSync(path.join(ws, ".closeni", "checkpoints", "step-001.json")));
+  check(".closeni ignores itself", fs.existsSync(marker) && /^\*$/m.test(fs.readFileSync(marker, "utf-8")));
+  check("the project's .gitignore is not touched", !fs.existsSync(path.join(ws, ".gitignore")));
+  fs.writeFileSync(marker, "checkpoints/\n");
+  writeCheckpoint(ws, C.mergeCheckpoint(null, 1, { "app.py": "v1\n" }, { at: "T" }));
+  check("an edited .closeni/.gitignore is kept", fs.readFileSync(marker, "utf-8") === "checkpoints/\n");
+  fs.rmSync(ws, { recursive: true, force: true });
 }
 
 function testRollbackOnDisk() {
