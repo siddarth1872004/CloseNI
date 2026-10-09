@@ -123,9 +123,10 @@ The agent panels read what Settings decides from the `SettingsStore` singleton:
 
 The provider, its controls and Show Browser stay in `Providers`.
 
-A callback whose result is a top-level list (for example `Files.listProviders`)
-receives a Qt sequence, not an Array, so `Array.isArray` is false. Test for
-`length` instead, or copy it with `Array.prototype.slice.call`.
+`Js::reply` converts lists and maps at any depth into real JS Arrays and
+objects, so `Array.isArray` works on every result. Reply through it; never pass
+`engine->toScriptValue` of a QVariantList straight to QML, because that is a Qt
+sequence that `Array.isArray` rejects.
 
 ## QML's JavaScript engine (Qt 6.11)
 

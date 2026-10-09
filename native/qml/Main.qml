@@ -15,7 +15,7 @@ import CloseNI
  *
  * main.cpp sets workspace, provider and autoStart from --workspace, --provider
  * and --start ("" when not given: the last project and the saved provider are
- * used), and selfTestDir from --self-test.
+ * used), selfTestDir from --self-test and uiScript from --ui-script.
  */
 ApplicationWindow {
     id: window
@@ -24,6 +24,8 @@ ApplicationWindow {
     required property string provider
     required property bool autoStart
     property string selfTestDir: ""
+    // --ui-script <file>: a test's QML file, loaded below with the window as root.
+    property string uiScript: ""
     // --self-test-flow <name>: shell/<name>Flow.qml runs instead of SelfTest.
     property string selfTestFlow: ""
     // --self-test: main.cpp saves the window to `path` (see SelfTest.qml).
@@ -173,6 +175,30 @@ ApplicationWindow {
         }
     }
 
+    // The run console: made on the first run and reused after, so an app that
+    // never runs anything never builds it (main/run-window.js kept one too).
+    Loader {
+        id: runWindow
+        objectName: "runWindowLoader"
+        active: false
+        sourceComponent: RunWindow {}
+    }
+    Connections {
+        target: Runner
+        function onWindowRequested(req) {
+            runWindow.active = true
+            runWindow.item.present(req)
+        }
+        // "Fix errors" in the run console: the agent here takes the request,
+        // so this window comes forward. The Code panel turns the prompt into
+        // a task (Electron's code.js onRunFix).
+        function onRunFix(detail) {
+            window.raise()
+            window.requestActivate()
+            AppState.switchTab("code")
+        }
+    }
+
     // --self-test <dir>: every theme, every panel, the console, a toast, both
     // modals, three screenshots, then quit. main.cpp fails the run on any
     // warning. Nothing here exists unless asked for.
@@ -185,6 +211,14 @@ ApplicationWindow {
             outDir: window.selfTestDir
             approval: approvalModal
         }
+    }
+
+    // --ui-script <file>: an end-to-end test drives the window through the UI.
+    // Nothing here exists unless asked for.
+    Loader {
+        active: window.uiScript !== ""
+        source: window.uiScript
+        onLoaded: item.root = window
     }
     Loader { id: flowTest }
 }

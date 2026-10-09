@@ -1,10 +1,11 @@
 /*
  * The Code panel end to end, against the e2e suite's mock provider: the
- * window's --self-test with --start, --provider mock and a --workspace, which (after
- * the usual theme walk) waits for the session --start opened, types a request
- * into the panel, presses enter, waits for the edit to ask, answers 1 (allow) and waits
- * for the turn to finish - all through the panel's own key handlers. See
- * qml/shell/SelfTest.qml.
+ * window's --self-test-flow Code (qml/shell/CodeFlow.qml) with --start,
+ * --provider mock and a --workspace. It waits for the session --start opened,
+ * types a request into the panel, presses enter, waits for the edit to ask,
+ * answers 1 (allow) and waits for the turn to finish - all through the panel's
+ * own key handlers. Then the run console's "Fix errors" (Runner.runFix):
+ * declined for another folder, a turn for this one.
  *
  *   node native/tests/code-e2e.cjs [path/to/CloseNI] [screenshot dir]
  *
@@ -53,6 +54,7 @@ async function main() {
     "Let me read it.\n\n" + F + "\n{\"tool\": \"read\", \"path\": \"calc.py\"}\n" + F,
     F + "\n{\"tool\": \"edit\", \"path\": \"calc.py\"}\n---\n<<<<<<< SEARCH\n    return a - b\n=======\n    return a + b\n>>>>>>> REPLACE\n" + F,
     "Fixed: add() now adds.",
+    "The crash is fixed: calc.py runs.",
   ]);
 
   const env = Object.assign({}, process.env, {
@@ -60,10 +62,18 @@ async function main() {
     CLOSENI_STORAGE: path.join(tmp, "storage"),
     CLOSENI_NODE: process.execPath,
     QT_FORCE_STDERR_LOGGING: "1",
+    // No session bus: nothing reaches the real keyring, and the desktop
+    // portal (which warns when another app holds the connection's ID) stays
+    // out of a run that fails on any warning, as in e2e-build.cjs.
+    DBUS_SESSION_BUS_ADDRESS: "unix:path=/nonexistent/closeni-test-bus",
+    // Which leaves the desktop theme saying it has no bus to watch for
+    // setting changes. Only those two categories are off; every other
+    // warning still counts.
+    QT_LOGGING_RULES: "qt.qpa.theme.dbus.warning=false;qt.qpa.theme.gnome.warning=false",
   });
   if (!env.QT_QPA_PLATFORM) env.QT_QPA_PLATFORM = "offscreen";
 
-  const proc = spawn(exe, ["--self-test", shots, "--start", "--provider", "mock", "--workspace", workspace], { env: env });
+  const proc = spawn(exe, ["--self-test", shots, "--self-test-flow", "Code", "--start", "--provider", "mock", "--workspace", workspace], { env: env });
   let out = "";
   proc.stdout.on("data", (d) => { out += d; });
   proc.stderr.on("data", (d) => { out += d; });
@@ -71,14 +81,13 @@ async function main() {
   const code = await new Promise((resolve) => proc.on("close", resolve));
   clearTimeout(timer);
 
-  const said = (s) => out.indexOf("self-test: code e2e: " + s) !== -1;
-  check("the session comes up from the panel", said("ready"), out);
-  check("enter in the prompt sends the request", said("sent"), out);
-  check("the edit asks in the transcript", said("permission"), out);
-  check("allow lets the turn finish", said("done"), out);
-  check("the model's answer is shown", said("the answer is shown"), out);
+  // The flow's own checks, as it printed them.
+  const lines = out.split("\n").filter((l) => /code-flow: (ok|FAIL) /.test(l));
+  for (const l of lines) check(l.replace(/^.*code-flow: (ok|FAIL) /, "flow: "), /code-flow: ok /.test(l));
+  check("the flow ran all ten of its checks", lines.length === 10, out);
+  check("the run fix reaches the model", mock.prompts().some((p) => /NameError: name .ad. is not defined/.test(p)));
   check("the file is fixed on disk", /return a \+ b/.test(fs.readFileSync(path.join(workspace, "calc.py"), "utf-8")));
-  check("the self-test exits cleanly with no warnings", code === 0, "exit " + code + "\n" + out);
+  check("the flow exits cleanly with no warnings", code === 0, "exit " + code + "\n" + out);
 
   await mock.close();
   fs.rmSync(tmp, { recursive: true, force: true });

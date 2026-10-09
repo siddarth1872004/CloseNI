@@ -73,11 +73,10 @@ QtObject {
      */
     function load(preferred) {
         return Api.call(Files, "listProviders").then(function (r) {
-            // Files replies with a QVariantList, which reaches QML as a sequence
-            // rather than an Array: Array.isArray alone dropped every provider
-            // and left only the fallback below, with no controls.
+            // Files replies with a list; Js::reply turns it into a real Array
+            // (a bare sequence once failed this check and dropped every provider).
             function asArray(v) {
-                return v && typeof v === "object" && typeof v.length === "number" ? Array.prototype.slice.call(v) : null
+                return Array.isArray(v) ? v : null
             }
             var l = asArray(r) || (r && asArray(r.providers)) || []
             if (!l.length) l = [{ id: "deepseek", name: "DeepSeek Chat" }]

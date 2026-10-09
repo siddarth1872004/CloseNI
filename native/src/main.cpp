@@ -2,7 +2,9 @@
 #include "Bridge.h"
 
 #include <QCommandLineParser>
+#include <QDesktopServices>
 #include <QDir>
+#include <QFileInfo>
 #include <QGuiApplication>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -88,6 +90,21 @@ private:
     QQuickWindow *m_window;
 };
 
+/*
+ * --ui-script: the system browser, stubbed. App.openExternal and openPath end
+ * in QDesktopServices::openUrl, which lands here instead of starting a browser,
+ * and the address is printed for the test driver to check.
+ */
+class UrlStub : public QObject
+{
+    Q_OBJECT
+public:
+    using QObject::QObject;
+
+public slots:
+    void open(const QUrl &url) { print("CloseNI: ui-script: openUrl " + url.toString()); }
+};
+
 int main(int argc, char *argv[])
 {
     QGuiApplication app(argc, argv);
@@ -121,12 +138,18 @@ int main(int argc, char *argv[])
     const QCommandLineOption selfTest(QStringLiteral("self-test"),
                                       QStringLiteral("Test harness: exercise the window, save screenshots to <dir>."),
                                       QStringLiteral("dir"));
+    // For tests only: load a QML file that drives the window (it gets the
+    // window as `root`), with the system browser stubbed and warnings counted
+    // as for --self-test. The file decides the exit code.
+    const QCommandLineOption uiScript(QStringLiteral("ui-script"),
+                                      QStringLiteral("Test harness: run a QML file against the window."),
+                                      QStringLiteral("file"));
     // With --self-test: run shell/<name>Flow.qml instead of the theme walk, a
     // scripted pass through one area's real flows (tests/tst_ship_ui.cpp).
     const QCommandLineOption selfTestFlow(QStringLiteral("self-test-flow"),
                                           QStringLiteral("Test harness: the flow --self-test runs, shell/<name>Flow.qml."),
                                           QStringLiteral("name"));
-    parser.addOptions({workspace, provider, start, exitOnReady, bridge, selfTest, selfTestFlow});
+    parser.addOptions({workspace, provider, start, exitOnReady, bridge, selfTest, selfTestFlow, uiScript});
     parser.process(app);
 
     QQmlApplicationEngine engine;
@@ -142,6 +165,14 @@ int main(int argc, char *argv[])
         QDir().mkpath(parser.value(selfTest));
         previousHandler = qInstallMessageHandler(countWarnings);
     }
+    const bool scripted = parser.isSet(uiScript);
+    if (scripted) {
+        if (!testing)
+            previousHandler = qInstallMessageHandler(countWarnings);
+        auto *stub = new UrlStub(&app);
+        for (const QString scheme : {QStringLiteral("http"), QStringLiteral("https"), QStringLiteral("file")})
+            QDesktopServices::setUrlHandler(scheme, stub, "open");
+    }
 
     engine.setInitialProperties({
         {QStringLiteral("workspace"), parser.isSet(start) && chosen.isEmpty() ? agentWorkspace : chosen},
@@ -149,6 +180,7 @@ int main(int argc, char *argv[])
         {QStringLiteral("provider"), parser.isSet(provider) ? parser.value(provider) : QString()},
         {QStringLiteral("autoStart"), parser.isSet(start)},
         {QStringLiteral("selfTestDir"), testing ? QDir(parser.value(selfTest)).absolutePath() : QString()},
+        {QStringLiteral("uiScript"), scripted ? QUrl::fromLocalFile(QFileInfo(parser.value(uiScript)).absoluteFilePath()).toString() : QString()},
         {QStringLiteral("selfTestFlow"), testing ? parser.value(selfTestFlow) : QString()},
     });
     QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed, &app,
@@ -156,7 +188,7 @@ int main(int argc, char *argv[])
     engine.loadFromModule("CloseNI", "Main");
     if (engine.rootObjects().isEmpty())
         return 1;
-    if (testing) {
+    if (testing || scripted) {
         auto *window = qobject_cast<QQuickWindow *>(engine.rootObjects().constFirst());
         QObject::connect(window, SIGNAL(selfTestShot(QString)), new ShotSaver(window), SLOT(save(QString)));
     }
@@ -169,7 +201,7 @@ int main(int argc, char *argv[])
         }, Qt::QueuedConnection);
     }
     const int code = app.exec();
-    if (testing && selfTestWarnings > 0) {
+    if ((testing || scripted) && selfTestWarnings > 0) {
         std::fprintf(stderr, "CloseNI: self-test: %d warning(s)\n", selfTestWarnings);
         return 1;
     }

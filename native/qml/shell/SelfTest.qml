@@ -5,7 +5,8 @@ import "../js/code-transcript.mjs" as T
 /*
  * --self-test <dir>: drives the shell through every theme on every panel, with
  * decor on and off, then the console, a toast, the approval modal and the
- * browser gate, and saves three screenshots (terminal, paper, pixel) to <dir>.
+ * browser gate, and saves three screenshots (terminal, paper, pixel) to <dir>,
+ * plus the run console in each of those themes (run-terminal and so on).
  * One step per tick so each state renders before the next. main.cpp counts
  * the warnings and sets the exit code; this only quits. The saved theme and
  * decor are put back at the end.
@@ -13,14 +14,13 @@ import "../js/code-transcript.mjs" as T
  * The Code panel walks the themes with a transcript in it - every kind of
  * entry, a pending permission prompt, a card of each sort, the todo list, the
  * mode strip and the run offer - and has three screenshots of its own
- * (code-terminal, code-paper, code-pixel). Run with --start, --provider mock
- * and a --workspace (native/tests/code-e2e.cjs), it then drives a real session
- * through the panel's own keys: send, the permission prompt, allow, done.
+ * (code-terminal, code-paper, code-pixel). A live session through the panel
+ * is CodeFlow.qml (--self-test-flow Code, native/tests/code-e2e.cjs).
  *
  * Settings also opens each of its sections in every theme, runs its exercise
  * (SettingsCheck.qml) and is saved in three themes as settings-*.png. A step
  * that returns false is waiting on something asynchronous and is run again on
- * the next tick, for up to ten seconds (waitFor keeps its own, longer deadline).
+ * the next tick, for up to ten seconds.
  */
 Item {
     id: test
@@ -34,9 +34,6 @@ Item {
     property int shots: 0
     property int planned: 0
     property int waits: 0
-    // When the running waitFor step began (see waitFor).
-    property double waitStart: 0
-    property var codeEvents: []
     readonly property string savedTheme: Theme.current
     readonly property bool savedDecor: Theme.decor
 
@@ -46,20 +43,6 @@ Item {
         return function () {
             test.root.selfTestShot(test.outDir + "/" + name + ".png")
             test.shots++
-        }
-    }
-
-    // Waits, a tick at a time, until cond() holds; a timeout is a warning,
-    // which fails the run. A model turn can take longer than the ticker's
-    // ten-second cap, so this keeps its own deadline and resets the cap's count.
-    function waitFor(label, cond, ms) {
-        return function () {
-            if (!test.waitStart) test.waitStart = Date.now()
-            if (cond()) { test.waitStart = 0; console.log("self-test: code e2e: " + label); return true }
-            if (Date.now() - test.waitStart < ms) { test.waits = 0; return false }
-            test.waitStart = 0
-            console.warn("self-test: code e2e: timed out waiting for " + label)
-            return true
         }
     }
 
@@ -73,9 +56,6 @@ Item {
         }
         return null
     }
-
-    // A key as the panel's Keys handler receives it.
-    function key(k, text) { return { key: k, text: text || "", modifiers: Qt.NoModifier, accepted: false } }
 
     // The Code panel with something in every kind of entry.
     function seedCode() {
@@ -136,56 +116,63 @@ Item {
         CodeStore.clearTranscript()
     }
 
-    // A real session through the panel's own keys, against the mock provider.
-    function codeSession(s) {
-        var panel = null
-        // --start brought the session up through CodeStore, as the panel does,
-        // but the settings exercise has since picked another provider (which
-        // unpins --provider) and may have closed it: pin the mock again and
-        // open it the way the next message would.
-        s.push(function () {
-            test.unseedCode()
-            AppState.switchTab("code")
-            CodeStore.pinnedProvider = test.root.provider
-            CodeStore.ensureSession()
-        })
-        s.push(waitFor("ready", function () { return CodeStore.up && !CodeStore.starting }, 90000))
-        s.push(function () {
-            panel = test.find(test.root.contentItem, "codePanel")
-            var input = test.find(panel, "codeInput")
-            if (!panel || !input) { console.warn("self-test: code e2e: no Code panel"); return }
-            test.codeEvents = []
-            input.text = "fix the bug in calc.py"
-            panel.inputKey(test.key(Qt.Key_Return, "\r"))
-            if (input.text !== "") console.warn("self-test: code e2e: enter did not send")
-            else console.log("self-test: code e2e: sent")
-        })
-        s.push(waitFor("permission", function () { return !!CodeStore.permission }, 90000))
-        for (var w = 0; w < 10; w++) s.push(function () {})
-        s.push(shot("code-e2e"))
-        s.push(function () { if (panel) panel.permissionKey(test.key(Qt.Key_1, "1"), true) })
-        s.push(waitFor("done", function () { return test.codeEvents.indexOf("done") !== -1 }, 90000))
-        s.push(function () {
-            var said = false
-            for (var i = 0; i < CodeStore.items.count; i++) {
-                var e = CodeStore.entry(CodeStore.items.get(i).uid)
-                if (e && /add\(\) now adds/.test(e.text || "")) said = true
-            }
-            if (said) console.log("self-test: code e2e: the answer is shown")
-            else console.warn("self-test: code e2e: the answer is not in the transcript")
-        })
-        for (var w2 = 0; w2 < 10; w2++) s.push(function () {})
-        s.push(shot("code-e2e-done"))
+    // --- Chat, Plan, Build and the run console ---------------------------
+    // Content for their delegates, so the theme walk draws real rows: a
+    // conversation, a plan in the sidebar, a build part-way through with a
+    // diff open, and the run console with output and a server address.
+    // Nothing is written to disk: the plan is shown with keepBuild and the
+    // steps are set directly, so no build state is saved.
+    property int runShots: 0
+    function runShot(name) {
+        return function () {
+            var rw = runConsole.item
+            rw.page.grabToImage(function (img) {
+                if (img.saveToFile(test.outDir + "/" + name + ".png")) test.runShots++
+                else console.warn("self-test: could not save " + name)
+            })
+        }
     }
-
-    Connections {
-        target: Agent
-        function onCodeEvent(ev) { test.codeEvents.push(ev.type) }
+    function fillBuildScreens() {
+        PlanState.addBubble("user", "A todo list web app in Flask, with SQLite and a page to add and tick off items")
+        PlanState.addBubble("ai", "Here is how I would lay it out:\n\n- **app.py** serves the pages and the JSON API\n- `models.py` holds the SQLite table\n- a single template with a form\n\nSay *Generate Implementation Plan* when it looks right.")
+        var plan = { summary: "A Flask todo app backed by SQLite", steps: [
+            { title: "Create the Flask app", detail: "app.py with an index route and the JSON API", files: ["app.py", "requirements.txt"] },
+            { title: "Add the database model", detail: "models.py: a todos table with id, text and done", files: ["models.py"] },
+            { title: "Write the page", detail: "templates/index.html with the list and a form", files: ["templates/index.html"] }
+        ] }
+        PlanState.showPlan(plan, true)
+        BuildState.steps = [
+            { title: plan.steps[0].title, detail: plan.steps[0].detail, files: plan.steps[0].files, status: "done",
+              timing: { totalMs: 41000, phases: { thinking: 23000, writing: 15000, applying: 3000 } },
+              result: { files: [{ path: "app.py", mode: "create", content: "from flask import Flask\napp = Flask(__name__)" }] } },
+            { title: plan.steps[1].title, detail: plan.steps[1].detail, files: plan.steps[1].files, status: "failed",
+              result: { error: "SyntaxError: invalid syntax (models.py, line 4)",
+                        files: [{ path: "models.py", mode: "overwrite", diff: [
+                            { type: "same", text: "import sqlite3" }, { type: "remove", text: "TABLE = 'todo'" },
+                            { type: "add", text: "TABLE = 'todos'" }, { type: "gap", text: "... 12 unchanged lines" }] }] } },
+            { title: plan.steps[2].title, detail: plan.steps[2].detail, files: plan.steps[2].files, status: "pending", result: null }
+        ]
+        BuildState._resetModel()
+        BuildState.progress = 1 / 3
+        BuildState.statusText = "finished: 1/3"
+        BuildState.selectStep(1)
+        BuildState.preview = { url: "http://localhost:5000", kind: "server", ws: "/tmp" }
+        runConsole.active = true
+        var rw = runConsole.item
+        rw.present({ command: "python3 app.py", cwd: "/tmp/todo", gui: false, title: "Run - todo" })
+        rw.state("running", "running")
+        rw.write("sys", "$ python3 app.py\n")
+        rw.write("", " * Serving Flask app 'app'\n * Running on http://127.0.0.1:5000\n")
+        rw.write("err", "WARNING: This is a development server.\n")
+        rw.url = "http://localhost:5000"
+        rw.fixOffered = true
     }
+    Loader { id: runConsole; active: false; sourceComponent: RunWindow {} }
 
     function build() {
         var s = []
         var panels = AppState.panels
+        s.push(function () { test.fillBuildScreens() })
         function themeStep(id) { return function () { Theme.setTheme(id) } }
         function panelStep(m) { return function () { AppState.switchTab(m) } }
         function sectionStep(id) { return function () { SettingsStore.showSection(id) } }
@@ -250,6 +237,7 @@ Item {
         })
         for (var w = 0; w < 25; w++) s.push(function () {})   // let animations settle
         s.push(shot("terminal"))
+        s.push(runShot("run-terminal"))
 
         // Paper: the chat panel with the getting-started guide.
         s.push(function () { Notify.setConsole(false, false); AppState.resetOnboarding() })
@@ -257,6 +245,7 @@ Item {
         s.push(panelStep("chat"))
         for (var w = 0; w < 25; w++) s.push(function () {})   // let animations settle
         s.push(shot("paper"))
+        s.push(runShot("run-paper"))
 
         // Pixel: the build panel under the approval modal.
         s.push(themeStep("pixel"))
@@ -264,6 +253,7 @@ Item {
         s.push(function () { test.approval.ask({ command: "npm install && npm test" }) })
         for (var w = 0; w < 25; w++) s.push(function () {})   // let animations settle
         s.push(shot("pixel"))
+        s.push(runShot("run-pixel"))
         s.push(function () { test.approval.close() })
 
         // The browser gate opens and closes cleanly.
@@ -271,19 +261,15 @@ Item {
         s.push(function () { AppState.gateOpen = false })
         s.push(function () { Notify.toast("Could not install the browser", "err") })
 
-        if (test.root.provider === "mock" && AppState.workspace) {
-            s.push(themeStep("terminal"))
-            codeSession(s)
-        }
-
         s.push(function () {
             Theme.setTheme(test.savedTheme)
             Theme.setDecor(test.savedDecor)
             AppState.switchTab("code")
         })
         s.push(function () {
-            console.log("self-test: " + test.at + " steps, " + test.shots + " screenshots")
-            Qt.exit(test.shots === test.planned ? 0 : 1)
+            runConsole.item.close()
+            console.log("self-test: " + test.at + " steps, " + test.shots + " screenshots, " + test.runShots + " run console")
+            Qt.exit(test.shots === test.planned && test.runShots === 3 ? 0 : 1)
         })
         return s
     }

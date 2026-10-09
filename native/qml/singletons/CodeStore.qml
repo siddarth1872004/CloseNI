@@ -7,6 +7,7 @@ import "../js/code-logic.mjs" as C
 import "../js/code-transcript.mjs" as T
 import "../js/entrypoint.mjs" as Entry
 import "../js/github-safe.mjs" as Safe
+import "../js/renderer-logic.mjs" as R
 
 /*
  * The Code panel: a coding agent in the style of a terminal one.
@@ -671,7 +672,16 @@ QtObject {
     // browser is shown, and the provider's controls. Applied to the page at
     // sign-in, so a change made later means nothing until the agent restarts.
     function sessionSettings(prov) {
-        return JSON.stringify([prov || Providers.current, Providers.showBrowser, Providers.desiredControls()])
+        var p = prov || Providers.current
+        return JSON.stringify([p, Providers.showBrowser, controlsFor(p)])
+    }
+    // The controls of the session's own provider. In Electron that is always
+    // the chosen one; a pinned --provider is not, and taking the chosen one's
+    // here would also change once the provider list loads after --start, and
+    // reopen a session that nothing about has changed.
+    function controlsFor(prov) {
+        return prov === Providers.current ? Providers.desiredControls()
+             : R.desiredControls(Providers.list, prov, Prefs.get(R.controlsKey(prov), "{}"))
     }
 
     /**
@@ -697,7 +707,7 @@ QtObject {
         }).catch(function () { return {} }).then(function (preamble) {
             return Api.call(Agent, "codeStart", {
                 workspace: ws, provider: want, mode: V.agentModeOf(store.mode),
-                headed: Providers.showBrowser, controls: Providers.desiredControls(), preamble: preamble,
+                headed: Providers.showBrowser, controls: store.controlsFor(want), preamble: preamble,
             })
         }).then(function (r) {
             store._starting = null
