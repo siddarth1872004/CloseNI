@@ -1,5 +1,6 @@
 import QtQuick
 import CloseNI
+import "../js/code-transcript.mjs" as T
 
 /*
  * --self-test <dir>: drives the shell through every theme on every panel, with
@@ -9,6 +10,12 @@ import CloseNI
  * One step per tick so each state renders before the next. main.cpp counts
  * the warnings and sets the exit code; this only quits. The saved theme and
  * decor are put back at the end.
+ *
+ * The Code panel walks the themes with a transcript in it - every kind of
+ * entry, a pending permission prompt, a card of each sort, the todo list, the
+ * mode strip and the run offer - and has three screenshots of its own
+ * (code-terminal, code-paper, code-pixel). A live session through the panel
+ * is CodeFlow.qml (--self-test-flow Code, native/tests/code-e2e.cjs).
  *
  * Settings also opens each of its sections in every theme, runs its exercise
  * (SettingsCheck.qml) and is saved in three themes as settings-*.png. A step
@@ -37,6 +44,76 @@ Item {
             test.root.selfTestShot(test.outDir + "/" + name + ".png")
             test.shots++
         }
+    }
+
+    function find(item, name) {
+        if (!item) return null
+        if (item.objectName === name) return item
+        var kids = item.children || []
+        for (var i = 0; i < kids.length; i++) {
+            var f = find(kids[i], name)
+            if (f) return f
+        }
+        return null
+    }
+
+    // The Code panel with something in every kind of entry.
+    function seedCode() {
+        var before = "def add(a, b):\n    return a - b\n\n\ndef sub(a, b):\n    return a - b\n"
+        var after = "def add(a, b):\n    return a + b\n\n\ndef sub(a, b):\n    return a - b\n"
+        var ev = function (e) { CodeStore.onEvent(e) }
+        var noop = function () {}
+        CodeStore.note("Using CLOSENI.md from the project", "dim")
+        CodeStore.userLine("fix the failing test in calc.py")
+        ev({ type: "turn-start" })
+        ev({ type: "reasoning", step: 0, text: "The test expects **add(2, 3)** to be 5; the function subtracts." })
+        ev({ type: "assistant", text: "The failing test is `test_add`. I'll read `calc.py` first:\n\n- `add` subtracts\n- `sub` is right" })
+        ev({ type: "tool", id: "s1", name: "read", input: { path: "calc.py" }, status: "done", detail: { lines: 6 }, output: before })
+        ev({ type: "tool", id: "s2", name: "bash", input: { command: "python -m pytest -q" }, status: "error",
+             output: "F.\n___ test_add ___\n    assert add(2, 3) == 5\nE   assert -1 == 5\n1 failed, 1 passed in 0.02s" })
+        ev({ type: "tool", id: "s3", name: "edit", input: { path: "calc.py" }, status: "done", detail: { path: "calc.py", before: before, after: after } })
+        var todos = [{ text: "Read calc.py", status: "done" }, { text: "Fix add()", status: "in_progress" },
+                     { text: "Run the tests", status: "pending" }]
+        ev({ type: "tool", id: "s4", name: "todo", input: {}, status: "done", detail: { items: todos } })
+        ev({ type: "todos", items: todos })
+        CodeStore.offerPlan()
+        var tests = CodeStore.card("test", "Tests", "1 of 3 checks pass")
+        CodeStore._cardGroup(tests, "body", CodeStore._testParts([
+            { command: "python -m pytest -q", language: "Python", success: false, detail: "1 failed, 1 passed\nE   assert -1 == 5" },
+            { command: "python -m py_compile calc.py", language: "Python", success: true, detail: "" },
+            { command: "cargo test", language: "Rust", success: false, detail: "skipped - no Cargo.toml" },
+        ]), false)
+        CodeStore.patch(tests, { tone: "fail" })
+        var research = CodeStore.card("research", "Research", "calculator libraries",
+                                      [{ id: "web", sep: false, parts: [] }, { id: "gh", sep: true, parts: [] }])
+        CodeStore._cardGroup(research, "web", [
+            { t: "answer", text: "Python's **decimal** module avoids float error in a calculator [1]." },
+            { t: "title", text: T.sourcesTitle("web search") },
+            { t: "source", n: 1, url: "https://docs.python.org/3/library/decimal.html" },
+            { t: "actions", buttons: [{ label: "Plan with this", act: noop }] },
+        ], false)
+        CodeStore._cardGroup(research, "gh", [
+            { t: "repo", url: "https://github.com/example/calc", name: "example/calc",
+              meta: T.repoMeta({ stars: 412, language: "Python" }), lang: "Python", desc: "A small calculator with a REPL.",
+              buttons: [{ label: "Use as reference", act: noop }, { label: "Clone", act: noop }] },
+        ], false)
+        var diff = CodeStore.card("git", "git diff", "1 file changed")
+        CodeStore._cardGroup(diff, "body", [{ t: "gitdiff", lines: T.gitDiffLines(
+            "diff --git a/calc.py b/calc.py\n@@ -1,2 +1,2 @@\n def add(a, b):\n-    return a - b\n+    return a + b") }], false)
+        CodeStore.userLine("also add a test for sub", true)
+        ev({ type: "tool", id: "s5", name: "bash", input: { command: "python -m pytest -q" }, status: "waiting" })
+        ev({ type: "permission", id: "s5", tool: "bash", input: { command: "python -m pytest -q" },
+             preview: { command: "python -m pytest -q" }, rememberAs: "python" })
+        CodeStore.setMode("build")
+        CodeStore.runOffer = { command: "python3 calc.py", state: "fail", prompt: "Traceback: NameError" }
+    }
+
+    function unseedCode() {
+        CodeStore.runOffer = null
+        CodeStore.setBusy(false)
+        CodeStore.onEvent({ type: "cleared" })
+        CodeStore.setMode("default")
+        CodeStore.clearTranscript()
     }
 
     // --- Chat, Plan, Build and the run console ---------------------------
@@ -99,6 +176,7 @@ Item {
         function themeStep(id) { return function () { Theme.setTheme(id) } }
         function panelStep(m) { return function () { AppState.switchTab(m) } }
         function sectionStep(id) { return function () { SettingsStore.showSection(id) } }
+        s.push(function () { test.seedCode() })
         for (var d = 0; d < 2; d++) {
             s.push(function (on) { return function () { Theme.setDecor(on) } }(d === 0))
             for (var i = 0; i < Theme.themes.length; i++) {
@@ -112,6 +190,27 @@ Item {
             }
         }
         s.push(function () { Theme.setDecor(true) })
+
+        // The Code panel, with content, in three themes.
+        var codeThemes = ["terminal", "paper", "pixel"]
+        for (var c = 0; c < codeThemes.length; c++) {
+            s.push(themeStep(codeThemes[c]))
+            s.push(panelStep("code"))
+            // Terminal shows the end (the prompt), paper the top (the welcome
+            // box), pixel the middle (the diff) with the mode strip's actions.
+            s.push(function (at) {
+                return function () {
+                    var list = test.find(test.root.contentItem, "codeTranscript")
+                    if (!list || at === 0) return
+                    list.follow = false
+                    if (at === 1) list.positionViewAtBeginning()
+                    else { list.positionViewAtIndex(6, ListView.Beginning); CodeStore.runOffer = null }
+                }
+            }(c))
+            for (var cw = 0; cw < 25; cw++) s.push(function () {})   // let animations settle
+            s.push(shot("code-" + codeThemes[c]))
+        }
+        s.push(function () { test.unseedCode() })
 
         // Settings: every control, then the panel in three themes.
         s = s.concat(settingsCheck.steps())

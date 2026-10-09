@@ -1129,7 +1129,7 @@ function testNativePorts() {
       !/\basync\b|\bawait\b|\.flat\(|fromEntries|globalThis|\bwindow\.|\bdocument\.|localStorage\.|\brequire\(/.test(src.replace(/^\s*(\/\/|\*).*$/gm, "")));
   });
 
-  ["builder-logic", "code-logic", "renderer-logic"].forEach(function (name) {
+  ["builder-logic", "code-logic", "code-transcript", "renderer-logic"].forEach(function (name) {
     const src = fs.readFileSync(path.join(JS, name + ".mjs"), "utf8");
     check(name + ": nothing the QML engine lacks",
       !/\basync\b|\bawait\b|\.flat\(|fromEntries|globalThis|\bwindow\.|\bdocument\.|localStorage\.|\brequire\(|\.\.\.[A-Za-z_({[]/.test(src.replace(/^\s*(\/\/|\*).*$/gm, "")));
@@ -1299,6 +1299,85 @@ function testCodeLogic() {
   check("history down moves newer", C.historyDown(h, 0).text === "two");
 }
 
+function testCodeTranscript() {
+  section("the Code panel's transcript, as data");
+  const T = require(path.join(JS, "code-transcript.mjs"));
+
+  check("the transcript is bounded at 2000 entries", T.MAX_ENTRIES === 2000);
+  check("nothing drops under the bound", T.overflow(1999) === 0 && T.overflow(2000) === 0);
+  check("the oldest drop past it", T.overflow(2003) === 3 && T.overflow(12, 10) === 2);
+
+  const edit = { name: "edit", status: "done", detail: { path: "a.py", before: "x = 1\n", after: "x = 2\n" } };
+  check("a finished edit or write changed a file",
+    T.toolChanged(edit) && T.toolChanged({ name: "write", status: "done" }));
+  check("a read, a waiting edit or a failed one did not",
+    !T.toolChanged({ name: "read", status: "done" }) && !T.toolChanged({ name: "edit", status: "waiting" }) &&
+    !T.toolChanged({ name: "edit", status: "error" }));
+
+  const diff = T.toolMore(edit);
+  check("an edit folds out its diff, open at once",
+    diff.kind === "diff" && diff.open === true && diff.rows.some(function (r) { return r.sign === "+" && r.text === "x = 2"; }),
+    JSON.stringify(diff));
+  const bash = T.toolMore({ name: "bash", status: "error", output: "boom" });
+  check("a command folds out its output, left as the line was (even when it failed)",
+    bash.kind === "out" && bash.text === "boom" && bash.open === null);
+  const todo = T.toolMore({ name: "todo", status: "done", detail: { items: [{ text: "a", status: "pending" }] } });
+  check("a todo update folds out the list, open", todo.kind === "todos" && todo.items.length === 1 && todo.open === true);
+  check("any other finished tool folds out its output",
+    T.toolMore({ name: "read", status: "done", output: "text" }).kind === "out");
+  check("an unfinished tool with no output has nothing to fold",
+    T.toolMore({ name: "read", status: "running" }) === null && T.toolMore({ name: "read", status: "done" }) === null);
+
+  check("a command prompt shows the command",
+    JSON.stringify(T.permissionBody({ tool: "bash", preview: { command: "ls -la" } })) === JSON.stringify({ kind: "cmd", text: "ls -la" }));
+  check("or the input's command when there is no preview",
+    T.permissionBody({ tool: "bash", input: { command: "pwd" } }).text === "pwd");
+  const pd = T.permissionBody({ tool: "write", preview: { path: "new.py", before: "", after: "print(1)\n", created: true } });
+  check("a write or edit prompt shows the path and the diff", pd.kind === "diff" && pd.path === "new.py" && pd.rows.length > 0);
+  check("other prompts show nothing more", T.permissionBody({ tool: "read", preview: { path: ".env" } }) === null);
+
+  const long = "x".repeat(T.OUTPUT_TAIL + 50) + "END";
+  check("a card keeps the end of an output, where the error is",
+    T.outputTail(long).length === T.OUTPUT_TAIL && /END$/.test(T.outputTail(long)));
+  check("and no output is an empty one", T.outputTail(null) === "" && T.outputTail(undefined) === "");
+
+  check("diff and show are drawn as diffs",
+    T.gitShowsDiff(["diff"]) && T.gitShowsDiff(["show", "HEAD"]) && !T.gitShowsDiff(["status"]) && !T.gitShowsDiff(["log", "diff"]));
+  const lines = T.gitDiffLines("diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1 @@\n-old\n+new\n same");
+  check("git diff lines are classed",
+    lines.map(function (l) { return l.cls; }).join(",") === "meta,meta,meta,hunk,del,add,", JSON.stringify(lines));
+  check("a git diff is capped", T.gitDiffLines("a".repeat(T.GIT_DIFF_CAP + 10))[0].text.length === T.GIT_DIFF_CAP);
+  check("other git output is capped", T.gitOutput("b".repeat(T.GIT_OUT_CAP + 10)).length === T.GIT_OUT_CAP);
+
+  const folder = T.welcomeNeed("", []);
+  check("with no folder, the welcome asks for one first", folder.kind === "folder" && folder.text === "The agent works inside one folder. ");
+  const signin = { id: "signin", title: "Sign in to DeepSeek", action: "Sign in", terms: "Read them.", termsUrl: "https://x", done: false };
+  const need = T.welcomeNeed("/p", [{ id: "folder", done: true }, signin]);
+  check("then the sign-in, with its terms",
+    need.kind === "signin" && need.text === "Sign in to DeepSeek. " && need.action === "Sign in" &&
+    need.terms === "Read them. " && need.termsUrl === "https://x", JSON.stringify(need));
+  check("nothing once signed in", T.welcomeNeed("/p", [{ id: "signin", done: true }]) === null && T.welcomeNeed("/p", []) === null);
+
+  check("a language's colour token", T.langToken("Python") === "--lang-py" && T.langToken("") === "");
+  const rows = T.checkRows([
+    { command: "pytest", success: false, detail: "1 failed\nE assert", language: "Python" },
+    { command: "cargo test", success: true, detail: "" },
+  ]);
+  check("a check row carries its language and, when multi-line, the whole detail",
+    rows[0].kind === "fail" && rows[0].language === "Python" && rows[0].output === "1 failed\nE assert" &&
+    rows[1].kind === "pass" && rows[1].language === "" && rows[1].output === "");
+
+  check("a repository's stars, and a dot before its language",
+    T.repoMeta({ stars: 12, language: "Rust" }) === "★ 12 · " && T.repoMeta({}) === "★ 0");
+  check("the sources heading names where they came from",
+    T.sourcesTitle("web search") === "Sources · via web search" && T.sourcesTitle("") === "Sources");
+  check("a clone asks about the licence",
+    /^Clone a\/b into your workspace\?\n\nIt carries MIT, /.test(T.cloneQuestion("a/b", "MIT")) &&
+    /an unknown licence/.test(T.cloneQuestion("a/b", "")));
+  check("a fix for another folder says which", /ran \/other, not the open project/.test(T.runFixElsewhere("/other")));
+  check("the spinner says how long and how to stop", T.spinnerMeta(65000) === "(1m 5s · esc to interrupt)");
+}
+
 function testRendererLogic() {
   section("the renderer's decisions, without the renderer");
   const R = require(path.join(JS, "renderer-logic.mjs"));
@@ -1435,6 +1514,7 @@ async function run(c, s, sk) {
   testNativePorts();
   testBuilderLogic();
   testCodeLogic();
+  testCodeTranscript();
   testRendererLogic();
 }
 
