@@ -4,7 +4,7 @@
  * This needs exactly three methods - initialize, tools/list, tools/call -
  * against a well-specified protocol. Taking the official SDK for three methods
  * would be the larger commitment in a project whose only runtime dependencies
- * are Playwright and Electron.
+ * are Playwright and Qt.
  *
  * Nothing here throws at the caller. A server that will not start, one that
  * answers with an error, one that never answers at all: each comes back as

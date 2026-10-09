@@ -4,8 +4,9 @@
  *   source scripts/wsl-env.sh
  *   node scripts/make-icon.mjs
  *
- * electron-builder cannot read SVG. Rather than add an image library for one
- * file, this uses the Chromium the project already depends on. The PNG is
+ * The packaging (native/package/icons.mjs, stage.mjs) needs a PNG. Rather than
+ * add an image library for one file, this uses the Chromium the project
+ * already depends on. The PNG is
  * committed, so a build never needs a browser - run this only when the mark
  * changes.
  */

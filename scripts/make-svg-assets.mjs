@@ -968,8 +968,8 @@ function architecture() {
 
   // Boxes.
   const [dx, dy, dw, dh] = B.desk;
-  g += panel(dx, dy, dw, dh, 'DESKTOP', C.blue, 'Electron');
-  g += lines(dx, dy, [['renderer/', 'panels, diffs'], ['builder.js', 'runs the steps'], ['scheduler.js', 'dependency graph'], ['main.js', 'IPC, git, keystore'], ['theme.js', 'eleven themes'], ['github-safe.js', 'token redaction']], C.blue);
+  g += panel(dx, dy, dw, dh, 'DESKTOP', C.blue, 'Qt / QML');
+  g += lines(dx, dy, [['qml/panels/', 'panels, diffs'], ['BuildState.qml', 'runs the steps'], ['scheduler.mjs', 'dependency graph'], ['src/*.cpp', 'git, files, keyring'], ['Theme.qml', 'eleven themes'], ['GitHubSafe.cpp', 'token redaction']], C.blue);
 
   const [ux, uy, uw, uh] = B.you;
   g += panel(ux, uy, uw, uh, 'YOU', C.white);
