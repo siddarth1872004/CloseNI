@@ -6,7 +6,8 @@
  * rather than two copies that could drift. Behaviour is unchanged: the page's
  * fetch and XHR are wrapped, only open/close events and the HTTP status are
  * reported through the exposed `__closeniStream` binding, and the reply bytes
- * are never read.
+ * are never read - unless the provider configures `replySignals`, in which case
+ * the ended stream is searched for its final status and notices (below).
  *
  * Both transports, because a page may use either and DeepSeek uses only one of
  * them - XHR. The original wrapped fetch alone, so the tap never fired once
@@ -17,11 +18,32 @@
  * Self-contained on purpose: Playwright serialises it with toString() and runs
  * it inside the page, so it may not close over anything in this module.
  */
-export function replyStreamTap(pat: string): void {
+export function replyStreamTap(arg: string | { pattern: string; status?: string; notice?: string }): void {
   const w = globalThis as any;
   if (w.__closeniTapped) return;
   w.__closeniTapped = true;
+  const pat = typeof arg === "string" ? arg : arg.pattern;
   const re = new RegExp(pat);
+  // Optional: what the reply stream says about itself (selectors.replySignals).
+  // DeepSeek ends a stream that could not answer with a final status
+  // (INCOMPLETE, CONTEXT_LENGTH_EXCEEDED) or a hint/toast event, all inside a
+  // 200 response. Read once the stream has ended, and reported as
+  // ("signal", lastStatus, notices) BEFORE the close, so the wait sees why
+  // before it sees that it ended. Without patterns nothing is read.
+  const statusRe = typeof arg === "string" || !arg.status ? null : new RegExp(arg.status, "g");
+  const noticeRe = typeof arg === "string" || !arg.notice ? null : new RegExp(arg.notice, "g");
+  const signal = (text: string) => {
+    if (!statusRe && !noticeRe) return;
+    try {
+      let last = "";
+      const notices: string[] = [];
+      let m: any;
+      if (statusRe) { statusRe.lastIndex = 0; while ((m = statusRe.exec(text))) last = m[1] || ""; }
+      if (noticeRe) { noticeRe.lastIndex = 0; while ((m = noticeRe.exec(text)) && notices.length < 10) notices.push(m[1] || m[0]); }
+      w.__closeniStream("signal", last, notices);
+    } catch { /* never break the page */ }
+  };
+  const wantText = !!(statusRe || noticeRe);
 
   if (w.fetch) {
     const orig = w.fetch.bind(w);
@@ -38,9 +60,18 @@ export function replyStreamTap(pat: string): void {
           // connection cut mid-reply, which otherwise looks exactly like a
           // finished one. PlaywrightController ignores it; the web layer uses it.
           let errored = false;
-          try { for (;;) { const r = await rd.read(); if (r.done) break; } }
+          let text = "";
+          const dec = wantText ? new (w.TextDecoder)() : null;
+          try {
+            for (;;) {
+              const r = await rd.read();
+              if (r.done) break;
+              // Bounded: the signals sit at the end, so a huge reply keeps its tail.
+              if (dec) { text += dec.decode(r.value, { stream: true }); if (text.length > 4000000) text = text.slice(-65536); }
+            }
+          }
           catch { errored = true; }
-          finally { w.__closeniStream("close", res.status, errored); }
+          finally { signal(text); w.__closeniStream("close", res.status, errored); }
         })();
         return new (w.Response)(theirs, res);
       } catch { return res; }
@@ -77,7 +108,9 @@ export function replyStreamTap(pat: string): void {
           // still closes and cannot leave the counter permanently unbalanced.
           this.addEventListener("loadend", () => {
             // status 0 after headers arrived means the transfer failed.
-            if (opened) w.__closeniStream("close", this.status, this.status === 0);
+            if (!opened) return;
+            if (wantText) { let t = ""; try { t = String(this.responseText || ""); } catch { /* not text */ } signal(t); }
+            w.__closeniStream("close", this.status, this.status === 0);
           });
         }
       } catch { /* never break the page's own request */ }

@@ -70,6 +70,9 @@ QtObject {
     // ---- Prompt history ---------------------------------------------------------
     property var history: []
     property int hIndex: -1
+    // Up-arrow recall of the last few hundred prompts; a session of thousands
+    // of turns keeps no more.
+    readonly property int maxHistory: 500
 
     // ---- Spinner ------------------------------------------------------------------
     property bool spinnerShown: false
@@ -868,7 +871,7 @@ QtObject {
             if (mode === "test" || mode === "ship") send("")
             return false
         }
-        history = history.concat([text])
+        history = history.slice(-(maxHistory - 1)).concat([text])
         hIndex = -1
         send(text)
         return true

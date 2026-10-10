@@ -745,6 +745,160 @@ function testResearch() {
   // in native/tests/tst_github.cpp.
 }
 
+// What DeepSeek puts where a reply should be: classified from the rules in
+// deepseek.json, which were measured by injecting each fault into the live
+// page (scripts/deepseek-faults.mjs, 9 October 2026).
+function testReplyTrouble() {
+  section("provider trouble: busy, rate limited, full, signed out");
+  const R = require(path.join(DIST, "providers/reply-trouble.js"));
+  const ds = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "config", "providers", "deepseek.json"), "utf8"));
+  const rules = ds.replyErrors;
+  const hint = (content) => JSON.stringify({ type: "error", content: content, clear_response: true });
+  const sig = (status, notices) => ({ signals: { status: status, notices: notices || [] } });
+
+  check("a finished reply is no trouble", R.classifyTrouble(sig("FINISHED"), rules) === null);
+  check("nor is no signal at all", R.classifyTrouble({}, rules) === null);
+  check("nor is anything, for a provider with no rules", R.classifyTrouble(sig("INCOMPLETE"), undefined) === null);
+  const busy = R.classifyTrouble(sig("", [hint("Server busy, please try again later.")]), rules);
+  check("a busy hint is busy, in DeepSeek's own words", busy && busy.kind === "busy" && busy.detail === "Server busy, please try again later.", JSON.stringify(busy));
+  check("so is the Chinese one", R.classifyTrouble(sig("", [hint("服务器繁忙，请稍后再试")]), rules).kind === "busy");
+  check("a reply cut off INCOMPLETE is busy", R.classifyTrouble(sig("INCOMPLETE"), rules).kind === "busy");
+  check("a rate-limit toast is a rate limit",
+    R.classifyTrouble(sig("", [JSON.stringify({ type: "error", content: "You are sending messages too frequently. Please wait a moment before sending again." })]), rules).kind === "rate-limit");
+  // The live toast (10 October): read as busy, it was resent three times into the limit.
+  const rate = R.classifyTrouble(sig("", [JSON.stringify({ type: "error", content: "Messages too frequent. Try again later." })]), rules);
+  check("so is DeepSeek's live one, and it is not hammered", rate.kind === "rate-limit" && R.backoffFor("rate-limit", 0, rules) === 60000 && R.backoffFor("rate-limit", 1, rules) === null,
+    JSON.stringify(rate));
+  check("CONTEXT_LENGTH_EXCEEDED means the conversation is full", R.classifyTrouble(sig("CONTEXT_LENGTH_EXCEEDED"), rules).kind === "full");
+  check("CONTENT_FILTER is a refusal", R.classifyTrouble(sig("CONTENT_FILTER"), rules).kind === "refused");
+  check("an error notice nobody listed still means no reply",
+    R.classifyTrouble(sig("", [JSON.stringify({ type: "error", content: "Something new" })]), rules).kind === "busy");
+  check("a notice that is not an error is not trouble", R.classifyTrouble(sig("FINISHED", [JSON.stringify({ type: "info", content: "Tip" })]), rules) === null);
+  check("HTTP 429 is a rate limit, 5xx busy, 401 signed out",
+    R.classifyTrouble({ httpStatus: 429 }, rules).kind === "rate-limit" && R.classifyTrouble({ httpStatus: 502 }, rules).kind === "busy" &&
+    R.classifyTrouble({ httpStatus: 401 }, rules).kind === "signed-out");
+  check("the sign-in page means signed out", R.classifyTrouble({ url: "https://chat.deepseek.com/sign_in" }, rules).kind === "signed-out");
+  check("a chat whose id holds 'login' is not", R.classifyTrouble({ url: "https://chat.deepseek.com/a/chat/s/loginx" }, rules) === null);
+  check("the page's notice row is read when the stream said nothing",
+    R.classifyTrouble({ pageNotice: "Server is temporarily unavailable." }, rules).kind === "busy");
+  check("and DeepSeek's own length-limit text means full", R.classifyTrouble({ pageNotice: "Length limit exceeded. Your message will be sent to a new chat." }, rules).kind === "full");
+
+  check("busy is sent again after 5s, 20s and 60s, then given up",
+    R.backoffFor("busy", 0, rules) === 5000 && R.backoffFor("busy", 2, rules) === 60000 && R.backoffFor("busy", 3, rules) === null);
+  check("a rate limit once, after a minute", R.backoffFor("rate-limit", 0, rules) === 60000 && R.backoffFor("rate-limit", 1, rules) === null);
+  check("a refusal once", R.backoffFor("refused", 0, rules) === 5000 && R.backoffFor("refused", 1, rules) === null);
+  check("full and signed out are never resent", R.backoffFor("full", 0, rules) === null && R.backoffFor("signed-out", 0, rules) === null);
+
+  const msg = R.describeTrouble(busy, 4, "DeepSeek Chat");
+  check("the message quotes DeepSeek and counts the tries", /"Server busy, please try again later\."/.test(msg) && /after 4 tries/.test(msg), msg);
+  check("signed out says to sign in again", /Sign in/.test(R.describeTrouble({ kind: "signed-out", detail: "x" }, 1, "DeepSeek Chat")));
+  check("a status is named, not quoted", /\(HTTP 429\)/.test(R.describeTrouble({ kind: "rate-limit", detail: "HTTP 429" }, 1, "D")));
+
+  const C = require(path.join(DIST, "providers/playwright-controller.js"));
+  check("a chat URL's id is read", C.chatId("https://chat.deepseek.com/a/chat/s/abc-123?x=1") === "abc-123" && C.chatId("https://chat.deepseek.com/") === "");
+}
+
+// The whole path on a real page that answers like DeepSeek: an XHR to
+// /api/v0/chat/completion with an SSE body, busy hints rendered as a row with
+// no .ds-message.
+async function testReplyTroubleLive() {
+  section("provider trouble: the wait on a DeepSeek-like page (real chromium)");
+  const ds = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "config", "providers", "deepseek.json"), "utf8"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "agentic-trouble-"));
+  const cfg = Object.assign({}, ds, {
+    baseUrl: "https://ds.test/",
+    profileDir: path.join(root, "profiles", "ds"),
+    completionRules: Object.assign({}, ds.completionRules, { maxWaitMs: 6000 }),
+    replyErrors: Object.assign({}, ds.replyErrors, { retryBackoffMs: [100], rateLimitBackoffMs: [] }),
+  });
+  const sse = (...lines) => lines.join("\n\n") + "\n\n";
+  const BUSY = sse("event: ready\ndata: {}", 'event: hint\ndata: {"type":"error","content":"Server busy, please try again later.","clear_response":true}', "event: close\ndata: {}");
+  const OK = sse('data: {"v":"PONG"}', 'data: {"p":"response/status","o":"SET","v":"FINISHED"}', "event: close\ndata: {}");
+  const FULL = sse('data: {"v":"Partial"}', 'data: {"p":"response/status","o":"SET","v":"CONTEXT_LENGTH_EXCEEDED"}', "event: close\ndata: {}");
+  let queue = [];
+  const held = [];
+  const html = '<!doctype html><div class="ds-virtual-list-visible-items" id="list"></div><textarea placeholder="Message"></textarea><script>' +
+    'const ta=document.querySelector("textarea"),list=document.getElementById("list");' +
+    'ta.addEventListener("keydown",e=>{if(e.key!=="Enter")return;e.preventDefault();const q=ta.value;ta.value="";' +
+    'const u=document.createElement("div");u.innerHTML="<div class=\\"ds-message\\">"+q+"</div>";list.appendChild(u);' +
+    'const x=new XMLHttpRequest();x.open("POST","/api/v0/chat/completion");x.onload=()=>{const t=x.responseText;const row=document.createElement("div");' +
+    'const h=/event: hint\\ndata: (\\{.*\\})/.exec(t);if(h)row.innerHTML="<span>"+JSON.parse(h[1]).content+"</span>";' +
+    'else{const m=/"v":"([A-Za-z]+)"/.exec(t);row.innerHTML="<div class=\\"ds-message\\"><div class=\\"ds-markdown\\">"+(m?m[1]:"")+"</div></div>";}' +
+    'list.appendChild(row);};x.send(q);});</script>';
+  // One browser per config: the tap goes into a page once, with the signal
+  // patterns of its first send.
+  const open = async (config, name) => {
+    const ctl = new PlaywrightController(Object.assign({}, config, { profileDir: path.join(root, "profiles", name) }));
+    ctl.setWorkspace(path.join(root, "ws"));
+    await ctl.launch(config);
+    await ctl.page.route("https://ds.test/**", async (route) => {
+      if (/completion/.test(route.request().url())) {
+        const body = queue.shift();
+        if (body === undefined) { held.push(route); return; }
+        return route.fulfill({ status: 200, headers: { "content-type": "text/event-stream" }, body: body });
+      }
+      return route.fulfill({ status: 200, contentType: "text/html", body: html });
+    });
+    await ctl.page.goto("https://ds.test/a/chat/s/one");
+    return ctl;
+  };
+  let c;
+  try {
+    c = await open(cfg, "a");
+  } catch (e) {
+    console.log("  skip (chromium unavailable: " + String(e.message).split("\n")[0] + ")");
+    skipped.push("provider trouble on a page");
+    fs.rmSync(root, { recursive: true, force: true });
+    return;
+  }
+  const ask = async (config, prompt, ctl) => {
+    ctl = ctl || c;
+    const n = await ctl.countMessages(config), t = await ctl.getLastMessageText(config);
+    await ctl.sendPrompt(prompt, config);
+    return await ctl.waitForResponse(config, n, t);
+  };
+  try {
+    queue = [BUSY, OK];
+    let r = await ask(cfg, "hi");
+    check("a busy hint in the stream is sent again, and the real reply read", r === "PONG", JSON.stringify(r));
+
+    const noSignals = Object.assign({}, cfg, { selectors: Object.assign({}, cfg.selectors, { replySignals: undefined }) });
+    const plain = await open(noSignals, "b");
+    queue = [BUSY, OK];
+    try { r = await ask(noSignals, "again", plain); } finally { await plain.close().catch(() => {}); }
+    check("the notice row on the page is enough on its own", r === "PONG" && queue.length === 0, JSON.stringify(r));
+
+    queue = [BUSY, BUSY];
+    let err = null;
+    try { await ask(cfg, "busy twice"); } catch (e) { err = e; }
+    check("once the waits run out, DeepSeek's words and the tries are reported",
+      err && err.kind === "busy" && /Server busy/.test(err.message) && /after 2 tries/.test(err.message), err && err.message);
+
+    queue = [FULL];
+    err = null;
+    try { await ask(cfg, "full"); } catch (e) { err = e; }
+    check("a full conversation is not read as the reply, nor resent", err && err.kind === "full" && queue.length === 0, err && err.message);
+
+    queue = [];
+    err = null;
+    const t0 = Date.now();
+    try { await ask(cfg, "silent"); } catch (e) { err = e; }
+    check("a reply that never starts ends with a message, not the previous answer",
+      err && /did not start a reply/.test(err.message), err ? err.message : "returned a reply");
+    check("within the ceiling and its grace", Date.now() - t0 < 30000);
+    for (const h of held.splice(0)) await h.abort().catch(() => {});
+
+    await c.page.goto("https://ds.test/sign_in");
+    err = null;
+    const t1 = Date.now();
+    try { await c.sendPrompt("hello", cfg); } catch (e) { err = e; }
+    check("signed out, the send stops at once with 'sign in again'", err && err.kind === "signed-out" && /Sign in/.test(err.message) && Date.now() - t1 < 5000, err && err.message);
+  } finally {
+    await c.close().catch(() => {});
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+}
+
 function testStreamStatus() {
   section("a failed reply request says so instead of timing out");
   const S = require(path.join(DIST, "providers/stream-status.js"));
@@ -901,6 +1055,8 @@ async function run(c, s, sk) {
   await testLocalModels();
   testResearch();
   testStreamStatus();
+  testReplyTrouble();
+  await testReplyTroubleLive();
 }
 
 module.exports = { run };
