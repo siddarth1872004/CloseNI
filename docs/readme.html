@@ -67,78 +67,28 @@ td img{background:transparent}
 <main><article>
 <div align="center"><img src="assets/hero.svg" alt="CloseNI: a pixel-art logo boots up over a CRT screen, above the four providers and their status" width="100%"><h1 id="closeni">CloseNI</h1>
 <p><strong>Free web AI chats, turned into a coding agent.</strong><br>
-Ask for a change and it reads your project, edits files, runs commands and checks its work, asking before anything it should. The model is a chat site driven in a real browser, the way you would use it.</p>
+Ask for a change and it reads your project, edits files, runs commands and checks its work, asking before anything it should. The model is a chat site driven in a real browser, so there is no API key and no per-token bill.</p>
 <p><a href="https://www.qt.io/"><img src="https://img.shields.io/badge/Qt-6.10-41CD52?style=flat-square&amp;logo=qt&amp;logoColor=white" alt="Qt"></a>
 <a href="https://www.typescriptlang.org/"><img src="https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&amp;logo=typescript&amp;logoColor=white" alt="TypeScript"></a>
 <a href="https://playwright.dev/"><img src="https://img.shields.io/badge/Playwright-1.62-2EAD33?style=flat-square&amp;logo=playwright&amp;logoColor=white" alt="Playwright"></a>
-<a href="https://nodejs.org/"><img src="https://img.shields.io/badge/Node-22%2B-5FA04E?style=flat-square&amp;logo=nodedotjs&amp;logoColor=white" alt="Node"></a>
 <a href="#what-it-is"><img src="https://img.shields.io/badge/API%20keys-none-ff7b72?style=flat-square" alt="API keys"></a>
 <a href="https://github.com/siddarth1872004/CloseNI/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-bc8cff?style=flat-square" alt="License"></a></p>
-<p><a href="https://siddarth1872004.github.io/CloseNI/"><strong>Site</strong></a> · <a href="#how-it-works"><strong>How it works</strong></a> · <a href="#architecture"><strong>Architecture</strong></a> · <a href="#the-browser-native-layer"><strong>Browser layer</strong></a> · <a href="#research"><strong>Research</strong></a> · <a href="#getting-started"><strong>Get started</strong></a> · <a href="#current-limitations"><strong>Limitations</strong></a></p>
-<img src="assets/stats.svg" alt="1902 unit tests, 192 end-to-end tests, 206 browser checks, twelve languages, eleven themes, zero API keys" width="100%"></div><hr>
+<p><a href="https://github.com/siddarth1872004/CloseNI/releases/latest"><strong>Download</strong></a> · <a href="https://siddarth1872004.github.io/CloseNI/"><strong>Site</strong></a> · <a href="#get-started"><strong>Get started</strong></a> · <a href="#limitations"><strong>Limitations</strong></a> · <a href="https://github.com/siddarth1872004/CloseNI/blob/main/CHANGELOG.md"><strong>Changelog</strong></a></p>
+</div><hr>
 <h2 id="what-it-is">What it is</h2>
-<p>Every other coding agent bills per token through an API key. CloseNI does not have one.</p>
-<p>It opens a real Chromium window and uses the session you are already signed into. It types the prompt into the page, waits for the answer to finish streaming, and reads it back out. From the model&#39;s side it is a person typing. From your side it is a coding agent working in your project folder.</p>
-<p><strong>The Code panel is the agent.</strong> Ask in plain words: &quot;fix the failing test&quot;, &quot;add pagination to the list endpoint&quot;, &quot;explain @src/app.py&quot;. It searches and reads the code itself, edits files, and runs commands. File changes appear as diffs, and anything it should not do unasked waits for your yes. No plan is required. When you want one, <strong>plan mode</strong> (shift+tab or <code>/plan</code>) keeps the agent read-only until you approve its plan. The older <strong>planned build</strong>, which plans a whole project and then builds it step by step with checks and repairs, is still there as a separate mode: <code>/build</code>, or the Plan and Build panels.</p>
+<p>CloseNI opens a real Chromium window with the chat site you are already signed into. It types the prompt, waits for the reply to finish streaming and reads it back. From the site&#39;s side it is a person typing. From yours it is a coding agent working in your project folder.</p>
+<p>The app itself is native: Qt Quick on Windows, macOS and Linux, with no web view anywhere. The agent beside it is a Node and Playwright process.</p>
 <blockquote>
-<p><strong>Where it stands, plainly.</strong></p>
+<p><strong>Where it stands.</strong></p>
 <ul>
-<li><strong>DeepSeek</strong> is driven end to end.</li>
-<li><strong>Qwen Studio</strong> and <strong>GLM</strong> can be selected, as <strong>experimental</strong>: neither has been re-checked against its live site since it was ungated.</li>
+<li><strong>DeepSeek</strong> is driven end to end, including long sessions.</li>
+<li><strong>Qwen Studio</strong> and <strong>GLM</strong> can be selected, as <strong>experimental</strong>.</li>
 <li><strong>Ollama</strong> is local and <strong>chat-only</strong>.</li>
-<li>Installers for Windows and Linux are on the <a href="https://github.com/siddarth1872004/CloseNI/releases/latest">releases page</a>, unsigned. Or build it from source.</li>
+<li>Installers are <strong>unsigned</strong>, so SmartScreen and Gatekeeper warn on first launch.</li>
 </ul>
-<p>The <a href="#current-limitations">limitations</a> are listed as carefully as the features.</p>
 </blockquote>
-<div align="center"><img src="assets/banner.svg" alt="CloseNI planning and building a Flask todo API, one step at a time" width="100%"></div><h3 id="contents">Contents</h3>
-<table>
-<thead>
-<tr>
-<th></th>
-<th></th>
-<th></th>
-</tr>
-</thead>
-<tbody><tr>
-<td><a href="#the-coding-agent">The coding agent</a></td>
-<td><a href="#how-it-works">How it works</a></td>
-<td><a href="#twelve-languages">Twelve languages</a></td>
-</tr>
-<tr>
-<td><a href="#safety-model">Safety model</a></td>
-<td></td>
-<td></td>
-</tr>
-<tr>
-<td><a href="#architecture">Architecture</a></td>
-<td><a href="#the-browser-native-layer">The browser-native layer</a></td>
-<td><a href="#eleven-themes">Eleven themes</a></td>
-</tr>
-<tr>
-<td><a href="#providers">Providers</a></td>
-<td><a href="#research">Research</a></td>
-<td><a href="#tests-and-verification">Tests and verification</a></td>
-</tr>
-<tr>
-<td><a href="#anatomy-of-a-build">Anatomy of a build</a></td>
-<td><a href="#the-interface">The interface</a></td>
-<td><a href="#getting-started">Getting started</a></td>
-</tr>
-<tr>
-<td><a href="#build-check-repair">Build, check, repair</a></td>
-<td><a href="#one-conversation">One conversation</a></td>
-<td><a href="#directory-tree">Directory tree</a></td>
-</tr>
-<tr>
-<td><a href="#the-run-file">The run file</a></td>
-<td><a href="#distribution-builds">Distribution builds</a></td>
-<td><a href="#current-limitations">Current limitations</a></td>
-</tr>
-</tbody></table>
-<p>Also: <a href="https://github.com/siddarth1872004/CloseNI/blob/main/CHANGELOG.md">CHANGELOG</a> · <a href="https://github.com/siddarth1872004/CloseNI/blob/main/docs/RELEASING.md">Release process</a> · <a href="https://github.com/siddarth1872004/CloseNI/blob/main/docs/ROADMAP.md">Roadmap</a> · <a href="https://github.com/siddarth1872004/CloseNI/blob/main/docs/architecture/browser-research.md">Browser layer design</a> · <a href="https://github.com/siddarth1872004/CloseNI/blob/main/docs/testing/browser-test-report.md">Browser test report</a></p>
-<hr>
 <h2 id="the-coding-agent">The coding agent</h2>
-<img src="screenshots/code.png" alt="The Code panel in the Terminal theme: a search, a read, an edit shown as a diff, a todo list, and a command waiting for permission" width="100%"><p>A chat site has no tool-calling API, so tools are a convention written into the conversation. The agent&#39;s first message teaches the model to answer with fenced blocks whose first line names a tool. Write and edit put their payload after a <code>---</code> line, and edits use <code>SEARCH</code>/<code>REPLACE</code> sections, a format models already know. CloseNI runs each call and sends the results back as the next message. A reply with no tool blocks is the answer. Code blocks are the one thing every provider renders and returns verbatim, which is why they carry the calls (<code>local-agent/src/agent/protocol.ts</code>).</p>
+<img src="screenshots/code.png" alt="The Code panel in the Terminal theme: a request, a read, and an edit shown as a diff waiting for permission" width="100%"><p>Ask in plain words: &quot;fix the failing test&quot;, &quot;add pagination to the list endpoint&quot;, &quot;explain @src/app.py&quot;. A chat site has no tool-calling API, so the tools are a convention: the model answers with fenced blocks that name a tool, CloseNI runs them and sends the results back as the next message.</p>
 <table>
 <thead>
 <tr>
@@ -148,429 +98,111 @@ Ask for a change and it reads your project, edits files, runs commands and check
 </tr>
 </thead>
 <tbody><tr>
-<td><code>read</code></td>
-<td>a file, with line numbers, by range</td>
-<td>only for a secret file such as <code>.env</code> or a private key</td>
+<td><code>read</code>, <code>glob</code>, <code>grep</code>, <code>ls</code></td>
+<td>read and search the project</td>
+<td>only for secret files such as <code>.env</code> or a private key</td>
 </tr>
 <tr>
-<td><code>glob</code> / <code>grep</code> / <code>ls</code></td>
-<td>find files, search contents, list a folder</td>
-<td>only when <code>grep</code> names a secret file; a project-wide search skips them and says so</td>
-</tr>
-<tr>
-<td><code>todo</code></td>
-<td>the agent&#39;s own task list, shown above the input</td>
-<td>never</td>
-</tr>
-<tr>
-<td><code>edit</code></td>
-<td>exact search/replace, one match or a clear error</td>
-<td>in default mode</td>
-</tr>
-<tr>
-<td><code>write</code></td>
-<td>create or overwrite a file</td>
+<td><code>edit</code>, <code>write</code></td>
+<td>change or create a file, shown as a diff</td>
 <td>in default mode</td>
 </tr>
 <tr>
 <td><code>bash</code></td>
-<td>a shell command in the project folder</td>
+<td>run a command in the project folder</td>
 <td>unless you said &quot;don&#39;t ask again&quot; for it</td>
 </tr>
+<tr>
+<td><code>todo</code></td>
+<td>the agent&#39;s own task list</td>
+<td>never</td>
+</tr>
 </tbody></table>
-<p>Every path is resolved inside the project and refused outside it, including through a symlink or a link to something missing, and nothing inside any <code>.git</code> is written. Outputs are capped, because they are typed back into a web page.</p>
-<p><strong>Modes</strong>, cycled with shift+tab:</p>
-<ul>
-<li><strong>Default</strong> reads freely and asks before edits and commands.</li>
-<li><strong>Accept edits</strong> edits without asking and still asks before commands.</li>
-<li><strong>Plan</strong> is read-only and ends with a plan you can approve, which then switches mode and starts the work.</li>
-<li><strong>Auto</strong> (<code>/mode auto</code>) runs everything.</li>
-</ul>
-<p>In every mode, <code>sudo</code>, package managers, recursive deletes, piping a download into a shell and the rest of the safety list always ask. &quot;Don&#39;t ask again&quot; is never offered for those. The list reads the command&#39;s text, so it is a floor, not a sandbox: a script the model writes and then runs gets past it. Files and command output the agent reads can carry planted instructions, and in auto mode nothing stops a command they suggest. <a href="https://github.com/siddarth1872004/CloseNI/blob/main/docs/SAFETY.md">docs/SAFETY.md</a> lists what holds and what doesn&#39;t.</p>
-<p><strong>Also:</strong></p>
-<ul>
-<li><code>@path</code> attaches a file to your message.</li>
-<li><code>/rewind</code> undoes the last turn&#39;s file changes.</li>
-<li><code>/init</code> writes a <code>CLOSENI.md</code> of project instructions, which is read at the start of every conversation (<code>AGENTS.md</code> and <code>CLAUDE.md</code> are read if there is no <code>CLOSENI.md</code>).</li>
-<li>Messages sent while the agent is working are queued. Esc stops it after the current reply.</li>
-<li>The persona, skills and MCP context from Settings apply here too, and so do the provider&#39;s controls, except Smart Search, which stays off for agent turns. Changing a control, the provider or Show Browser takes effect on the next message: the agent reopens the provider with the new settings and resumes the project&#39;s thread.</li>
-<li>With DeepSeek&#39;s Deep thinking on, the model&#39;s reasoning streams into the panel under a &quot;Thinking…&quot; line and folds away once the reply or a tool call arrives.</li>
-<li>From a terminal: <code>npm run agent -- &quot;fix the failing test&quot; ./project deepseek</code>.</li>
-</ul>
-<p>It works with any provider CloseNI can talk to, including a local model through Ollama.</p>
-<hr>
-<h2 id="how-it-works">How it works</h2>
-<p>This is the <strong>planned build</strong>: the whole project is planned up front and then built step by step, with checks and repairs. It is a separate mode now. The everyday path is <a href="#the-coding-agent">the coding agent</a>.</p>
-<div align="center"><img src="assets/pipeline.svg" alt="A prompt travels from you to CloseNI, to a chat site, to files on your disk, and back to you for review" width="100%"></div><pre><code class="language-mermaid">sequenceDiagram
-    autonumber
-    actor You
-    participant App as CloseNI desktop
-    participant Agent as local-agent
-    participant Site as Chat site (Chromium)
-    participant Disk as Your workspace
-
-    You-&gt;&gt;App: &quot;build me a flask todo api&quot;
-    App-&gt;&gt;Agent: plan mode
-    Agent-&gt;&gt;Site: plan this, as strict JSON
-    Site--&gt;&gt;Agent: steps, files, dependsOn, run command
-    Agent--&gt;&gt;App: the plan
-    App--&gt;&gt;You: review it, revise it, approve it
-    loop every step, in the same conversation
-        App-&gt;&gt;Agent: step n
-        Agent-&gt;&gt;Site: short step prompt
-        Site--&gt;&gt;Agent: {&quot;files&quot;: [...]}
-        Agent-&gt;&gt;Disk: contained write, backup first
-        Agent-&gt;&gt;Agent: syntax and compile checks
-        alt a check fails
-            Agent-&gt;&gt;Site: the real compiler error
-            Site--&gt;&gt;Agent: a fix (two attempts at most)
-        end
-        Agent--&gt;&gt;App: diff, logs, status
-    end
-    Agent-&gt;&gt;Disk: closeni.run.json, run.sh, run.bat
-    App--&gt;&gt;You: done, runnable, ready to ship
-</code></pre>
-<p>Nothing is written before you approve the plan, and every step reports what it touched before the next one begins.</p>
-<hr>
-<h2 id="architecture">Architecture</h2>
-<div align="center"><img src="assets/architecture.svg" alt="Architecture: the desktop app spawns the local agent, which drives Chromium, writes to the workspace, and has the src/web layer beside it for research and live tests" width="100%"></div><details>
-<summary><b>The same thing, as a Mermaid diagram</b></summary><pre><code class="language-mermaid">flowchart TB
-    subgraph desktop[&quot;native/ · Qt/QML app&quot;]
-        R[&quot;qml/panels/&lt;br/&gt;panels, plans, diffs&quot;]
-        B[&quot;BuildState.qml&lt;br/&gt;runs the steps&quot;]
-        S[&quot;scheduler.mjs&lt;br/&gt;dependency graph, resume&quot;]
-        T[&quot;Theme.qml&lt;br/&gt;eleven themes&quot;]
-        M[&quot;src/ C++ services&lt;br/&gt;agent, git, keyring&quot;]
-        R &lt;--&gt; M
-        B &lt;--&gt; M
-        B --&gt; S
-        R --&gt; T
-    end
-
-    subgraph agent[&quot;local-agent/ · TypeScript core&quot;]
-        C[&quot;PlaywrightController&lt;br/&gt;send · wait · extract&quot;]
-        P[&quot;parser&lt;br/&gt;JSON repair&quot;]
-        A[&quot;patch applier&lt;br/&gt;backups, containment&quot;]
-        V[&quot;check planner&lt;br/&gt;manifest and per-file rules&quot;]
-        X[&quot;command policy&lt;br/&gt;confirmation floor&quot;]
-        N[&quot;run manifest&lt;br/&gt;closeni.run.json&quot;]
-        C --&gt; P --&gt; A --&gt; V
-        V --&gt; X
-        A --&gt; N
-    end
-
-    subgraph web[&quot;local-agent/src/web · browser-native layer&quot;]
-        SM[&quot;session manager&quot;]
-        ST[&quot;UI state&quot;]
-        CD[&quot;completion detector&quot;]
-        EX[&quot;extraction pipeline&quot;]
-        RS[&quot;research engine&quot;]
-    end
-
-    subgraph sites[&quot;Chromium, one profile per site&quot;]
-        D[&quot;DeepSeek&quot;]
-        Q[&quot;Qwen Studio · experimental&quot;]
-        G[&quot;GLM · experimental&quot;]
-    end
-
-    O[&quot;Ollama&lt;br/&gt;local HTTP · chat-only&quot;]
-    W[(&quot;Workspace&quot;)]
-    NET[&quot;The web&lt;br/&gt;search and pages, logged out&quot;]
-
-    M --&gt;|&quot;spawn CLI&quot;| C
-    C --&gt; D &amp; Q &amp; G
-    C --&gt; O
-    A --&gt;|&quot;apply patch&quot;| W
-    N --&gt; W
-    agent -. &quot;beside it, not yet in builds&quot; .-&gt; web
-    SM --&gt; D &amp; Q &amp; G
-    RS --&gt; NET
-</code></pre>
-</details><p>There is no web view and no bundler. The window is Qt Quick, and the services behind it (the agent and run processes, git, GitHub, files, the keyring) are C++. The pure logic, such as scheduling, theming, diffing and entry-point detection, is plain ES modules in <code>native/qml/js/</code>. The QML engine loads them and Node 22 <code>require()</code>s the same files, so they are unit-testable without a build step or a window.</p>
-<p>The TypeScript core compiles to CommonJS in <code>local-agent/dist/</code>, and tests run against the compiled output rather than the source, so what is tested is what ships.</p>
-<hr>
+<p><strong>Modes</strong>, cycled with shift+tab: <strong>Default</strong> asks before edits and commands, <strong>Accept edits</strong> asks only before commands, <strong>Plan</strong> is read-only until you approve its plan, and <strong>Auto</strong> runs everything. <code>sudo</code>, package managers, recursive deletes and the rest of the <a href="#safety">safety list</a> ask in every mode.</p>
+<p>Also: <code>@path</code> attaches a file, <code>/rewind</code> undoes the last turn&#39;s file changes, <code>/init</code> writes a <code>CLOSENI.md</code> of project instructions, and Esc stops the agent after the current reply. From a terminal: <code>npm run agent -- &quot;fix the failing test&quot; ./project deepseek</code>.</p>
+<h2 id="planned-builds">Planned builds</h2>
+<p>For a whole project there is the planned build (<code>/build</code>, or the Plan and Build panels). It plans the project as steps, you revise the plan, and nothing is written until you approve it.</p>
+<div align="center">
+<img src="assets/pipeline.svg" alt="A prompt travels from you to CloseNI, to a chat site, to files on your disk, and back to you for review" width="100%">
+</div><p>Each step is built in the same conversation, written inside the workspace with a backup first, and then checked with the project&#39;s real compiler. A failing check sends the compiler&#39;s own error back to the model. <strong>Two attempts</strong>, then the step is marked failed and the build stops and explains. A build that stopped halfway resumes at the first unfinished step. The finished project gets a <code>closeni.run.json</code>, <code>run.sh</code> and <code>run.bat</code>, so it runs without CloseNI.</p>
+<p><strong>Twelve languages</strong> are checked against their real toolchains:</p>
+<table>
+<thead>
+<tr>
+<th>Language</th>
+<th>With a manifest</th>
+<th>Per file</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Rust</td>
+<td><code>cargo check</code></td>
+<td><code>rustc --emit=metadata</code></td>
+</tr>
+<tr>
+<td>Go</td>
+<td><code>go build ./...</code></td>
+<td><code>gofmt -e</code></td>
+</tr>
+<tr>
+<td>TypeScript</td>
+<td><code>tsc --noEmit</code></td>
+<td><code>tsc</code></td>
+</tr>
+<tr>
+<td>Java</td>
+<td><code>mvn -q compile</code> or <code>gradle compileJava -q</code></td>
+<td><code>javac</code></td>
+</tr>
+<tr>
+<td>C#</td>
+<td><code>dotnet build</code></td>
+<td>—</td>
+</tr>
+<tr>
+<td>C, C++</td>
+<td><code>make -n</code></td>
+<td><code>gcc</code> / <code>g++ -fsyntax-only</code></td>
+</tr>
+<tr>
+<td>Python, JavaScript, Ruby, PHP, Shell</td>
+<td>—</td>
+<td><code>py_compile</code>, <code>node --check</code>, <code>ruby -c</code>, <code>php -l</code>, <code>bash -n</code></td>
+</tr>
+</tbody></table>
+<p>The checker also knows 16 more languages (Kotlin, Scala, Swift, Dart, Zig, Elixir and others), which have not been run against their real toolchains yet.</p>
+<h2 id="conversations">Conversations</h2>
+<p>Chat, planning and building continue <strong>one conversation</strong> on the provider&#39;s site, so a step prompt can be a short instruction instead of re-explaining the project. The cost is that steps run one at a time; the <a href="https://github.com/siddarth1872004/CloseNI/blob/main/docs/ROADMAP.md">roadmap</a> records why.</p>
+<p>The rail lists every chat in the project, newest first, named after its first message. Open one to get its messages and plan back, rename it, or remove it from the list. <strong>New Chat</strong> starts a fresh one. Messages are saved on disk and come back after a restart. Nothing switches while a reply, a build or a Code turn is using the thread.</p>
 <h2 id="providers">Providers</h2>
-<p>CloseNI drives a chat site the way a person does, so each site needs its own page control. Where each one stands:</p>
 <table>
 <thead>
 <tr>
 <th>Provider</th>
 <th>Status</th>
-<th>What is known</th>
 </tr>
 </thead>
 <tbody><tr>
 <td><strong>DeepSeek Chat</strong></td>
-<td><img src="https://img.shields.io/badge/-ready-57d38c?style=flat-square" alt="ready"></td>
-<td>Driven end to end: plan, build, repair, verify, and the coding agent. Its reply streams (<code>/api/v0/chat/completion</code>, and <code>resume_stream</code> when the page picks up a cut one) are measured and used to know when an answer ended. A reply it drops before writing any of it is asked for once more, and that was checked live against injected faults. Deep thinking&#39;s reasoning is shown as it streams.</td>
+<td><img src="https://img.shields.io/badge/-ready-57d38c?style=flat-square" alt="ready"> Chat, plan, build and the coding agent. Busy, rate-limited, cut and full replies are recognised and handled.</td>
 </tr>
 <tr>
 <td><strong>Qwen Studio</strong></td>
-<td><img src="https://img.shields.io/badge/-experimental-e3b341?style=flat-square" alt="experimental"></td>
-<td>Page control works against the live site: the input is found, long prompts are pasted via the clipboard, and send and completion detection are both confirmed. It was gated because a build-sized prompt (~9k characters) outran the old 120 s completion wait while the model was still thinking. The wait is now 300 s, which has not been re-run live.</td>
+<td><img src="https://img.shields.io/badge/-experimental-e3b341?style=flat-square" alt="experimental"> Page control works; build-sized prompts not re-checked live.</td>
 </tr>
 <tr>
 <td><strong>GLM (Z.ai)</strong></td>
-<td><img src="https://img.shields.io/badge/-experimental-e3b341?style=flat-square" alt="experimental"></td>
-<td>Selectable, but the least proven. When last tried, the live site declined the build prompts and the model and thinking controls were not found on the page. Selectors have never been confirmed.</td>
+<td><img src="https://img.shields.io/badge/-experimental-e3b341?style=flat-square" alt="experimental"> The least proven; its selectors have never been confirmed.</td>
 </tr>
 <tr>
 <td><strong>Ollama (local)</strong></td>
-<td><img src="https://img.shields.io/badge/-chat--only-79c0ff?style=flat-square" alt="chat-only"></td>
-<td>The first provider that is not a web page: no selectors, no login, no rate limit. Chat works. Plan and build still need a browser provider, and it says so if you try.</td>
+<td><img src="https://img.shields.io/badge/-chat--only-79c0ff?style=flat-square" alt="chat-only"> Local HTTP, no login. Chat only; plan and build need a browser provider.</td>
 </tr>
 </tbody></table>
-<p>A provider can be gated with <code>&quot;comingSoon&quot;: true</code> in its config. Gated providers appear in Settings, so it is clear they are planned rather than missing, but they cannot be selected. <code>getUsableProvider</code> refuses them in the agent too, so a preference saved before the gate cannot start a session on one.</p>
-<p>Each provider is a JSON file in <a href="https://github.com/siddarth1872004/CloseNI/tree/main/local-agent/config/providers/"><code>local-agent/config/providers/</code></a>, read at runtime. Fixing a selector is a text edit and a re-run, not a rebuild. Each gated file carries a <code>_comingSoonReason</code> saying what is left, and a test enforces that the reason is there. Qwen Studio and GLM keep theirs as <code>_ungatedNote</code>, so what was unresolved when they were ungated stays next to their selectors.</p>
-<hr>
-<h2 id="anatomy-of-a-build">Anatomy of a build</h2>
-<pre><code class="language-mermaid">flowchart LR
-    P[&quot;1 · Plan&lt;br/&gt;strict JSON steps&quot;] --&gt; S[&quot;2 · Schedule&lt;br/&gt;dependsOn graph&quot;]
-    S --&gt; E[&quot;3 · Execute&lt;br/&gt;one step prompt&quot;]
-    E --&gt; J[&quot;4 · Repair the JSON&lt;br/&gt;strip, balance, recover&quot;]
-    J --&gt; A[&quot;5 · Apply&lt;br/&gt;contained, backed up&quot;]
-    A --&gt; V[&quot;6 · Verify&lt;br/&gt;real toolchains&quot;]
-    V --&gt;|next step| E
-    V --&gt;|stopped halfway| R[&quot;7 · Resume&lt;br/&gt;from the first unfinished step&quot;]
-    R --&gt; E
-</code></pre>
-<details open>
-<summary><b>Each stage, in detail</b></summary><ol>
-<li><strong>Plan.</strong> The prompt is wrapped with instructions demanding strict JSON: an array of steps, each with a title, a description, the files it will touch, and a <code>dependsOn</code> list. The step count comes from the described scope, so a single-file script is not padded to seven steps and a full-stack application is not squeezed into seven. The plan also carries a <code>run</code> command for the finished project.</li>
-<li><strong>Schedule.</strong> The <code>dependsOn</code> edges form a directed graph. A step runs once everything it depends on has succeeded. A failure blocks only the steps that depend on it. Duration is estimated at roughly ninety seconds per step and shown before you commit.</li>
-<li><strong>Execute.</strong> Each step goes out as a short instruction in the same conversation, carrying the current state of the files it declares. The reply is expected as JSON with a <code>files</code> array: path, full contents, and an action.</li>
-<li><strong>Repair the JSON, not just the code.</strong> Web chats wrap answers in prose and fenced blocks, truncate long messages, and sometimes emit trailing commas. The parser strips the wrapper, balances braces, and recovers a usable object from a partial one before it gives up.</li>
-<li><strong>Apply.</strong> Every write is contained to the workspace root: a path that escapes it is refused, not sanitised. Existing files are backed up before they are overwritten.</li>
-<li><strong>Verify.</strong> The changed files decide which checks run. See <a href="#twelve-languages">twelve languages</a>.</li>
-<li><strong>Resume, do not restart.</strong> Completed steps are recorded. If a build stops halfway, starting again picks up at the first unfinished step. That covers a failure, a closed window, or a machine that went to sleep. The log says so plainly: <code>resuming: 3/7 already done</code>.</li>
-</ol>
-</details><hr>
-<h2 id="build-check-repair">Build, check, repair</h2>
-<div align="center"><img src="assets/repair-loop.svg" alt="A loop: ask, write, check with a real compiler, feed the error back, retry twice at most" width="100%"></div><pre><code class="language-mermaid">stateDiagram-v2
-    direction LR
-    [*] --&gt; Writing
-    Writing --&gt; Checking : files applied
-    Checking --&gt; Done : every check passes
-    Checking --&gt; Repair1 : compiler error
-    Repair1 --&gt; Checking : fix applied
-    Checking --&gt; Repair2 : still failing
-    Repair2 --&gt; Checking : fix applied
-    Checking --&gt; Stopped : failing after two attempts
-    Done --&gt; [*]
-    Stopped --&gt; [*] : the build stops and explains
-</code></pre>
-<p>A failing check does not fail the build. The compiler&#39;s own stderr (the file, the line, the message) goes back with the step, so the model repairs the specific defect instead of rewriting from memory. <strong>Two attempts</strong>, then the step is marked failed and the build stops with an explanation, instead of grinding forward on broken code.</p>
-<p>Environment failures are treated differently from code failures. Suppose <code>python3 -m venv</code> dies because the system Python is externally managed. That is a problem with the machine, not the generated source. It is reported without spending the step&#39;s repair budget on code that was never wrong.</p>
-<hr>
-<h2 id="twelve-languages">Twelve languages</h2>
-<p>A manifest claims its language. If the workspace has a <code>Cargo.toml</code>, Rust files are checked once with <code>cargo check</code> rather than one file at a time, because a file that imports its sibling cannot be validated alone. Where no manifest exists, each changed file is checked individually.</p>
-<div align="center"><img src="assets/verify-strip.svg" alt="Twelve languages checking green one after another" width="660"></div><table>
-<thead>
-<tr>
-<th>Language</th>
-<th>Project check (manifest present)</th>
-<th>Per-file check</th>
-</tr>
-</thead>
-<tbody><tr>
-<td><strong>Rust</strong></td>
-<td><code>Cargo.toml</code> → <code>cargo check</code></td>
-<td><code>rustc --emit=metadata</code></td>
-</tr>
-<tr>
-<td><strong>Go</strong></td>
-<td><code>go.mod</code> → <code>go build ./...</code></td>
-<td><code>gofmt -e</code></td>
-</tr>
-<tr>
-<td><strong>TypeScript</strong></td>
-<td><code>tsconfig.json</code> → <code>tsc --noEmit</code></td>
-<td><code>tsc</code></td>
-</tr>
-<tr>
-<td><strong>Java</strong></td>
-<td><code>pom.xml</code> → <code>mvn -q compile</code><br><code>build.gradle[.kts]</code> → <code>gradle compileJava -q</code></td>
-<td><code>javac</code></td>
-</tr>
-<tr>
-<td><strong>C#</strong></td>
-<td><code>*.csproj</code> → <code>dotnet build</code></td>
-<td>—</td>
-</tr>
-<tr>
-<td><strong>C</strong></td>
-<td><code>Makefile</code> → <code>make -n</code></td>
-<td><code>gcc -fsyntax-only</code></td>
-</tr>
-<tr>
-<td><strong>C++</strong></td>
-<td><code>Makefile</code> → <code>make -n</code></td>
-<td><code>g++ -fsyntax-only</code></td>
-</tr>
-<tr>
-<td><strong>Python</strong></td>
-<td>—</td>
-<td><code>python -m py_compile</code></td>
-</tr>
-<tr>
-<td><strong>JavaScript</strong></td>
-<td>—</td>
-<td><code>node --check</code></td>
-</tr>
-<tr>
-<td><strong>Ruby</strong></td>
-<td>—</td>
-<td><code>ruby -c</code></td>
-</tr>
-<tr>
-<td><strong>PHP</strong></td>
-<td>—</td>
-<td><code>php -l</code></td>
-</tr>
-<tr>
-<td><strong>Shell</strong></td>
-<td>—</td>
-<td><code>bash -n</code></td>
-</tr>
-</tbody></table>
-<p><code>make -n</code> is a dry run on purpose. It proves the Makefile parses and its targets resolve, without dropping object files into your workspace. A check should not build.</p>
-<p>The checker also knows 16 more languages: Kotlin, Scala, Swift, Dart, Zig, Elixir, Erlang, Haskell, OCaml, F#, Clojure, Lua, Perl, Nim, Fortran and R. It runs their compilers and test runners the same way. None of these checks has yet been run against the real toolchain, and neither has C#&#39;s. The other eleven above have been.</p>
-<p>A manifest claims its extensions whether or not the tool is installed. So a Rust project on a machine without <code>cargo</code> reports a missing toolchain, instead of silently falling through to a weaker per-file check.</p>
-<hr>
-<h2 id="the-browser-native-layer">The browser-native layer</h2>
-<p><code>local-agent/src/web/</code> treats DeepSeek, Qwen and GLM as <strong>web applications driven through a browser</strong>, not as APIs. It is built beside the controller that runs builds today and does not replace it. It can take over a provider once it has passed live on that provider.</p>
-<div align="center"><img src="assets/ui-states.svg" alt="The page states the browser layer tells apart: loading, ready, generating and complete, and the login, challenge and rate-limit states that stop a run" width="100%"></div><p>The old question was &quot;did a composer appear within 15 seconds?&quot; Every failure answered it the same way: &quot;not signed in&quot;. The new layer names the state instead. The possible states are:</p>
-<p><code>LOADING</code> · <code>READY</code> · <code>CHAT_READY</code> · <code>GENERATING</code> · <code>GENERATION_COMPLETE</code> · <code>GENERATION_FAILED</code> · <code>AUTH_REQUIRED</code> · <code>CAPTCHA</code> · <code>RATE_LIMITED</code> · <code>ERROR</code> · <code>UNKNOWN</code></p>
-<p><strong>The rules it keeps, whatever the site does:</strong></p>
-<ul>
-<li><strong>No evasion.</strong> It never signs in, never creates an account, and never tries to get past a login, a challenge or a rate limit. Detection exists so the run can <strong>stop and say why</strong>, with a screenshot, a sanitised DOM and an ARIA snapshot saved for you.</li>
-<li><strong>No leaks.</strong> Passwords, cookies, tokens and credentials are redacted before anything is logged. Authenticated content is never cached.</li>
-<li><strong>No guesses.</strong> Every selector carries its provenance: <code>MEASURED</code> on the live site, <code>UNVERIFIED</code>, or <code>FIXTURE</code>. Behaviour nobody has observed is marked <code>UNKNOWN</code>.</li>
-</ul>
-<details>
-<summary><b>How it knows a reply has finished, without fixed sleeps</b></summary><pre><code class="language-mermaid">flowchart TD
-    T[&quot;poll: did the page&#39;s mutation counter move?&quot;] --&gt;|no| K[&quot;reuse the last text&quot;]
-    T --&gt;|yes| RD[&quot;read the newest reply&quot;]
-    K &amp; RD --&gt; D{&quot;completion detector&quot;}
-    D --&gt;|&quot;reply request closed + settle&quot;| C1[&quot;complete · stream-closed&quot;]
-    D --&gt;|&quot;stop control gone + settle&quot;| C2[&quot;complete · stop-button-gone&quot;]
-    D --&gt;|&quot;quiet for the stability window,&lt;br/&gt;nothing still open&quot;| C3[&quot;complete · stability&quot;]
-    D --&gt;|&quot;request still open,&lt;br/&gt;nothing arriving&quot;| P1[&quot;partial · stalled&quot;]
-    D --&gt;|&quot;transfer failed mid-reply&quot;| P2[&quot;partial · interrupted&quot;]
-    D --&gt;|&quot;HTTP 4xx / 5xx on the reply&quot;| F[&quot;failed&quot;]
-    D --&gt;|&quot;it ended and said nothing&quot;| E[&quot;empty&quot;]
-</code></pre>
-<p>A mid-answer pause is not a finished answer. While the stop control is up, or the reply request is still open, stability alone never ends the wait.</p>
-</details><details>
-<summary><b>How a reply becomes structured data</b></summary><pre><code class="language-mermaid">flowchart LR
-    RAW[&quot;Raw&lt;br/&gt;assistant element&quot;] --&gt; DOM[&quot;DOM&lt;br/&gt;snapshot, pre whitespace kept&quot;]
-    DOM --&gt; SEM[&quot;Semantic&lt;br/&gt;typed blocks, controls dropped,&lt;br/&gt;reasoning split&quot;]
-    SEM --&gt; NORM[&quot;Normalized&lt;br/&gt;code + language, tables,&lt;br/&gt;links, citations, artifacts&quot;]
-    NORM --&gt; STR[&quot;Structured&lt;br/&gt;AIResponse&quot;]
-    COPY[&quot;the site&#39;s own Copy control&quot;] -. exact code text .-&gt; NORM
-</code></pre>
-<p><code>AIResponse</code> fields are filled only from what was observed. The conversation id comes from the URL, the message id from markup, and reasoning only when a reasoning block exists. A reply that said nothing is <code>empty</code>, never the previous answer.</p>
-</details><p><strong>Tested, but not yet live.</strong></p>
-<ul>
-<li>It has been tested in real Chromium against local pages shaped like each provider: DeepSeek streams over XHR with no stop control, Qwen has a stop control, and GLM has a contenteditable composer and obfuscated class names.</li>
-<li>Every provider runs the same scenarios: login walls, challenges, 429s, modals, popups, dialogs, pauses, stalls, cut connections, redesigns, crashes and a locked main thread.</li>
-<li>It has <strong>not met a live site yet</strong>. The development machine&#39;s network refused every provider host, so the live column of the <a href="https://github.com/siddarth1872004/CloseNI/blob/main/docs/testing/provider-matrix.md">provider matrix</a> reads <code>BLOCKED</code>.</li>
-<li>To produce the first real row, run <code>npm run webtest -- deepseek --headed</code> on a signed-in machine.</li>
-</ul>
-<hr>
+<p>Each provider is a JSON file in <a href="https://github.com/siddarth1872004/CloseNI/tree/main/local-agent/config/providers/"><code>local-agent/config/providers/</code></a>, read at runtime, so fixing a selector is a text edit, not a rebuild.</p>
 <h2 id="research">Research</h2>
-<p>The <strong>Research panel</strong> runs two halves together and reports them separately:</p>
-<ul>
-<li><strong>The web half</strong> turns on the provider&#39;s own web search (DeepSeek&#39;s Smart Search toggle, forced on for that run only), asks the question, and lists the sources it cited.</li>
-<li><strong>The GitHub half</strong> searches repositories through the token you are signed in with. That raises the rate limit from ten searches a minute to thirty. Any result can be cloned, or used as a reference: its README and file list go into the next plan&#39;s context.</li>
-</ul>
-<p>It runs in a conversation of its own, so it never disturbs the one your build is using.</p>
-<p>Beside it, in <code>local-agent/src/web/research/</code>, is a research engine that does the whole job itself. It plans, searches, reads, extracts evidence, cross-checks sources and cites every line:</p>
-<div align="center"><img src="assets/research.svg" alt="The research loop: a question is planned into subquestions, searched, read, turned into evidence with conflicts flagged, and answered with citations" width="100%"></div><pre><code class="language-mermaid">flowchart TD
-    Q[&quot;question&quot;] --&gt; PL[&quot;plan&lt;br/&gt;subquestions + distinctive words&quot;]
-    PL --&gt; SE[&quot;search&lt;br/&gt;untried strategies per uncovered subquestion&quot;]
-    SE --&gt; AG[&quot;merge by canonical URL&quot;]
-    AG --&gt; RD[&quot;read&lt;br/&gt;HTTP first, browser for app shells&quot;]
-    RD --&gt; EV[&quot;evidence&lt;br/&gt;BM25 signals, exact spans, provenance&quot;]
-    EV --&gt; FL[&quot;follow links&lt;br/&gt;judged against what is still missing&quot;]
-    FL --&gt; CK{&quot;covered?&lt;br/&gt;budget left?&quot;}
-    CK --&gt;|&quot;no, and budget left&quot;| SE
-    CK --&gt;|&quot;yes, or out of budget&quot;| CF[&quot;conflicts + duplicates&quot;]
-    CF --&gt; CTX[&quot;context&lt;br/&gt;numbered citations, gaps listed&quot;]
-    CTX --&gt; ANS[&quot;answer&lt;br/&gt;through a chat provider, or extractive&quot;]
-</code></pre>
-<p>Relevance is a set of named signals, not a single made-up &quot;quality score&quot;. A syndicated mirror is detected and not counted as a second source. When two sources disagree on a number in the same unit, both are kept and the conflict is listed. The engine is fixture-tested: on the fixture web it stops as <code>sufficient</code>, finds both planted contradictions, and reaches a page no search returned by following a link. It is not yet wired into the panel, and its live search-engine adapters are <code>UNVERIFIED</code>.</p>
-<hr>
-<h2 id="the-interface">The interface</h2>
-<p>Seven panels. <strong>01 · Code</strong> is the agent, described <a href="#the-coding-agent">above</a>. The rest are the planned build, numbered in the order you move through them. The bar across the top of those panels follows the project itself, not the tab: <strong>Describe · Plan · Build · Test · Ship</strong>. Each stage ticks off from what has actually happened (a failed build shows as failed, not done), the next one is outlined, and clicking a stage opens its panel. The rail groups everything else into three cards: <strong>Provider</strong>, <strong>Project</strong> and <strong>Conversation</strong>. The logs sit in a <strong>Console</strong> drawer at the bottom. It counts new lines while closed, and opens by itself when a build starts or something fails.</p>
-<table>
-<tr>
-<td width="50%" valign="top"><p><strong>02 · Plan.</strong> Describe it, then read the plan.</p>
-<p>The prompt goes in, and a structured plan comes back: numbered steps, the files each one owns, the dependencies between them, and the command that will run the project. Nothing has been written to disk yet. Send it back for revision as many times as you like.</p>
-</td>
-<td width="50%"><img src="screenshots/chat.png" alt="The Chat panel, where a plan is proposed and reviewed before any file is written"></td>
-</tr>
-<tr>
-<td width="50%"><img src="screenshots/builder.png" alt="The Builder panel in the Pixel theme: the flow bar with Build in progress, step list on the left, unified diff for the running step"></td>
-<td width="50%" valign="top"><p><strong>03 · Build.</strong> Watch it happen, step by step.</p>
-<p>Live step status, and the exact diff for the running step. <strong>Suggest a change to this step</strong> steers a single step without restarting. The Console drawer holds two logs: <strong>Agent</strong> is the story (<code>step 4/7: API routes</code>), and <strong>Project</strong> is the evidence (<code>CHECK_RESULT: PASS</code>).</p>
-</td>
-</tr>
-<tr>
-<td width="50%" valign="top"><p><strong>04 · Test.</strong> Run it, and ask about it.</p>
-<p>The run command arrives resolved, with a badge saying where it came from: <code>SAVED</code>, <code>FROM YOUR PLAN</code>, <code>DETECTED</code> or <code>NOT FOUND</code>. <strong>Run tests</strong> runs the project&#39;s own suite and smoke-starts its entry point. A missing runner is reported as <strong>not run</strong>, never as a pass.</p>
-</td>
-<td width="50%"><img src="screenshots/test.png" alt="The Test panel: resolved run command, per-check pass and fail results, and a chat about this run"></td>
-</tr>
-<tr>
-<td width="50%"><img src="screenshots/ship.png" alt="The Ship panel in the Blueprint theme: GitHub token entry, git init and commit, push to origin, and Actions run status"></td>
-<td width="50%" valign="top"><p><strong>06 · Ship.</strong> Commit, push, and watch CI.</p>
-<p><code>git init</code>, status, commit-all and push, plus a live list of GitHub Actions runs and a button to dispatch a workflow. The token is encrypted at rest and never written into the repository.</p>
-</td>
-</tr>
-<tr>
-<td width="50%" valign="top"><p><strong>05 · Research</strong> is <a href="#research">above</a>. <strong>07 · Settings</strong> covers five areas:</p>
-<ul>
-<li>the provider, the Chromium install and sign-in</li>
-<li>autonomy (<em>ask each command</em>, <em>auto-allow</em>, <em>never run commands</em>)</li>
-<li>skills, personas and MCP</li>
-<li>appearance</li>
-<li>about</li>
-</ul>
-<p>The sign-in is a real browser window: you log in the way you always do, and the profile persists.</p>
-</td>
-<td width="50%"><img src="screenshots/settings.png" alt="The Settings panel, Appearance tab, showing all eleven theme swatches"></td>
-</tr>
-</table><hr>
-<h2 id="one-conversation">One conversation</h2>
-<p>Chat, planning and building all continue <strong>the same conversation</strong> on the provider&#39;s site. It is the one you can open in your own browser from the sidebar.</p>
-<pre><code>one profile, one login, one thread
-│
-├── &quot;build me a flask todo api&quot;        ← chat
-├── the plan, as JSON                  ← planning, in the same thread
-├── step 1 …  step 2 …  step 3 …       ← the build, still the same thread
-└── &quot;why did this fail?&quot;               ← Test and Suggest, same thread again
-</code></pre>
-<p>In a separate thread, a step prompt has to explain the whole project again; in the shared one it can be a short instruction. When a build had a thread of its own, step 1 of a fifteen-step build reached <strong>9853 characters</strong> and spent its whole completion wait being read rather than answered. In the shared conversation the model already has the plan. The reply format is stated once, which alone saves <strong>2801 characters on every step after the first</strong>.</p>
-<p><strong>The trade-off, stated plainly.</strong> A conversation has one composer, so steps go one at a time. Independent work used to fan out across separate tabs, and that is exactly what forced the oversized prompts. The reversal is recorded, with its reasoning, in <a href="https://github.com/siddarth1872004/CloseNI/blob/main/docs/ROADMAP.md#4--concurrency--multi-agent--built-then-deliberately-reversed">docs/ROADMAP.md</a>.</p>
-<p><strong>New Chat</strong> starts over: it clears the saved thread, and the next chat, plan or build opens a fresh one.</p>
-<hr>
-<h2 id="the-run-file">The run file</h2>
-<p>Guessing an entry point from filenames breaks the moment a project lives at <code>src/app/server.py</code>. So the answer is written down, in a file the project keeps.</p>
-<pre><code class="language-jsonc">// closeni.run.json
-{
-  &quot;version&quot;: 1,
-  &quot;run&quot;: &quot;python3 src/app/server.py&quot;,
-  &quot;install&quot;: &quot;pip install -r requirements.txt&quot;,
-  &quot;language&quot;: &quot;python&quot;,
-  &quot;userEdited&quot;: false,
-  &quot;generatedBy&quot;: &quot;CloseNI 1.0.0&quot;
-}
-</code></pre>
-<p>Alongside it sit <code>run.sh</code> and <code>run.bat</code>, so the project starts from a terminal, a file manager or another machine, with CloseNI nowhere in the picture. Resolution order is <code>manifest</code> → <code>plan</code> → <code>detected</code> → none. Once <code>userEdited</code> is set, later builds leave the command alone.</p>
-<hr>
-<h2 id="safety-model">Safety model</h2>
-<p>An agent that writes files and runs commands on your machine has to be explicit about what it will not do.</p>
+<p>The <strong>Research panel</strong> asks the provider with its own web search turned on (DeepSeek&#39;s Smart Search) and lists the sources it cited. Alongside, it searches GitHub repositories with your signed-in token. Any result can be cloned or used as a reference for the next plan. It runs in a conversation of its own.</p>
+<h2 id="the-app">The app</h2>
 <table>
 <thead>
 <tr>
@@ -579,283 +211,113 @@ Ask for a change and it reads your project, edits files, runs commands and check
 </tr>
 </thead>
 <tbody><tr>
-<td><strong>Commands always require confirmation</strong></td>
-<td><code>sudo</code> · <code>su</code> · <code>doas</code> · package managers · recursive deletes in any spelling (<code>rm -r</code>, <code>find -delete</code>, <code>rd /s</code>, <code>Remove-Item -Recurse</code>) · <code>dd if=</code> · <code>mkfs</code> · <code>format</code> · <code>chmod 777</code> · <code>chown</code> · <code>shutdown</code> / <code>reboot</code> · <code>curl … | sh</code>, <code>bash &lt;(curl …)</code> and friends · writes to raw disks · <code>git push --force</code> without <code>--with-lease</code> · <code>git reset --hard</code> · <code>git clean -f</code>. The test covers the whole command string, because a real reply once hid <code>sudo apt install</code> behind <code>apt install … || sudo apt install …</code>.</td>
+<td><img src="screenshots/chat.png" alt="The Chat panel, where a plan is proposed and reviewed before any file is written"></td>
+<td><img src="screenshots/builder.png" alt="The Builder panel in the Pixel theme: a finished build, the step list on the left, and the diff for the selected step"></td>
 </tr>
 <tr>
-<td><strong>Environment setup is recognised</strong></td>
-<td><code>venv</code>, <code>pip install</code> and <code>poetry install</code> are classified, so a failure there is an environment problem, not broken code.</td>
+<td><strong>Chat and Plan.</strong> Describe it, then read and revise the plan.</td>
+<td><strong>Build.</strong> Live step status and the diff for each step.</td>
 </tr>
 <tr>
-<td><strong>File writes are contained</strong></td>
-<td>A path that escapes the workspace root is refused, including through a symlink or a link to something missing. Nothing inside any <code>.git</code> folder is written. Overwrites are backed up first.</td>
+<td><img src="screenshots/test.png" alt="The Test panel: resolved run command, per-check pass and fail results, and a chat about the results"></td>
+<td><img src="screenshots/ship.png" alt="The Ship panel in the Paper theme: GitHub account and repository, git init and commit, push, and Actions runs"></td>
 </tr>
 <tr>
-<td><strong>Secret files ask first</strong></td>
-<td>Reading <code>.env</code> files, <code>.netrc</code>, <code>.npmrc</code>, <code>.pypirc</code>, SSH private keys and <code>.pem</code> / <code>.key</code> / <code>.p12</code> / <code>.pfx</code> files asks in every mode, auto included, because whatever the agent reads is typed into a chat site.</td>
-</tr>
-<tr>
-<td><strong>Git never goes through a shell</strong></td>
-<td>Arguments are passed as an array with <code>shell: false</code>. A commit message of <code>test; echo INJECTED</code> becomes a commit subject containing that text, and nothing executes.</td>
-</tr>
-<tr>
-<td><strong>Tokens stay sealed</strong></td>
-<td>The GitHub token is encrypted with the OS keystore, handed to git through <code>GIT_ASKPASS</code>, and redacted from every log line by exact-string replacement. It never reaches <code>.git/config</code>, an argument list, a plaintext file, the renderer or the agent.</td>
-</tr>
-<tr>
-<td><strong>Session data is never committed</strong></td>
-<td>Browser profiles, cookies, chat URLs and browser-layer diagnostics live under <code>local-agent/storage/</code>. They are excluded from version control and from the packaged app, whose file list is an explicit allow-list.</td>
-</tr>
-<tr>
-<td><strong>The browser layer never gets past a gate</strong></td>
-<td>A login, a challenge or a rate limit stops the run and is recorded. See <a href="#the-browser-native-layer">the browser-native layer</a>.</td>
+<td><strong>Test.</strong> Run the project and its own tests. A missing runner is reported as not run, never as a pass.</td>
+<td><strong>Ship.</strong> Commit, push and watch GitHub Actions.</td>
 </tr>
 </tbody></table>
-<p>The command list reads the command&#39;s text, so it is a floor, not a sandbox. <a href="https://github.com/siddarth1872004/CloseNI/blob/main/docs/SAFETY.md">docs/SAFETY.md</a> lists what it misses, such as a script the model writes and then runs.</p>
-<hr>
-<h2 id="eleven-themes">Eleven themes</h2>
-<p>Eleven built-in themes, switchable from Settings. Themes style CloseNI&#39;s own chrome and never touch a project built with it.</p>
-<div align="center"><img src="assets/themes-strip.svg" alt="Eleven CloseNI themes, each shown as a miniature of the interface, cycling one at a time" width="100%"></div><table>
+<p><strong>Settings</strong> covers the provider and sign-in, autonomy, skills and personas, and appearance. Sign-in happens in a real browser window, and the profile persists.</p>
+<img src="screenshots/settings.png" alt="The Settings panel, Appearance tab, showing all eleven theme swatches" width="100%"><h2 id="eleven-themes">Eleven themes</h2>
+<div align="center">
+<img src="assets/themes-strip.svg" alt="The eleven themes side by side" width="100%">
+</div><table>
 <thead>
 <tr>
-<th>Theme</th>
-<th>Character</th>
-<th>Theme</th>
-<th>Character</th>
+<th></th>
+<th></th>
+<th></th>
 </tr>
 </thead>
 <tbody><tr>
-<td><strong>Terminal</strong></td>
-<td>The default. A terminal coding agent&#39;s look: monospace, near-black, monochrome.</td>
-<td><strong>Cassette · Miami</strong></td>
-<td>Sunset gradient, high saturation.</td>
+<td><img src="screenshots/theme-paper.png" alt="Paper theme, full light mode"></td>
+<td><img src="screenshots/theme-phosphor.png" alt="Phosphor theme, green CRT with scanlines"></td>
+<td><img src="screenshots/theme-cassette.png" alt="Cassette theme, retro-futurist palette"></td>
 </tr>
 <tr>
 <td><strong>Paper</strong></td>
-<td>Full light mode, not a dark theme with the lights up.</td>
-<td><strong>Cassette · Grid</strong></td>
-<td>Flat retro, no texture.</td>
-</tr>
-<tr>
 <td><strong>Phosphor</strong></td>
-<td>Green CRT, with scanlines.</td>
-<td><strong>Blueprint</strong></td>
-<td>Drafting blue on a grid.</td>
-</tr>
-<tr>
-<td><strong>Amber</strong></td>
-<td>Amber CRT, with scanlines.</td>
-<td><strong>High contrast</strong></td>
-<td>Maximum legibility, no decoration.</td>
-</tr>
-<tr>
-<td><strong>Cassette · Indigo</strong></td>
-<td>Retro-futurist indigo and magenta.</td>
-<td><strong>Midnight</strong></td>
-<td>Near-black, low chroma.</td>
-</tr>
-<tr>
-<td><strong>Pixel</strong></td>
-<td>This README as a theme: GitHub-dark, pixel wordmark, starfield.</td>
-<td></td>
-<td></td>
+<td><strong>Cassette</strong></td>
 </tr>
 </tbody></table>
-<table>
-<tr>
-<td width="33%"><img src="screenshots/theme-paper.png" alt="Paper theme, full light mode"><br><div align="center"><sub><b>Paper</b></sub></div></td>
-<td width="33%"><img src="screenshots/theme-phosphor.png" alt="Phosphor theme, green CRT with scanlines"><br><div align="center"><sub><b>Phosphor</b></sub></div></td>
-<td width="33%"><img src="screenshots/theme-cassette.png" alt="Cassette theme, retro-futurist palette"><br><div align="center"><sub><b>Cassette</b></sub></div></td>
-</tr>
-</table><p>Two lints keep this honest, as tests rather than conventions:</p>
+<p>Themes style CloseNI itself and never touch a project built with it.</p>
+<h2 id="architecture">Architecture</h2>
+<div align="center">
+<img src="assets/architecture.svg" alt="Architecture: the native app spawns the local agent, which drives Chromium, writes to the workspace, and has the src/web layer beside it for research and live tests" width="100%">
+</div><ul>
+<li><strong><code>native/</code></strong> is the app: QML for the window, C++ services for the agent and run processes, git, GitHub, files and the keyring. Pure logic (scheduling, themes, diffs, entry points) is plain ES modules in <code>native/qml/js/</code>, loaded by QML and unit-tested by Node. See <a href="https://github.com/siddarth1872004/CloseNI/blob/main/native/ARCHITECTURE.md">native/ARCHITECTURE.md</a>.</li>
+<li><strong><code>local-agent/</code></strong> is the TypeScript core: page control per provider, reply parsing, contained file writes, check planning and the command policy.</li>
+<li><strong><code>local-agent/src/web/</code></strong> is a newer browser layer with research and cited sources. It passes against fixture pages and is not yet used by builds.</li>
+</ul>
+<h2 id="safety">Safety</h2>
 <ul>
-<li>One rejects any colour literal outside a theme block.</li>
-<li>The other requires every theme to redefine the whole palette.</li>
+<li><strong>Commands that can do damage always ask</strong>: <code>sudo</code>, package managers, recursive deletes in any spelling, <code>curl … | sh</code>, <code>git push --force</code>, <code>git reset --hard</code> and more. &quot;Don&#39;t ask again&quot; is never offered for them.</li>
+<li><strong>Writes stay in the workspace.</strong> A path that escapes it is refused, symlinks included, nothing inside <code>.git</code> is written, and overwrites are backed up.</li>
+<li><strong>Secret files ask first</strong> in every mode, because whatever the agent reads is typed into a chat site.</li>
+<li><strong>Git never goes through a shell</strong>, and the GitHub token is kept in the OS keyring and redacted from every log.</li>
 </ul>
-<p>Pixel-art motion appears throughout the app, driven by <code>steps()</code> timing so the animation lands on discrete frames. Every animation in this README follows the same rule: it is generated by <a href="https://github.com/siddarth1872004/CloseNI/blob/main/scripts/make-svg-assets.mjs"><code>scripts/make-svg-assets.mjs</code></a>, stays on the pixel grid, and moves in discrete steps.</p>
-<hr>
-<h2 id="tests-and-verification">Tests and verification</h2>
-<pre><code class="language-mermaid">flowchart LR
-    subgraph unit[&quot;npm test · no browser&quot;]
-        U1[&quot;1902 unit tests&lt;br/&gt;including the web layer&#39;s pure logic&quot;]
-    end
-    subgraph browser[&quot;real Chromium&quot;]
-        E2E[&quot;npm run test:e2e&lt;br/&gt;192 tests against a mock chat site&quot;]
-        WEB[&quot;npm run test:web&lt;br/&gt;206 checks against provider-shaped fixtures&quot;]
-    end
-    subgraph live[&quot;live sites&quot;]
-        WT[&quot;npm run webtest&lt;br/&gt;identical scenarios, your signed-in profile&quot;]
-    end
-    subgraph meta[&quot;claims vs code&quot;]
-        VF[&quot;npm run verify&quot;]
-        VV[&quot;npm run verify:site&quot;]
-        LG[&quot;npm run languages&quot;]
-    end
-    WEB --&gt; FR[(&quot;fixture-results.json&quot;)]
-    WT --&gt; LR[(&quot;live-results.json&quot;)]
-    FR &amp; LR --&gt; REP[&quot;npm run web:report&lt;br/&gt;docs/testing/provider-matrix.md&quot;]
-</code></pre>
-<pre><code class="language-bash">npm test                  # unit suite: no browser required
-npm run test:e2e          # end-to-end: real Chromium against a local mock provider
-npm run test:web          # the browser layer: every group below, writes fixture-results.json
-npm run test:browser      #   session manager, lifecycle, navigation, selector chains, diagnostics
-npm run test:providers    #   identical scenarios for deepseek, qwen and glm (or test:deepseek / :qwen / :glm)
-npm run test:extraction   #   normalisation units + recorded DeepSeek markup
-npm run test:research     #   fetcher, search, loop, dedupe, conflicts, links, budgets
-npm run test:chaos        #   killed browser, closed tab, removed selector, viewport, reload, malformed DOM
-npm run webtest -- all    # the same scenarios against the live sites (never signs in)
-npm run web:report        # regenerate the provider matrix from recorded results
-npm run verify            # structural checks: claims vs code, assets, release config, packaging
-npm run verify:site       # the Pages site and every pixel-art SVG, rendered in Chromium
-ctest --test-dir build-native        # the native app&#39;s C++ and QML tests
-node native/e2e-build.cjs            # the app runs a build end to end against the mock provider
-node native/tests/code-e2e.cjs       # the Code panel: a turn, a permission, the prompt&#39;s keys
-npm run languages         # every language check against the real compiler, good and broken code
-</code></pre>
-<ul>
-<li><strong>End-to-end.</strong> The end-to-end suite drives a real Chromium against a local HTTP server that imitates a chat site. Only the model&#39;s answers are faked. The page interaction, streaming detection, extraction, parsing, patch application and verification are all the production paths.</li>
-<li><strong>Browser suite.</strong> The browser suite found eleven real defects that reading the code had not, including a stream binding that reported to the wrong object and a login that appeared after send and was read as &quot;sent&quot;. They are listed in the <a href="https://github.com/siddarth1872004/CloseNI/blob/main/docs/testing/browser-test-report.md">test report</a>.</li>
-<li><strong><code>scripts/verify.mjs</code>.</strong> <a href="https://github.com/siddarth1872004/CloseNI/blob/main/scripts/verify.mjs"><code>scripts/verify.mjs</code></a> checks the things that rot silently:<ul>
-<li>the documentation still matches the code;</li>
-<li>every image and anchor in this file resolves;</li>
-<li>no SVG carries a script or an external reference;</li>
-<li>the packaged artifact contains nothing from <code>local-agent/storage/</code>.</li>
-</ul>
-</li>
-<li><strong><code>verify-site.mjs</code>.</strong> <a href="https://github.com/siddarth1872004/CloseNI/blob/main/scripts/verify-site.mjs"><code>scripts/verify-site.mjs</code></a> renders the site at desktop and phone widths and checks that every pixel-art SVG has something drawn on its first frame. The contrast of every theme&#39;s meaningful colour pairs is checked by the unit suite, from the palettes in <code>Theme.qml</code>.</li>
-</ul>
-<p>Each verification script prints, at the end, what it does <strong>not</strong> cover.</p>
-<hr>
-<h2 id="getting-started">Getting started</h2>
-<h4 id="from-source">From source</h4>
-<pre><code class="language-bash">git clone https://github.com/siddarth1872004/CloseNI.git
-cd CloseNI
-npm install
-npm run build
-
-# the browser CloseNI drives
-npx playwright install chromium
-
-# the app (Qt 6.10, CMake and Ninja)
-cmake -S native -B build-native -G Ninja
-cmake --build build-native
-
-# launch
-npm start
-</code></pre>
-<p><strong>Requirements:</strong></p>
-<ul>
-<li>Node.js 22.12 or newer.</li>
-<li>From source: Qt 6.8 or newer (CI uses 6.10), CMake 3.21+ and Ninja. The installers bundle Qt and Node.</li>
-<li>Around 650 MB of disk for the Playwright Chromium download.</li>
-<li>Windows 10+, macOS, or a Linux desktop. The GitHub token is kept in the OS keyring: DPAPI on Windows, the keychain on macOS, the Secret Service on Linux (GNOME Keyring, KWallet, KeePassXC). Without one CloseNI still runs, but asks you to sign in to GitHub each launch.</li>
-</ul>
-<h4 id="downloads">Downloads</h4>
-<p>Installers are built by CI from a version tag and attached to the <a href="https://github.com/siddarth1872004/CloseNI/releases/latest">latest release</a>: a Windows <code>.exe</code>, a Linux AppImage and a <code>.deb</code>. They are <strong>unsigned</strong>, so Windows SmartScreen will warn. The Linux AppImage has been run here; the Windows installer is built by CI and has not yet been installed on a clean machine. Treat it as unproven.</p>
-<h4 id="first-run">First run</h4>
-<pre><code class="language-mermaid">journey
-    title Your first build
-    section Set up
-      Pick a workspace folder: 5: You
-      Choose a provider, install Chromium: 4: You
-      Sign in once, in a real browser window: 4: You
-    section Build
-      Describe what you want: 5: You
-      Review and revise the plan: 5: You, CloseNI
-      Watch the steps land: 5: CloseNI
-    section Finish
-      Run it from the resolved command: 5: You, CloseNI
-      Commit and push from Ship: 5: You
-</code></pre>
-<p>A <strong>Getting started</strong> checklist above the chat walks through these steps in order, with one button for whichever step you are on. It ticks each one off from what the app can actually see, and disappears once you have sent a first message.</p>
-<h4 id="wsl">WSL</h4>
-<pre><code class="language-bash">source scripts/wsl-env.sh
-</code></pre>
-<p>This puts a Linux node first on the PATH and adds the library paths Chromium needs under WSL2.</p>
-<h4 id="reporting-a-bug">Reporting a bug</h4>
-<p><a href="https://github.com/siddarth1872004/CloseNI/issues/new/choose">Open an issue</a> with the bug report form. It asks for the provider, your OS, the version and the last 50 lines of the Console bar, which usually name the selector that failed. Check those lines for anything private before posting.</p>
-<hr>
-<h2 id="distribution-builds">Distribution builds</h2>
-<p>Releases are driven by a tag. <code>npm version 1.0.1 -m &quot;Release %s&quot;</code> followed by <code>git push --tags</code> builds the native app&#39;s installers on Windows, Linux and macOS, and attaches them to a draft release. The full process, including how to verify an artifact before publishing, is in <a href="https://github.com/siddarth1872004/CloseNI/blob/main/docs/RELEASING.md">docs/RELEASING.md</a>.</p>
+<p>The command list reads the command&#39;s text, so it is a floor, not a sandbox: a script the model writes and then runs gets past it. <a href="https://github.com/siddarth1872004/CloseNI/blob/main/docs/SAFETY.md">docs/SAFETY.md</a> lists what holds and what doesn&#39;t.</p>
+<h2 id="get-started">Get started</h2>
+<p><strong>Download</strong> the installer for your system from the <a href="https://github.com/siddarth1872004/CloseNI/releases/latest">latest release</a>:</p>
 <table>
 <thead>
 <tr>
-<th>Platform</th>
-<th>Artifact</th>
+<th>System</th>
+<th>File</th>
 </tr>
 </thead>
 <tbody><tr>
-<td>Windows x64</td>
-<td><code>CloseNI-Setup-&lt;version&gt;.exe</code> (NSIS, per user, chooses its own install directory)</td>
+<td>Windows 10+ x64</td>
+<td><code>CloseNI-Setup-&lt;version&gt;.exe</code></td>
+</tr>
+<tr>
+<td>macOS (Apple silicon, Intel)</td>
+<td><code>CloseNI-&lt;version&gt;-arm64.dmg</code>, <code>CloseNI-&lt;version&gt;-x64.dmg</code></td>
 </tr>
 <tr>
 <td>Linux x64</td>
-<td><code>CloseNI-&lt;version&gt;.AppImage</code></td>
-</tr>
-<tr>
-<td>Linux x64</td>
-<td><code>closeni_&lt;version&gt;_amd64.deb</code></td>
-</tr>
-<tr>
-<td>macOS</td>
-<td><code>CloseNI-&lt;version&gt;-arm64.dmg</code>, <code>CloseNI-&lt;version&gt;-x64.dmg</code> (unsigned)</td>
+<td><code>CloseNI-&lt;version&gt;.AppImage</code>, <code>closeni_&lt;version&gt;_amd64.deb</code></td>
 </tr>
 </tbody></table>
-<pre><code class="language-bash">npm run pack   # stage the app into dist/native/ (needs Qt 6.8+ and CMake)
-npm run dist   # and build this system&#39;s installers
+<p>They bundle Qt, Node and the agent. Chromium (about 650 MB) is downloaded on first run. They are unsigned: on macOS, allow the app under System Settings → Privacy &amp; Security the first time it is blocked.</p>
+<p><strong>From source</strong> (Node 22.12+, Qt 6.8+, CMake 3.21+ and Ninja):</p>
+<pre><code class="language-bash">git clone https://github.com/siddarth1872004/CloseNI.git &amp;&amp; cd CloseNI
+npm install &amp;&amp; npm run build
+npx playwright install chromium
+cmake -S native -B build-native -G Ninja &amp;&amp; cmake --build build-native
+npm start
 </code></pre>
-<p>The stager copies only <code>local-agent/dist</code>, its config and the packages the agent requires at run time, and <code>npm run verify</code> audits the staged app, so <code>local-agent/storage/</code> (live session cookies and private chat URLs) cannot reach a shipped artifact.</p>
-<hr>
-<h2 id="directory-tree">Directory tree</h2>
-<pre><code>native/             the app: Qt 6 and QML, no web view
-  src/                C++ services: agent and run processes, git, GitHub, files, builds, keyring
-  qml/                the window: panels, components, the shell, state and theme singletons
-  qml/js/             pure logic as ES modules shared with Node: scheduler, themes, diffs, entry points
-  package/            staging and the installers: NSIS, AppImage, .deb, dmg
-  tests/              Qt tests and the end-to-end flows
-bin/closeni.js      headless builds, on the app&#39;s own scheduler
-
-local-agent/        the TypeScript core
-  src/providers/      PlaywrightController, per-provider page control, the shared stream tap
-  src/verification/   check planning and command policy
-  src/web/            the browser-native layer
-    browser/            session manager, navigation, diagnostics
-    selectors/          fallback chains with diagnosis
-    semantic/           DOM snapshot, tolerant HTML parser, typed blocks
-    response/           Raw → DOM → Semantic → Normalized → Structured
-    providers/          AIWebProvider, UI state, completion, DeepSeek / Qwen / GLM adapters
-    research/           planner, search, fetcher, page model, evidence, conflicts, context, agent
-  config/providers/   one JSON file per provider, read at runtime
-  test/               unit, end-to-end and browser suites, plus the fixture web
-
-shared/             shared type definitions and schemas
-build/              brand assets and icons
-docs/               architecture, audit, testing results, plans, screenshots, the site
-scripts/            verification, asset generation, release and environment helpers
+<p><strong>First run.</strong> Pick a project folder, choose a provider, install Chromium and sign in once in the browser window. A checklist above the chat walks through it.</p>
+<p>The GitHub token is kept in the OS keyring: DPAPI on Windows, the keychain on macOS, the Secret Service on Linux. Without a keyring CloseNI still runs, but asks you to sign in to GitHub each launch.</p>
+<h2 id="development">Development</h2>
+<pre><code class="language-bash">npm test                        # unit suite, no browser
+npm run test:e2e                # real Chromium against a mock chat site
+npm run test:web                # the browser layer against provider-shaped fixtures
+ctest --test-dir build-native   # the native app&#39;s C++ and QML tests
+npm run verify                  # the docs, assets and packaging still match the code
+npm run dist                    # stage the app and build this system&#39;s installers
 </code></pre>
-<hr>
-<div align="center"><img src="assets/divider.svg" alt="" width="100%"></div><h2 id="current-limitations">Current limitations</h2>
-<p>Stated plainly, because a README that only lists strengths is not useful.</p>
+<p>Releases are built by CI from a version tag; see <a href="https://github.com/siddarth1872004/CloseNI/blob/main/docs/RELEASING.md">docs/RELEASING.md</a>. Report bugs with the <a href="https://github.com/siddarth1872004/CloseNI/issues/new/choose">issue form</a>, including the last lines of the Console drawer.</p>
+<h2 id="limitations">Limitations</h2>
 <ul>
-<li><strong>The coding agent is proven on short DeepSeek sessions only.</strong> It has run live on DeepSeek, including nested-fence writes, dropped replies and broken fences. Whether DeepSeek follows the tool-block convention reliably over a long session is still to be measured.</li>
-<li><strong>One provider is proven.</strong> DeepSeek is driven end to end. Qwen Studio and GLM can be selected but are experimental and unconfirmed against their live sites. See <a href="#providers">providers</a>.</li>
-<li><strong>The browser-native layer has never met a live site.</strong> It passes every fixture scenario, but every live row so far is <code>BLOCKED</code> by the development machine&#39;s network, and builds still use the older controller.</li>
-<li><strong>Chat sites change.</strong> Provider control is per-site page automation. A redesign can break extraction until the selectors are updated, which is a JSON edit, not a code change.</li>
-<li><strong>Verification is syntax and compilation, not correctness.</strong> A project can pass every check and still be wrong.</li>
-<li><strong>The installers are unsigned and early.</strong> Windows SmartScreen will warn, and the Windows installer has not been installed on a clean machine.</li>
-<li><strong>Plans do not always parse.</strong> The reply is re-asked once and reported honestly if that fails, but it remains a live limitation.</li>
-<li><strong>Installers are unsigned.</strong> SmartScreen and Gatekeeper will say so, and that warning is accurate.</li>
-<li><strong>Only the Linux artifacts have been verified.</strong> The first <code>.exe</code> the release workflow produces is unverified until someone installs it.</li>
-<li><strong>Large projects are not proven at scale.</strong> Builds of a few dozen steps behave well. Beyond that is untested.</li>
-<li><strong>Terms of service are your responsibility.</strong> Automating a web interface may conflict with a provider&#39;s terms. Check before pointing this at an account you care about.</li>
+<li><strong>One provider is proven.</strong> Qwen Studio and GLM are experimental, and chat sites change: a redesign can break page control until the selectors are updated.</li>
+<li><strong>Checks prove it compiles, not that it is right.</strong> A project can pass every check and still be wrong.</li>
+<li><strong>Large projects are untested.</strong> Builds of a few dozen steps behave well; beyond that is unknown.</li>
+<li><strong>The installers are unsigned</strong>, and the browser layer in <code>local-agent/src/web/</code> has not yet run against the live sites. See the <a href="https://github.com/siddarth1872004/CloseNI/blob/main/docs/ROADMAP.md">roadmap</a>.</li>
+<li><strong>Terms of service are your responsibility.</strong> Automating a web interface may conflict with a provider&#39;s terms.</li>
 </ul>
-<hr>
 <h2 id="license">License</h2>
-<p>MIT. See <a href="https://github.com/siddarth1872004/CloseNI/blob/main/LICENSE">LICENSE</a>. Copyright (c) 2026 Siddarth S.</p>
-<p>Packaged builds bundle Qt (LGPL-3.0), Node.js and Playwright, each under its own licence, with Node&#39;s and Playwright&#39;s licence files beside them. The Chromium that Playwright drives is downloaded at first run, not bundled.</p>
-<div align="center">
-<sub>Every animation above is pixel art generated by a script. No GIFs and no JavaScript, and every one of them loops forever.</sub>
-</div>
+<p>MIT. See <a href="https://github.com/siddarth1872004/CloseNI/blob/main/LICENSE">LICENSE</a>. Packaged builds bundle Qt (LGPL-3.0), Node.js and Playwright, each under its own licence. Chromium is downloaded at first run, not bundled.</p>
 </article></main>
 </body>
 </html>

@@ -4,7 +4,7 @@ import CloseNI
 import "../js/theme.mjs" as T
 
 /*
- * Every token desktop/styles.css held: the structural scale, the eleven
+ * Every design token: the structural scale, the eleven
  * palettes, the fonts and the decoration. Switched at run time with
  * setTheme / setDecor and remembered under the same keys theme.js used
  * (closeni.theme, closeni.theme.decor).

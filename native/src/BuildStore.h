@@ -9,7 +9,6 @@
 /*
  * A build's plan, step statuses, checkpoints and manifest in the workspace.
  *
- * Ports desktop/main/build.js. Owner: data-backend.
  * Asynchronous methods reply once through their callback (src/Js.h).
  */
 class BuildStore : public QObject

@@ -4,12 +4,11 @@ import QtQuick.Layouts
 import CloseNI
 
 /*
- * The run console (desktop/run.html and main/run-window.js): the program a
+ * The run console: the program a
  * build produced, running in a window of its own, with its live output, an
  * input line to its stdin, how it ended, and Restart, Stop and Fix errors.
  *
- * Electron loaded a web server's page in a <webview> above its log. There is
- * no web view here at all: when the output announces a local address, "Open in
+ * There is no web view: when the output announces a local address, "Open in
  * browser" hands it to the system browser (Runner has already turned 0.0.0.0
  * into localhost), and the Build panel offers the same address.
  *
@@ -55,7 +54,7 @@ ApplicationWindow {
     // The workspace's files, for the preview's static-page rule.
     property var files: []
 
-    // The console. Electron's <pre> grew without limit; this keeps the last
+    // The console. Bounded: this keeps the last
     // maxLines lines, each a row of one ListView, so a chatty program costs
     // the rows on screen rather than one ever-growing text layout.
     readonly property int maxLines: 10000
@@ -72,8 +71,8 @@ ApplicationWindow {
         title = req.title || "Run"
         // Already open: bring it forward (run-window.js focused the old one).
         var reused = visible
-        // Electron opened it full screen; a program with its own window would
-        // be covered, so that one starts windowed.
+        // Full screen, except a program with its own window, which would be
+        // covered, so that one starts windowed.
         setFull(!gui)
         if (reused) raise()
         requestActivate()

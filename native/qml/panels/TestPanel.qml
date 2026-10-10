@@ -5,10 +5,10 @@ import CloseNI
 import "../js/language-mark.mjs" as Lang
 
 /*
- * #panel-test, from desktop/renderer/test.js: the run bar, the output column
+ * The Test panel: the run bar, the output column
  * with its history, and the chat about the last run. The state is in
  * ShipStore, so leaving the panel loses nothing; opening it re-reads the run
- * bar, because the manifest on disk may have changed (Electron's switchTab).
+ * bar, because the manifest on disk may have changed.
  */
 ColumnLayout {
     id: panel
@@ -114,7 +114,7 @@ ColumnLayout {
                 Layout.fillWidth: true
                 placeholderText: "no run command yet - type one, or build a project"
                 text: ShipStore.runCommand
-                // Electron's "change": saved when the edit is done, not per key.
+                // Saved when the edit is done, not per key.
                 onEditingFinished: ShipStore.saveRunCommand(text)
                 onAccepted: ShipStore.run(text)
             }
@@ -170,6 +170,7 @@ ColumnLayout {
                     // #test-results: at most 340px, scrolling inside.
                     ListView {
                         id: results
+                        cacheBuffer: 0   // no async look-ahead in a Loader: ARCHITECTURE.md, Panels
                         objectName: "testResults"
                         Layout.fillWidth: true
                         Layout.preferredHeight: Math.min(contentHeight, 340)
@@ -253,6 +254,7 @@ ColumnLayout {
             Micro { text: "Ask about this run" }
             ListView {
                 id: flow
+                cacheBuffer: 0   // no async look-ahead in a Loader: ARCHITECTURE.md, Panels
                 objectName: "testChat"
                 Layout.fillWidth: true
                 Layout.fillHeight: true

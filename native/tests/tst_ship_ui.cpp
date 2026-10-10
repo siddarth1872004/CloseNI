@@ -157,8 +157,8 @@ void TestShipUi::flow()
     CHECK(dispatched);
     CHECK(searched);
 
-    // What reached git: the export branch, the commit, the push. As in
-    // Electron (git.js), the export leaves the project on its new branch, so
+    // What reached git: the export branch, the commit, the push. The export
+    // leaves the project on its new branch, so
     // the later "commit all" lands on top of the replayed steps.
     const QString branches = runGit(ws, {"branch", "--list", "closeni/*"});
     CHECK2(branches.contains("closeni/"), branches);

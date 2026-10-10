@@ -5,15 +5,14 @@ import CloseNI
 import "../js/language-mark.mjs" as Lang
 
 /*
- * Build (#panel-build in index.html, builder.js): the plan's steps on the left,
+ * Build: the plan's steps on the left,
  * the selected step's detail on the right - its timing, what it was asked to
  * do, its error, and every file it wrote as a diff against what was there.
  *
  * The build itself runs in BuildState, so leaving this panel mid-build loses
  * nothing: it keeps going, and coming back shows where it is.
  *
- * Electron previewed a frontend in a web view beside the steps. There is no
- * web view here: "Open in browser" hands the detected address to the system
+ * There is no web view: "Open in browser" hands the detected address to the system
  * browser, and "Run" starts the project in the run console.
  */
 Item {
@@ -152,6 +151,7 @@ Item {
                     Micro { text: "Steps" }
                     ListView {
                         id: stepList
+                        cacheBuffer: 0   // no async look-ahead in a Loader: ARCHITECTURE.md, Panels
                         objectName: "buildSteps"
                         Layout.fillWidth: true
                         Layout.fillHeight: true
@@ -180,6 +180,9 @@ Item {
                             border.width: 1
                             border.color: active ? (Theme.isPixel ? Theme.pxG2 : Theme.txt)
                                         : hover.hovered ? Theme.lineStrong : Theme.line
+                            // .step-card's transition: .12s on its edge and ground.
+                            Behavior on color { enabled: !App.reducedMotion; ColorAnimation { duration: 120 } }
+                            Behavior on border.color { enabled: !App.reducedMotion; ColorAnimation { duration: 120 } }
                             activeFocusOnTab: true
                             Keys.onReturnPressed: BuildState.selectStep(index)
                             Keys.onSpacePressed: BuildState.selectStep(index)
@@ -341,6 +344,7 @@ Item {
                     // so a thousand-line diff makes only the rows on screen.
                     ListView {
                         id: detail
+                        cacheBuffer: 0   // no async look-ahead in a Loader: ARCHITECTURE.md, Panels
                         objectName: "stepDetail"
                         Layout.fillWidth: true
                         Layout.fillHeight: true

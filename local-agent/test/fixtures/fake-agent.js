@@ -3,8 +3,8 @@
  *
  * Lets the headless CLI - and therefore the whole scheduling, resume,
  * checkpoint and timing path - be run end to end in a test. That path had no
- * coverage of any kind before this existed: it lived in the renderer, so
- * exercising it needed Electron, a provider and an account.
+ * coverage of any kind before this existed: it lived in the app, so
+ * exercising it needed the window, a provider and an account.
  *
  * FAKE_FAIL_STEPS is a comma-separated list of zero-based step indices to fail.
  */

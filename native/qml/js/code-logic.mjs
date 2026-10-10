@@ -1,10 +1,8 @@
 /*
  * The Code panel's decisions, without the panel.
  *
- * Extracted from desktop/code.js (deleted with Electron in 0.4.0).
- * code-view.mjs already held the panel's vocabulary
- * (commands, modes, tool titles); this holds the rest of what code.js worked
- * out inline: diff line numbers, the mode strip's text, the notes a turn ends
+ * code-view.mjs holds the panel's vocabulary (commands, modes, tool titles);
+ * this holds the rest: diff line numbers, the mode strip's text, the notes a turn ends
  * with, and how a typed line is routed. Everything here is pure; the session,
  * timers and drawing stay with the Code panel.
  */

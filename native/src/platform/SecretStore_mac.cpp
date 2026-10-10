@@ -1,9 +1,7 @@
 /*
  * The secret store on macOS: a generic password in the login keychain,
  * through the Security framework's C API (no Objective-C).
- *
- * Electron's safeStorage kept its key in the keychain too, under the app's
- * name; this item is separate ("CloseNI" service, one account per secret).
+ * One item per secret, under the "CloseNI" service.
  */
 #include "SecretStore.h"
 

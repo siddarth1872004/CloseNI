@@ -11,9 +11,8 @@ import "../js/preview-target.mjs" as Preview
 import "../js/renderer-logic.mjs" as R
 
 /*
- * The build: desktop/builder.js, plus the agent calls window.CN made for it
- * in desktop/renderer/startup.js (runAgent, suggest, startSession, sendStep,
- * endSession) and buildPreamble from renderer/skills.js.
+ * The build, and the agent calls it makes (runAgent, suggest, startSession,
+ * sendStep, endSession).
  *
  * A singleton rather than the Build panel's own state: the panel exists only
  * while it is open, and a build carries on while the user reads the chat or
@@ -21,7 +20,7 @@ import "../js/renderer-logic.mjs" as R
  *
  * QML has no async/await, so the build loop is a promise chain, and the
  * scheduler is pumped by events - a step settling, Resume, Skip, Stop -
- * rather than by Electron's sleep loop. Nothing here ticks while idle: the
+ * rather than by a sleep loop. Nothing here ticks while idle: the
  * two timers are single-shot and start only when something needs them.
  */
 QtObject {
@@ -63,9 +62,8 @@ QtObject {
     }
 
     property bool suggesting: false
-    // The frontend preview: { url, kind, ws } or null. Electron showed it in a
-    // web view; the native app has none, so the Build panel offers it as
-    // "Open in browser".
+    // The frontend preview: { url, kind, ws } or null. There is no web view,
+    // so the Build panel offers it as "Open in browser".
     property var preview: null
 
     property var _stepTimer: null
@@ -97,7 +95,7 @@ QtObject {
     // scattering the assumption.
     function concurrency() { return 1 }
 
-    // ---- The agent calls (window.CN in startup.js) --------------------------
+    // ---- The agent calls -----------------------------------------------------
     /**
      * Everything the model should be told before the task, for this run.
      *
@@ -806,19 +804,18 @@ QtObject {
      * Only offered when there is genuinely something to show - a button that
      * opens nothing is worse than no button. Called after a run, since that is
      * where the server output arrives: by the run console, and by the Test
-     * panel (Electron's CNBuilderPreview.update).
+     * panel.
      */
     function updatePreview(runOutput, ws, files) {
         var target = Preview.previewTarget(runOutput || "", files || [])
-        // A server listening on 0.0.0.0 is reached at localhost: Electron's web
-        // view coped with either, but a system browser on Windows does not.
+        // A server listening on 0.0.0.0 is reached at localhost: a system
+        // browser on Windows cannot open 0.0.0.0.
         // Runner hands the run console the same address.
         var url = target ? (target.kind === "server" ? target.url.replace("0.0.0.0", "localhost") : target.url) : ""
         preview = target ? { url: url, kind: target.kind, ws: ws || AppState.workspace || "" } : null
     }
     /*
-     * Electron showed the page in a sandboxed web view. There is no web view
-     * here at all: a server's address goes to the system browser, and a static
+     * There is no web view: a server's address goes to the system browser, and a static
      * page is opened as the file it is (openExternal only takes http, https and
      * mailto, so a file goes through openPath).
      */

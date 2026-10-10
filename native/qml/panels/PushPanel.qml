@@ -4,11 +4,9 @@ import QtQuick.Layouts
 import CloseNI
 
 /*
- * #panel-push (SHIP), from desktop/renderer/ship.js and the export-branch
- * handler in desktop/renderer/plan.js: the GitHub account, the plain git
+ * The Ship panel: the GitHub account, the plain git
  * buttons, exporting the build to a branch, and GitHub Actions. ShipStore holds
- * the state; opening the panel re-reads the account and its repositories,
- * as Electron's switchTab did.
+ * the state; opening the panel re-reads the account and its repositories.
  */
 ScrollArea {
     id: panel
@@ -121,7 +119,6 @@ ScrollArea {
                         }
                     }
                     Hint { Layout.fillWidth: true; Layout.topMargin: Theme.sp2; text: ShipStore.ghStorageNote }
-                    Hint { Layout.fillWidth: true; Layout.topMargin: Theme.sp2; visible: text !== ""; text: ShipStore.ghLegacyNote; color: Theme.warn }
                 }
 
                 // #gh-signed-in

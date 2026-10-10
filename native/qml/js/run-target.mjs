@@ -1,9 +1,7 @@
 /*
  * What "Run this project" actually starts, and what the agent is asked when it fails.
  *
- * Ported from desktop/run-target.js: an ES module imported by the QML app
- * and by the test harness. desktop/ was deleted with Electron in 0.4.0, so
- * this is the only copy.
+ * An ES module imported by the QML app and by the test harness.
  */
 /**
  * The project's own interpreter, when it has one. The agent installs into a

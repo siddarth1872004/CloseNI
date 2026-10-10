@@ -5,6 +5,8 @@ export interface ChatRef {
   url: string;
   title: string;
   createdAt: string;
+  /** The provider the thread lives on; absent in older lists. */
+  provider?: string;
 }
 
 export interface LedgerEntry {

@@ -5,8 +5,8 @@
 //   docs/readme.html  the README, rendered the way GitHub renders it
 //
 // A hand-written site drifted from the README for months, so neither page
-// carries a fact of its own. The landing page takes its numbers from the
-// README's stats image and its version from package.json, the documentation
+// carries a fact of its own. The landing page takes its version from
+// package.json, the documentation
 // page is the README itself, and scripts/verify.mjs fails when either is older
 // than its source.
 //

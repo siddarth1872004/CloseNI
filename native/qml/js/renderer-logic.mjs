@@ -1,10 +1,7 @@
 /*
  * The renderer's decisions, without the renderer.
  *
- * Extracted from desktop/renderer/*.js (deleted with Electron in 0.4.0).
- * Those files shared one global scope and read state (the
- * workspace, the provider, the plan) from it; here that state comes in as
- * arguments, and saved values come in as the strings Prefs holds rather than
+ * State (the workspace, the provider, the plan) comes in as arguments, and saved values come in as the strings Prefs holds rather than
  * being read from localStorage. Everything here is pure.
  */
 import * as Controls from "./controls-settings.mjs";
@@ -79,8 +76,8 @@ function renderTextPart(t) {
 }
 /**
  * The renderer's small markdown: fenced code, headings, lists, paragraphs,
- * inline code, bold and italic, as HTML. The class names are the Electron
- * stylesheet's; a QML Text in RichText mode ignores them.
+ * inline code, bold and italic, as HTML. A QML Text in RichText mode ignores
+ * the class names.
  */
 function renderMarkdown(md) {
   var re = /```\w*\n?([\s\S]*?)```/g;
@@ -167,6 +164,14 @@ function accountFromStatus(r) {
  * screen during screen shares and lands in screenshots, and the full link
  * carries a live session.
  */
+// The agent's describeThread (session-store.ts): a thread's url, short.
+function describeThread(url) {
+  var u = String(url || "").trim();
+  if (!u) return "";
+  var tail = u.split("/").filter(Boolean).pop() || "";
+  return tail.length > 8 ? "\u2026" + tail.slice(-8) : tail || "thread";
+}
+
 function threadLabel(thread) {
   return thread && thread.url ? "thread " + thread.label : "";
 }
@@ -239,6 +244,30 @@ function saveControl(savedRaw, id, value) {
 
 function chatTitle(chat, i) {
   return chat.title || ("Chat " + (i + 1));
+}
+
+// When a chat was started, short: the time today, the day this year, else
+// the date. `now` is for the tests.
+function shortWhen(iso, now) {
+  var d = new Date(iso || "");
+  if (isNaN(d.getTime())) return "";
+  var n = now ? new Date(now) : new Date();
+  var pad = function (x) { return (x < 10 ? "0" : "") + x; };
+  if (d.toDateString() === n.toDateString()) return pad(d.getHours()) + ":" + pad(d.getMinutes());
+  var months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  if (d.getFullYear() === n.getFullYear()) return months[d.getMonth()] + " " + d.getDate();
+  return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
+}
+
+// A new chat's name, from its first message: the first line, cut at a word
+// near 48 characters.
+function chatName(text) {
+  var line = String(text || "").split("\n").map(function (l) { return l.trim(); }).filter(Boolean)[0] || "";
+  line = line.replace(/\s+/g, " ");
+  if (line.length <= 48) return line;
+  var cut = line.slice(0, 48);
+  var sp = cut.lastIndexOf(" ");
+  return (sp > 24 ? cut.slice(0, sp) : cut).replace(/[\s.,;:!?-]+$/, "") + "\u2026";
 }
 
 // ------------------------------------------------------------------ plan.js
@@ -517,8 +546,7 @@ var AUTONOMY_OPTIONS = [
 ];
 
 /**
- * The saved permission policy, or "ask". A value the select does not offer
- * left it blank in Electron, and getAutonomy read a blank select as "ask".
+ * The saved permission policy, or "ask" for a value the picker does not offer.
  */
 function resolveAutonomy(saved) {
   return AUTONOMY_OPTIONS.some(function (o) { return o.value === saved; }) ? saved : "ask";
@@ -546,6 +574,9 @@ export {
   desiredControls,
   saveControl,
   chatTitle,
+  chatName,
+  describeThread,
+  shortWhen,
   tryExtractPlan,
   applyPlanEdit,
   planScaleText,

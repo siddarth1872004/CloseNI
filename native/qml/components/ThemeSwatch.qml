@@ -31,8 +31,14 @@ AbstractButton {
     onClicked: Theme.setTheme(theme.id)
 
     // Hovering steps up rather than glides, so the picker feels like the rest
-    // of the app.
-    transform: Translate { y: control.down ? 1 : (control.hovered ? -2 : 0) }
+    // of the app: two steps over .08s, and a press lands in two over .06s.
+    PixMotion {
+        id: lift
+        frames: 2
+        duration: control.down ? 60 : 80
+        target: control.down ? 1 : (control.hovered ? -2 : 0)
+    }
+    transform: Translate { y: lift.value }
 
     contentItem: Row {
         spacing: Theme.sp3

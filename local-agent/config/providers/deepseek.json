@@ -19,7 +19,12 @@
     "_copyButtonNote": "Matches the code-block toolbar buttons; the caller filters by the label so Download is not clicked. .code-info-button-text is the only unhashed class on that control - the rest (ds-button--capsule etc.) are design-system modifiers and the surrounding path is entirely build hashes.",
     "_assistantNote": "ds-markdown first: it is the container DeepSeek renders assistant content into. The previous value led with [data-testid] and [class*=message][class*=assistant], which matched three nodes that never update while a reply streams - a build step sat at messages=3, chars=9019 for the full 300s wait because the node being watched was the PREVIOUS answer.",
     "streamUrlPattern": "/api/v0/chat/(completion|resume_stream)",
-    "_streamNote": "MEASURED on 11 August 2026 by instrumenting a real reply: DeepSeek streams its answer over POST /api/v0/chat/completion with content-type text/event-stream. Exact rather than a loose pattern on purpose - the earlier guess also matched chat_session/create, and a short request that opened AND closed before the reply began would have satisfied 'all streams closed' and ended the wait early. The reply is never read from this; only its start and end are used. resume_stream MEASURED 8 October 2026: when the completion stream ends without its close event, the page itself POSTs /api/v0/chat/resume_stream at once and carries on the reply over it (application/json when the server has already finished, otherwise the rest of the reply). Unwatched, that looked like a closed stream: the wait could read a reply before the resume finished it, or call a reply dropped and send the prompt a second time while the page was still fetching it."
+    "_streamNote": "MEASURED on 11 August 2026 by instrumenting a real reply: DeepSeek streams its answer over POST /api/v0/chat/completion with content-type text/event-stream. Exact rather than a loose pattern on purpose - the earlier guess also matched chat_session/create, and a short request that opened AND closed before the reply began would have satisfied 'all streams closed' and ended the wait early. The reply is never read from this; only its start and end are used. resume_stream MEASURED 8 October 2026: when the completion stream ends without its close event, the page itself POSTs /api/v0/chat/resume_stream at once and carries on the reply over it (application/json when the server has already finished, otherwise the rest of the reply). Unwatched, that looked like a closed stream: the wait could read a reply before the resume finished it, or call a reply dropped and send the prompt a second time while the page was still fetching it.",
+    "replySignals": {
+      "status": "\"p\":\"response/status\",\"o\":\"SET\",\"v\":\"([A-Z_]+)\"",
+      "notice": "event: (?:hint|toast)\\r?\\ndata: (\\{[^\\n]*\\})"
+    },
+    "_replySignalsNote": "MEASURED 9 October 2026 from a captured /api/v0/chat/completion body. A reply ends with data: {\"p\":\"response/status\",\"o\":\"SET\",\"v\":\"FINISHED\"}; the statuses in DeepSeek's bundle are FINISHED, WIP, INCOMPLETE, CONTENT_FILTER, CONTEXT_LENGTH_EXCEEDED and TIMEOUT. Errors that replace a reply arrive as `event: hint` or `event: toast` with data {type, content, ...} inside a 200 stream. Inside the reply's own text these quotes are escaped, so the patterns cannot match what the model wrote. Read only once the stream has ended."
   },
   "completionRules": {
     "waitForStopButtonDisappear": false,
@@ -53,5 +58,43 @@
   "_thinkingHeaderTextNote": "Matched against the header span's whole text, case-insensitively. \"Thinking\" while the model reasons, then \"Thought for N seconds\" once it ends - both seen live 8 October 2026. An English-language UI is assumed, as deepThinkingText already does.",
   "profileDir": "local-agent/storage/browser-profiles/deepseek",
   "contextBudgetChars": 150000,
-  "_contextBudgetNote": "Roughly how much conversation this provider will hold before a build should continue in a new thread, in characters. A deliberately conservative guess - nothing can read the real window, and being wrong in this direction costs one seeded prompt while being wrong the other way loses a step fifteen deep. Counted from what we send and the replies we receive, never from the page."
+  "_contextBudgetNote": "Roughly how much conversation this provider will hold before a build should continue in a new thread, in characters. A deliberately conservative guess - nothing can read the real window, and being wrong in this direction costs one seeded prompt while being wrong the other way loses a step fifteen deep. Counted from what we send and the replies we receive, never from the page.",
+  "replyErrors": {
+    "statuses": {
+      "INCOMPLETE": "busy",
+      "TIMEOUT": "busy",
+      "CONTEXT_LENGTH_EXCEEDED": "full",
+      "CONTENT_FILTER": "refused"
+    },
+    "texts": [
+      {
+        "kind": "rate-limit",
+        "match": "too frequent|rate limit|Too many concurrent|请求频率过高|并发请求过多"
+      },
+      {
+        "kind": "too-long",
+        "match": "message you sent is too long"
+      },
+      {
+        "kind": "full",
+        "match": "Length limit exceeded|内容比较长"
+      },
+      {
+        "kind": "busy",
+        "match": "Server busy|服务器繁忙|temporarily unavailable|服务器暂时不可用|Service error|当前服务异常|Network error|网络异常|Check your internet connection|Send failed|消息未能发送"
+      }
+    ],
+    "notice": ".ds-virtual-list-visible-items > *",
+    "noticeExclude": ".ds-message, .ds-markdown, .ds-think-content",
+    "signedOutUrl": "/(sign_in|login)([/?#]|$)",
+    "retryBackoffMs": [
+      5000,
+      20000,
+      60000
+    ],
+    "rateLimitBackoffMs": [
+      60000
+    ]
+  },
+  "_replyErrorsNote": "What DeepSeek shows instead of a reply, MEASURED 9 October 2026 by injecting each fault into a real page (scripts/deepseek-faults.mjs). The texts are DeepSeek's own strings from its bundle (main.3c07bbc8f6.js), English and Chinese. A busy, server-error or rate-limit reply is a row in .ds-virtual-list-visible-items with no .ds-message, so the message count never moves; a reply cut short by a busy server keeps its partial .ds-markdown and adds a bar with the notice and a Continue button beside it. CONTEXT_LENGTH_EXCEEDED shows nothing but the partial answer, so it is read from the stream. Signed out (an invalid token, code 40003), the page goes to /sign_in. Busy is sent again after 5s, 20s and 60s, a rate limit once after 60s; a full conversation rolls over, and signed out stops with a 'sign in again' message."
 }

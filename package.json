@@ -1,7 +1,7 @@
 {
   "name": "closeni",
   "productName": "CloseNI",
-  "version": "0.4.0",
+  "version": "0.1",
   "private": true,
   "description": "A desktop agent that drives web-based AI chats through a real browser to plan, build and verify software projects. No API keys.",
   "license": "MIT",
@@ -31,7 +31,7 @@
     "verify": "node scripts/verify.mjs",
     "test": "node local-agent/test/run-tests.cjs",
     "test:e2e": "node local-agent/test/run-e2e.cjs",
-    "assets": "node scripts/make-svg-assets.mjs",
+    "assets": "node scripts/make-svg-assets.mjs && node scripts/make-screenshots.mjs",
     "verify:site": "node scripts/verify-site.mjs",
     "site": "node scripts/make-site.mjs",
     "trial": "node scripts/trial-build.mjs",

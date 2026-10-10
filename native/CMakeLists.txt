@@ -1,5 +1,4 @@
-# The native Qt app (design: docs/superpowers/specs/2026-10-08-native-qt-design.md,
-# conventions: native/ARCHITECTURE.md).
+# The native Qt app (conventions: native/ARCHITECTURE.md).
 #
 #   cmake -S native -B build-native -G Ninja
 #   cmake --build build-native

@@ -292,7 +292,7 @@
       "provider": "deepseek",
       "capability": "Tool-use simulation",
       "status": "NOT_APPLICABLE",
-      "detail": "the model drives a chat window and cannot call tools; research runs outside it (see ROADMAP item 13)"
+      "detail": "the model drives a chat window and cannot call tools; research runs outside it"
     },
     {
       "provider": "qwen",
@@ -550,7 +550,7 @@
       "provider": "qwen",
       "capability": "Tool-use simulation",
       "status": "NOT_APPLICABLE",
-      "detail": "the model drives a chat window and cannot call tools; research runs outside it (see ROADMAP item 13)"
+      "detail": "the model drives a chat window and cannot call tools; research runs outside it"
     },
     {
       "provider": "glm",
@@ -808,7 +808,7 @@
       "provider": "glm",
       "capability": "Tool-use simulation",
       "status": "NOT_APPLICABLE",
-      "detail": "the model drives a chat window and cannot call tools; research runs outside it (see ROADMAP item 13)"
+      "detail": "the model drives a chat window and cannot call tools; research runs outside it"
     },
     {
       "provider": "extraction",

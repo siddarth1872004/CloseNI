@@ -4,6 +4,7 @@
 #include <QCommandLineParser>
 #include <QDesktopServices>
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QGuiApplication>
 #include <QJsonDocument>
@@ -149,7 +150,13 @@ int main(int argc, char *argv[])
     const QCommandLineOption selfTestFlow(QStringLiteral("self-test-flow"),
                                           QStringLiteral("Test harness: the flow --self-test runs, shell/<name>Flow.qml."),
                                           QStringLiteral("name"));
-    parser.addOptions({workspace, provider, start, exitOnReady, bridge, selfTest, selfTestFlow, uiScript});
+    // For scripts/agent-live.mjs: shell/LiveFlow.qml types the scenario in
+    // <file> into the Code panel of a real window. Unlike --self-test, a
+    // warning fails nothing, so a person can watch and answer prompts.
+    const QCommandLineOption live(QStringLiteral("live"),
+                                  QStringLiteral("Live suite: run the scenario in <file> through the Code panel."),
+                                  QStringLiteral("file"));
+    parser.addOptions({workspace, provider, start, exitOnReady, bridge, selfTest, selfTestFlow, uiScript, live});
     parser.process(app);
 
     QQmlApplicationEngine engine;
@@ -174,6 +181,16 @@ int main(int argc, char *argv[])
             QDesktopServices::setUrlHandler(scheme, stub, "open");
     }
 
+    QString liveScenario;
+    if (parser.isSet(live)) {
+        QFile file(parser.value(live));
+        if (!file.open(QIODevice::ReadOnly)) {
+            print("CloseNI: live: cannot read " + parser.value(live));
+            return 2;
+        }
+        liveScenario = QString::fromUtf8(file.readAll());
+    }
+
     engine.setInitialProperties({
         {QStringLiteral("workspace"), parser.isSet(start) && chosen.isEmpty() ? agentWorkspace : chosen},
         // Unset: the window keeps the provider chosen last time.
@@ -182,6 +199,7 @@ int main(int argc, char *argv[])
         {QStringLiteral("selfTestDir"), testing ? QDir(parser.value(selfTest)).absolutePath() : QString()},
         {QStringLiteral("uiScript"), scripted ? QUrl::fromLocalFile(QFileInfo(parser.value(uiScript)).absoluteFilePath()).toString() : QString()},
         {QStringLiteral("selfTestFlow"), testing ? parser.value(selfTestFlow) : QString()},
+        {QStringLiteral("liveScenario"), liveScenario},
     });
     QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed, &app,
                      [] { QCoreApplication::exit(1); }, Qt::QueuedConnection);
@@ -201,6 +219,10 @@ int main(int argc, char *argv[])
         }, Qt::QueuedConnection);
     }
     const int code = app.exec();
+    // The window is torn down here rather than with the engine, so warnings
+    // from its destruction (a Loader switched off mid-incubation) are counted.
+    if (testing || scripted)
+        qDeleteAll(engine.rootObjects());
     if ((testing || scripted) && selfTestWarnings > 0) {
         std::fprintf(stderr, "CloseNI: self-test: %d warning(s)\n", selfTestWarnings);
         return 1;

@@ -10,7 +10,7 @@ class QNetworkAccessManager;
 class QObject;
 
 /*
- * The GitHub calls this app makes. Ports desktop/github-api.js.
+ * The GitHub calls this app makes.
  *
  * The transport is injected rather than built in, so every call shape is tested
  * without a token and without touching GitHub - which matters, because there is

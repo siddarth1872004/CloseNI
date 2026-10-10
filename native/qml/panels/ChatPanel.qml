@@ -4,9 +4,9 @@ import QtQuick.Layouts
 import CloseNI
 
 /*
- * Chat (#panel-chat in index.html, renderer/plan.js): talk the idea through,
+ * Chat: talk the idea through,
  * then Generate Implementation Plan. The plan document opens beside the
- * conversation (#plan-sidebar), where it can be edited, revised by message
+ * conversation, where it can be edited, revised by message
  * ("Suggest Changes") or handed to the builder.
  *
  * The conversation, the draft and the plan live in PlanState and AppState, so
@@ -48,6 +48,7 @@ Item {
                 // #chat-flow
                 ListView {
                     id: flow
+                    cacheBuffer: 0   // no async look-ahead in a Loader: ARCHITECTURE.md, Panels
                     objectName: "chatFlow"
                     Layout.fillWidth: true
                     Layout.fillHeight: true
@@ -62,7 +63,10 @@ Item {
                     // only while the reader is already at the bottom.
                     property bool following: true
                     onMovementEnded: following = atYEnd
-                    onCountChanged: { following = true; Qt.callLater(flow.positionViewAtEnd) }
+                    // Messages arrive (pix-in) when they are said or the panel
+                    // opens, not when scrolling brings a delegate into being.
+                    property double drawnAt: Date.now()
+                    onCountChanged: { drawnAt = Date.now(); following = true; Qt.callLater(flow.positionViewAtEnd) }
                     onContentHeightChanged: if (following) Qt.callLater(flow.positionViewAtEnd)
                     Component.onCompleted: positionViewAtEnd()
 
@@ -75,6 +79,10 @@ Item {
                         width: flow.width
                         implicitHeight: col.implicitHeight + 20 + 1
                         height: implicitHeight
+                        PixMotion { id: arrive }
+                        opacity: arrive.opacity
+                        transform: Translate { y: arrive.shift }
+                        Component.onCompleted: if (Date.now() - flow.drawnAt < 300) arrive.play()
 
                         ColumnLayout {
                             id: col

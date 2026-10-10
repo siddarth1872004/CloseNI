@@ -1,7 +1,5 @@
 /*
  * Git: exporting a build as one commit per step, and the Ship panel's buttons.
- *
- * Ports desktop/main/git.js.
  */
 #include "GitService.h"
 
@@ -73,7 +71,15 @@ struct ExportJob : std::enable_shared_from_this<ExportJob> {
             // Refused rather than stashed. The export writes files as it goes, so
             // uncommitted work would be swept into a step's commit and attributed to
             // the build.
-            runGit(self->service, {QStringLiteral("status"), QStringLiteral("--porcelain")}, self->ws,
+            //
+            // CloseNI's own folder does not count: the build state and checkpoints
+            // are not the user's work, and the replay never stages them. A
+            // workspace whose .closeni predates its self-ignoring .gitignore (or
+            // was committed) would otherwise be refused right after the build.
+            runGit(self->service,
+                   {QStringLiteral("status"), QStringLiteral("--porcelain"), QStringLiteral("--"),
+                    QStringLiteral(":(exclude)") + BuildState::kDir},
+                   self->ws,
                    [self](bool statusOk, const QString &output) {
                        if (statusOk && !output.trimmed().isEmpty()) {
                            self->finish(fail(QStringLiteral("You have uncommitted changes. Commit or stash them first - "
@@ -98,12 +104,29 @@ struct ExportJob : std::enable_shared_from_this<ExportJob> {
         });
     }
 
+    /* One staging command over these paths, then then(); skipped when there are none. */
+    void stage(const QStringList &command, const QStringList &paths, const ExportBranch::Commit &c, std::function<void()> then)
+    {
+        if (paths.isEmpty()) {
+            then();
+            return;
+        }
+        auto self = shared_from_this();
+        runGit(service, command + paths, ws, [self, c, then](bool ok, const QString &output) {
+            if (!ok) {
+                self->finish(fail(QStringLiteral("git add failed at step %1: ").arg(c.step + 1) + output));
+                return;
+            }
+            then();
+        });
+    }
+
     void commitNext()
     {
         auto self = shared_from_this();
         while (next < plan.commits.size()) {
             const ExportBranch::Commit c = plan.commits.at(next++);
-            QStringList staged;
+            QStringList written;
             for (auto it = c.writes.begin(); it != c.writes.end(); ++it) {
                 const QString abs = inside(it.key());
                 if (abs.isEmpty())
@@ -113,35 +136,42 @@ struct ExportJob : std::enable_shared_from_this<ExportJob> {
                     finish(fail(NodeCompat::errorString(error)));
                     return;
                 }
-                staged << it.key();
+                written << it.key();
             }
+            QStringList removed;
             for (const QString &rel : c.deletes) {
                 const QString abs = inside(rel);
                 if (abs.isEmpty())
                     continue;
                 NodeCompat::removeFile(abs);
-                staged << rel;
+                removed << rel;
             }
-            if (staged.isEmpty())
+            if (written.isEmpty() && removed.isEmpty())
                 continue;
             // "--" so a path that looks like a flag is still treated as a path.
-            runGit(service, QStringList{QStringLiteral("add"), QStringLiteral("--")} + staged, ws,
-                   [self, c](bool ok, const QString &output) {
-                       if (!ok) {
-                           self->finish(fail(QStringLiteral("git add failed at step %1: ").arg(c.step + 1) + output));
-                           return;
-                       }
-                       runGit(self->service,
-                              {QStringLiteral("commit"), QStringLiteral("-m"), ExportBranch::commitMessage(c.step, c.title),
-                               QStringLiteral("--allow-empty")},
-                              self->ws, [self, c](bool commitOk, const QString &commitOutput) {
-                                  if (!commitOk) {
-                                      self->finish(fail(QStringLiteral("git commit failed at step %1: ").arg(c.step + 1) + commitOutput));
-                                      return;
-                                  }
-                                  self->commitNext();
-                              });
-                   });
+            stage(QStringList{QStringLiteral("add"), QStringLiteral("--")}, written, c, [self, c, removed] {
+                // A removal is staged with rm --ignore-unmatch rather than add. A
+                // file that appears at a later step is absent from every commit
+                // before it, and git add refuses a path it neither tracks nor finds
+                // on disk: in a repository the export had just created, step 1
+                // failed on every file a later step added (and in an existing one,
+                // the second step that had to keep such a file absent did).
+                self->stage({QStringLiteral("rm"), QStringLiteral("--cached"), QStringLiteral("--ignore-unmatch"),
+                             QStringLiteral("-q"), QStringLiteral("--")},
+                            removed, c, [self, c] {
+                                runGit(self->service,
+                                       {QStringLiteral("commit"), QStringLiteral("-m"), ExportBranch::commitMessage(c.step, c.title),
+                                        QStringLiteral("--allow-empty")},
+                                       self->ws, [self, c](bool commitOk, const QString &commitOutput) {
+                                           if (!commitOk) {
+                                               self->finish(fail(QStringLiteral("git commit failed at step %1: ").arg(c.step + 1)
+                                                                 + commitOutput));
+                                               return;
+                                           }
+                                           self->commitNext();
+                                       });
+                            });
+            });
             return;
         }
         finish(QVariantMap{{QStringLiteral("ok"), true},

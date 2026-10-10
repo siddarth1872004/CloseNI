@@ -22,6 +22,7 @@ TextField {
     topPadding: 9
     bottomPadding: 9
     selectByMouse: true
+    onActiveFocusChanged: if (activeFocus) Pix.ring.play()
 
     background: Item {
         implicitWidth: 160
@@ -31,7 +32,8 @@ TextField {
             radius: Theme.rMd
             color: control.sunken ? Theme.surfaceSunken : Theme.surface
             border.width: 1
-            border.color: control.activeFocus ? (Theme.isPixel ? Theme.pxBlue : Theme.dim) : Theme.lineStrong
+            // Focus marks the edge in one step too (steps(1) over .06s).
+            border.color: control.activeFocus && Pix.ring.t >= 1 ? (Theme.isPixel ? Theme.pxBlue : Theme.dim) : Theme.lineStrong
         }
         FocusRing {
             target: box

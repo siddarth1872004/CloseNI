@@ -11,8 +11,8 @@
  * services write the same files and answer with the same shapes.
  *
  * - JSON.stringify(value, null, 2): the workspace files (build.json,
- *   closeni.run.json) are shared with the Electron app and the agent, and are
- *   often committed, so they are written byte for byte as Electron wrote them.
+ *   closeni.run.json) are shared with the agent and are often committed, so
+ *   they are written byte for byte as Node writes them.
  *   QJsonDocument sorts keys; `keyOrder` restores the order the JS objects
  *   were built in.
  * - JavaScript truthiness and Number(), which the ported guards are written in.

@@ -74,7 +74,7 @@ jobs:
         if: runner.os == 'Linux'
         run: node native/smoke.cjs
 
-      # Both drive the window offscreen against the mock provider, with the
+      # These drive the window offscreen against the mock provider, with the
       # Chromium installed above.
       - name: Build end to end
         if: runner.os == 'Linux'
@@ -83,6 +83,10 @@ jobs:
       - name: Code panel end to end
         if: runner.os == 'Linux'
         run: node native/tests/code-e2e.cjs build-native/bin/CloseNI
+
+      - name: Conversations end to end
+        if: runner.os == 'Linux'
+        run: node native/tests/chats-e2e.cjs build-native/bin/CloseNI
 
       # The staged app the installers wrap (native/package/stage.mjs): pruned
       # Qt, bundled Node and agent, run as a user gets it. The installers

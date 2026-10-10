@@ -5,7 +5,7 @@ import QtQuick.Layouts
 import CloseNI
 
 /*
- * The window: desktop/index.html's shell. The rail, the top bar with the flow,
+ * The window: the rail, the top bar with the flow,
  * one Loader per panel (only the open one exists, plus Code once visited, so
  * an idle window holds one screen), the console drawer, toasts, the approval
  * modal, the browser gate and the folder picker.
@@ -15,7 +15,8 @@ import CloseNI
  *
  * main.cpp sets workspace, provider and autoStart from --workspace, --provider
  * and --start ("" when not given: the last project and the saved provider are
- * used), selfTestDir from --self-test and uiScript from --ui-script.
+ * used), selfTestDir from --self-test, uiScript from --ui-script and
+ * liveScenario from --live.
  */
 ApplicationWindow {
     id: window
@@ -28,6 +29,8 @@ ApplicationWindow {
     property string uiScript: ""
     // --self-test-flow <name>: shell/<name>Flow.qml runs instead of SelfTest.
     property string selfTestFlow: ""
+    // --live <file>: the scenario's JSON, which shell/LiveFlow.qml types into the Code panel.
+    property string liveScenario: ""
     // --self-test: main.cpp saves the window to `path` (see SelfTest.qml).
     signal selfTestShot(string path)
 
@@ -86,6 +89,7 @@ ApplicationWindow {
         if (autoStart) startAgent()
         if (selfTestDir && selfTestFlow) flowTest.setSource("shell/" + selfTestFlow + "Flow.qml", { root: window, outDir: selfTestDir })
         else if (selfTestDir) selfTest.begin()
+        else if (liveScenario) flowTest.setSource("shell/LiveFlow.qml", { root: window, scenario: liveScenario })
     }
 
     // Pixel's starfield sits behind the content; scanlines go over it (below).
@@ -198,7 +202,7 @@ ApplicationWindow {
         }
         // "Fix errors" in the run console: the agent here takes the request,
         // so this window comes forward. The Code panel turns the prompt into
-        // a task (Electron's code.js onRunFix).
+        // a task.
         function onRunFix(detail) {
             // The offscreen platform (the self-test flows) has no windows to
             // raise and warns if asked, which fails a flow.

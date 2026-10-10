@@ -4,8 +4,7 @@ import QtQuick.Layouts
 import CloseNI
 
 /*
- * #panel-research, from desktop/index.html and the research-go handler in
- * desktop/renderer/plan.js: the provider's own web search beside a GitHub
+ * The Research panel: the provider's own web search beside a GitHub
  * repository search. The searching is in ShipStore.research, the answers stay
  * there too, so switching tabs mid-search loses nothing.
  */

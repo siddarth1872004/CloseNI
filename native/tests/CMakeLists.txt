@@ -30,15 +30,14 @@ set_tests_properties(ui_selftest PROPERTIES
 # --- end ui-foundation ------------------------------------------------------
 
 # --- data-backend: Qt Test suites for the data services ---------------------
-# Builds, files, git, GitHub, the library (skills, MCP), the Electron
-# localStorage import and the secret store. Each suite runs against a scratch
+# Builds, files, git, GitHub, the library (skills, MCP) and the secret store. Each suite runs against a scratch
 # CLOSENI_STORAGE and never reaches the network: GitHub is a local server.
 find_package(Qt6 REQUIRED COMPONENTS Test)
 
 set(CLOSENI_DATA_SOURCES
     BuildRules BuildStore FilesService GitHubApi GitHubAuth GitHubSafe
-    GitHubService GitRunner GitService LibraryService LocalStorageImport
-    McpClient NodeCompat Paths Prefs SkillStore)
+    GitHubService GitRunner GitService LibraryService McpClient
+    NodeCompat Paths Prefs SkillStore)
 set(CLOSENI_DATA_FILES)
 foreach(name ${CLOSENI_DATA_SOURCES})
     list(APPEND CLOSENI_DATA_FILES ../src/${name}.cpp ../src/${name}.h)
@@ -62,7 +61,7 @@ if(NOT MSVC)
     target_compile_options(closeni_data_test PRIVATE -Wall -Wextra)
 endif()
 
-foreach(suite buildstore files git github library prefs_import secretstore)
+foreach(suite buildstore files git github library secretstore)
     qt_add_executable(tst_${suite} tst_${suite}.cpp data_harness.h)
     set_target_properties(tst_${suite} PROPERTIES AUTOMOC ON)
     target_link_libraries(tst_${suite} PRIVATE closeni_data_test)

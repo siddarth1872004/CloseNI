@@ -13,10 +13,9 @@
 /*
  * The agent's rules about a build's files, for the main-process side.
  *
- * desktop/main/build.js and git.js required these from local-agent/dist
- * (build-state.js, checkpoint.js, run-manifest.js, export-branch.js) so the
- * rules lived in one place. The native app has no Node in-process, so the
- * parts the main process used are ported here, function for function. The
+ * The agent keeps these in local-agent (build-state, checkpoint, run-manifest,
+ * export-branch). The app has no Node in-process, so the parts it uses are
+ * ported here, function for function. The
  * TypeScript in local-agent/src is still the source of truth: a change there
  * must be mirrored here, and native/tests/tst_buildstore.cpp carries the
  * agent's own checks for these functions (build-unit.cjs) so the two copies

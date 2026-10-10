@@ -16,17 +16,21 @@ cmake -S native -B build-native -G Ninja && cmake --build build-native
 ctest --test-dir build-native
 node native/e2e-build.cjs                # the app runs a build, mock provider
 node native/tests/code-e2e.cjs           # the Code panel, mock provider
+node native/tests/chats-e2e.cjs          # the rail's conversations, mock provider
 
 # 2. Write the release into CHANGELOG.md before tagging.
 #    The tag is what people land on; an empty changelog entry is permanent.
 
-# 3. Bump and tag. `npm version` edits package.json and creates the tag
-#    together, which is what keeps the two from drifting. CMake reads its
-#    version from package.json, so the app reports the same one.
-npm version 1.0.1 -m "Release %s"
+# 3. Set the version in package.json, local-agent/package.json and
+#    shared/package.json (the unit suite checks they agree), then refresh the
+#    lock file. CMake reads the version from package.json, so the app reports
+#    the same one.
+npm install --package-lock-only --ignore-scripts
+git commit -am "Release 0.2"
 
-# 4. Push the commit and the tag
-git push && git push --tags
+# 4. Tag it with the same version and push both
+git tag v0.2
+git push && git push origin v0.2
 ```
 
 The workflow runs the unit suite, builds each system's installers on that
@@ -36,8 +40,8 @@ and publish.
 
 ## What the workflow guards
 
-- **The tag must match `package.json`.** A `v1.0.1` tag on a `1.0.0`
-  `package.json` produces installers named `1.0.0`, which is only ever noticed
+- **The tag must match `package.json`.** A `v0.2` tag on a `0.1`
+  `package.json` produces installers named `0.1`, which is only ever noticed
   after publishing. The job fails instead, and `stage.mjs` also checks that
   the built app reports the `package.json` version.
 - **Unit tests run before packaging**, so a broken build never produces an
@@ -71,29 +75,13 @@ on any distribution with glibc 2.35 or newer.
 Each package holds the app, the Qt it uses (Qt Quick with the Basic style, no
 web engine, no translations), Node 22 and the compiled agent with the one
 package it needs at run time (Playwright). Chromium is not bundled: the app
-downloads it into `<storage>/browsers` on first use, as before.
+downloads it into `<storage>/browsers` on first use.
 
 Installers are **unsigned**. Windows SmartScreen warns about an unrecognised
 publisher, and macOS Gatekeeper refuses to open an app from an unidentified
 developer until it is allowed in System Settings > Privacy & Security (the
 .app is signed ad hoc, which is all an unsigned build can be). Say so in the
 release notes rather than leaving people to guess.
-
-### Upgrading from the Electron app (0.3.0 and before)
-
-- **Windows:** the installer runs the Electron version's uninstaller first,
-  with `/KEEP_APP_DATA`, then installs into the same
-  `%LOCALAPPDATA%\Programs\CloseNI`. An Electron version installed for all
-  users needs administrator rights to remove, so it is left in place and the
-  installer says so.
-- **Linux:** the .deb replaces the old package (`closeni`), and installs to
-  `/opt/CloseNI` with `closeni` on PATH.
-- **All systems:** sign-ins, sessions and downloaded browsers stay where they
-  were, since the native app uses the same storage directory. Settings the
-  Electron app kept in its localStorage are imported once, on first run,
-  best-effort. The GitHub token has to be entered once more: Electron's
-  safeStorage copy cannot be read outside Electron, and the new one goes in
-  the OS keyring.
 
 ## Building locally
 

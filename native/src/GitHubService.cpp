@@ -1,7 +1,7 @@
 /*
  * GitHub: the token, git's environment, and the API calls the Ship panel makes.
  *
- * Ports desktop/main/github.js. The token itself is GitHubAuth's; the calls
+ * The token itself is GitHubAuth's; the calls
  * are GitHubApi's; the safety rules are GitHubSafe's.
  */
 #include "GitHubService.h"
@@ -57,13 +57,6 @@ void GitHubService::status(QJSValue callback)
         {QStringLiteral("persisted"), !token.isEmpty() && GitHubSafe::shouldPersistToken(encryption)},
         {QStringLiteral("login"), NodeCompat::toVariant(GitHubAuth::login())},
     };
-    if (token.isEmpty() && GitHubAuth::legacyTokenPresent()) {
-        // Electron's safeStorage encrypted it with a key this app cannot reach.
-        out.insert(QStringLiteral("legacyToken"), true);
-        out.insert(QStringLiteral("message"),
-                   QStringLiteral("You were signed in to GitHub in the previous version of CloseNI. Its saved token "
-                                  "cannot be read by this version, so please sign in again."));
-    }
     Js::reply(this, callback, out);
 }
 

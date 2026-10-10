@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /*
  * Builds the native app and stages everything a package ships, then (with
- * --installers) makes the installers. It replaces electron-builder.
+ * --installers) makes the installers.
  *
  *   node native/package/stage.mjs                 stage for this machine (npm run pack)
  *   node native/package/stage.mjs --installers    and make the installers
@@ -543,12 +543,8 @@ function ar(members) {
 }
 
 /*
- * The .deb installs the AppDir's usr/ tree as /opt/CloseNI, the same place
- * the Electron package used, so an upgrade replaces it in place: dpkg removes
- * the Electron files the new version does not ship. /usr/bin/closeni is made
- * by postinst rather than shipped, because the Electron package's postrm
- * deletes that path when it is upgraded, and postrm runs after the new files
- * are unpacked.
+ * The .deb installs the AppDir's usr/ tree as /opt/CloseNI. /usr/bin/closeni
+ * is a link that postinst makes and postrm removes.
  */
 function deb(appDir, systemLibs) {
   const tmp = join(OUT, 'tmp', 'deb');
@@ -763,11 +759,10 @@ function nsis(dir) {
   if (!makensis) die('makensis was not found: install NSIS (choco install nsis)');
   const file = join(OUT, 'out', `CloseNI-Setup-${VERSION}.exe`);
   // The file version resource takes four numbers and no pre-release suffix.
-  const version4 = `${VERSION.replace(/[-+].*$/, '')}.0`;
+  const version4 = VERSION.replace(/[-+].*$/, '').split('.').concat(['0', '0', '0']).slice(0, 4).join('.');
   run(makensis, ['/V2', '/INPUTCHARSET', 'UTF8', `/DVERSION=${VERSION}`, `/DVERSION4=${version4}`, `/DOUTFILE=${file}`,
     `/DICON=${join(HERE, 'closeni.ico')}`, `/DFILES=${join(OUT, 'tmp', 'install-files.nsh')}`,
-    `/DUNFILES=${join(OUT, 'tmp', 'uninstall-files.nsh')}`, `/DSIZE_KB=${Math.ceil(bytes(dir) / 1024)}`,
-    `/DELECTRON_GUID=${APP.electronUninstallGuid}`, join(HERE, 'installer.nsi')]);
+    `/DUNFILES=${join(OUT, 'tmp', 'uninstall-files.nsh')}`, `/DSIZE_KB=${Math.ceil(bytes(dir) / 1024)}`, join(HERE, 'installer.nsi')]);
   return file;
 }
 

@@ -2,9 +2,7 @@
  * The Code panel's vocabulary: how tool calls are titled and summarised, the
  * slash commands, the modes, the spinner.
  *
- * Ported from desktop/code-view.js: an ES module imported by the QML app
- * and by the test harness. desktop/ was deleted with Electron in 0.4.0, so
- * this is the only copy.
+ * An ES module imported by the QML app and by the test harness.
  * Everything here is pure; drawing lives in the Code panel.
  *
  * The panel reads like a terminal coding agent's transcript: a line per thing

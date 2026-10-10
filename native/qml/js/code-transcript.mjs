@@ -1,11 +1,10 @@
 /*
  * The Code panel's transcript, as data.
  *
- * desktop/code.js built the transcript as DOM nodes and decided inline what
- * each node held: which part of a tool line folds out, what a permission
- * prompt shows above its options, how much of an output a card keeps. The
- * native panel draws from plain entries kept by CodeStore, so those decisions
- * live here, pure, beside code-logic.mjs (the rest of what code.js worked
+ * What each transcript entry holds: which part of a tool line folds out, what
+ * a permission prompt shows above its options, how much of an output a card
+ * keeps. The panel draws from plain entries kept by CodeStore, so those
+ * decisions live here, pure, beside code-logic.mjs (the rest of the panel's
  * out) and code-view.mjs (the panel's vocabulary).
  */
 import * as C from "./code-logic.mjs";
@@ -13,7 +12,7 @@ import * as V from "./code-view.mjs";
 import * as L from "./language-mark.mjs";
 
 // The transcript is bounded: a long session must not grow it without limit.
-// Electron kept every node; 2000 entries is far more than a screen's worth of
+// 2000 entries is far more than a screen's worth of
 // scrollback and keeps a day-long session's memory flat.
 var MAX_ENTRIES = 2000;
 

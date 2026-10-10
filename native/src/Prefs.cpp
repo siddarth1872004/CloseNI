@@ -1,6 +1,5 @@
 #include "Prefs.h"
 
-#include "LocalStorageImport.h"
 #include "Paths.h"
 
 #include <QDir>
@@ -15,22 +14,8 @@ Prefs::Prefs(QObject *parent)
     , m_file(QDir(Paths::storageRoot()).filePath(QStringLiteral("native-prefs.json")))
 {
     QFile f(m_file);
-    if (f.open(QIODevice::ReadOnly)) {
+    if (f.open(QIODevice::ReadOnly))
         m_values = QJsonDocument::fromJson(f.readAll()).object();
-        return;
-    }
-    if (f.exists())
-        return;
-
-    // First run: carry the Electron app's settings over, once. Read-only and
-    // best-effort (LocalStorageImport.h); once anything is saved here, that
-    // database is never read again.
-    const QMap<QString, QString> imported = LocalStorageImport::read(
-        QDir(Paths::storageRoot()).filePath(QStringLiteral("Local Storage/leveldb")));
-    for (auto it = imported.cbegin(); it != imported.cend(); ++it)
-        m_values.insert(it.key(), it.value());
-    if (!m_values.isEmpty())
-        save();
 }
 
 Prefs::~Prefs()

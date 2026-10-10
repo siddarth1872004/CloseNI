@@ -13,9 +13,7 @@
  * .closeni/build.json when the list renders, so nothing about a project is
  * duplicated into app state.
  *
- * Ported from desktop/recent-workspaces.js: an ES module imported by the QML app
- * and by the test harness. desktop/ was deleted with Electron in 0.4.0, so
- * this is the only copy.
+ * An ES module imported by the QML app and by the test harness.
  */
 var MAX_RECENT = 8;
 

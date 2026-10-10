@@ -490,7 +490,7 @@ async function main() {
     record(P, "Citation handling", synthOk ? "PASS" : "FAIL", "citations checked against the context's source list");
     record(P, "Contradictory information", report.conflicts.length ? "PASS" : "FAIL", report.conflicts.length + " conflict(s) passed to the model");
     record(P, "Multi-source reasoning", report.context.citations.length >= 2 ? "PASS" : "FAIL", report.context.citations.length + " sources in context");
-    record(P, "Tool-use simulation", "NOT_APPLICABLE", "the model drives a chat window and cannot call tools; research runs outside it (see ROADMAP item 13)");
+    record(P, "Tool-use simulation", "NOT_APPLICABLE", "the model drives a chat window and cannot call tools; research runs outside it");
     time(P, "suite", Date.now() - t0);
     await p.close();
   }

@@ -16,7 +16,7 @@
 
 /*
  * What the Settings panel reads and writes: skills and personas, and the MCP
- * servers whose context goes into a run. Ports desktop/main/settings.js.
+ * servers whose context goes into a run.
  */
 
 namespace {

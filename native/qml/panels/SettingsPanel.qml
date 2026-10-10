@@ -5,10 +5,9 @@ import CloseNI
 import "../js/renderer-logic.mjs" as R
 
 /*
- * The Settings panel (#panel-settings): a column of section tabs and the
- * open section - Provider, Permissions, Skills, Appearance, About. Ports
- * desktop/renderer/settings.js, the Settings half of providers.js and account.js
- * (the provider picker, its Sign in and its controls), and skills.js.
+ * The Settings panel: a column of section tabs and the open section -
+ * Provider (the picker, its Sign in and its controls), Permissions, Skills,
+ * Appearance, About.
  *
  * Only the open section exists. What must outlive the panel - the permission
  * policy, the persona and skills, unsaved drafts and the open section - is in
@@ -28,8 +27,8 @@ RowLayout {
     // From Library.listSkills, re-read on open and after every change.
     property var personaNames: []
     property var skillNames: []
-    // The MCP editor, filled from disk on open. Unlike a skill draft it was
-    // re-read from disk on every visit in Electron too.
+    // The MCP editor, filled from disk on open. Unlike a skill draft it is
+    // re-read from disk on every visit.
     property string mcpText: ""
     // For the self-test: the open section, and the delete confirmation.
     readonly property alias sectionItem: body.item
@@ -303,6 +302,7 @@ RowLayout {
             }
             ListView {
                 id: skillList
+                cacheBuffer: 0   // no async look-ahead in a Loader: ARCHITECTURE.md, Panels
                 objectName: "settingsSkillList"
                 visible: count > 0
                 Layout.fillWidth: true
@@ -486,7 +486,7 @@ RowLayout {
     }
 
     // ---- Confirmation -------------------------------------------------------------------
-    // confirm() in Electron: nothing is deleted until it is answered.
+    // Nothing is deleted until it is answered.
     Modal {
         id: confirmModal
         objectName: "settingsConfirm"

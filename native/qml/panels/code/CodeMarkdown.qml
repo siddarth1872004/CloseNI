@@ -4,8 +4,8 @@ import CloseNI
 /*
  * .cc-body.md: the model's markdown, drawn by Qt's own text engine
  * (MarkdownText) - no web engine. Selectable; links open in the system
- * browser. Inline code is not tinted with the accent as in Electron: Qt's
- * markdown has no stylesheet to say so.
+ * browser. Inline code is not tinted with the accent: Qt's markdown has no
+ * stylesheet to say so.
  */
 TextEdit {
     id: md

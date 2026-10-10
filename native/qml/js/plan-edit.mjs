@@ -1,13 +1,10 @@
 /*
  * Editing a plan before building it.
  *
- * Lives in desktop/ rather than local-agent/, as scheduler.js does and for the
- * same reason: only the renderer edits a plan, and a browser cannot load the
- * agent's CommonJS output.
+ * Lives with the app rather than in local-agent/, as scheduler.mjs does: only
+ * the app edits a plan.
  *
- * Ported from desktop/plan-edit.js: an ES module imported by the QML app
- * and by the test harness. desktop/ was deleted with Electron in 0.4.0, so
- * this is the only copy.
+ * An ES module imported by the QML app and by the test harness.
  */
 function deps(step) {
   return Array.isArray(step && step.dependsOn) ? step.dependsOn : undefined;

@@ -11,8 +11,8 @@
 namespace Paths {
 
 /*
- * The same directory as Electron's userData, so the two apps share sessions,
- * settings and browser profiles while both ship. CLOSENI_STORAGE overrides it.
+ * Where sessions, settings and browser profiles live, shared with the agent.
+ * CLOSENI_STORAGE overrides it.
  */
 QString storageRoot();
 

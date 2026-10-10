@@ -14,12 +14,11 @@
  * The program a build produced, run in a native console window. There is no
  * embedded browser: a web project's address is opened in the system browser.
  *
- * Ports desktop/main/run-window.js. Owner: agent-backend.
  * Asynchronous methods reply once through their callback (src/Js.h).
  *
- * The run console (qml/windows/) is the other half of run.html:
+ * The run console (qml/windows/) is the other half:
  *   windowRequested {command, cwd, gui, title}: open the console, or raise it
- *       if it is open. Electron opened it full screen. Its program starts just
+ *       if it is open. Its program starts just
  *       after, as `started`.
  *   started {run, command, cwd, gui}: a new run; clear the console. With gui,
  *       the program opens a window of its own: leave full screen and say so.

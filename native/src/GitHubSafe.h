@@ -8,8 +8,7 @@
 
 /*
  * The security-relevant decisions, kept pure so they can be tested without a
- * network or a credential. Ports the main-process half of desktop/github-safe.js
- * (the renderer keeps its own copy).
+ * network or a credential. qml/js/github-safe.mjs holds the QML side's half.
  *
  * linuxPasswordStore is not ported: it chose which key store Chromium's
  * safeStorage should use, and the native app talks to libsecret directly.

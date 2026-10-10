@@ -36,8 +36,7 @@ Btn {
         }
         Rectangle {
             id: face
-            readonly property int push: Theme.isPixel && b.down ? 2 : 0
-            x: push; y: push
+            // Btn's stepped press moves the whole button onto the shadow.
             width: parent.width; height: parent.height
             radius: Theme.rMd
             color: Theme.isPixel ? Theme.bg : "transparent"

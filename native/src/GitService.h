@@ -9,7 +9,6 @@
 /*
  * Local git: the commands the Push panel runs, and exporting a branch.
  *
- * Ports desktop/main/git.js. Owner: data-backend.
  * Asynchronous methods reply once through their callback (src/Js.h).
  */
 class GitService : public QObject
@@ -27,6 +26,6 @@ public:
     Q_INVOKABLE void exportBranch(const QVariantMap &payload, QJSValue callback);
 
 signals:
-    /* "git> " + a redacted chunk of a git command's output: Electron's "project-log". */
+    /* "git> " + a redacted chunk of a git command's output, for the project log. */
     void projectLog(const QString &line);
 };

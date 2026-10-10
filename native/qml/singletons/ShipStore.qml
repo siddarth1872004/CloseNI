@@ -8,9 +8,7 @@ import "../js/entrypoint.mjs" as Entry
 import "../js/preview-target.mjs" as Preview
 
 /*
- * The Test, Research and Ship panels' state and actions, from
- * desktop/renderer/test.js, ship.js and the research and export halves of
- * plan.js. Each panel is a Loader that exists only while it is shown, so the
+ * The Test, Research and Ship panels' state and actions. Each panel is a Loader that exists only while it is shown, so the
  * run results, the history, the research answer and the GitHub state live
  * here: leaving a panel and coming back loses nothing.
  *
@@ -96,7 +94,7 @@ QtObject {
     property var lastRun: ({ command: "", output: "" })
 
     // The chat about the run: { who: "user"|"ai", text, markdown, applied }.
-    // Electron's grew without limit; this keeps the newest 200.
+    // Bounded: this keeps the newest 200.
     readonly property int maxChat: 200
     property ListModel testChat: ListModel {}
     property bool asking: false
@@ -106,8 +104,7 @@ QtObject {
     // in the project log as it streams.
     readonly property int maxOutputChars: 200000
 
-    // What the last run printed that a browser can show (desktop/builder.js
-    // CNBuilderPreview): { url, kind, ws } or null. The Build panel's preview
+    // What the last run printed that a browser can show: { url, kind, ws } or null. The Build panel's preview
     // action reads it; there is no web view, so it opens in the system browser.
     property var runPreview: null
 
@@ -223,8 +220,7 @@ QtObject {
     /*
      * An agent run that never produced a result (a build holds the browser, the
      * agent could not start) replies { success: false, error } with no counts.
-     * Electron drew that as "0 passed, 0 failed" and a passing history entry;
-     * here it is a failure that says why.
+     * That is a failure that says why, not "0 passed, 0 failed".
      */
     function agentFailed(res) {
         return !res || (res.success === false && res.error && !res.results)
@@ -485,8 +481,6 @@ QtObject {
     property bool ghSignedIn: false
     property string ghLogin: ""
     property string ghStorageNote: ""
-    // The previous (Electron) version's saved token cannot be read here: said once, plainly.
-    property string ghLegacyNote: ""
     // [{ value, label }] - value is the clone URL.
     property var ghRepos: []
     property string ghRepo: ""
@@ -507,7 +501,6 @@ QtObject {
             ghSignedIn = !!st.signedIn
             // Said plainly rather than discovered next launch when the token is gone.
             ghStorageNote = R.tokenStorageNote(st.encryptionAvailable)
-            ghLegacyNote = !st.signedIn && st.legacyToken ? (st.message || "") : ""
             if (!st.signedIn) { ghRepos = []; ghRepo = ""; return }
             ghLogin = st.login ? "@" + st.login : "signed in"
             return Api.call(GitHub, "call", "listRepos", []).then(function (r) {
@@ -607,7 +600,7 @@ QtObject {
     }
 
     // The plain git buttons. Their output reaches the project log through
-    // Git.projectLog, as Electron's "project-log" did.
+    // Git.projectLog.
     function git(args) {
         return Api.call(Git, "git", { args: args, cwd: AppState.workspace })
     }

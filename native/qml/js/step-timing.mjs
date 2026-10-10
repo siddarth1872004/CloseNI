@@ -13,9 +13,7 @@
  * There is no money here. CloseNI drives free web chats, so "cost" can only
  * mean time.
  *
- * Ported from desktop/step-timing.js: an ES module imported by the QML app
- * and by the test harness. desktop/ was deleted with Electron in 0.4.0, so
- * this is the only copy.
+ * An ES module imported by the QML app and by the test harness.
  */
 /**
  * Time attributed to nothing.

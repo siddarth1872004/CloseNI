@@ -137,8 +137,7 @@ Item {
         })
     }
 
-    // The prompt's keys, as the Electron panel test (scripts/ui-code.mjs)
-    // drove them: history, mode cycling, the command and file popups, slash
+    // The prompt's keys: history, mode cycling, the command and file popups, slash
     // commands, a queued message and esc. Events the agent would send are
     // injected through CodeStore.onEvent where the mock cannot time them.
     function keys(panel, input) {

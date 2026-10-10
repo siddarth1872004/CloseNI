@@ -13,7 +13,7 @@
  *
  * Process-wide, because three services use it: GitHub (sign-in and the API),
  * Git (git's environment, and redaction) and Library (importing a skill from
- * a repository). Ports the token half of desktop/main/github.js.
+ * a repository).
  */
 namespace GitHubAuth {
 
@@ -43,16 +43,8 @@ bool encryptionAvailable();
  */
 bool saveToken(const QString &token, bool *persisted, QString *error);
 
-/* Forget the token: memory, the secret store, and the Electron app's file. */
+/* Forget the token: memory and the secret store. */
 void clearToken();
-
-/*
- * The Electron app's token file (<storage>/github.token). It was encrypted with
- * Chromium's safeStorage key, which this app cannot read, so it only tells us
- * the user had signed in before and needs to once more.
- */
-QString legacyTokenFile();
-bool legacyTokenPresent();
 
 /*
  * Git's environment.
