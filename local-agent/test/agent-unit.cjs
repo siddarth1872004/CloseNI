@@ -546,6 +546,52 @@ async function run(check, section) {
   await h.l.turn("two");
   check("a new chat is not rolled over on its first message alone", s.resets === 0 && s.prompts.length === 2);
   check("a transport with no new chat cannot compact", (await new AgentLoop({ session: { ask: async () => "x" }, workspace: ws6, emit: () => {}, askPermission: async () => ({ decision: "allow" }) }).compact()) === false);
+  // A rollover's seed sent into a reply that failed is not lost (8 October:
+  // a 9146-char seed came back INCOMPLETE and the summary went with it).
+  s = script([tool({ tool: "read", path: "a.txt" }), "Read it.", "SUMMARY: kept", new Error("DeepSeek could not answer"), "Done."]);
+  h = loop(s, { ws: ws6, budgetChars: 1000 });
+  await h.l.turn("read a");
+  await h.l.turn("and again");
+  check("the new chat's first message failed", type(h.events, "done").pop().reason === "error" && /SUMMARY: kept/.test(s.prompts[3]));
+  await h.l.turn("third");
+  check("so the next message carries the preamble and the summary again",
+    /You are CloseNI/.test(s.prompts[4]) && /SUMMARY: kept/.test(s.prompts[4]) && /User request:\nthird/.test(s.prompts[4]), s.prompts[4] && s.prompts[4].slice(-300));
+  check("and an answered one does not repeat it", (await h.l.turn("fourth"), !/SUMMARY: kept/.test(s.prompts[5])));
+
+  // The provider says the thread is full: roll over at once, without asking
+  // the full thread for a summary, and send the message again.
+  const RT = require(path.join(DIST, "providers/reply-trouble.js"));
+  const full = () => new RT.ProviderTrouble({ kind: "full", detail: "CONTEXT_LENGTH_EXCEEDED" }, "The DeepSeek conversation is full.");
+  s = script(["ok", full(), "Fine."]);
+  h = loop(s);
+  await h.l.turn("one");
+  await h.l.turn("two");
+  check("a full conversation rolls over and the message is sent again in the new chat",
+    s.resets === 1 && s.prompts.length === 3 && /You are CloseNI/.test(s.prompts[2]) && /continues an earlier one/.test(s.prompts[2]) && /User request:\ntwo/.test(s.prompts[2]));
+  check("without asking the full thread for a summary", !s.prompts.some((p) => /too long to continue/.test(p)) && type(h.events, "compacted").pop().summary === false);
+  check("and the turn completes", type(h.events, "done").pop().reason === "complete");
+  s = script(["ok", full(), full()]);
+  h = loop(s);
+  await h.l.turn("one");
+  await h.l.turn("two");
+  check("full twice in a row is reported, not looped", s.prompts.length === 3 && type(h.events, "done").pop().reason === "error");
+
+  // Checkpoints hold whole files: a long session keeps the last MAX_CHECKPOINTS.
+  const ws7 = tmp();
+  const { MAX_CHECKPOINTS } = require(path.join(DIST, "agent/loop.js"));
+  const writes = [];
+  for (let i = 0; i < MAX_CHECKPOINTS + 5; i++) writes.push(tool({ tool: "write", path: "f" + i + ".txt" }, "v" + i), "ok");
+  s = script(writes.concat(["SUMMARY: many files", "ok"]));
+  h = loop(s, { ws: ws7, answer: () => ({ decision: "allow" }) });
+  for (let i = 0; i < MAX_CHECKPOINTS + 5; i++) await h.l.turn("write " + i);
+  let undone = 0;
+  while (h.l.rewind().length) undone++;
+  check("rewind reaches back MAX_CHECKPOINTS turns, no further", undone === MAX_CHECKPOINTS, undone);
+  check("the oldest turns' files stay as written", fs.existsSync(path.join(ws7, "f0.txt")) && !fs.existsSync(path.join(ws7, "f" + (MAX_CHECKPOINTS + 4) + ".txt")));
+  await h.l.compact();
+  await h.l.turn("next");
+  check("a rollover still names every file changed", /Files you changed: [^\n]*f0\.txt/.test(s.prompts[s.prompts.length - 1]));
+  fs.rmSync(ws7, { recursive: true, force: true });
   check("an @ that is not a project path stays as typed", expandMentions("mail me@example.com or use @decorator", ws4).attached.length === 0);
 
   s = script([tool({ tool: "todo", items: [{ text: "one", status: "in_progress" }, { text: "two" }] }), "ok"]);

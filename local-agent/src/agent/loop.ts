@@ -18,6 +18,14 @@ import { decide, remember, SessionRules, emptyRules } from "./permissions.js";
 import { agentShell } from "../verification/command-runner.js";
 import { describeMachine } from "./machine.js";
 import { ConversationSize, emptySize, addTurn, shouldRollOver, describeSize } from "../context-budget.js";
+import { ProviderTrouble } from "../providers/reply-trouble.js";
+
+/**
+ * How many turns of file changes /rewind can undo. Each checkpoint holds the
+ * full content of every file a turn changed, so an uncapped list grew with
+ * every turn of a long session; the files changed are kept apart for rollover.
+ */
+export const MAX_CHECKPOINTS = 20;
 
 export interface Asker {
   /** `onThinking` gets the model's reasoning, whole, each time it grows. */
@@ -112,6 +120,10 @@ export class AgentLoop {
   private nextId = 1;
   private notes: string[] = [];
   private checkpoints: Array<Map<string, string | null>> = [];
+  /** Every file changed in this session, workspace-relative, for a rollover's note. */
+  private changed = new Set<string>();
+  /** Notes taken into a message not yet answered: put back if it fails. */
+  private unsent: string[] = [];
   private maxSteps: number;
   /**
    * How often this thread's replies broke the tool convention: a block that
@@ -151,11 +163,19 @@ export class AgentLoop {
     if (this.running) this.stopRequested = true;
   }
 
+  /** Notes sent with a message that got no answer go out with the next one. */
+  private restoreUnsent(): void {
+    if (!this.unsent.length) return;
+    this.notes = this.unsent.concat(this.notes);
+    this.unsent = [];
+  }
+
   /** A new conversation: the thread, the todo list and pending notes go. */
   async clear(): Promise<void> {
     if (this.o.session.reset) await this.o.session.reset();
     this.newThread();
     this.notes = [];
+    this.unsent = [];
     this.todos.length = 0;
     this.o.emit({ type: "todos", items: [] });
     this.o.emit({ type: "cleared" });
@@ -192,17 +212,22 @@ export class AgentLoop {
     try { return await this.rollOver(); } finally { if (own) this.running = false; }
   }
 
-  private async rollOver(): Promise<boolean> {
+  /**
+   * `askSummary` false when the old thread is already past the provider's
+   * limit: it cannot answer a summary request either.
+   */
+  private async rollOver(askSummary: boolean = true): Promise<boolean> {
     const before = this.size();
     this.o.emit({ type: "compacting", size: describeSize(before, this.o.budgetChars || 0) });
     let summary = "";
     // Asked in the old thread, which is the only place that remembers it. A
     // summary that fails still leaves the todos and files to go on.
-    try { summary = parseReply((await this.o.session.ask(COMPACT_REQUEST)) || "").text.trim(); } catch { /* go on without */ }
+    if (askSummary) {
+      try { summary = parseReply((await this.o.session.ask(COMPACT_REQUEST)) || "").text.trim(); } catch { /* go on without */ }
+    }
     if (this.o.session.reset) await this.o.session.reset();
     this.newThread();
-    const files = new Set<string>();
-    for (const cp of this.checkpoints) for (const abs of cp.keys()) files.add(path.relative(this.o.workspace, abs).split(path.sep).join("/"));
+    const files = this.changed;
     const parts = ["This conversation continues an earlier one that grew too long for the chat. Nothing from it is visible here except what follows."];
     if (summary) { const f = fenceFor(summary); parts.push("Your summary of it:\n" + f + "\n" + cap(summary, 8000) + "\n" + f); }
     if (this.todos.length) parts.push("Your todo list:\n" + this.todos.map((t) => "- [" + t.status + "] " + t.text).join("\n"));
@@ -264,7 +289,14 @@ export class AgentLoop {
       parts.push(modeNote(this.mode));
       this.lastSentMode = this.mode;
     }
-    if (this.notes.length) { parts.push(this.notes.join("\n\n")); this.notes = []; }
+    if (this.notes.length) {
+      parts.push(this.notes.join("\n\n"));
+      // Kept until the message is answered: a rollover's summary sent into a
+      // reply that failed (8 October: a 9146-char seed came back INCOMPLETE)
+      // was otherwise gone for good, and the next message started from nothing.
+      this.unsent = this.unsent.concat(this.notes);
+      this.notes = [];
+    }
     return parts;
   }
 
@@ -307,6 +339,7 @@ export class AgentLoop {
       beforeChange: (abs) => {
         if (checkpoint.has(abs)) return;
         checkpoint.set(abs, fs.existsSync(abs) ? fs.readFileSync(abs, "utf-8") : null);
+        this.changed.add(path.relative(this.o.workspace, abs).split(path.sep).join("/"));
       },
     };
     this.o.emit({ type: "turn-start" });
@@ -317,6 +350,7 @@ export class AgentLoop {
     let reason = "complete";
     let errorText = "";
     let nudged = false;
+    let rolledForFull = false;
     try {
       for (let step = 0; ; step++) {
         if (step >= this.maxSteps) { reason = "step-limit"; break; }
@@ -327,7 +361,23 @@ export class AgentLoop {
           prompt = this.wrap(parts);
         }
         this.o.emit({ type: "thinking", step: step });
-        const reply = await this.o.session.ask(prompt, { onThinking: (text) => this.o.emit({ type: "reasoning", step: step, text: text }) });
+        let reply: string;
+        try {
+          reply = await this.o.session.ask(prompt, { onThinking: (text) => this.o.emit({ type: "reasoning", step: step, text: text }) });
+        } catch (e) {
+          // The provider says the thread is past its limit. Its own count, not
+          // ours, so roll over now - without the summary, which the full thread
+          // cannot write - and send this message again in the new chat. Once.
+          if (!(e instanceof ProviderTrouble && e.kind === "full") || rolledForFull || !this.o.session.reset) throw e;
+          rolledForFull = true;
+          this.restoreUnsent();
+          await this.rollOver(false);
+          if (step === 0) prompt = this.compose(userText);
+          else { const parts = this.opening(); parts.push(prompt); prompt = this.wrap(parts); }
+          step--;
+          continue;
+        }
+        this.unsent = [];
         this.local = addTurn(this.local, prompt.length, reply ? reply.length : 0);
         this.started = true;
         if (!reply || !reply.trim()) { reason = "error"; errorText = "No reply could be read from the provider."; break; }
@@ -408,9 +458,11 @@ export class AgentLoop {
     } catch (e: any) {
       reason = "error";
       errorText = e && e.message ? e.message : String(e);
+      this.restoreUnsent();
     } finally {
       this.running = false;
       if (!checkpoint.size) this.checkpoints.pop();
+      if (this.checkpoints.length > MAX_CHECKPOINTS) this.checkpoints.splice(0, this.checkpoints.length - MAX_CHECKPOINTS);
       this.o.emit({ type: "done", reason: reason, error: errorText || undefined, canRewind: this.checkpoints.some((c) => c.size > 0),
         drift: { replies: this.drift.replies, malformed: this.drift.malformed, missing: this.drift.missing, at: this.drift.at.slice() } });
     }

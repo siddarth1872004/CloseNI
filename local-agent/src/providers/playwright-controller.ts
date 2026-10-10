@@ -9,6 +9,7 @@ import { formatResults } from "./controls/helpers.js";
 import { storagePaths } from "../storage-paths.js";
 import { describeStreamFailure } from "./stream-status.js";
 import { replyStreamTap } from "./stream-tap.js";
+import { ReplyErrorRules, ReplySignals, Trouble, classifyTrouble, backoffFor, describeTrouble, ProviderTrouble } from "./reply-trouble.js";
 
 export interface ProviderConfig {
   id: string;
@@ -29,6 +30,12 @@ export interface ProviderConfig {
     /** Optional. With waitForStopButtonDisappear, ends a wait the moment the
      *  provider's own stop button vanishes instead of waiting out stability. */
     stopButton?: string;
+    /**
+     * Optional. Patterns read from the ENDED reply stream (stream-tap.ts):
+     * `status` captures the reply's final message status, `notice` the data
+     * of an error notice event. Classified by `replyErrors`.
+     */
+    replySignals?: { status?: string; notice?: string };
     /**
      * Optional. A pattern matching the request the page streams its reply over.
      *
@@ -93,6 +100,12 @@ export interface ProviderConfig {
    * Absent falls back to DEFAULT_BUDGET_CHARS.
    */
   contextBudgetChars?: number;
+  /**
+   * Optional. What the provider shows instead of a reply when it cannot
+   * answer - busy, rate limited, conversation full, signed out - and how long
+   * to wait before sending again. See reply-trouble.ts.
+   */
+  replyErrors?: ReplyErrorRules;
   /** What this provider's UI offers. Read by the desktop settings panel; the
    *  agent only needs the selectors below. Absent means no controls. */
   controls?: Array<{
@@ -115,6 +128,12 @@ const FALLBACK_SELECTORS = [
   'div[class*="markdown"]',
   'div[class*="assistant"]',
 ];
+
+/** The conversation id in a chat URL (".../a/chat/s/<id>"), or "" when there is none. */
+export function chatId(url: string): string {
+  const m = /\/s\/([^/?#]+)/.exec(url || "");
+  return m ? m[1] : "";
+}
 
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
@@ -223,6 +242,8 @@ export class PlaywrightController {
   private streamsClosed = 0;
   /** HTTP status of the most recent reply request, 0 until one is seen. */
   private lastStreamStatus = 0;
+  /** What the ended reply stream said about itself (replySignals), null until it ends. */
+  private replySignals: ReplySignals | null = null;
   /** What sendPrompt last sent, so a dropped reply can be asked for again. */
   private lastPrompt: string | null = null;
   private streamWatchInstalled = false;
@@ -288,6 +309,11 @@ export class PlaywrightController {
    */
   async startFreshConversation(config: ProviderConfig): Promise<void> {
     this.resetBuildRunForWorkspace();
+    // The old thread is no longer this workspace's. Left saved, a restart
+    // before the new chat's first message resumed the FULL old thread with its
+    // size counted as zero, so the next rollover came far too late. A worker's
+    // thread was never saved, so there is nothing of it to clear.
+    if (this.threadKind !== "worker") this.createNewChat(this.workspace);
     await this.navigateFresh(config);
   }
 
@@ -530,11 +556,15 @@ export class PlaywrightController {
     // The wrapper lives in stream-tap.ts, shared with the browser-native layer
     // so the two cannot drift. It is installed two ways, below.
     const tap = replyStreamTap;
+    const signals = config.selectors.replySignals;
+    const tapArg = signals && (signals.status || signals.notice) ? { pattern: pattern, status: signals.status, notice: signals.notice } : pattern;
 
     try {
       if (!this.streamWatchInstalled) {
-        await this.page.exposeBinding("__closeniStream", (_src: any, ev: string, status?: number) => {
-          if (ev === "open") {
+        await this.page.exposeBinding("__closeniStream", (_src: any, ev: string, status?: any, notices?: any) => {
+          if (ev === "signal") {
+            this.replySignals = { status: typeof status === "string" ? status : "", notices: Array.isArray(notices) ? notices.map(String).slice(0, 10) : [] };
+          } else if (ev === "open") {
             this.streamsOpened++;
             // Kept so the wait can stop early on a request that will never
             // answer. A 429 today means five minutes of polling and then a
@@ -543,7 +573,7 @@ export class PlaywrightController {
           } else if (ev === "close") this.streamsClosed++;
         });
         // For any page loaded from here on.
-        await this.page.addInitScript(tap, pattern);
+        await this.page.addInitScript(tap, tapArg);
         this.streamWatchInstalled = true;
       }
       // And for the document already open: addInitScript only runs on documents
@@ -551,7 +581,7 @@ export class PlaywrightController {
       // the conversation the app is currently sitting in - which is every
       // conversation, because the watcher is armed when a prompt is sent. The
       // wrapper no-ops if it is already in place.
-      await this.page.evaluate(tap, pattern);
+      await this.page.evaluate(tap, tapArg);
     } catch {
       /* no stream watching; text stability still decides */
     }
@@ -580,6 +610,9 @@ export class PlaywrightController {
   async sendPrompt(prompt: string, config: ProviderConfig): Promise<void> {
     if (!this.page) throw new Error("Browser not launched");
     this.lastPrompt = prompt;
+    // Signed out, there is no composer to find: say so now rather than after
+    // the 15s wait for one, and in words that say what to do.
+    this.throwIfSignedOut(config);
     // Never type into a composer the provider has disabled because it is still
     // answering. The re-ask after a timeout used to fire immediately, so the
     // "reply" it then waited for was the tail of the previous answer rather
@@ -591,6 +624,7 @@ export class PlaywrightController {
     this.streamsOpened = 0;
     this.streamsClosed = 0;
     this.lastStreamStatus = 0;
+    this.replySignals = null;
     phase("sending", prompt.length + " chars");
     console.log("Typing prompt into chat (length: " + prompt.length + ")...");
     let input;
@@ -598,10 +632,12 @@ export class PlaywrightController {
       input = await this.page.waitForSelector(config.selectors.chatInput, { timeout: 15000, state: "visible" });
     } catch (e) {
       console.log("ERROR: Could not find chat input after 15 seconds");
+      this.throwIfSignedOut(config);
       throw new Error("Chat input not found");
     }
     if (!input) throw new Error("Could not find chat input");
     await input.click();
+    const sentFrom = this.page.url();
 
     if (prompt.length > 5000) {
       console.log("Long prompt - setting the composer directly...");
@@ -678,6 +714,17 @@ export class PlaywrightController {
     console.log("Prompt sent!");
 
     const currentUrl = this.page.url();
+    // DeepSeek sends a message to a NEW chat by itself once the thread is past
+    // its length limit ("Length limit exceeded. Your message will be sent to a
+    // new chat."). That chat has none of the conversation, so carrying on in
+    // it would lose the conversation silently. Say the thread is full instead,
+    // and the agent rolls over with its notes.
+    const movedFrom = chatId(sentFrom), movedTo = chatId(currentUrl);
+    if (config.replyErrors && movedFrom && movedTo && movedFrom !== movedTo) {
+      const t: Trouble = { kind: "full", detail: "the message went to a new chat" };
+      console.log(config.name + " moved the message to a new chat - the thread is past its length limit.");
+      throw new ProviderTrouble(t, describeTrouble(t, 1, config.name));
+    }
     if (currentUrl && currentUrl !== config.baseUrl && !currentUrl.endsWith("/")) {
       this.setChatUrlForWorkspace(this.workspace, currentUrl);
     } else {
@@ -847,20 +894,86 @@ export class PlaywrightController {
     observe?: (tick: { messages: number; chars: number; stopVisible: boolean }) => void,
     onThinking?: (text: string) => void,
   ): Promise<string> {
-    try {
-      return await this.waitOnce(config, prevCount, prevContent, observe, onThinking);
-    } catch (e) {
-      // A reply the provider dropped before writing any of it was never read,
-      // so the same prompt can go again. Once: a second drop is the provider's
-      // state, not a hiccup, and the caller hears about it.
-      if (!(e instanceof ReplyDropped) || this.lastPrompt === null) throw e;
-      console.log(e.message + " Sending the prompt again.");
-      await sleep(3000);
-      const count = await this.countMessages(config);
-      const content = await this.getLastMessageText(config);
-      await this.sendPrompt(this.lastPrompt, config);
-      return await this.waitOnce(config, count, content, observe, onThinking);
+    let count = prevCount;
+    let content = prevContent;
+    let dropped = false;
+    let tries = 1;
+    let attempt = 0;
+    for (;;) {
+      try {
+        return await this.waitOnce(config, count, content, observe, onThinking);
+      } catch (e) {
+        if (this.lastPrompt === null) throw e;
+        if (e instanceof ReplyDropped && !dropped) {
+          // A reply the provider dropped before writing any of it was never
+          // read, so the same prompt can go again. Once: a second drop is the
+          // provider's state, not a hiccup, and the caller hears about it.
+          dropped = true;
+          console.log(e.message + " Sending the prompt again.");
+          await sleep(3000);
+        } else if (e instanceof ProviderTrouble) {
+          // Busy, rate limited, or filtered: the provider said so instead of
+          // answering. Wait as configured and send again; once the waits run
+          // out, the person hears the provider's own words and how often it
+          // was asked. Signed out and full are never retried here.
+          const ms = backoffFor(e.kind, attempt++, config.replyErrors);
+          if (ms === null) throw tries > 1 ? new ProviderTrouble(e.trouble, describeTrouble(e.trouble, tries, config.name)) : e;
+          console.log(config.name + " did not answer (" + e.trouble.detail + "). Sending the prompt again in " + Math.round(ms / 1000) + "s.");
+          phase("waiting", config.name + " is " + (e.kind === "rate-limit" ? "rate limiting" : "busy") + " - retrying in " + Math.round(ms / 1000) + "s");
+          await sleep(ms);
+        } else {
+          throw e;
+        }
+        count = await this.countMessages(config);
+        content = await this.getLastMessageText(config);
+        await this.sendPrompt(this.lastPrompt, config);
+        tries++;
+      }
     }
+  }
+
+  /** Signed out: the page went to the provider's sign-in URL. */
+  private throwIfSignedOut(config: ProviderConfig): void {
+    const rules = config.replyErrors;
+    if (!rules || !rules.signedOutUrl || !this.page) return;
+    const t = classifyTrouble({ url: this.page.url() }, { signedOutUrl: rules.signedOutUrl });
+    if (t) {
+      console.log("The page is at " + this.page.url() + " - signed out.");
+      throw new ProviderTrouble(t, describeTrouble(t, 1, config.name));
+    }
+  }
+
+  /**
+   * Why no reply is coming, when the provider said: the URL, the reply
+   * request's status, what the ended stream said and - with `readPage` - the
+   * text in the conversation's newest item. Null when nothing is wrong, and
+   * always for a provider with no `replyErrors`.
+   */
+  private async replyTrouble(config: ProviderConfig, readPage: boolean): Promise<Trouble | null> {
+    const rules = config.replyErrors;
+    if (!rules || !this.page) return null;
+    let pageNotice = "";
+    if (readPage && rules.notice) {
+      try {
+        pageNotice = await this.page.evaluate((q: { sel: string; ex: string }) => {
+          const all = (globalThis as any).document.querySelectorAll(q.sel);
+          const el = all[all.length - 1];
+          if (!el) return "";
+          const c = el.cloneNode(true);
+          if (q.ex) c.querySelectorAll(q.ex).forEach((n: any) => n.remove());
+          return String(c.textContent || "").trim().slice(0, 500);
+        }, { sel: rules.notice, ex: rules.noticeExclude || "" });
+      } catch { /* unreadable: the stream's word stands */ }
+    }
+    return classifyTrouble({ url: this.page.url(), httpStatus: this.lastStreamStatus, signals: this.replySignals || undefined, pageNotice: pageNotice }, rules);
+  }
+
+  private async throwIfTrouble(config: ProviderConfig, readPage: boolean): Promise<void> {
+    const t = await this.replyTrouble(config, readPage);
+    if (!t) return;
+    const msg = describeTrouble(t, 1, config.name);
+    console.log("No reply: " + msg);
+    throw new ProviderTrouble(t, msg);
   }
 
   private async waitOnce(
@@ -887,6 +1000,8 @@ export class PlaywrightController {
     };
     const finish = async (): Promise<string> => {
       await relayThinking();
+      // A half-written answer under "Server busy" is not the reply.
+      await this.throwIfTrouble(config, true);
       return await this.extractWithRetry(config);
     };
 
@@ -930,6 +1045,9 @@ export class PlaywrightController {
       // pattern-matched, because a rate limit is a 429 whatever the body says -
       // and guessing at a body nobody here has seen is how this project's every
       // serious bug started.
+      // With replyErrors, the provider's own account first: busy, rate
+      // limited, signed out or full each have their own answer.
+      await this.throwIfTrouble(config, false);
       const streamFailure = describeStreamFailure(this.lastStreamStatus);
       if (streamFailure && streamFailure.fatal) {
         console.log("The provider's reply request failed: " + streamFailure.message);
@@ -967,6 +1085,9 @@ export class PlaywrightController {
             this.pickedSelector = null;
           }
           closedTicks = this.streamsOpened > 0 && this.streamsClosed >= this.streamsOpened ? closedTicks + 1 : 0;
+          // A notice in place of a reply ("Server busy") adds no message, so
+          // nothing above moves. The page says why.
+          if (closedTicks === 1 || waitingTicks % THINKING_LOG_EVERY_TICKS === 0) await this.throwIfTrouble(config, true);
           if (endedWithoutReply({ started: started, streamsOpened: this.streamsOpened, streamsClosed: this.streamsClosed, ticksSinceClosed: closedTicks }, DROPPED_TICKS)) {
             // Once more on a freshly resolved selector first: a watch on the
             // wrong node also sees nothing, and that reply is not lost.
@@ -1065,8 +1186,37 @@ export class PlaywrightController {
         }
       }
       console.log("Still writing after the grace period - extracting what there is.");
+    } else if (this.streamsOpened > this.streamsClosed) {
+      // No stop button, but the reply stream is still open: the provider is
+      // still sending (a long answer, a long think). The same bounded grace.
+      const graceMs = Math.min(maxWait, MAX_GRACE_MS);
+      console.log("Reached " + Math.round(maxWait / 1000) + "s but the reply is still streaming" +
+        " - waiting up to " + Math.round(graceMs / 1000) + "s more.");
+      const graceStart = Date.now();
+      let prev: string | null = null;
+      while (Date.now() - graceStart < graceMs) {
+        await this.page.waitForTimeout(POLL_INTERVAL_MS);
+        await relayThinking();
+        await this.throwIfTrouble(config, false);
+        const count = await this.countMessages(config);
+        const text = await this.getLastMessageText(config);
+        if (!started && (count > prevCount || (text.length > 0 && text !== prevContent))) started = true;
+        if (this.streamsClosed >= this.streamsOpened && text === prev) {
+          console.log("Response complete (finished during grace period)!");
+          break;
+        }
+        prev = text;
+      }
     } else {
       console.log("Timeout after " + Math.round(maxWait / 1000) + "s - extracting partial response.");
+    }
+    // Nothing new on the page means there is no reply to read: extracting
+    // here returned the PREVIOUS answer as if it were this one.
+    if (!started) {
+      const secs = Math.round((Date.now() - start) / 1000);
+      await this.throwIfTrouble(config, true);
+      throw new Error(config.name + " did not start a reply in " + secs + "s, so nothing was read." +
+        " Send your message again; if it keeps happening, start a new chat.");
     }
     return await finish();
   }

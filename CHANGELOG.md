@@ -52,9 +52,40 @@ Windows, Linux and, for the first time, macOS. They are unsigned, as before.
   and checkpoints into the project. The folder now holds a `.gitignore` that
   ignores it, and the export's check leaves it out. The project's own
   `.gitignore` is not touched.
+- **DeepSeek's error notices are no longer read as the reply.** "Server
+  busy", network and send failures, rate limits, an unfinished (INCOMPLETE)
+  reply and a refused one are recognised from the reply stream's status and
+  error events, or from the notice on the page. The strings live in
+  `deepseek.json` (`replySignals`, `replyErrors`). Busy replies are sent again
+  after 5, 20 and 60 seconds, a rate limit after a minute, and anything else
+  ends with a message that says what happened.
+- **Signed out of DeepSeek mid-session.** The agent stops at once with "Use
+  Sign in, then send your message again" instead of waiting on a sign-in page.
+- **A full DeepSeek conversation continues in a new chat.** When DeepSeek
+  reports the context length exceeded, or moves the message to a new chat by
+  itself, the agent rolls over without asking the full chat for a summary and
+  sends the message again.
+- **A rollover's summary survives a failed reply.** If the new chat's first
+  message failed, the summary and notes were dropped and the next message
+  started from nothing. They are now sent again with the next message.
+- **A new chat after rollover is not mixed up with the old one.** The saved
+  chat is cleared when the conversation resets, so a restart resumes the new
+  thread.
+- **A stuck reply ends with a message.** A reply that never started, or never
+  finished, used to return the previous answer as if it were the new one. The
+  agent now waits while the reply is still streaming and otherwise says that
+  nothing was read.
+- **Long sessions stay bounded.** The agent keeps the last 20 undo
+  checkpoints, which hold whole files, and the Code panel keeps the last 500
+  entries of prompt history.
 
 ### For developers
 
+- `scripts/deepseek-faults.mjs` breaks DeepSeek's reply live (busy, rate
+  limit, HTTP errors, a dropped stream, sign-out) and checks what the agent
+  does. `scripts/long-session.mjs` runs a long agent session with rollovers and
+  records latency and memory per turn. Both work on a copy of the signed-in
+  profile, refuse the real one, and delete the copy when they end.
 - `npm start` runs the native build (`cmake -S native -B build-native -G Ninja
   && cmake --build build-native`). `desktop/`, `electron` and
   `electron-builder` are removed.
