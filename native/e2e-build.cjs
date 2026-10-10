@@ -121,7 +121,7 @@ async function main() {
       if (REPLIES[m[1]]) mock.setReplies(REPLIES[m[1]]);
       console.log("     stage " + m[1]);
     }
-    if (/E2E (PASS|FAIL)|warning|Warning|Error|ReferenceError|TypeError/.test(line)) console.log("     " + line);
+    if (/E2E (PASS|FAIL|LOG)|warning|Warning|Error|ReferenceError|TypeError/.test(line)) console.log("     " + line);
   }
   function reader(stream) {
     let buf = "";

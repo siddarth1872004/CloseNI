@@ -182,7 +182,13 @@ Item {
             } else if (flow.ticks * 50 > st.ms) {
                 stop()
                 console.log("E2E FAIL " + st.name + " (workspace " + AppState.workspace + ", provider " + Providers.current
-                            + ", mode " + AppState.mode + ", build " + BuildState.mode + " " + BuildState.statusText + ")")
+                            + ", mode " + AppState.mode + ", build " + BuildState.mode + " " + BuildState.statusText
+                            + ", plan busy " + PlanState.busy + " steps " + ((AppState.currentPlan && AppState.currentPlan.steps) || []).length + ")")
+                // What the agent said last, so a failure on CI can be read
+                // without rerunning it.
+                var log = Notify.agentLog
+                for (var i = Math.max(0, log.count - 25); i < log.count; i++)
+                    console.log("E2E LOG " + log.get(i).line)
                 Qt.exit(1)
             }
         }
