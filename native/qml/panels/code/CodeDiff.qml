@@ -23,6 +23,7 @@ Rectangle {
 
     ListView {
         id: list
+        cacheBuffer: 0   // no async look-ahead in a Loader: ARCHITECTURE.md, Panels
         anchors.fill: parent
         anchors.margins: 1
         clip: true

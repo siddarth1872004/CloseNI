@@ -65,6 +65,16 @@ Button {
         elide: Text.ElideRight
     }
 
+    // A stepped press, so a click lands rather than glides: 1px down in two
+    // steps over .06s - on Pixel 2px across and down, onto its hard shadow,
+    // which goes. Letting go is instant, as the CSS was.
+    onDownChanged: if (down) Pix.press.play()
+    transform: Translate {
+        readonly property real by: control.down ? Pix.press.t * (Theme.isPixel ? 2 : 1) : 0
+        x: Theme.isPixel ? by : 0
+        y: by
+    }
+
     background: Item {
         implicitHeight: control.small ? 22 : 32
         // Pixel's 2px hard shadow; pressing pushes the block onto it.
@@ -75,8 +85,6 @@ Button {
         }
         Rectangle {
             id: face
-            readonly property int push: Theme.isPixel && control.down ? 2 : 0
-            x: push; y: push
             width: parent.width; height: parent.height
             radius: Theme.rMd
             color: control.variant === "invert"

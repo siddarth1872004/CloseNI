@@ -170,6 +170,7 @@ ColumnLayout {
                     // #test-results: at most 340px, scrolling inside.
                     ListView {
                         id: results
+                        cacheBuffer: 0   // no async look-ahead in a Loader: ARCHITECTURE.md, Panels
                         objectName: "testResults"
                         Layout.fillWidth: true
                         Layout.preferredHeight: Math.min(contentHeight, 340)
@@ -253,6 +254,7 @@ ColumnLayout {
             Micro { text: "Ask about this run" }
             ListView {
                 id: flow
+                cacheBuffer: 0   // no async look-ahead in a Loader: ARCHITECTURE.md, Panels
                 objectName: "testChat"
                 Layout.fillWidth: true
                 Layout.fillHeight: true

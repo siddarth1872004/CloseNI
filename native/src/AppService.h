@@ -24,6 +24,7 @@ class AppService : public QObject
 
 public:
     explicit AppService(QObject *parent = nullptr);
+    ~AppService() override;
 
     QString platform() const;
     QString version() const;

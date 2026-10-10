@@ -60,6 +60,12 @@ Rectangle {
         // one delegate per step, so a long plan draws only what is on screen.
         ListView {
             id: list
+            // Nothing is built ahead of the viewport. The view builds those
+            // delegates asynchronously, and a panel's Loader clears the
+            // context the moment the panel closes but deletes it later, so a
+            // build still in flight then fails ("Object or context destroyed
+            // during incubation"). See ARCHITECTURE.md, Panels.
+            cacheBuffer: 0
             objectName: "planSteps"
             Layout.fillWidth: true
             Layout.fillHeight: true
@@ -245,6 +251,8 @@ Rectangle {
                         readonly property bool focused: up.activeFocus || down.activeFocus || merge.activeFocus || del.activeFocus
                         readonly property bool shown: hover.hovered || focused
                         opacity: shown ? 1 : 0
+                        // .plan-step-edit: transition opacity .12s, a plain fade.
+                        Behavior on opacity { enabled: !App.reducedMotion; NumberAnimation { duration: 120 } }
                         Btn { id: up; small: true; text: "^"; tip: "Move earlier"; onClicked: PlanState.editPlanStep("up", stepCard.index) }
                         Btn { id: down; small: true; text: "v"; tip: "Move later"; onClicked: PlanState.editPlanStep("down", stepCard.index) }
                         Btn { id: merge; small: true; text: "merge up"; tip: "Merge into the step above"; onClicked: PlanState.editPlanStep("merge", stepCard.index) }

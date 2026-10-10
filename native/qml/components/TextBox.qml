@@ -42,6 +42,7 @@ ScrollView {
         bottomPadding: 9
         selectByMouse: true
         background: null
+        onActiveFocusChanged: if (activeFocus) Pix.ring.play()
     }
 
     background: Item {
@@ -51,7 +52,8 @@ ScrollView {
             radius: Theme.rMd
             color: root.sunken ? Theme.surfaceSunken : Theme.surface
             border.width: 1
-            border.color: area.activeFocus ? (Theme.isPixel ? Theme.pxBlue : Theme.dim) : Theme.lineStrong
+            // Focus marks the edge in one step too (steps(1) over .06s).
+            border.color: area.activeFocus && Pix.ring.t >= 1 ? (Theme.isPixel ? Theme.pxBlue : Theme.dim) : Theme.lineStrong
         }
         FocusRing {
             target: box

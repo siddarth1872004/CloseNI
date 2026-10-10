@@ -23,6 +23,10 @@ AbstractButton {
     implicitWidth: contentItem.implicitWidth + leftPadding + rightPadding
     implicitHeight: contentItem.implicitHeight + topPadding + bottomPadding
 
+    // The stepped press: 1px down in two steps over .06s; letting go is instant.
+    onDownChanged: if (down) Pix.press.play()
+    transform: Translate { y: control.down ? Pix.press.t : 0 }
+
     contentItem: Row {
         spacing: 10
         Text {

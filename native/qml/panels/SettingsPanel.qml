@@ -303,6 +303,7 @@ RowLayout {
             }
             ListView {
                 id: skillList
+                cacheBuffer: 0   // no async look-ahead in a Loader: ARCHITECTURE.md, Panels
                 objectName: "settingsSkillList"
                 visible: count > 0
                 Layout.fillWidth: true

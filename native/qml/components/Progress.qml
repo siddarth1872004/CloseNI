@@ -37,11 +37,10 @@ Rectangle {
             radius: Math.max(0, root.radius - root.border.width)
             color: Theme.isPixel ? "transparent" : root.fill
             clip: Theme.isPixel
-            width: Math.round(parent.width * Math.max(0, Math.min(1, root.value)) / (parent.width / 12 || 1)) * (parent.width / 12)
-            Behavior on width {
-                enabled: Theme.motion
-                NumberAnimation { duration: Theme.durSlow }
-            }
+            // transition: width .4s steps(12): the fill goes from where it was
+            // to the new value in twelve jumps.
+            width: parent.width * advance.value
+            PixMotion { id: advance; frames: 12; duration: Theme.durSlow; target: Math.max(0, Math.min(1, root.value)) }
             Row {
                 visible: Theme.isPixel
                 spacing: 2
