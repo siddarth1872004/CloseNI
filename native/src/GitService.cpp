@@ -1,7 +1,5 @@
 /*
  * Git: exporting a build as one commit per step, and the Ship panel's buttons.
- *
- * Ports desktop/main/git.js.
  */
 #include "GitService.h"
 

@@ -1,9 +1,7 @@
 /*
  * Line diff for the Builder's file cards.
  *
- * Ported from desktop/diff.js: an ES module imported by the QML app
- * and by the test harness. desktop/ was deleted with Electron in 0.4.0, so
- * this is the only copy.
+ * An ES module imported by the QML app and by the test harness.
  */
 var GAP_THRESHOLD = 6; // unchanged runs longer than this collapse
 var GAP_CONTEXT = 2;   // lines kept either side of a collapsed run

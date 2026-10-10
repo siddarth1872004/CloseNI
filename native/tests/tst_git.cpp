@@ -1,5 +1,5 @@
 /*
- * The Git service (desktop/main/git.js) and the export-branch planning it
+ * The Git service and the export-branch planning it
  * replays. Translates build-unit.cjs "a build replayed as one commit per
  * step", then runs git for real in a scratch repository.
  */

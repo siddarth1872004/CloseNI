@@ -1,9 +1,7 @@
 /*
  * Is a usable browser installed?
  *
- * Ported from desktop/browser-check.js: an ES module imported by the QML app
- * and by the test harness. desktop/ was deleted with Electron in 0.4.0, so
- * this is the only copy.
+ * An ES module imported by the QML app and by the test harness.
  *
  * Playwright names each browser directory <name>-<revision>. Only a full
  * chromium counts: the headless shell cannot display a login page, and signing

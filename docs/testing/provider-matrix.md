@@ -83,7 +83,7 @@ There is no overall score or ranking, on purpose.
 - live **BLOCKED** Long-running conversation: ERROR: navigation failed: blocked - page.goto: net::ERR_TUNNEL_CONNECTION_FAILED at https://chat.deepseek.com/ (blocked)
 - fixture **PARTIAL** Selector health: CHAT_READY; on fallback: send, newChat; not present in this state: copy \| composer:ok, send:fallback, assistant:ok, newChat:fallback, copy:absent
 - fixture **NOT_APPLICABLE** Stop generation: measured: DeepSeek's stop control is its send control
-- fixture **NOT_APPLICABLE** Tool-use simulation: the model drives a chat window and cannot call tools; research runs outside it (see ROADMAP item 13)
+- fixture **NOT_APPLICABLE** Tool-use simulation: the model drives a chat window and cannot call tools; research runs outside it
 
 ### Qwen
 
@@ -103,7 +103,7 @@ There is no overall score or ranking, on purpose.
 - live **BLOCKED** Long-running conversation: ERROR: navigation failed: blocked - page.goto: net::ERR_TUNNEL_CONNECTION_FAILED at https://chat.qwen.ai/ (blocked)
 - fixture **PARTIAL** Selector health: CHAT_READY; on fallback: newChat; not present in this state: stop \| composer:ok, send:ok, stop:absent, assistant:ok, newChat:fallback
 - fixture **PARTIAL** Network interruption: no measured stream endpoint: a cut reply ends like a finished one (status complete)
-- fixture **NOT_APPLICABLE** Tool-use simulation: the model drives a chat window and cannot call tools; research runs outside it (see ROADMAP item 13)
+- fixture **NOT_APPLICABLE** Tool-use simulation: the model drives a chat window and cannot call tools; research runs outside it
 
 ### GLM
 
@@ -123,7 +123,7 @@ There is no overall score or ranking, on purpose.
 - live **BLOCKED** Long-running conversation: ERROR: navigation failed: blocked - page.goto: net::ERR_TUNNEL_CONNECTION_FAILED at https://chat.z.ai/ (blocked)
 - fixture **PARTIAL** Selector health: CHAT_READY; on fallback: send, assistant, newChat; not present in this state: stop \| composer:ok, send:fallback, stop:absent, assistant:fallback, newChat:fallback
 - fixture **PARTIAL** Network interruption: no measured stream endpoint: a cut reply ends like a finished one (status complete)
-- fixture **NOT_APPLICABLE** Tool-use simulation: the model drives a chat window and cannot call tools; research runs outside it (see ROADMAP item 13)
+- fixture **NOT_APPLICABLE** Tool-use simulation: the model drives a chat window and cannot call tools; research runs outside it
 
 ## Browser layer (fixture)
 

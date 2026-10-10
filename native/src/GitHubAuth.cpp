@@ -7,7 +7,6 @@
 
 #include <QDir>
 #include <QFile>
-#include <QFileInfo>
 
 namespace {
 
@@ -18,10 +17,9 @@ QJsonValue gLogin = QJsonValue::Null;
 bool gLoaded = false;
 
 /*
- * The store's name for this storage root's token. Electron kept the token in a
- * file under the storage root, so a scratch CLOSENI_STORAGE (a test, a second
- * profile) never saw or replaced the real one; scoping the account by the
- * override keeps that.
+ * The store's name for this storage root's token, scoped by a CLOSENI_STORAGE
+ * override so a scratch storage (a test, a second profile) never sees or
+ * replaces the real one.
  */
 QString account()
 {
@@ -91,18 +89,6 @@ void clearToken()
     gLogin = QJsonValue::Null;
     gLoaded = true;
     SecretStore::remove(account());
-    // Already gone is fine.
-    QFile::remove(legacyTokenFile());
-}
-
-QString legacyTokenFile()
-{
-    return QDir(Paths::storageRoot()).filePath(QStringLiteral("github.token"));
-}
-
-bool legacyTokenPresent()
-{
-    return QFileInfo(legacyTokenFile()).isFile();
 }
 
 QString askPassScript()

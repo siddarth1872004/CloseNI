@@ -2,8 +2,7 @@ import QtQuick
 import CloseNI
 
 /*
- * The stylesheet's event-driven motion ("Pixel motion" in desktop/styles.css),
- * for one item. Each fires when something happens and then stops; nothing
+ * The pixel theme's event-driven motion, for one item. Each fires when something happens and then stops; nothing
  * runs on an idle screen:
  *
  *   "in"       pix-in: a stepped fade up from 3px below (cards, rows, a panel)

@@ -7,7 +7,7 @@
 #include <functional>
 
 /*
- * One git process, the way desktop/main/git.js and github.js spawned it:
+ * One git process:
  * no shell, git's environment from GitHubAuth::gitEnv(), stdout and stderr
  * read together as they arrive.
  *

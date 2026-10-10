@@ -1,9 +1,7 @@
 /*
  * Getting started: what a first launch needs, in the order it needs it.
  *
- * Ported from desktop/onboarding.js: an ES module imported by the QML app
- * and by the test harness. desktop/ was deleted with Electron in 0.4.0, so
- * this is the only copy.
+ * An ES module imported by the QML app and by the test harness.
  *
  * A first launch used to land on an empty chat with no workspace, no provider
  * signed in and a Build button that could not work, and nothing said which of

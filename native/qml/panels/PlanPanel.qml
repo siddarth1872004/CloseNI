@@ -10,8 +10,7 @@ import "../js/renderer-logic.mjs" as R
  * implies, and the steps, each with inline editing. Below it, Suggest Changes
  * and Build with this.
  *
- * The Chat panel shows it beside the conversation, as Electron did (`sidebar`
- * true). Opened on its own as the "plan" panel, × goes back to the chat.
+ * The Chat panel shows it beside the conversation (`sidebar` true). Opened on its own as the "plan" panel, × goes back to the chat.
  * Everything it shows is PlanState's and AppState's, so it holds nothing.
  */
 Rectangle {

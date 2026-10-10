@@ -8,16 +8,15 @@ import "../js/onboarding.mjs" as Onboarding
 import "../js/renderer-logic.mjs" as R
 
 /*
- * State every panel reads, from desktop/renderer/core.js, workspace.js,
- * chats.js, the onboarding half of account.js and window.CN in startup.js.
- * Panels write it through the functions here, so the flow bar, the rail and
+ * State every panel reads: the panels, the workspace, its chats and the
+ * getting-started guide. Panels write it through the functions here, so the flow bar, the rail and
  * the getting-started guide all redraw from one place.
  */
 QtObject {
     id: state
 
     // ---- Panels and the top bar ---------------------------------------------
-    // R.MODE_TITLES and R.FLOW_MODES, plus the Plan panel, which Electron drew
+    // R.MODE_TITLES and R.FLOW_MODES, plus the Plan panel, which also shows
     // inside Chat (whose title is already "PLAN").
     function titleFor(m) { return R.MODE_TITLES[m] || (m === "plan" ? "PLAN" : "") }
     function hasFlow(m) { return !!R.FLOW_MODES[m] || m === "plan" }
@@ -355,7 +354,7 @@ QtObject {
     /*
      * First run: without a browser the app can do nothing at all, so the gate
      * blocks rather than failing later at the first sign-in. A status that
-     * cannot be read (a stub, an error) counts as ready, as in Electron.
+     * cannot be read (a stub, an error) counts as ready.
      */
     function checkBrowser() {
         Agent.browserStatus(function (status) {

@@ -5,15 +5,14 @@ import CloseNI
 import "../js/language-mark.mjs" as Lang
 
 /*
- * Build (#panel-build in index.html, builder.js): the plan's steps on the left,
+ * Build: the plan's steps on the left,
  * the selected step's detail on the right - its timing, what it was asked to
  * do, its error, and every file it wrote as a diff against what was there.
  *
  * The build itself runs in BuildState, so leaving this panel mid-build loses
  * nothing: it keeps going, and coming back shows where it is.
  *
- * Electron previewed a frontend in a web view beside the steps. There is no
- * web view here: "Open in browser" hands the detected address to the system
+ * There is no web view: "Open in browser" hands the detected address to the system
  * browser, and "Run" starts the project in the run console.
  */
 Item {

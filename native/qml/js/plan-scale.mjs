@@ -6,9 +6,7 @@
  * is not worth an IPC round trip, so it is duplicated rather than plumbed.
  * Keep SECONDS_PER_STEP in step with the agent's copy.
  *
- * Ported from desktop/plan-scale.js: an ES module imported by the QML app
- * and by the test harness. desktop/ was deleted with Electron in 0.4.0, so
- * this is the only copy.
+ * An ES module imported by the QML app and by the test harness.
  */
 var SECONDS_PER_STEP = 90;
 

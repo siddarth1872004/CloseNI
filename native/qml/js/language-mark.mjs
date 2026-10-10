@@ -5,9 +5,7 @@
  * and item 10 already made this call for provider logos. The extension in an
  * accent colour says the same thing and ships nothing.
  *
- * Ported from desktop/language-mark.js: an ES module imported by the QML app
- * and by the test harness. desktop/ was deleted with Electron in 0.4.0, so
- * this is the only copy.
+ * An ES module imported by the QML app and by the test harness.
  */
 // Families share an accent; the label keeps the real extension, so .cpp and
 // .c look related without looking identical.

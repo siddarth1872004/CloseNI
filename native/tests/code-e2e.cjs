@@ -7,7 +7,7 @@
  * own key handlers. Then the run console's "Fix errors" (Runner.runFix):
  * declined for another folder, a turn for this one. Then the prompt's keys:
  * history, mode cycling, the command and file popups, slash commands, a
- * queued message and esc (what scripts/ui-code.mjs checked in Electron).
+ * queued message and esc.
  *
  *   node native/tests/code-e2e.cjs [path/to/CloseNI] [screenshot dir]
  *

@@ -6,7 +6,7 @@ import "../js/code-view.mjs" as V
 import "../js/code-transcript.mjs" as T
 
 /*
- * The Code panel (#panel-code, desktop/code.js): a coding agent in the style
+ * The Code panel: a coding agent in the style
  * of a terminal one. The welcome box and tips, the transcript, the spinner,
  * the todo list, the mode strip, the prompt with its / and @ popup, and the
  * status line under it.
@@ -41,8 +41,8 @@ FocusScope {
     Connections {
         target: CodeStore
         function onFocusInput() { input.forceActiveFocus() }
-        // A permission prompt takes the keyboard from the prompt, as Electron's
-        // focused its first option: enter answers it rather than sending.
+        // A permission prompt takes the keyboard from the prompt: enter
+        // answers it rather than sending.
         function onFocusPrompt() { promptKeys.forceActiveFocus(); transcript.stick() }
         function onPendingCloneChanged() { if (CodeStore.pendingClone) cloneModal.open() }
     }

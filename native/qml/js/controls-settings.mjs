@@ -2,9 +2,7 @@
  * Turns a provider's declared controls plus whatever the user last chose into
  * the settings the agent should apply.
  *
- * Ported from desktop/controls-settings.js: an ES module imported by the QML app
- * and by the test harness. desktop/ was deleted with Electron in 0.4.0, so
- * this is the only copy.
+ * An ES module imported by the QML app and by the test harness.
  */
 /**
  * Saved values are validated against what the provider currently declares,

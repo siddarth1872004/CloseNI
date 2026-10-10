@@ -13,7 +13,6 @@ class GitHubApi;
 /*
  * Skills, personas and MCP configuration.
  *
- * Ports desktop/main/settings.js. Owner: data-backend.
  * Asynchronous methods reply once through their callback (src/Js.h).
  */
 class LibraryService : public QObject

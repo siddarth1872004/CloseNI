@@ -4,8 +4,7 @@
  *
  * Opened with dlopen at run time rather than linked, so it is not a build
  * dependency and a system without it still runs - it just cannot remember the
- * token between launches, the same as Electron's safeStorage on a desktop with
- * no keyring.
+ * token between launches.
  *
  * The libsecret and GLib declarations used are restated below; they are part
  * of libsecret-1's stable ABI.

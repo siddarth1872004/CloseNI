@@ -2,9 +2,7 @@
  * The security-relevant decisions, kept pure so they can be tested without a
  * network or a credential.
  *
- * Ported from desktop/github-safe.js: an ES module imported by the QML app
- * and by the test harness. desktop/ was deleted with Electron in 0.4.0, so
- * this is the only copy.
+ * An ES module imported by the QML app and by the test harness.
  */
 /**
  * Remove a token from anything about to be logged or shown.

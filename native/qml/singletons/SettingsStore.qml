@@ -5,10 +5,9 @@ import "../js/api.mjs" as Api
 import "../js/renderer-logic.mjs" as R
 
 /*
- * What Settings decides that outlives the Settings panel, from
- * desktop/renderer/settings.js (the permission policy), skills.js (the persona,
- * the ticked skills and the preamble built from them) and the panel's own
- * drafts. The panel is a Loader that exists only while it is shown; the agent
+ * What Settings decides that outlives the Settings panel: the permission
+ * policy, the persona, the ticked skills and the preamble built from them, and
+ * the panel's own drafts. The panel is a Loader that exists only while it is shown; the agent
  * panels read the policy and the preamble from here at any time.
  *
  * The theme and its decoration live in Theme, the provider, its controls and
@@ -67,7 +66,7 @@ QtObject {
     // ---- The panel's drafts -----------------------------------------------------
     // What is typed into Skills but not saved yet. The panel goes when another
     // is shown, and a half-written skill must not go with it. Not saved: a
-    // draft is gone after a restart, as it was in Electron.
+    // draft is gone after a restart.
     property string editorName: ""
     property string editorText: ""
     property string newSkillName: ""

@@ -4,8 +4,7 @@ import CloseNI
 import "../js/renderer-logic.mjs" as R
 
 /*
- * Toasts and the console, from desktop/renderer/core.js (toast, log, plog,
- * setConsole). The two logs are bounded: a long session must not grow them
+ * Toasts and the console. The two logs are bounded: a long session must not grow them
  * without limit.
  *
  * The console drawer, closed, counts what arrived; an error opens it, because

@@ -1,5 +1,5 @@
 /*
- * The Files service (desktop/main/files.js): providers, the file tree, reading
+ * The Files service: providers, the file tree, reading
  * a file, and the per-workspace chat list in sessions.json.
  */
 #include "data_harness.h"
@@ -109,7 +109,7 @@ void TestFiles::chats()
     r = h.call("Files.switchChat(WS, '', cb)");
     CHECK2(r.toObject().value("error") == QStringLiteral("Missing workspace or chat url"), h.lastText);
 
-    // Sessions written by the Electron app are read as they are.
+    // Sessions saved without a provider per chat are read as they are.
     writeAll(m_storage.file("sessions.json"),
              R"({"/work/space":{"chats":[{"url":"https://chat.test/1","title":"one"}],"activeChat":"https://chat.test/1","buildLedger":{"x":1}}})");
     r = h.call("Files.getChats(WS, cb)");

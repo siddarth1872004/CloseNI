@@ -4,7 +4,7 @@ import CloseNI
 import "../js/renderer-logic.mjs" as R
 
 /*
- * The conversation and the plan: desktop/renderer/plan.js, without the DOM.
+ * The conversation and the plan.
  * The Chat panel draws the bubbles and the Plan panel the document; both live
  * here so a reply that arrives after the user has moved on still lands, and
  * coming back shows the conversation as it was.

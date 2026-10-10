@@ -6,8 +6,7 @@
 #include <QVariant>
 
 /*
- * What desktop/main.js and the desktop/main modules got from Node's child_process,
- * shared by the services that start processes.
+ * Process helpers shared by the services that start processes.
  */
 namespace Proc {
 

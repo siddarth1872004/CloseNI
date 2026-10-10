@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
-/** Where the app keeps its storage on this machine (Electron's userData). */
+/** Where the app keeps its storage on this machine. */
 export function realStorage() {
   if (process.platform === "win32") return path.join(process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming"), "CloseNI");
   if (process.platform === "darwin") return path.join(os.homedir(), "Library", "Application Support", "CloseNI");

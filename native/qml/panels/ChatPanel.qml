@@ -4,9 +4,9 @@ import QtQuick.Layouts
 import CloseNI
 
 /*
- * Chat (#panel-chat in index.html, renderer/plan.js): talk the idea through,
+ * Chat: talk the idea through,
  * then Generate Implementation Plan. The plan document opens beside the
- * conversation (#plan-sidebar), where it can be edited, revised by message
+ * conversation, where it can be edited, revised by message
  * ("Suggest Changes") or handed to the builder.
  *
  * The conversation, the draft and the plan live in PlanState and AppState, so

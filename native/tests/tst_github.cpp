@@ -66,7 +66,6 @@ private slots:
     void safety();
     void apiShapes();
     void service();
-    void legacyToken();
     void cloneGuards();
     void cleanupTestCase() { REPORT_CHECKS(); }
 
@@ -272,22 +271,6 @@ void TestGitHub::service()
     CHECK2(r.toObject().value("signedIn") == false && r.toObject().value("login").isNull(), h.lastText);
     r = h.call("GitHub.call('listRepos', [], cb)");
     CHECK2(r.toObject().value("error") == QStringLiteral("GitHub rejected the token (401): Bad credentials"), h.lastText);
-}
-
-void TestGitHub::legacyToken()
-{
-    // Electron's safeStorage blob: present, unreadable here.
-    writeAll(m_storage.file("github.token"), QByteArray("v11\x01\x02\x03", 6));
-    GitHubService gh;
-    Harness h;
-    h.expose("GitHub", &gh);
-    QJsonValue r = h.call("GitHub.status(cb)");
-    CHECK2(r.toObject().value("signedIn") == false && r.toObject().value("legacyToken") == true, h.lastText);
-    CHECK2(r.toObject().value("message").toString().contains("sign in again"), h.lastText);
-    r = h.call("GitHub.signOut(cb)");
-    CHECK(!QFile::exists(m_storage.file("github.token")));
-    r = h.call("GitHub.status(cb)");
-    CHECK2(!r.toObject().contains("legacyToken"), h.lastText);
 }
 
 void TestGitHub::cloneGuards()

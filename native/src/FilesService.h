@@ -9,7 +9,6 @@
 /*
  * Providers, workspace files and the per-workspace chat threads.
  *
- * Ports desktop/main/files.js. Owner: data-backend.
  * Asynchronous methods reply once through their callback (src/Js.h).
  */
 class FilesService : public QObject

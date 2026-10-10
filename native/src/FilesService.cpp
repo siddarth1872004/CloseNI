@@ -1,8 +1,6 @@
 /*
  * Reads for the renderer, which has no file access: the provider list, the
  * workspace's files, and its saved chats.
- *
- * Ports desktop/main/files.js.
  */
 #include "FilesService.h"
 

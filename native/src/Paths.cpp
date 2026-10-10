@@ -60,8 +60,8 @@ QString storageRoot()
     const QString override = qEnvironmentVariable("CLOSENI_STORAGE");
     if (!override.isEmpty())
         return override;
-    // Electron's userData is appData/<productName>, and appData differs by
-    // system in ways QStandardPaths does not line up with: on Windows it is the
+    // appData/<productName>, where appData differs by system in ways
+    // QStandardPaths does not line up with: on Windows it is the
     // roaming profile, which Qt's generic locations never return.
 #if defined(Q_OS_WIN)
     return QDir::cleanPath(qEnvironmentVariable("APPDATA") + "/" + kAppName);

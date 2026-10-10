@@ -1,9 +1,7 @@
 /*
  * Works out how to run a generated project.
  *
- * Ported from desktop/entrypoint.js: an ES module imported by the QML app
- * and by the test harness. desktop/ was deleted with Electron in 0.4.0, so
- * this is the only copy.
+ * An ES module imported by the QML app and by the test harness.
  */
 /**
  * Returns the command to run, or null when nothing is recognisable. null is a

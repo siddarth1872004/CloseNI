@@ -6,12 +6,11 @@
 #include <QVariant>
 
 /*
- * The renderer's localStorage, natively: string values under the same
- * "closeni.*" keys, kept in <storage>/native-prefs.json.
+ * The app's settings: string values under "closeni.*" keys, kept in
+ * <storage>/native-prefs.json.
  *
  * Writes are batched to the next turn of the event loop, so a burst of set()
- * calls costs one write. On first run the Electron app's values are imported
- * once (owner of the import: data-backend).
+ * calls costs one write.
  */
 class Prefs : public QObject
 {

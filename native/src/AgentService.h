@@ -16,7 +16,6 @@
  * session, provider sign-in and health, and the Chromium install. Owns the run
  * queue and the one-profile-at-a-time rules.
  *
- * Ports desktop/main.js, desktop/main/browser.js. Owner: agent-backend.
  * Asynchronous methods reply once through their callback (src/Js.h).
  */
 class AgentService : public QObject

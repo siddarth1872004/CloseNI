@@ -1,10 +1,7 @@
 /*
  * The renderer's decisions, without the renderer.
  *
- * Extracted from desktop/renderer/*.js (deleted with Electron in 0.4.0).
- * Those files shared one global scope and read state (the
- * workspace, the provider, the plan) from it; here that state comes in as
- * arguments, and saved values come in as the strings Prefs holds rather than
+ * State (the workspace, the provider, the plan) comes in as arguments, and saved values come in as the strings Prefs holds rather than
  * being read from localStorage. Everything here is pure.
  */
 import * as Controls from "./controls-settings.mjs";
@@ -79,8 +76,8 @@ function renderTextPart(t) {
 }
 /**
  * The renderer's small markdown: fenced code, headings, lists, paragraphs,
- * inline code, bold and italic, as HTML. The class names are the Electron
- * stylesheet's; a QML Text in RichText mode ignores them.
+ * inline code, bold and italic, as HTML. A QML Text in RichText mode ignores
+ * the class names.
  */
 function renderMarkdown(md) {
   var re = /```\w*\n?([\s\S]*?)```/g;
@@ -549,8 +546,7 @@ var AUTONOMY_OPTIONS = [
 ];
 
 /**
- * The saved permission policy, or "ask". A value the select does not offer
- * left it blank in Electron, and getAutonomy read a blank select as "ask".
+ * The saved permission policy, or "ask" for a value the picker does not offer.
  */
 function resolveAutonomy(saved) {
   return AUTONOMY_OPTIONS.some(function (o) { return o.value === saved; }) ? saved : "ask";

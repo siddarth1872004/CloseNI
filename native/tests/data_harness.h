@@ -127,8 +127,7 @@ inline QString compact(const QJsonValue &v)
 
 /*
  * A reply as JSON text, parsed. Compared by value: a QVariantMap reply
- * serialises its keys sorted, where Electron kept insertion order, and no
- * caller reads the order.
+ * serialises its keys sorted, and no caller reads the order.
  */
 inline QJsonValue J(const char *text)
 {

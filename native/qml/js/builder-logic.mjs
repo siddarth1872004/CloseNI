@@ -1,7 +1,6 @@
 /*
  * The Build panel's decisions, without the panel.
  *
- * Extracted from desktop/builder.js (deleted with Electron in 0.4.0).
  * Everything here is pure: the step list, the plan and the
  * run state come in as arguments, and text or plain objects come back. Timers,
  * the agent session and drawing stay with the Build panel.
@@ -36,8 +35,7 @@ function buildStats(steps, running) {
 }
 
 /**
- * Which of the panel's buttons show in a given mode. The keys are the
- * Electron element ids without their "builder-" prefix.
+ * Which of the panel's buttons show in a given mode, by button name.
  */
 function buttonVisibility(mode, steps) {
   return {
@@ -214,8 +212,7 @@ function diffMark(type) {
 
 /**
  * The address the preview opens, from preview-target's { kind, url } and the
- * workspace. Electron showed it in a frame; the native app opens it in the
- * browser.
+ * workspace. It opens in the system browser.
  */
 function previewUrl(kind, ws, url) {
   return kind === "file" ? "file://" + ws + "/" + url : url;

@@ -5,7 +5,7 @@ export interface ChatRef {
   url: string;
   title: string;
   createdAt: string;
-  /** The provider the thread lives on; absent in lists saved before 0.4.0. */
+  /** The provider the thread lives on; absent in older lists. */
   provider?: string;
 }
 

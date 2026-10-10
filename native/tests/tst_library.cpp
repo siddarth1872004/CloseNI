@@ -1,5 +1,5 @@
 /*
- * The Library service (desktop/main/settings.js) and what it is built on:
+ * The Library service and what it is built on:
  * skill-store, mcp-client and mcp-context. Translates desktop-unit.cjs
  * "personas and skills are just files", "MCP, spoken by hand over stdio" and
  * "MCP context, gathered once before a build"; the MCP server is the same

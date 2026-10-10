@@ -5,7 +5,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>CloseNI</title>
-<meta name="description" content="Free web AI chats, turned into a coding agent. No API keys: it drives a chat site in a real browser. Desktop app for Windows and Linux.">
+<meta name="description" content="Free web AI chats, turned into a coding agent. No API keys: it drives a chat site in a real browser. Native desktop app for Windows, macOS and Linux.">
 <meta property="og:title" content="CloseNI">
 <meta property="og:description" content="Free web AI chats, turned into a coding agent. No API keys.">
 <meta property="og:image" content="screenshots/code.png">
@@ -54,10 +54,6 @@ h1 em{font-style:normal;color:var(--accent)}
 .shot .chrome{display:flex;gap:7px;padding:11px 14px;background:var(--panel2);border-bottom:1px solid var(--line)}
 .shot .chrome span{width:11px;height:11px;border-radius:50%;background:var(--line)}
 .shot img{display:block;width:100%;height:auto}
-.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden;margin:56px 0 0}
-.stats div{background:var(--panel);padding:20px;text-align:center}
-.stats b{display:block;font-size:30px;letter-spacing:-.01em}
-.stats span{font-size:13px;color:var(--dim);text-transform:uppercase;letter-spacing:.08em}
 section{padding:76px 0 0}
 h2{font-size:clamp(26px,4vw,36px);letter-spacing:-.015em;margin:0 0 10px}
 .kick{color:var(--accent);font-size:13px;text-transform:uppercase;letter-spacing:.12em;margin:0 0 8px;font-weight:600}
@@ -69,7 +65,7 @@ h2{font-size:clamp(26px,4vw,36px);letter-spacing:-.015em;margin:0 0 10px}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
 .card{padding:22px;background:var(--panel);border:1px solid var(--line);border-radius:10px}
 .card h3{margin:0 0 6px;font-size:18px}
-.gallery{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:20px}
+.gallery{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:20px}
 figure{margin:0;background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden}
 figure img{display:block;width:100%;height:auto;border-bottom:1px solid var(--line)}
 figcaption{padding:14px 16px;color:var(--dim);font-size:14px}
@@ -83,6 +79,7 @@ tr:last-child td{border-bottom:0}
 .dl .card{display:flex;flex-direction:column;gap:12px}
 .dl .card.rec{border-color:var(--accent)}
 .dl .btn{justify-content:center}
+.dl .src{grid-column:1/-1}
 .note{margin-top:20px;padding:16px 18px;border:1px solid var(--line);border-left:3px solid var(--warn);border-radius:8px;background:var(--panel);font-size:15px;color:var(--dim)}
 .note b{color:var(--fg)}
 pre{margin:0;padding:16px 18px;background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:auto;font-size:14px;line-height:1.55}
@@ -105,21 +102,15 @@ footer .sp{flex:1}
 </div></nav>
 
 <header class="hero"><div class="wrap">
-  <span class="pill"><b>v0.4.0</b> &nbsp;·&nbsp; early release &nbsp;·&nbsp; DeepSeek driven end to end</span>
+  <span class="pill"><b>v0.1</b> &nbsp;·&nbsp; early release &nbsp;·&nbsp; DeepSeek driven end to end</span>
   <h1>Free web AI chats,<br>turned into a <em>coding agent</em>.</h1>
   <p class="lede">Ask for a change and it reads your project, edits files, runs commands and checks its work, asking before anything it should. The model is a chat site driven in a real browser. No API key, no per-token bill.</p>
   <div class="cta">
     <a class="btn primary" id="dl-main" href="https://github.com/siddarth1872004/CloseNI/releases/latest">Download for your system</a>
     <a class="btn" href="readme.html">Read the docs</a>
   </div>
-  <p class="sub" id="dl-sub">Windows installer · Linux AppImage and .deb · unsigned</p>
+  <p class="sub" id="dl-sub">Windows · macOS · Linux · native, no web view · unsigned</p>
   <div class="shot"><div class="chrome"><span></span><span></span><span></span></div><img src="screenshots/code.png" alt="The Code panel: a request, a read, and an edit shown as a diff waiting for permission"></div>
-  <div class="stats">
-    <div><b>2111</b><span>unit tests</span></div>
-    <div><b>13</b><span>native test suites</span></div>
-    <div><b>197</b><span>verify checks</span></div>
-    <div><b>0</b><span>API keys</span></div>
-  </div>
 </div></header>
 
 <main class="wrap">
@@ -158,8 +149,6 @@ footer .sp{flex:1}
 <figure><img src="screenshots/builder.png" alt="The builder: A plan you can revise, then one step at a time, each checked before the next." loading="lazy"><figcaption><b>The builder</b>A plan you can revise, then one step at a time, each checked before the next.</figcaption></figure>
 <figure><img src="screenshots/test.png" alt="Test: The checks it ran for your project, and what they said." loading="lazy"><figcaption><b>Test</b>The checks it ran for your project, and what they said.</figcaption></figure>
 <figure><img src="screenshots/ship.png" alt="Ship: Commit and push from the app, with the diff in front of you." loading="lazy"><figcaption><b>Ship</b>Commit and push from the app, with the diff in front of you.</figcaption></figure>
-<figure><img src="screenshots/chat.png" alt="Chat: Plain conversation with the provider, no tools." loading="lazy"><figcaption><b>Chat</b>Plain conversation with the provider, no tools.</figcaption></figure>
-<figure><img src="screenshots/settings.png" alt="Settings: Providers, permissions, themes, languages." loading="lazy"><figcaption><b>Settings</b>Providers, permissions, themes, languages.</figcaption></figure>
   </div>
 </section>
 
@@ -179,27 +168,30 @@ footer .sp{flex:1}
 <section id="download">
   <p class="kick">Download</p>
   <h2>Get CloseNI</h2>
-  <p class="sect-lede">Version 0.4.0. Built on GitHub Actions from a tag, one job per operating system.</p>
+  <p class="sect-lede">Version 0.1. A native Qt app with Node and the agent bundled. Chromium is downloaded on first run.</p>
   <div class="dl">
     <div class="card" id="card-win"><h3>Windows</h3><p>NSIS installer; you choose the folder. Windows 10 or later.</p>
       <a class="btn primary" href="https://github.com/siddarth1872004/CloseNI/releases/latest">Download the .exe</a></div>
+    <div class="card" id="card-mac"><h3>macOS</h3><p>Disk images for Apple silicon and Intel.</p>
+      <a class="btn primary" href="https://github.com/siddarth1872004/CloseNI/releases/latest">Download the .dmg</a></div>
     <div class="card" id="card-linux"><h3>Linux</h3><p>An AppImage that runs anywhere, or a .deb for Debian and Ubuntu.</p>
       <a class="btn primary" href="https://github.com/siddarth1872004/CloseNI/releases/latest">Download AppImage or .deb</a></div>
-    <div class="card"><h3>From source</h3><p>Node 18 or later.</p>
-<pre><code>git clone https://github.com/siddarth1872004/CloseNI.git
-cd CloseNI &amp;&amp; npm install
-npm run build &amp;&amp; npm start</code></pre></div>
+    <div class="card src"><h3>From source</h3><p>Node 22, Qt 6.8 or later, CMake and Ninja.</p>
+<pre><code>git clone https://github.com/siddarth1872004/CloseNI.git &amp;&amp; cd CloseNI
+npm install &amp;&amp; npm run build
+npx playwright install chromium
+cmake -S native -B build-native -G Ninja
+cmake --build build-native &amp;&amp; npm start</code></pre></div>
   </div>
-  <div class="note"><b>The installers are unsigned.</b> Windows SmartScreen will warn about an unrecognised publisher; that warning is accurate. The Linux build has been run here. The Windows installer is built by CI and has not yet been installed on a clean machine, so treat it as unproven. The first run asks you to install Chromium and sign in to a provider once.</div>
+  <div class="note"><b>The installers are unsigned.</b> Windows SmartScreen and macOS Gatekeeper will warn the first time; that warning is accurate. The first run asks you to install Chromium and sign in to a provider once.</div>
 </section>
 </main>
 
 <footer><div class="wrap">
-  <span>CloseNI v0.4.0 · MIT licence</span>
+  <span>CloseNI v0.1 · MIT licence</span>
   <a href="readme.html">Documentation</a>
   <a href="https://github.com/siddarth1872004/CloseNI/blob/main/CHANGELOG.md">Changelog</a>
   <a href="https://github.com/siddarth1872004/CloseNI/blob/main/docs/SAFETY.md">Safety</a>
-  <a href="https://github.com/siddarth1872004/CloseNI/blob/main/docs/RELEASING.md">Releasing</a>
   <span class="sp"></span>
   <a href="https://github.com/siddarth1872004/CloseNI">GitHub</a>
 </div></footer>
@@ -209,9 +201,10 @@ npm run build &amp;&amp; npm start</code></pre></div>
 // without this; it only changes the label and highlights the matching card.
 (function () {
   var ua = navigator.userAgent || '';
-  var os = /Windows/i.test(ua) ? 'win' : /Linux|X11/i.test(ua) && !/Android/i.test(ua) ? 'linux' : '';
+  var os = /Windows/i.test(ua) ? 'win' : /Macintosh|Mac OS X/i.test(ua) && !/iPhone|iPad/i.test(ua) ? 'mac'
+    : /Linux|X11/i.test(ua) && !/Android/i.test(ua) ? 'linux' : '';
   if (!os) return;
-  var label = os === 'win' ? 'Download for Windows' : 'Download for Linux';
+  var label = 'Download for ' + { win: 'Windows', mac: 'macOS', linux: 'Linux' }[os];
   var btn = document.getElementById('dl-main');
   if (btn) btn.textContent = label;
   var card = document.getElementById('card-' + os);

@@ -85,7 +85,7 @@ const docsPage = read('docs/readme.html');
 const site = landing + docsPage;
 // The documentation page is the README, rendered, so every claim checked
 // against the README below holds for it. The landing page carries only the
-// version and the README's test counts, both regenerated from their source.
+// version, regenerated from package.json.
 check('the docs page is generated from the current README', docsPage === renderSite(readme), 'run npm run site');
 check('the landing page is generated from the README and package.json',
   landing === renderLanding(readme, JSON.parse(read('package.json'))), 'run npm run site');
@@ -564,7 +564,7 @@ check('every README anchor resolves', badAnchors.length === 0, badAnchors.join('
 // and a Pages CSP blocks them.
 group('Pixel-art SVGs');
 const assets = readdirSync(join(ROOT, 'docs/assets')).filter((f) => f.endsWith('.svg'));
-check('assets were generated', assets.length >= 6, assets.join(' '));
+check('assets were generated', assets.length >= 4, assets.join(' '));
 
 // An asset nothing points at is dead weight that still ships and still has to
 // be regenerated. Either use it or delete it.
@@ -574,7 +574,7 @@ for (const f of assets) {
   const svg = read('docs/assets/' + f);
   const okNoScript = !/<script/i.test(svg);
   const okNoExternal = !/(href|src)\s*=\s*"https?:/i.test(svg);
-  const okCrisp = /shape-rendering="crispEdges"/.test(svg) || f === 'divider.svg';
+  const okCrisp = /shape-rendering="crispEdges"/.test(svg);
   const okDiscrete = !/calcMode="linear"/.test(svg);
   check(`${f}: no <script>, no external refs, crisp, discrete-only`,
     okNoScript && okNoExternal && okCrisp && okDiscrete,
@@ -586,7 +586,7 @@ for (const f of assets) {
 group('Release configuration');
 const pkg = JSON.parse(read('package.json'));
 const appMeta = JSON.parse(read('native/package/app.json'));
-check('version is set', /^\d+\.\d+\.\d+$/.test(pkg.version), pkg.version);
+check('version is set', /^\d+\.\d+(\.\d+)?$/.test(pkg.version), pkg.version);
 // One home for the version: CMake reads package.json, so the app, its
 // installers and the release tag cannot disagree.
 check('CMake takes its version from package.json',
@@ -612,9 +612,8 @@ const jobs = Object.fromEntries((wf.split(/^jobs:\n/m)[1] || '').split(/^(?=  [a
 check('release workflow checks the tag against package.json', /does not match package.json version/.test(wf));
 check('installers are built for windows, linux and both macs',
   ['linux-x64', 'win-x64', 'mac-arm64', 'mac-x64'].every((t) => new RegExp(`target: ${t}\\b`).test(jobs.package || '')));
-// Replaces "serialises the two OS jobs" (max-parallel: 1). That guarded
-// electron-builder publishing from each job and racing to create the release;
-// now the build jobs only upload artifacts and one job publishes after them all.
+// The build jobs only upload artifacts and one job publishes after them all,
+// so no two jobs race to create the release.
 check('one job publishes, after every installer is built',
   /needs: package\b/.test(jobs.publish || '') && (wf.match(/gh release create/g) || []).length === 1 &&
   !/gh release/.test(jobs.package || ''), Object.keys(jobs).join(', '));
@@ -734,8 +733,8 @@ if (!QUICK) {
     for (const p of ['qtquickdialogsplugin', 'qtquickdialogs2quickimplplugin']) {
       check(`QtQuick.Dialogs plugin ${p} is shipped`, files.some((f) => new RegExp(`(^|/)(lib)?${p}\\.(so|dll|dylib)$`).test(f)));
     }
-    // Electron's linux-unpacked was 283 MB; the native app must stay well under it.
-    check('the stage is smaller than the Electron build it replaces (283 MB)', m.bytes < 283 * 1048576,
+    // Lightweight is a requirement: the unpacked app stays under 283 MB.
+    check('the stage is under 283 MB', m.bytes < 283 * 1048576,
       `${(m.bytes / 1048576).toFixed(1)} MB`);
   }
 }

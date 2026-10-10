@@ -7,8 +7,7 @@
  *
  *   node scripts/verify-site.mjs      (npm run verify:site)
  *
- * The app's theme contrast used to be measured here too, in the Electron
- * renderer. The native app's palettes are checked by the unit suite
+ * The app's theme palettes are checked by the unit suite
  * (local-agent/test/app-unit.cjs, "theme palettes").
  */
 

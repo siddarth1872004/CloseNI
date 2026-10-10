@@ -30,8 +30,8 @@ const qsizetype kFixTail = 6000;
 const int kSpawnFailed = -2;
 
 /*
- * The parts of desktop/run-target.js the process side needs. The renderer's
- * copy is ported to qml/js separately; these must agree with it.
+ * The parts of run-target the process side needs. qml/js/run-target.mjs
+ * holds the rest; these must agree with it.
  */
 
 /*
@@ -200,7 +200,7 @@ RunService::RunService(QObject *parent)
 
 RunService::~RunService()
 {
-    // Quitting stops the program, as Electron's before-quit did.
+    // Quitting stops the program.
     stopProgram();
 }
 
@@ -299,8 +299,7 @@ void RunService::openRunWindow(const QVariantMap &payload, QJSValue callback)
                           {QStringLiteral("cwd"), cwd},
                           {QStringLiteral("gui"), m_job.gui},
                           {QStringLiteral("title"), QStringLiteral("Run - ") + QFileInfo(QDir::cleanPath(cwd)).fileName()}});
-    // Once the console has had its turn to open and connect, as Electron
-    // waited for the page to load.
+    // Once the console has had its turn to open and connect.
     QMetaObject::invokeMethod(this, [this] { if (m_hasJob) start(); }, Qt::QueuedConnection);
     Js::reply(this, callback, QVariantMap{{QStringLiteral("ok"), true}});
 }

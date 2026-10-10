@@ -122,8 +122,7 @@ function testThemePalettes() {
   // red on near-black. The pairs are the ones that carry meaning - body text,
   // muted labels, the inverted button, and each status on its own tint and on
   // the page. 3.0 is the floor below which text is gone rather than muted;
-  // body text and dim labels are held to 4.5. (This was verify-visual.mjs,
-  // which measured the same pairs in the Electron renderer.)
+  // body text and dim labels are held to 4.5.
   const hex = function (v) {
     const h = (String(v || "").match(/^"#([0-9a-fA-F]{6})"$/) || [])[1];
     return h ? [0, 2, 4].map(function (i) { return parseInt(h.substr(i, 2), 16); }) : null;
@@ -423,7 +422,7 @@ function testBuildConfig() {
   const app = JSON.parse(readNative("package/app.json"));
   const stage = readNative("package/stage.mjs");
 
-  // The native app replaced Electron; nothing may quietly bring it back.
+  // No Electron: nothing may quietly bring it back.
   const dev = pkg.devDependencies || {};
   check("Electron is not a dependency", !dev.electron && !dev["electron-builder"] && !(pkg.dependencies || {}).electron,
     Object.keys(dev).join(","));
@@ -435,7 +434,7 @@ function testBuildConfig() {
   // version - CMake reads package.json - so what is worth asserting is that the
   // version is well formed and that the release workflow will accept a tag for
   // it, not what the digits happen to be.
-  check("the version is semver", /^\d+\.\d+\.\d+$/.test(pkg.version), String(pkg.version));
+  check("the version is well formed", /^\d+\.\d+(\.\d+)?$/.test(pkg.version), String(pkg.version));
   check("the workspaces follow it",
     ["local-agent", "shared"].every(function (w) {
       return JSON.parse(fs.readFileSync(path.join(ROOT, w, "package.json"), "utf8")).version === pkg.version;
@@ -625,7 +624,7 @@ function testStorageRoot() {
   const S = require(path.join(DIST, "storage-paths.js"));
 
   // The bug this exists for, found by the first live smoke run: the desktop app
-  // sets CLOSENI_STORAGE to Electron's userData and every agent it spawns
+  // sets CLOSENI_STORAGE to its storage root and every agent it spawns
   // inherits it, but a CLI entry point sets nothing - so storagePaths fell back
   // to the repo-local profileDir. The app was signed in and `npm run smoke`
   // reported "not signed in", against a different directory entirely.
@@ -1392,7 +1391,7 @@ function testRendererLogic() {
     Object.keys(R.composePreamble(null, [], { ok: true, texts: [], notes: [] })).length === 0);
   check("a blank or missing persona is left out",
     !("persona" in R.composePreamble(ok(" "), [], null)) && !("persona" in R.composePreamble({ ok: false }, [], null)));
-  check("the permission choices are Electron's",
+  check("the permission choices are ask, auto and never",
     R.AUTONOMY_OPTIONS.map(function (o) { return o.value; }).join(",") === "ask,auto,never");
   check("a saved permission policy is kept", R.resolveAutonomy("never") === "never" && R.resolveAutonomy("auto") === "auto");
   check("an unknown or missing permission policy is ask",

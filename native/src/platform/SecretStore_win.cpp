@@ -3,9 +3,7 @@
  *
  * CryptProtectData encrypts with a key tied to the signed-in Windows user, so
  * the file it produces is useless to another account or another machine. That
- * is what Electron's safeStorage did on Windows too; the blob goes in
- * storageRoot as github.native.token (one per account name), beside the
- * Electron app's github.token, which this app cannot read.
+ * blob goes in storageRoot as github.native.token (one per account name).
  */
 #include "SecretStore.h"
 

@@ -12,15 +12,14 @@ import "../js/renderer-logic.mjs" as R
 /*
  * The Code panel: a coding agent in the style of a terminal one.
  *
- * The state and decisions of desktop/code.js. The agent lives in a
+ * The Code panel's state and decisions. The agent lives in a
  * long-lived process started on the first message; this only keeps what it
  * reports and sends what the user types. Everything shown comes from an event -
  * nothing here guesses at what the agent did.
  *
  * Kept here rather than in CodePanel.qml because it must outlive the panel:
  * the session, its transcript, the queue and the prompt history all carry on
- * while another panel is open, as they did when Electron's panel was never
- * destroyed. CodePanel.qml only draws this and passes the keyboard on.
+ * while another panel is open. CodePanel.qml only draws this and passes the keyboard on.
  *
  * The transcript is `items`, a ListModel of { uid, kind, rev }; each entry's
  * data sits in a side table, replaced (never mutated) on every change and
@@ -681,8 +680,8 @@ QtObject {
         var p = prov || Providers.current
         return JSON.stringify([p, Providers.showBrowser, controlsFor(p)])
     }
-    // The controls of the session's own provider. In Electron that is always
-    // the chosen one; a pinned --provider is not, and taking the chosen one's
+    // The controls of the session's own provider. That is usually the chosen
+    // one; a pinned --provider is not, and taking the chosen one's
     // here would also change once the provider list loads after --start, and
     // reopen a session that nothing about has changed.
     function controlsFor(prov) {
@@ -915,7 +914,7 @@ QtObject {
         }
     }
 
-    // ---- What window.CN gave code.js ---------------------------------------------------------------------
+    // ---- Calls into the agent and the app ----------------------------------------------------------------
 
     /** git in the workspace. */
     function git(args) {

@@ -5,7 +5,7 @@ import QtQuick.Layouts
 import CloseNI
 
 /*
- * The window: desktop/index.html's shell. The rail, the top bar with the flow,
+ * The window: the rail, the top bar with the flow,
  * one Loader per panel (only the open one exists, plus Code once visited, so
  * an idle window holds one screen), the console drawer, toasts, the approval
  * modal, the browser gate and the folder picker.
@@ -202,7 +202,7 @@ ApplicationWindow {
         }
         // "Fix errors" in the run console: the agent here takes the request,
         // so this window comes forward. The Code panel turns the prompt into
-        // a task (Electron's code.js onRunFix).
+        // a task.
         function onRunFix(detail) {
             // The offscreen platform (the self-test flows) has no windows to
             // raise and warns if asked, which fails a flow.

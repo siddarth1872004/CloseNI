@@ -5,9 +5,7 @@ import "../js/api.mjs" as Api
 import "../js/renderer-logic.mjs" as R
 
 /*
- * The provider, its account light and its live phase, from
- * desktop/renderer/providers.js, account.js and the provider half of
- * startup.js. The decisions live in js/renderer-logic.mjs; this holds the
+ * The provider, its account light and its live phase. The decisions live in js/renderer-logic.mjs; this holds the
  * state and talks to the services.
  *
  * The account check is a real headless visit, so it is never run
@@ -41,7 +39,7 @@ QtObject {
 
     // The live phase readout: { name, label, kind (idle|busy|work), detail }.
     property var phase: R.phaseLabel(null)
-    // For the build panel's per-step timer (window.CN.notePhase). Every phase
+    // For the build panel's per-step timer. Every phase
     // is reported at the moment it was observed on the page, so the clock
     // there is measuring the real thing rather than an inference. The builder
     // owns the per-step timer; this only forwards the transition.

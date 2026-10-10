@@ -2,8 +2,8 @@
  * A build's records in the workspace: the run manifest, the saved build state,
  * and the checkpoints that rollback restores.
  *
- * Ports desktop/main/build.js. The rules it borrowed from the agent's compiled
- * modules (build-state, checkpoint, run-manifest) are in BuildRules.
+ * The rules it shares with the agent (build-state, checkpoint, run-manifest)
+ * are in BuildRules.
  */
 #include "BuildStore.h"
 

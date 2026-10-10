@@ -5,7 +5,7 @@
 #include <QString>
 
 /*
- * What the renderer got from Electron itself: the platform, the version,
+ * What QML needs from the host: the platform, the version,
  * opening links in the system browser and copying text.
  */
 class AppService : public QObject
@@ -14,7 +14,7 @@ class AppService : public QObject
     QML_NAMED_ELEMENT(App)
     QML_SINGLETON
 
-    /* "win32", "darwin" or "linux", as process.platform said in the renderer. */
+    /* "win32", "darwin" or "linux", as Node's process.platform says. */
     Q_PROPERTY(QString platform READ platform CONSTANT)
     Q_PROPERTY(QString version READ version CONSTANT)
     Q_PROPERTY(QString storageRoot READ storageRoot CONSTANT)

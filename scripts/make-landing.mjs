@@ -1,23 +1,12 @@
 // The Pages landing page, docs/index.html. Called by make-site.mjs.
 //
 // It states no fact of its own that the repo already records: the version is
-// package.json's, the test counts are read from the README's stats image, and
-// every download button goes to the latest GitHub release rather than to a file
-// name that may not exist yet. The prose is the README's own claims, shortened.
+// package.json's, and every download button goes to the latest GitHub release
+// rather than to a file name that may not exist yet. The prose is the README's
+// own claims, shortened.
 
 const REPO = 'https://github.com/siddarth1872004/CloseNI';
 const RELEASES = REPO + '/releases/latest';
-
-/** "2111 unit tests, 13 native test suites, 197 verify checks, ..." from the stats image alt. */
-function stats(readme) {
-  const alt = (readme.match(/<img src="docs\/assets\/stats\.svg" alt="([^"]+)"/) || [])[1] || '';
-  const n = (re) => (alt.match(re) || [])[1] || '';
-  return {
-    unit: n(/(\d+) unit tests/),
-    suites: n(/(\d+) native test suites/),
-    checks: n(/(\d+) verify checks/),
-  };
-}
 
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
@@ -26,8 +15,6 @@ const SHOTS = [
   ['builder.png', 'The builder', 'A plan you can revise, then one step at a time, each checked before the next.'],
   ['test.png', 'Test', 'The checks it ran for your project, and what they said.'],
   ['ship.png', 'Ship', 'Commit and push from the app, with the diff in front of you.'],
-  ['chat.png', 'Chat', 'Plain conversation with the provider, no tools.'],
-  ['settings.png', 'Settings', 'Providers, permissions, themes, languages.'],
 ];
 
 const FEATURES = [
@@ -47,7 +34,6 @@ const STEPS = [
 ];
 
 export function renderLanding(readme, pkg) {
-  const st = stats(readme);
   const v = esc(pkg.version);
   const shots = SHOTS.map(([f, t, d]) => `<figure><img src="screenshots/${f}" alt="${esc(t)}: ${esc(d)}" loading="lazy"><figcaption><b>${esc(t)}</b>${esc(d)}</figcaption></figure>`).join('\n');
   const features = FEATURES.map(([t, d]) => `<div class="card"><h3>${esc(t)}</h3><p>${esc(d)}</p></div>`).join('\n');
@@ -59,7 +45,7 @@ export function renderLanding(readme, pkg) {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>CloseNI</title>
-<meta name="description" content="Free web AI chats, turned into a coding agent. No API keys: it drives a chat site in a real browser. Desktop app for Windows and Linux.">
+<meta name="description" content="Free web AI chats, turned into a coding agent. No API keys: it drives a chat site in a real browser. Native desktop app for Windows, macOS and Linux.">
 <meta property="og:title" content="CloseNI">
 <meta property="og:description" content="Free web AI chats, turned into a coding agent. No API keys.">
 <meta property="og:image" content="screenshots/code.png">
@@ -108,10 +94,6 @@ h1 em{font-style:normal;color:var(--accent)}
 .shot .chrome{display:flex;gap:7px;padding:11px 14px;background:var(--panel2);border-bottom:1px solid var(--line)}
 .shot .chrome span{width:11px;height:11px;border-radius:50%;background:var(--line)}
 .shot img{display:block;width:100%;height:auto}
-.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden;margin:56px 0 0}
-.stats div{background:var(--panel);padding:20px;text-align:center}
-.stats b{display:block;font-size:30px;letter-spacing:-.01em}
-.stats span{font-size:13px;color:var(--dim);text-transform:uppercase;letter-spacing:.08em}
 section{padding:76px 0 0}
 h2{font-size:clamp(26px,4vw,36px);letter-spacing:-.015em;margin:0 0 10px}
 .kick{color:var(--accent);font-size:13px;text-transform:uppercase;letter-spacing:.12em;margin:0 0 8px;font-weight:600}
@@ -123,7 +105,7 @@ h2{font-size:clamp(26px,4vw,36px);letter-spacing:-.015em;margin:0 0 10px}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
 .card{padding:22px;background:var(--panel);border:1px solid var(--line);border-radius:10px}
 .card h3{margin:0 0 6px;font-size:18px}
-.gallery{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:20px}
+.gallery{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:20px}
 figure{margin:0;background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden}
 figure img{display:block;width:100%;height:auto;border-bottom:1px solid var(--line)}
 figcaption{padding:14px 16px;color:var(--dim);font-size:14px}
@@ -137,6 +119,7 @@ tr:last-child td{border-bottom:0}
 .dl .card{display:flex;flex-direction:column;gap:12px}
 .dl .card.rec{border-color:var(--accent)}
 .dl .btn{justify-content:center}
+.dl .src{grid-column:1/-1}
 .note{margin-top:20px;padding:16px 18px;border:1px solid var(--line);border-left:3px solid var(--warn);border-radius:8px;background:var(--panel);font-size:15px;color:var(--dim)}
 .note b{color:var(--fg)}
 pre{margin:0;padding:16px 18px;background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:auto;font-size:14px;line-height:1.55}
@@ -166,14 +149,8 @@ footer .sp{flex:1}
     <a class="btn primary" id="dl-main" href="${RELEASES}">Download for your system</a>
     <a class="btn" href="readme.html">Read the docs</a>
   </div>
-  <p class="sub" id="dl-sub">Windows installer · Linux AppImage and .deb · unsigned</p>
+  <p class="sub" id="dl-sub">Windows · macOS · Linux · native, no web view · unsigned</p>
   <div class="shot"><div class="chrome"><span></span><span></span><span></span></div><img src="screenshots/code.png" alt="The Code panel: a request, a read, and an edit shown as a diff waiting for permission"></div>
-  <div class="stats">
-    <div><b>${esc(st.unit)}</b><span>unit tests</span></div>
-    <div><b>${esc(st.suites)}</b><span>native test suites</span></div>
-    <div><b>${esc(st.checks)}</b><span>verify checks</span></div>
-    <div><b>0</b><span>API keys</span></div>
-  </div>
 </div></header>
 
 <main class="wrap">
@@ -220,18 +197,22 @@ ${shots}
 <section id="download">
   <p class="kick">Download</p>
   <h2>Get CloseNI</h2>
-  <p class="sect-lede">Version ${v}. Built on GitHub Actions from a tag, one job per operating system.</p>
+  <p class="sect-lede">Version ${v}. A native Qt app with Node and the agent bundled. Chromium is downloaded on first run.</p>
   <div class="dl">
     <div class="card" id="card-win"><h3>Windows</h3><p>NSIS installer; you choose the folder. Windows 10 or later.</p>
       <a class="btn primary" href="${RELEASES}">Download the .exe</a></div>
+    <div class="card" id="card-mac"><h3>macOS</h3><p>Disk images for Apple silicon and Intel.</p>
+      <a class="btn primary" href="${RELEASES}">Download the .dmg</a></div>
     <div class="card" id="card-linux"><h3>Linux</h3><p>An AppImage that runs anywhere, or a .deb for Debian and Ubuntu.</p>
       <a class="btn primary" href="${RELEASES}">Download AppImage or .deb</a></div>
-    <div class="card"><h3>From source</h3><p>Node 18 or later.</p>
-<pre><code>git clone ${REPO}.git
-cd CloseNI &amp;&amp; npm install
-npm run build &amp;&amp; npm start</code></pre></div>
+    <div class="card src"><h3>From source</h3><p>Node 22, Qt 6.8 or later, CMake and Ninja.</p>
+<pre><code>git clone ${REPO}.git &amp;&amp; cd CloseNI
+npm install &amp;&amp; npm run build
+npx playwright install chromium
+cmake -S native -B build-native -G Ninja
+cmake --build build-native &amp;&amp; npm start</code></pre></div>
   </div>
-  <div class="note"><b>The installers are unsigned.</b> Windows SmartScreen will warn about an unrecognised publisher; that warning is accurate. The Linux build has been run here. The Windows installer is built by CI and has not yet been installed on a clean machine, so treat it as unproven. The first run asks you to install Chromium and sign in to a provider once.</div>
+  <div class="note"><b>The installers are unsigned.</b> Windows SmartScreen and macOS Gatekeeper will warn the first time; that warning is accurate. The first run asks you to install Chromium and sign in to a provider once.</div>
 </section>
 </main>
 
@@ -240,7 +221,6 @@ npm run build &amp;&amp; npm start</code></pre></div>
   <a href="readme.html">Documentation</a>
   <a href="${REPO}/blob/main/CHANGELOG.md">Changelog</a>
   <a href="${REPO}/blob/main/docs/SAFETY.md">Safety</a>
-  <a href="${REPO}/blob/main/docs/RELEASING.md">Releasing</a>
   <span class="sp"></span>
   <a href="${REPO}">GitHub</a>
 </div></footer>
@@ -250,9 +230,10 @@ npm run build &amp;&amp; npm start</code></pre></div>
 // without this; it only changes the label and highlights the matching card.
 (function () {
   var ua = navigator.userAgent || '';
-  var os = /Windows/i.test(ua) ? 'win' : /Linux|X11/i.test(ua) && !/Android/i.test(ua) ? 'linux' : '';
+  var os = /Windows/i.test(ua) ? 'win' : /Macintosh|Mac OS X/i.test(ua) && !/iPhone|iPad/i.test(ua) ? 'mac'
+    : /Linux|X11/i.test(ua) && !/Android/i.test(ua) ? 'linux' : '';
   if (!os) return;
-  var label = os === 'win' ? 'Download for Windows' : 'Download for Linux';
+  var label = 'Download for ' + { win: 'Windows', mac: 'macOS', linux: 'Linux' }[os];
   var btn = document.getElementById('dl-main');
   if (btn) btn.textContent = label;
   var card = document.getElementById('card-' + os);

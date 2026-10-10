@@ -5,9 +5,7 @@
  * step's slot is reused immediately instead of waiting for its whole wave to
  * drain.
  *
- * Ported from desktop/scheduler.js: an ES module imported by the QML app
- * and by the test harness. desktop/ was deleted with Electron in 0.4.0, so
- * this is the only copy.
+ * An ES module imported by the QML app and by the test harness.
  */
 function has(list, i) { return (list || []).indexOf(i) !== -1; }
 
