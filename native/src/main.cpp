@@ -219,6 +219,10 @@ int main(int argc, char *argv[])
         }, Qt::QueuedConnection);
     }
     const int code = app.exec();
+    // The window is torn down here rather than with the engine, so warnings
+    // from its destruction (a Loader switched off mid-incubation) are counted.
+    if (testing || scripted)
+        qDeleteAll(engine.rootObjects());
     if ((testing || scripted) && selfTestWarnings > 0) {
         std::fprintf(stderr, "CloseNI: self-test: %d warning(s)\n", selfTestWarnings);
         return 1;
