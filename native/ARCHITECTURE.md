@@ -25,6 +25,12 @@ disagrees with that spec, this file wins: it records later decisions.
    - **Panels:** each panel is a `Loader` that is active only while it is
      shown. State that must survive a panel closing lives in a singleton
      store (see below), not in the view.
+     A `ListView` inside anything a `Loader` can switch off sets
+     `cacheBuffer: 0`. The look-ahead delegates it would otherwise build are
+     built asynchronously, and a Loader clears the panel's context at once but
+     deletes the panel later, so a build still in flight fails with "Object or
+     context destroyed during incubation". Only the Code panel, which is never
+     unloaded, keeps a cache.
    - **Bounded logs:** cap every log or transcript model, and drop the oldest
      entries. The Electron code's limits are the floor.
    - **No idle work:** no timers that tick while nothing is happening. No

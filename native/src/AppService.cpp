@@ -21,6 +21,20 @@ AppService::AppService(QObject *parent)
     readReducedMotion();
 }
 
+AppService::~AppService()
+{
+    // The gsettings lookup is still out when the app quits at once (--exit-on-ready,
+    // a self-test): stop it here, so it is never destroyed while running.
+    const auto children = findChildren<QProcess *>(Qt::FindDirectChildrenOnly);
+    for (QProcess *p : children) {
+        if (p->state() == QProcess::NotRunning)
+            continue;
+        disconnect(p, nullptr, this, nullptr);
+        p->kill();
+        p->waitForFinished(1000);
+    }
+}
+
 /*
  * Where Chromium read prefers-reduced-motion on each platform, read once at
  * start. CLOSENI_REDUCED_MOTION=1 or 0 overrides it (for testing, or for a

@@ -20,6 +20,13 @@ import CloseNI
  *
  * play() does nothing with decoration off or reduced motion (Theme.motion),
  * and between plays every output is at rest: opacity 1, scale 1, shift 0.
+ *
+ * A stepped transition (`transition: X .1s steps(2)`) binds `target` and
+ * reads `value`, which follows the target from wherever it was in `frames`
+ * jumps - or at once, with motion off:
+ *
+ *   PixMotion { id: turn; frames: 2; duration: 100; target: open ? 90 : 0 }
+ *   rotation: turn.value
  */
 QtObject {
     id: m
@@ -40,6 +47,14 @@ QtObject {
     readonly property real opacity: kind === "flicker" ? (frame >= frames ? 1 : flick[frame]) : t
     readonly property real scale: kind === "stamp" ? t : 1
     readonly property real shift: kind === "in" ? rise * (1 - t) : 0
+
+    // The stepped transition: `value` goes from where it was to `target`.
+    property real target: 0
+    property real _from: 0
+    property real _to: 0
+    readonly property real value: _from + (_to - _from) * t
+    onTargetChanged: { _from = value; _to = target; play() }
+    Component.onCompleted: { _from = target; _to = target }
 
     function play() { if (Theme.motion) anim.restart() }
     function stop() { anim.stop(); p = 1 }

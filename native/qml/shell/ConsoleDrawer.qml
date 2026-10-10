@@ -44,12 +44,14 @@ ColumnLayout {
                 font.pixelSize: 10
                 color: Theme.pxG2
             }
-            // The caret: a small triangle, pointing down when open.
+            // The caret: a small triangle, pointing down when open. It turns
+            // in two steps over .1s.
             Text {
                 text: "▶"
                 font.pixelSize: 7
                 color: bar.fg
-                rotation: Notify.consoleOpen ? 90 : 0
+                rotation: turn.value
+                PixMotion { id: turn; frames: 2; duration: 100; target: Notify.consoleOpen ? 90 : 0 }
             }
             Text {
                 text: "Console"
