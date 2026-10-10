@@ -218,6 +218,12 @@ async function testBrowserExtraction() {
     c.setThreadKind("chat");
     c.setChatUrlForWorkspace("/my/ws", "https://example.test/a/chat-1");
     check("chat kind writes activeChat", readStore()["/my/ws"].activeChat === "https://example.test/a/chat-1");
+    // Untitled or not, every thread is listed: the app's chat list reads it.
+    const listed = readStore()["/my/ws"].chats.find((x) => x.url === "https://example.test/a/chat-1");
+    check("an untitled thread is listed, with its provider", !!listed && listed.title === "" && listed.provider === cfg.id,
+      JSON.stringify(readStore()["/my/ws"].chats));
+    c.setChatUrlForWorkspace("/my/ws", "https://example.test/a/chat-1");
+    check("a thread is listed once", readStore()["/my/ws"].chats.filter((x) => x.url === "https://example.test/a/chat-1").length === 1);
     // Read from cfg rather than hardcoded: this is what stops a resumed thread
     // being handed to a provider it does not belong to.
     check("the thread records which provider owns it",

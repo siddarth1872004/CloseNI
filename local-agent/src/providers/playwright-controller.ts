@@ -366,11 +366,15 @@ export class PlaywrightController {
     if (!sessions[workspace]) sessions[workspace] = { chats: [], activeChat: null };
     sessions[workspace].activeChat = url;
     sessions[workspace].activeChatProvider = this.providerId;
-    if (title && !sessions[workspace].chats.find((c: any) => c.url === url)) {
+    // Every thread goes in the list, titled or not: the app's chat list is
+    // read from here, and recording only titled ones left it always empty.
+    // The app renames an untitled one after its first message.
+    if (!sessions[workspace].chats.find((c: any) => c.url === url)) {
       sessions[workspace].chats.push({
         url: url,
-        title: title || "Chat " + (sessions[workspace].chats.length + 1),
+        title: title || "",
         createdAt: new Date().toISOString(),
+        provider: this.providerId || undefined,
       });
     }
     this.saveSessions(sessions);

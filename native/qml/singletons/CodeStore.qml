@@ -655,6 +655,9 @@ QtObject {
             AppState.setStatus("idle")
             if (mode === "ship" || mode === "test") renderModebar()
             if (queue.length && !running) _sendNextSoon()
+            // A first message, or a rollover, may have added a thread to the
+            // workspace's chat list.
+            AppState.loadChats()
             break
         }
         case "closed":

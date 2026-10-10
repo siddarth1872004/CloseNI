@@ -71,6 +71,7 @@ native/
   smoke.cjs             starts the app against the mock provider
   e2e-build.cjs         a build end to end against the mock provider
   tests/code-e2e.cjs    the Code panel end to end against the mock provider
+  tests/chats-e2e.cjs   the rail's conversations end to end: new, switch, rename, remove, restart
 ```
 
 QML type names must be unique across the whole module, because subdirectories

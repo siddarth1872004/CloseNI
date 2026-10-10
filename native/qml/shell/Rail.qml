@@ -202,31 +202,15 @@ Rectangle {
                 title: "Conversation"
                 tile: 2
 
-                Select {
-                    id: chatSelect
-                    Layout.fillWidth: true
-                    model: {
-                        var m = [{ value: "new", label: "+ New Chat" }]
-                        for (var i = 0; i < AppState.chats.length; i++)
-                            m.push({ value: String(i), label: AppState.chatTitle(AppState.chats[i], i) })
-                        return m
-                    }
-                    // A click sets currentIndex itself, which would break a
-                    // binding: follow AppState explicitly instead.
-                    function follow() { currentIndex = AppState.currentChatIndex + 1 }
-                    onModelChanged: follow()
-                    Component.onCompleted: follow()
-                    Connections {
-                        target: AppState
-                        function onCurrentChatIndexChanged() { chatSelect.follow() }
-                    }
-                    onActivated: function (i) { AppState.selectChat(i === 0 ? "new" : String(i - 1)) }
-                }
                 Btn {
                     small: true
-                    text: "New Chat"
+                    text: "+ New Chat"
+                    tip: AppState.chatBusyReason() || "Start a new conversation; this one stays in the list"
                     Layout.alignment: Qt.AlignLeft
                     onClicked: AppState.newChat()
+                }
+                ChatList {
+                    Layout.fillWidth: true
                 }
                 Btn {
                     visible: Providers.thread !== null

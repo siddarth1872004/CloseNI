@@ -1321,6 +1321,16 @@ function testRendererLogic() {
   check("a provider without controls asks for nothing", Object.keys(R.desiredControls([{ id: "q" }], "q", "")).length === 0);
   check("saving one control keeps the rest", R.saveControl('{"a":1}', "b", true) === '{"a":1,"b":true}');
   check("chat titles", R.chatTitle({ title: "t" }, 0) === "t" && R.chatTitle({}, 2) === "Chat 3");
+  check("a chat is named after its first line", R.chatName("\n  Build me a todo app \nwith tags") === "Build me a todo app");
+  check("a long first line is cut at a word",
+    R.chatName("A tiny Python web server that says hello and prints its own address on start") === "A tiny Python web server that says hello and\u2026",
+    R.chatName("A tiny Python web server that says hello and prints its own address on start"));
+  check("an empty message has no name", R.chatName("  ") === "" && R.chatName(null) === "");
+  const at = new Date(2026, 9, 10, 9, 5).toISOString();
+  check("a chat from today shows its time", R.shortWhen(at, new Date(2026, 9, 10, 18, 0)) === "09:05");
+  check("a chat from this year shows its day", R.shortWhen(at, new Date(2026, 11, 1)) === "Oct 10");
+  check("an older chat shows its date", R.shortWhen(at, new Date(2027, 0, 2)) === "2026-10-10");
+  check("no date shows nothing", R.shortWhen(undefined) === "" && R.shortWhen("nope") === "");
 
   check("a plan is found in a fenced block", R.tryExtractPlan('here:\n```json\n{"steps":[1]}\n```').steps.length === 1);
   check("or in surrounding prose", R.tryExtractPlan('ok {"steps":[]} done') !== null);

@@ -78,6 +78,14 @@ QtObject {
      */
     function openWorkspace(folder) {
         if (!folder) return
+        // The old project's conversation goes before anything of the new one
+        // arrives: a save in between would file it under the new project.
+        _chatReady = false
+        chatHistory = []
+        currentPlan = null
+        activeChat = ""
+        chats = []
+        chatCleared()
         workspace = folder
         // A different project has not been run or shipped from here yet.
         flowTested = false
@@ -85,7 +93,7 @@ QtObject {
         Notify.log("workspace: " + folder, "ok")
         recentWorkspaces = Recent.remember(recentWorkspaces, folder)
         saveRecent()
-        loadChats()
+        _openChat(folder, null)
         workspaceOpened(folder)
         refreshRecent()
     }
@@ -97,61 +105,198 @@ QtObject {
     function browse() { browseRequested() }
 
     // ---- Conversation ---------------------------------------------------------
-    // [{ title, url, ... }] saved for this workspace; -1 is "+ New Chat".
+    // The Chat panel's conversations in this workspace. The list and which one
+    // is open live in sessions.json, shared with the agent (it adds a chat the
+    // first time a message creates its thread); what the panel showed in each,
+    // messages and plan, is kept by Files.saveTranscript. One chat is open at a
+    // time, and its provider thread is the one Chat, Plan, Build and Code use.
+
+    // [{ url, title, createdAt, provider }], oldest first.
     property var chats: []
-    property int currentChatIndex: -1
+    // The open chat's url; "" for a new chat that has not been sent to yet.
+    property string activeChat: ""
+    readonly property int currentChatIndex: _indexOf(chats, activeChat)
     // The chat transcript the next plan is built from (chat panel), and the plan.
     property var chatHistory: []
     property var currentPlan: null
     // A GitHub repository taken as reference from Research ({ name, readme, files },
     // R.referenceFrom): the next plan request folds it in (R.planRequest).
     property var repoReference: null
+    // False while a workspace's chat is being loaded: nothing is saved until
+    // the conversation on screen really is that chat's.
+    property bool _chatReady: false
     signal chatCleared()
+    // A chat's messages, put back on screen (PlanState draws them).
+    signal chatRestored(var messages)
 
-    function loadChats() {
-        if (!workspace) return
-        Files.getChats(workspace, function (res) {
+    function _indexOf(list, url) {
+        if (!url) return -1
+        for (var i = 0; i < list.length; i++) if (list[i].url === url) return i
+        return -1
+    }
+    function loadChats(then) {
+        var ws = workspace
+        if (!ws) return
+        Files.getChats(ws, function (res) {
+            if (ws !== workspace) return
             chats = (res && res.chats) || []
-            currentChatIndex = -1
+            if (then) then((res && res.activeChat) || "")
         })
     }
-    /** The rail's chat select: "new" or an index into chats. */
-    function selectChat(value) {
-        if (value === "new") {
-            Files.newChat(workspace, function (r) {
-                if (r && r.ok === false && r.error) { Notify.log("Could not start new chat: " + r.error, "err"); return }
-                currentChatIndex = -1
-                Notify.toast("Started new chat")
-                Notify.log("New chat started", "ok")
+
+    /**
+     * Why the open chat cannot change now, or "". A reply on its way belongs to
+     * the chat it was asked in, and a build or a Code turn is using its thread.
+     */
+    function chatBusyReason() {
+        if (PlanState.busy > 0) return "Wait for the reply to finish"
+        if (BuildState.running) return "Wait for the build to finish"
+        if (CodeStore.busy || CodeStore.running) return "Wait for the Code panel to finish"
+        return ""
+    }
+    function _guard() {
+        if (!workspace) { Notify.toast("Pick a workspace", "err"); return false }
+        var why = chatBusyReason()
+        if (why) { Notify.toast(why, "err"); return false }
+        return true
+    }
+    // The Code panel's session holds the old thread open in its browser: it
+    // yields, and its next message reopens on the chat now open.
+    function _releaseThread() {
+        if (CodeStore.up) { Agent.codeEnd(function () {}); CodeStore.up = false }
+    }
+
+    /**
+     * Show `key`'s saved messages and plan. `chat` is the list entry, for the
+     * thread label; the plan is only taken when the build did not bring one
+     * back, since the build's statuses are the ones that count.
+     */
+    function _openChat(ws, chat) {
+        var load = function (key) {
+            Files.loadTranscript(ws, key, function (t) {
+                if (ws !== workspace) return
+                activeChat = key
+                chatHistory = (t && t.messages) || []
+                if (t && t.plan && t.plan.steps) { if (chat || !currentPlan) PlanState.showPlan(t.plan, true) }
+                else if (chat) currentPlan = null
+                chatRestored(chatHistory)
+                _showThread(key)
+                _chatReady = true
             })
-            return
         }
-        var i = parseInt(value)
-        var chat = chats[i]
-        if (!chat) return
-        currentChatIndex = i
-        Files.switchChat(workspace, chat.url, function (r) {
-            if (r && r.ok === false && r.error) { Notify.log("Could not switch chat: " + r.error, "err"); return }
-            Notify.toast("Switched to: " + chat.title)
-            Notify.log("Switched to chat: " + chat.title, "ok")
+        if (chat) { load(chat.url); return }
+        loadChats(load)
+    }
+
+    // The rail's "Open chat in browser" and thread line follow the open chat.
+    function _showThread(url) { Providers.setThread(url ? { url: url, label: R.describeThread(url) } : null) }
+
+    function _saveNow() {
+        if (!_chatReady || !workspace) return
+        Files.saveTranscript(workspace, activeChat, chatHistory, currentPlan, function (r) {
+            if (r && r.ok === false) Notify.log("Could not save the chat: " + (r.error || "write failed"), "err")
         })
     }
+    onChatHistoryChanged: if (_chatReady) Qt.callLater(_saveNow)
+    onCurrentPlanChanged: if (_chatReady) Qt.callLater(_saveNow)
+
+    /**
+     * After a reply: the agent may have opened a thread for a new chat (or
+     * moved to a fresh one), so the list is read again, the transcript filed
+     * under the thread it now belongs to, and an untitled chat named after its
+     * first message.
+     */
+    function syncChat() {
+        var ws = workspace
+        loadChats(function (now) {
+            if (now && now !== activeChat) {
+                var from = activeChat
+                activeChat = now
+                _saveNow()
+                if (!from) Files.saveTranscript(ws, "", [], null, function () {})
+            }
+            if (!now) return
+            _showThread(now)
+            var i = _indexOf(chats, now)
+            if (i >= 0 && chats[i].title) return
+            var first = ""
+            for (var k = 0; k < chatHistory.length && !first; k++) if (chatHistory[k].role === "user") first = chatHistory[k].text
+            Files.nameChat(ws, now, R.chatName(first) || ("Chat " + (chats.length + (i >= 0 ? 0 : 1))), function () { loadChats() })
+        })
+    }
+
+    /** Open a saved chat: its messages, its plan and its provider thread. */
+    function switchChat(url) {
+        if (url === activeChat || !_guard()) return
+        var chat = chats[_indexOf(chats, url)]
+        if (!chat) return
+        var ws = workspace
+        Files.switchChat(ws, url, function (r) {
+            if (!r || !r.ok) { Notify.toast((r && r.error) || "Could not open the chat", "err"); return }
+            _releaseThread()
+            // A chat lives on the provider it was made with.
+            if (chat.provider && chat.provider !== Providers.current
+                    && Providers.list.some(function (p) { return p.id === chat.provider })) Providers.select(chat.provider)
+            _chatReady = false
+            chatCleared()
+            _openChat(ws, chat)
+            Notify.log("Switched to chat: " + chatTitle(chat, _indexOf(chats, url)), "ok")
+        })
+    }
+
     /**
      * Start a new chat. Clearing activeChat in sessions.json is only half of it:
      * the transcript and the plan are cleared too, or the old conversation still
-     * goes into the next plan.
+     * goes into the next plan. The chat it leaves stays in the list.
      */
     function newChat() {
-        if (!workspace) { Notify.toast("Pick a workspace", "err"); return }
-        Files.newChat(workspace, function (r) {
+        if (!_guard()) return
+        if (!activeChat && chatHistory.length === 0 && !currentPlan) { Notify.toast("This is already a new chat"); return }
+        var ws = workspace
+        Files.newChat(ws, function (r) {
             if (!r || !r.ok) { Notify.toast((r && r.error) || "Could not start a new chat", "err"); return }
+            _releaseThread()
+            _chatReady = false
+            activeChat = ""
             chatHistory = []
-            currentChatIndex = -1
             currentPlan = null
             chatCleared()
+            _showThread("")
+            Files.saveTranscript(ws, "", [], null, function () { _chatReady = true })
             loadChats()
-            Notify.toast("Started new chat")
+            Notify.toast("Started a new chat")
             Notify.log("new chat started - transcript cleared", "ok")
+        })
+    }
+
+    function renameChat(url, title) {
+        var name = String(title || "").trim()
+        if (!workspace || !url || !name) return
+        Files.nameChat(workspace, url, name, function (r) {
+            if (!r || !r.ok) { Notify.toast("Could not rename the chat", "err"); return }
+            loadChats()
+        })
+    }
+
+    /** Drop a chat from the list. The provider's own copy of the thread stays. */
+    function deleteChat(url) {
+        if (!workspace || !url) return
+        var open = url === activeChat
+        if (open && !_guard()) return
+        Files.deleteChat(workspace, url, function (r) {
+            if (!r || !r.ok) { Notify.toast("Could not delete the chat", "err"); return }
+            if (open) {
+                _releaseThread()
+                _chatReady = false
+                activeChat = ""
+                chatHistory = []
+                currentPlan = null
+                chatCleared()
+                _showThread("")
+                _chatReady = true
+            }
+            loadChats()
+            Notify.toast("Chat removed")
         })
     }
 

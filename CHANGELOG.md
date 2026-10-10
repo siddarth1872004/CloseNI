@@ -39,6 +39,21 @@ Windows, Linux and, for the first time, macOS. They are unsigned, as before.
   install is uninstalled first and its data is kept. On Linux, the .deb
   replaces the old `closeni` package.
 
+### Conversations
+
+- **Chats are listed, kept and restored.** The rail's Conversation card lists
+  every chat in the project, newest first, named after its first message.
+  Click one to open it with its messages and plan, rename it in place, or
+  remove it from the list (the provider keeps its copy). **New Chat** starts a
+  fresh one and keeps the old one listed. Each chat remembers its provider.
+- **Messages survive a restart.** Each chat's messages and plan are saved under
+  `chats/` in the storage directory, so reopening the app, or switching back to
+  a chat, shows what was said. Before, the list stayed empty, switching showed
+  nothing, and New Chat did not clear the screen.
+- **A reply cannot land in the wrong chat.** New Chat, switching and removing
+  the open chat wait while a reply, a build or a Code turn is using the thread,
+  and say why. Opening another project clears the last one's chat and plan.
+
 ### Fixed
 
 - **Export branch works when files appear after step 1.** The replay staged a
@@ -91,9 +106,10 @@ Windows, Linux and, for the first time, macOS. They are unsigned, as before.
   `electron-builder` are removed.
 - The unit suite checks the native sources. The old `desktop-unit.cjs` is now
   `app-unit.cjs`, and it also checks every theme's contrast. `test:ui` and
-  `verify:visual` are retired. The Code panel and build flows run end to end
-  in CI against the mock provider (`native/tests/code-e2e.cjs`,
-  `native/e2e-build.cjs`). The site and SVG checks are `npm run verify:site`.
+  `verify:visual` are retired. The Code panel, build and conversation flows run
+  end to end in CI against the mock provider (`native/tests/code-e2e.cjs`,
+  `native/e2e-build.cjs`, `native/tests/chats-e2e.cjs`). The site and SVG
+  checks are `npm run verify:site`.
 - `closeni build` (headless) uses the app's own scheduler from
   `native/qml/js/`.
 

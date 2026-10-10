@@ -10,6 +10,8 @@
 #include "NodeCompat.h"
 #include "Paths.h"
 
+#include <QCryptographicHash>
+#include <QDateTime>
 #include <QDir>
 #include <QFileInfo>
 #include <QJsonArray>
@@ -54,7 +56,8 @@ bool saveSessions(const QJsonObject &sessions)
     static const QStringList order = {
         QStringLiteral("chats"), QStringLiteral("activeChat"), QStringLiteral("activeChatProvider"),
         QStringLiteral("activeBuildThread"), QStringLiteral("buildLedger"), QStringLiteral("url"),
-        QStringLiteral("title"), QStringLiteral("createdAt"), QStringLiteral("hash"), QStringLiteral("step"),
+        QStringLiteral("title"), QStringLiteral("createdAt"), QStringLiteral("provider"), QStringLiteral("hash"),
+        QStringLiteral("step"),
     };
     return NodeCompat::mkdirs(QFileInfo(f).absolutePath())
         && NodeCompat::writeText(f, NodeCompat::stringify(sessions, order));
@@ -66,6 +69,47 @@ QJsonObject entryFor(const QJsonObject &sessions, const QString &workspace)
     if (NodeCompat::truthy(entry) && entry.isObject())
         return entry.toObject();
     return {{QStringLiteral("chats"), QJsonArray()}, {QStringLiteral("activeChat"), QJsonValue::Null}};
+}
+
+/* The Chat panel's transcripts, one file per workspace, written by the app
+   only: sessions.json is shared with the agent, and a transcript there could be
+   lost to whichever side wrote the file last. */
+QString transcriptFile(const QString &workspace)
+{
+    const QByteArray id = QCryptographicHash::hash(workspace.toUtf8(), QCryptographicHash::Sha1).toHex().left(16);
+    return QDir(Paths::storageRoot()).filePath(QStringLiteral("chats/") + QString::fromLatin1(id) + QStringLiteral(".json"));
+}
+
+QJsonObject loadTranscripts(const QString &workspace)
+{
+    QByteArray bytes;
+    if (!NodeCompat::readBytes(transcriptFile(workspace), &bytes))
+        return {};
+    const QJsonObject all = QJsonDocument::fromJson(bytes).object();
+    // A hash collision, however unlikely, must not show another project's chat.
+    if (all.value(QStringLiteral("workspace")).toString() != workspace)
+        return {};
+    return all.value(QStringLiteral("chats")).toObject();
+}
+
+bool saveTranscripts(const QString &workspace, const QJsonObject &chats)
+{
+    const QString f = transcriptFile(workspace);
+    if (chats.isEmpty())
+        return !QFileInfo::exists(f) || NodeCompat::removeFile(f);
+    const QJsonObject all{{QStringLiteral("workspace"), workspace}, {QStringLiteral("chats"), chats}};
+    return NodeCompat::mkdirs(QFileInfo(f).absolutePath())
+        && NodeCompat::writeText(f, QString::fromUtf8(QJsonDocument(all).toJson(QJsonDocument::Compact)));
+}
+
+// Bounds on what one chat keeps: the newest messages, each cut to a size no
+// answer reasonably reaches.
+constexpr int kMaxMessages = 500;
+constexpr int kMaxMessageChars = 200000;
+
+QVariantMap failure(const QString &error)
+{
+    return {{QStringLiteral("ok"), false}, {QStringLiteral("error"), error}};
 }
 
 }
@@ -214,6 +258,111 @@ void FilesService::switchChat(const QString &workspace, const QString &url, QJSV
     QJsonObject sessions = loadSessions();
     QJsonObject entry = entryFor(sessions, workspace);
     entry.insert(QStringLiteral("activeChat"), url);
+    // The thread's provider goes with it, or the agent would take a chat made
+    // on another provider for a stale one and start a new thread instead.
+    const QJsonArray chats = entry.value(QStringLiteral("chats")).toArray();
+    for (const QJsonValue &c : chats) {
+        const QString owner = c.toObject().value(QStringLiteral("provider")).toString();
+        if (c.toObject().value(QStringLiteral("url")).toString() == url && !owner.isEmpty())
+            entry.insert(QStringLiteral("activeChatProvider"), owner);
+    }
     sessions.insert(workspace, entry);
     Js::reply(this, callback, QVariantMap{{QStringLiteral("ok"), saveSessions(sessions)}});
+}
+
+void FilesService::nameChat(const QString &workspace, const QString &url, const QString &title, QJSValue callback)
+{
+    const QString name = title.simplified().left(80);
+    if (workspace.isEmpty() || url.isEmpty() || name.isEmpty()) {
+        Js::reply(this, callback, failure(QStringLiteral("Missing workspace, chat url or title")));
+        return;
+    }
+    QJsonObject sessions = loadSessions();
+    QJsonObject entry = entryFor(sessions, workspace);
+    QJsonArray chats = entry.value(QStringLiteral("chats")).toArray();
+    bool found = false;
+    for (int i = 0; i < chats.size(); i++) {
+        QJsonObject c = chats[i].toObject();
+        if (c.value(QStringLiteral("url")).toString() != url)
+            continue;
+        c.insert(QStringLiteral("title"), name);
+        chats[i] = c;
+        found = true;
+    }
+    if (!found) {
+        QJsonObject c{{QStringLiteral("url"), url}, {QStringLiteral("title"), name},
+                      {QStringLiteral("createdAt"), QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)}};
+        if (entry.value(QStringLiteral("activeChat")).toString() == url && entry.contains(QStringLiteral("activeChatProvider")))
+            c.insert(QStringLiteral("provider"), entry.value(QStringLiteral("activeChatProvider")));
+        chats.append(c);
+    }
+    entry.insert(QStringLiteral("chats"), chats);
+    sessions.insert(workspace, entry);
+    Js::reply(this, callback, QVariantMap{{QStringLiteral("ok"), saveSessions(sessions)}});
+}
+
+void FilesService::deleteChat(const QString &workspace, const QString &url, QJSValue callback)
+{
+    if (workspace.isEmpty() || url.isEmpty()) {
+        Js::reply(this, callback, failure(QStringLiteral("Missing workspace or chat url")));
+        return;
+    }
+    QJsonObject sessions = loadSessions();
+    QJsonObject entry = entryFor(sessions, workspace);
+    QJsonArray kept;
+    for (const QJsonValue &c : entry.value(QStringLiteral("chats")).toArray())
+        if (c.toObject().value(QStringLiteral("url")).toString() != url)
+            kept.append(c);
+    entry.insert(QStringLiteral("chats"), kept);
+    if (entry.value(QStringLiteral("activeChat")).toString() == url) {
+        entry.insert(QStringLiteral("activeChat"), QJsonValue::Null);
+        entry.remove(QStringLiteral("activeChatProvider"));
+    }
+    sessions.insert(workspace, entry);
+    QJsonObject transcripts = loadTranscripts(workspace);
+    transcripts.remove(url);
+    const bool ok = saveSessions(sessions) && saveTranscripts(workspace, transcripts);
+    Js::reply(this, callback, QVariantMap{{QStringLiteral("ok"), ok}});
+}
+
+void FilesService::loadTranscript(const QString &workspace, const QString &key, QJSValue callback)
+{
+    const QJsonObject chat = workspace.isEmpty() ? QJsonObject() : loadTranscripts(workspace).value(key).toObject();
+    const QJsonValue plan = chat.value(QStringLiteral("plan"));
+    Js::reply(this, callback, QVariantMap{
+        {QStringLiteral("ok"), true},
+        {QStringLiteral("messages"), chat.value(QStringLiteral("messages")).toArray().toVariantList()},
+        {QStringLiteral("plan"), plan.isObject() ? QVariant(plan.toObject().toVariantMap()) : QVariant::fromValue(nullptr)},
+    });
+}
+
+void FilesService::saveTranscript(const QString &workspace, const QString &key, const QVariant &messages,
+                                  const QVariant &plan, QJSValue callback)
+{
+    if (workspace.isEmpty()) {
+        Js::reply(this, callback, failure(QStringLiteral("No workspace selected")));
+        return;
+    }
+    QJsonArray kept;
+    const QJsonArray all = NodeCompat::fromVariant(messages).toArray();
+    for (qsizetype i = std::max<qsizetype>(0, all.size() - kMaxMessages); i < all.size(); i++) {
+        const QJsonObject m = all[i].toObject();
+        const QString role = m.value(QStringLiteral("role")).toString();
+        if (role != QStringLiteral("user") && role != QStringLiteral("ai"))
+            continue;
+        kept.append(QJsonObject{{QStringLiteral("role"), role},
+                                {QStringLiteral("text"), m.value(QStringLiteral("text")).toString().left(kMaxMessageChars)}});
+    }
+    const QJsonValue p = NodeCompat::fromVariant(plan);
+    QJsonObject transcripts = loadTranscripts(workspace);
+    if (kept.isEmpty() && !p.isObject()) {
+        transcripts.remove(key);
+    } else {
+        QJsonObject chat{{QStringLiteral("messages"), kept},
+                         {QStringLiteral("updatedAt"), QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)}};
+        if (p.isObject())
+            chat.insert(QStringLiteral("plan"), p);
+        transcripts.insert(key, chat);
+    }
+    Js::reply(this, callback, QVariantMap{{QStringLiteral("ok"), saveTranscripts(workspace, transcripts)}});
 }

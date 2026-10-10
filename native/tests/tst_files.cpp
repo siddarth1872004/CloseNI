@@ -125,6 +125,59 @@ void TestFiles::chats()
     CHECK(r.toObject().value("ok") == true);
     r = h.call("Files.getChats(WS, cb)");
     CHECK2(r.toObject().value("activeChat").isNull() && r.toObject().value("chats").toArray().size() == 1, h.lastText);
+
+    // Naming: an unlisted thread is added, a listed one renamed.
+    r = h.call("Files.nameChat(WS, 'https://chat.test/2', '  Build   a todo app ', cb)");
+    CHECK2(r.toObject().value("ok") == true, h.lastText);
+    r = h.call("Files.nameChat(WS, 'https://chat.test/1', 'First', cb)");
+    r = h.call("Files.getChats(WS, cb)");
+    QJsonArray list = r.toObject().value("chats").toArray();
+    CHECK2(list.size() == 2 && list[0].toObject().value("title") == QStringLiteral("First")
+               && list[1].toObject().value("title") == QStringLiteral("Build a todo app")
+               && !list[1].toObject().value("createdAt").toString().isEmpty(), h.lastText);
+    r = h.call("Files.nameChat(WS, 'https://chat.test/1', '   ', cb)");
+    CHECK2(r.toObject().value("ok") == false, h.lastText);
+
+    // Switching takes the chat's provider along.
+    writeAll(m_storage.file("sessions.json"),
+             R"({"/work/space":{"chats":[{"url":"https://chat.test/1","title":"one","provider":"claude"}],"activeChat":null}})");
+    r = h.call("Files.switchChat(WS, 'https://chat.test/1', cb)");
+    saved = readAll(m_storage.file("sessions.json"));
+    CHECK2(saved.contains("\"activeChatProvider\": \"claude\""), saved);
+
+    // Transcripts: per chat, bounded, removed when emptied.
+    r = h.call("Files.loadTranscript(WS, 'https://chat.test/1', cb)");
+    CHECK2(r.toObject().value("messages").toArray().isEmpty() && r.toObject().value("plan").isNull(), h.lastText);
+    r = h.call("Files.saveTranscript(WS, 'https://chat.test/1', [{ role: 'user', text: 'hi' }, { role: 'ai', text: 'hello' },"
+               " { role: 'x', text: 'dropped' }], { summary: 's', steps: [{ title: 'a' }] }, cb)");
+    CHECK2(r.toObject().value("ok") == true, h.lastText);
+    r = h.call("Files.saveTranscript(WS, '', [{ role: 'user', text: 'draft' }], null, cb)");
+    r = h.call("Files.loadTranscript(WS, 'https://chat.test/1', cb)");
+    CHECK2(r.toObject().value("messages").toArray().size() == 2
+               && r.toObject().value("messages").toArray()[1].toObject().value("text") == QStringLiteral("hello")
+               && r.toObject().value("plan").toObject().value("steps").toArray().size() == 1, h.lastText);
+    r = h.call("Files.loadTranscript('/other/space', 'https://chat.test/1', cb)");
+    CHECK2(r.toObject().value("messages").toArray().isEmpty(), h.lastText);
+    r = h.call("var many = []; for (var i = 0; i < 600; i++) many.push({ role: 'user', text: 'm' + i });"
+               "Files.saveTranscript(WS, 'https://chat.test/9', many, null, function () {"
+               " Files.loadTranscript(WS, 'https://chat.test/9', cb) })");
+    CHECK2(r.toObject().value("messages").toArray().size() == 500
+               && r.toObject().value("messages").toArray()[0].toObject().value("text") == QStringLiteral("m100"), h.lastText.left(200));
+    r = h.call("Files.saveTranscript(WS, 'https://chat.test/9', [], null, cb)");
+    r = h.call("Files.loadTranscript(WS, '', cb)");
+    CHECK2(r.toObject().value("messages").toArray().size() == 1, h.lastText);
+
+    // Deleting drops the chat, its transcript, and the open thread if it was it.
+    r = h.call("Files.deleteChat(WS, 'https://chat.test/1', cb)");
+    CHECK2(r.toObject().value("ok") == true, h.lastText);
+    r = h.call("Files.getChats(WS, cb)");
+    CHECK2(r.toObject().value("chats").toArray().isEmpty() && r.toObject().value("activeChat").isNull(), h.lastText);
+    saved = readAll(m_storage.file("sessions.json"));
+    CHECK2(!saved.contains("activeChatProvider"), saved);
+    r = h.call("Files.loadTranscript(WS, 'https://chat.test/1', cb)");
+    CHECK2(r.toObject().value("messages").toArray().isEmpty(), h.lastText);
+    r = h.call("Files.saveTranscript(WS, '', [], null, cb)");
+    CHECK2(r.toObject().value("ok") == true && QDir(m_storage.file("chats")).isEmpty(), h.lastText);
 }
 
 QTEST_GUILESS_MAIN(TestFiles)

@@ -126,6 +126,7 @@ QtObject {
                 }
                 ps.resetEditState()
                 ps._remember("user", text)
+                AppState.syncChat()
             })
             return
         }
@@ -148,8 +149,8 @@ QtObject {
                 reply = "AI reply failed: " + ((res && res.error) || "unknown")
                 ps.setBubble(ph, reply, false)
             }
-            ps._remember("user", text)
-            ps._remember("ai", reply)
+            AppState.chatHistory = AppState.chatHistory.concat([{ role: "user", text: text }, { role: "ai", text: reply }])
+            AppState.syncChat()
         })
     }
 
@@ -173,6 +174,7 @@ QtObject {
             } else {
                 Notify.toast("Plan failed: " + ((res && res.error) || "unknown"), "err")
             }
+            AppState.syncChat()
         })
     }
 
@@ -198,6 +200,13 @@ QtObject {
             ps.bubbles.clear()
             AppState.userMessages = 0
             ps.sidebarOpen = false
+            ps.resetEditState()
+        }
+        // Another chat opened: its messages come back as bubbles.
+        function onChatRestored(messages) {
+            ps.bubbles.clear()
+            ;(messages || []).forEach(function (m) { ps.addBubble(m.role === "user" ? "user" : "ai", m.text) })
+            ps._countUsers()
             ps.resetEditState()
         }
         // The getting-started guide's "Use an example".

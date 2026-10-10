@@ -16,6 +16,7 @@ cmake -S native -B build-native -G Ninja && cmake --build build-native
 ctest --test-dir build-native
 node native/e2e-build.cjs                # the app runs a build, mock provider
 node native/tests/code-e2e.cjs           # the Code panel, mock provider
+node native/tests/chats-e2e.cjs          # the rail's conversations, mock provider
 
 # 2. Write the release into CHANGELOG.md before tagging.
 #    The tag is what people land on; an empty changelog entry is permanent.
