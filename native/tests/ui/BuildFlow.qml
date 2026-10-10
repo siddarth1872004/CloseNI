@@ -12,8 +12,9 @@ import CloseNI
  *   Stop -> Close.
  *
  * Screenshots of Chat, Plan, Build and the run console in the terminal, paper
- * and pixel themes go to the directory given as the last argument. Prints
- * "E2E PASS" and exits 0, or "E2E FAIL <stage>" and exits 1.
+ * and pixel themes go to the directory given as the last argument. An argument
+ * "themes=<id>,<id>" before it picks other themes (scripts/make-screenshots.mjs).
+ * Prints "E2E PASS" and exits 0, or "E2E FAIL <stage>" and exits 1.
  */
 Item {
     id: flow
@@ -21,7 +22,10 @@ Item {
     property var root: null
     readonly property var args: Qt.application.arguments
     readonly property string shots: args[args.length - 1]
-    readonly property var themes: ["terminal", "paper", "pixel"]
+    readonly property var themes: {
+        var picked = args.filter(function (a) { return String(a).indexOf("themes=") === 0 })
+        return picked.length ? picked[0].slice(7).split(",").filter(function (t) { return t }) : ["terminal", "paper", "pixel"]
+    }
 
     property var stages: []
     property int at: -1
@@ -178,7 +182,13 @@ Item {
             } else if (flow.ticks * 50 > st.ms) {
                 stop()
                 console.log("E2E FAIL " + st.name + " (workspace " + AppState.workspace + ", provider " + Providers.current
-                            + ", mode " + AppState.mode + ", build " + BuildState.mode + " " + BuildState.statusText + ")")
+                            + ", mode " + AppState.mode + ", build " + BuildState.mode + " " + BuildState.statusText
+                            + ", plan busy " + PlanState.busy + " steps " + ((AppState.currentPlan && AppState.currentPlan.steps) || []).length + ")")
+                // What the agent said last, so a failure on CI can be read
+                // without rerunning it.
+                var log = Notify.agentLog
+                for (var i = Math.max(0, log.count - 25); i < log.count; i++)
+                    console.log("E2E LOG " + log.get(i).line)
                 Qt.exit(1)
             }
         }

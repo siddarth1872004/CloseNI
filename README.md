@@ -16,7 +16,7 @@ Ask for a change and it reads your project, edits files, runs commands and check
 
 [**Site**](https://siddarth1872004.github.io/CloseNI/) · [**How it works**](#how-it-works) · [**Architecture**](#architecture) · [**Browser layer**](#the-browser-native-layer) · [**Research**](#research) · [**Get started**](#getting-started) · [**Limitations**](#current-limitations)
 
-<img src="docs/assets/stats.svg" alt="1902 unit tests, 192 end-to-end tests, 206 browser checks, twelve languages, eleven themes, zero API keys" width="100%">
+<img src="docs/assets/stats.svg" alt="2111 unit tests, 13 native test suites, 197 verify checks, twelve languages, eleven themes, zero API keys" width="100%">
 
 </div>
 
@@ -62,7 +62,7 @@ Also: [CHANGELOG](CHANGELOG.md) · [Release process](docs/RELEASING.md) · [Road
 
 ## The coding agent
 
-<img src="docs/screenshots/code.png" alt="The Code panel in the Terminal theme: a search, a read, an edit shown as a diff, a todo list, and a command waiting for permission" width="100%">
+<img src="docs/screenshots/code.png" alt="The Code panel in the Terminal theme: a request, a read, and an edit shown as a diff waiting for permission" width="100%">
 
 A chat site has no tool-calling API, so tools are a convention written into the conversation. The agent's first message teaches the model to answer with fenced blocks whose first line names a tool. Write and edit put their payload after a `---` line, and edits use `SEARCH`/`REPLACE` sections, a format models already know. CloseNI runs each call and sends the results back as the next message. A reply with no tool blocks is the answer. Code blocks are the one thing every provider renders and returns verbatim, which is why they carry the calls (`local-agent/src/agent/protocol.ts`).
 
@@ -443,7 +443,7 @@ The prompt goes in, and a structured plan comes back: numbered steps, the files 
 <td width="50%"><img src="docs/screenshots/chat.png" alt="The Chat panel, where a plan is proposed and reviewed before any file is written"></td>
 </tr>
 <tr>
-<td width="50%"><img src="docs/screenshots/builder.png" alt="The Builder panel in the Pixel theme: the flow bar with Build in progress, step list on the left, unified diff for the running step"></td>
+<td width="50%"><img src="docs/screenshots/builder.png" alt="The Builder panel in the Pixel theme: a finished build, the step list on the left, and the selected step's timings, detail and diff"></td>
 <td width="50%" valign="top">
 
 **03 · Build.** Watch it happen, step by step.
@@ -463,7 +463,7 @@ The run command arrives resolved, with a badge saying where it came from: `SAVED
 <td width="50%"><img src="docs/screenshots/test.png" alt="The Test panel: resolved run command, per-check pass and fail results, and a chat about this run"></td>
 </tr>
 <tr>
-<td width="50%"><img src="docs/screenshots/ship.png" alt="The Ship panel in the Blueprint theme: GitHub token entry, git init and commit, push to origin, and Actions run status"></td>
+<td width="50%"><img src="docs/screenshots/ship.png" alt="The Ship panel in the Paper theme: GitHub account and repository, git init and commit, push to origin, export the build to a branch, and Actions run status"></td>
 <td width="50%" valign="top">
 
 **06 · Ship.** Commit, push, and watch CI.
@@ -593,7 +593,7 @@ Pixel-art motion appears throughout the app, driven by `steps()` timing so the a
 ```mermaid
 flowchart LR
     subgraph unit["npm test · no browser"]
-        U1["1902 unit tests<br/>including the web layer's pure logic"]
+        U1["2111 unit tests<br/>including the web layer's pure logic"]
     end
     subgraph browser["real Chromium"]
         E2E["npm run test:e2e<br/>192 tests against a mock chat site"]

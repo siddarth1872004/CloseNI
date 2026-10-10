@@ -6,6 +6,7 @@
 #include "data_harness.h"
 
 #include "BuildRules.h"
+#include "BuildStore.h"
 #include "GitService.h"
 
 #include <QProcess>
@@ -45,6 +46,38 @@ QString runGit(const QString &cwd, const QStringList &args)
     return QString::fromUtf8(p.readAll());
 }
 
+/*
+ * A three-step build's checkpoints, and the files as it left them: step 1
+ * writes app.py, step 2 rewrites it and adds routes.py, step 3 adds models.py.
+ * Files that appear after step 1 are what the replay has to stage as absent
+ * in the earlier commits.
+ */
+void writeThreeStepBuild(const QString &ws)
+{
+    const QDir d(ws);
+    writeAll(d.filePath("app.py"), "v2\n");
+    writeAll(d.filePath("routes.py"), "R\n");
+    writeAll(d.filePath("models.py"), "M\n");
+    const QDir cps(Checkpoint::dirFor(ws));
+    writeAll(cps.filePath(Checkpoint::checkpointName(0)),
+             QStringLiteral("{\"version\":1,\"step\":0,\"at\":\"\",\"files\":{\"app.py\":{\"prior\":null,\"after\":\"%1\"}}}")
+                 .arg(Checkpoint::hash("v1\n")).toUtf8());
+    writeAll(cps.filePath(Checkpoint::checkpointName(1)),
+             QStringLiteral("{\"version\":1,\"step\":1,\"at\":\"\",\"files\":{\"app.py\":{\"prior\":\"v1\\n\",\"after\":\"%1\"},"
+                            "\"routes.py\":{\"prior\":null,\"after\":\"%2\"}}}")
+                 .arg(Checkpoint::hash("v2\n"), Checkpoint::hash("R\n")).toUtf8());
+    writeAll(cps.filePath(Checkpoint::checkpointName(2)),
+             QStringLiteral("{\"version\":1,\"step\":2,\"at\":\"\",\"files\":{\"models.py\":{\"prior\":null,\"after\":\"%1\"}}}")
+                 .arg(Checkpoint::hash("M\n")).toUtf8());
+}
+
+QStringList treeAt(const QString &ws, const QString &rev)
+{
+    QStringList names = runGit(ws, {"ls-tree", "--name-only", rev}).trimmed().split('\n', Qt::SkipEmptyParts);
+    names.sort();
+    return names;
+}
+
 }
 
 class TestGit : public QObject
@@ -56,6 +89,8 @@ private slots:
     void exportPlanning();
     void gitHandler();
     void exportBranch();
+    void exportFilesAppearingLater();
+    void closeniIsNotAChange();
     void cleanupTestCase() { REPORT_CHECKS(); }
 
 private:
@@ -160,11 +195,10 @@ void TestGit::exportBranch()
     r = h.call("Git.exportBranch({ workspace: WS }, cb)");
     CHECK2(r.toObject().value("error") == QStringLiteral("nothing to export - no build has run in this workspace"), h.lastText);
 
-    // The finished build, committed: step 1 wrote app.py, step 2 rewrote it
-    // and added routes.py. Committed, with .closeni, because the replay stages
-    // step 1's removal of routes.py, which git refuses for a path it never
-    // tracked (as the Electron export did in a workspace that was not yet a
-    // repo), and an untracked .closeni would make the tree dirty.
+    // The finished build, committed with its .closeni: step 1 wrote app.py,
+    // step 2 rewrote it and added routes.py. (A workspace that is not a repo
+    // yet, and an untracked .closeni, are exportFilesAppearingLater and
+    // closeniIsNotAChange.)
     writeAll(d.filePath("app.py"), "v2\n");
     writeAll(d.filePath("routes.py"), "R\n");
     const QString cps = Checkpoint::dirFor(ws.path());
@@ -196,6 +230,106 @@ void TestGit::exportBranch()
     writeAll(d.filePath("app.py"), "edited\n");
     r = h.call("Git.exportBranch({ workspace: WS, summary: 'Habit Tracker' }, cb)", 60000);
     CHECK2(r.toObject().value("ok") == false && r.toObject().value("error").toString().startsWith("You have uncommitted changes."), h.lastText);
+}
+
+/*
+ * Files that appear after step 1, in a workspace that is not a repository yet
+ * and in one that is. Step 1's commit stages routes.py and models.py as
+ * absent, and git refuses to add a path it neither tracks nor finds on disk:
+ * the export failed at step 1 in a new repository, and at step 2 in an
+ * existing one (step 1's commit had already dropped models.py from the index).
+ */
+void TestGit::exportFilesAppearingLater()
+{
+    GitService git;
+    Harness h;
+    h.expose("Git", &git);
+
+    // Not a repository: the export creates one.
+    QTemporaryDir fresh;
+    writeThreeStepBuild(fresh.path());
+    h.engine.globalObject().setProperty("WS", fresh.path());
+    QJsonValue r = h.call("Git.exportBranch({ workspace: WS, summary: 'Shop', steps: ['App', 'Routes', 'Models'] }, cb)", 60000);
+    CHECK2(r.toObject().value("ok") == true && r.toObject().value("commits") == 3, h.lastText);
+    const QString log = runGit(fresh.path(), {"log", "--format=%s", "closeni/shop"});
+    CHECK2(log == QStringLiteral("step 3: Models\nstep 2: Routes\nstep 1: App\n"), log);
+    CHECK2(treeAt(fresh.path(), "closeni/shop~2") == QStringList{"app.py"}, treeAt(fresh.path(), "closeni/shop~2").join(","));
+    CHECK2(treeAt(fresh.path(), "closeni/shop~1") == (QStringList{"app.py", "routes.py"}), treeAt(fresh.path(), "closeni/shop~1").join(","));
+    CHECK2(treeAt(fresh.path(), "closeni/shop") == (QStringList{"app.py", "models.py", "routes.py"}),
+           treeAt(fresh.path(), "closeni/shop").join(","));
+    CHECK(runGit(fresh.path(), {"show", "closeni/shop~2:app.py"}) == QStringLiteral("v1\n"));
+    const QDir f(fresh.path());
+    CHECK(readAll(f.filePath("app.py")) == QStringLiteral("v2\n") && readAll(f.filePath("routes.py")) == QStringLiteral("R\n")
+          && readAll(f.filePath("models.py")) == QStringLiteral("M\n"));
+
+    // An existing repository holding the finished build.
+    QTemporaryDir repo;
+    writeThreeStepBuild(repo.path());
+    runGit(repo.path(), {"init", "-q"});
+    runGit(repo.path(), {"add", "-A"});
+    runGit(repo.path(), {"commit", "-q", "-m", "built"});
+    h.engine.globalObject().setProperty("WS", repo.path());
+    r = h.call("Git.exportBranch({ workspace: WS, summary: 'Shop' }, cb)", 60000);
+    CHECK2(r.toObject().value("ok") == true && r.toObject().value("commits") == 3, h.lastText);
+    CHECK2(treeAt(repo.path(), "closeni/shop~1").contains("routes.py") && !treeAt(repo.path(), "closeni/shop~1").contains("models.py")
+               && treeAt(repo.path(), "closeni/shop").contains("models.py"),
+           treeAt(repo.path(), "closeni/shop~1").join(","));
+}
+
+/*
+ * .closeni is CloseNI's own folder: the build state and checkpoints. It must
+ * not make a committed project count as having uncommitted changes, refuse
+ * the export, or be swept into a commit.
+ */
+void TestGit::closeniIsNotAChange()
+{
+    GitService git;
+    BuildStore builds;
+    Harness h;
+    h.expose("Git", &git);
+    h.expose("Builds", &builds);
+
+    // A committed project with a build's checkpoints beside it, untracked and
+    // with nothing telling git to ignore them (as an older CloseNI left them).
+    QTemporaryDir repo;
+    writeThreeStepBuild(repo.path());
+    runGit(repo.path(), {"init", "-q"});
+    runGit(repo.path(), {"add", "--", "app.py", "routes.py", "models.py"});
+    runGit(repo.path(), {"commit", "-q", "-m", "built"});
+    CHECK2(runGit(repo.path(), {"status", "--porcelain"}).contains(".closeni"), runGit(repo.path(), {"status", "--porcelain"}));
+    h.engine.globalObject().setProperty("WS", repo.path());
+    QJsonValue r = h.call("Git.exportBranch({ workspace: WS, summary: 'Shop' }, cb)", 60000);
+    CHECK2(r.toObject().value("ok") == true && r.toObject().value("commits") == 3, h.lastText);
+    CHECK2(!runGit(repo.path(), {"log", "--name-only", "--format=", "closeni/shop"}).contains(".closeni"),
+           runGit(repo.path(), {"log", "--name-only", "--format=", "closeni/shop"}));
+    // The user's own uncommitted work still counts.
+    writeAll(QDir(repo.path()).filePath("notes.txt"), "mine\n");
+    r = h.call("Git.exportBranch({ workspace: WS, summary: 'Other' }, cb)", 60000);
+    CHECK2(r.toObject().value("ok") == false && r.toObject().value("error").toString().startsWith("You have uncommitted changes."), h.lastText);
+
+    // Writing the build state marks the folder as ignored from inside it, so
+    // git status, the Push panel's Commit (add -A) and the Code panel's
+    // changed-file count leave it out too, without touching the project's
+    // own .gitignore.
+    QTemporaryDir ws;
+    runGit(ws.path(), {"init", "-q"});
+    writeAll(QDir(ws.path()).filePath("main.py"), "print(1)\n");
+    runGit(ws.path(), {"add", "-A"});
+    runGit(ws.path(), {"commit", "-q", "-m", "start"});
+    h.engine.globalObject().setProperty("WS", ws.path());
+    r = h.call("Builds.writeBuildState({ workspace: WS, plan: { summary: 'S' }, steps: [{ title: 'a', status: 'done' }] }, cb)");
+    CHECK2(r.toObject().value("ok") == true, h.lastText);
+    CHECK(QFile::exists(QDir(ws.path()).filePath(".closeni/build.json")));
+    const QString status = runGit(ws.path(), {"status", "--porcelain", "--untracked-files=all"});
+    CHECK2(status.isEmpty(), status);
+    CHECK(!QFile::exists(QDir(ws.path()).filePath(".gitignore")));
+    runGit(ws.path(), {"add", "-A"});
+    CHECK2(runGit(ws.path(), {"diff", "--cached", "--name-only"}).isEmpty(), runGit(ws.path(), {"diff", "--cached", "--name-only"}));
+    // A marker the user edited is theirs: it is not rewritten.
+    const QString marker = QDir(ws.path()).filePath(".closeni/.gitignore");
+    writeAll(marker, "checkpoints/\n");
+    h.call("Builds.writeBuildState({ workspace: WS, plan: { summary: 'S' }, steps: [{ title: 'a', status: 'done' }] }, cb)");
+    CHECK(readAll(marker) == QStringLiteral("checkpoints/\n"));
 }
 
 QTEST_GUILESS_MAIN(TestGit)

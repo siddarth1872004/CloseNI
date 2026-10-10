@@ -39,6 +39,20 @@ Windows, Linux and, for the first time, macOS. They are unsigned, as before.
   install is uninstalled first and its data is kept. On Linux, the .deb
   replaces the old `closeni` package.
 
+### Fixed
+
+- **Export branch works when files appear after step 1.** The replay staged a
+  file that a later step creates as absent from the earlier commits with
+  `git add`, which git refuses for a path it neither tracks nor finds. The
+  export failed at step 1 in a workspace that was not a repository yet, and
+  in an existing one whenever a file appeared after step 2.
+- **CloseNI's own `.closeni` folder no longer counts as an uncommitted
+  change.** It made a committed project look dirty: Export branch refused to
+  run, the Code panel counted a changed file, and Commit swept the build state
+  and checkpoints into the project. The folder now holds a `.gitignore` that
+  ignores it, and the export's check leaves it out. The project's own
+  `.gitignore` is not touched.
+
 ### For developers
 
 - `npm start` runs the native build (`cmake -S native -B build-native -G Ninja

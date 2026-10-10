@@ -214,6 +214,9 @@ Item {
 
         // Settings: every control, then the panel in three themes.
         s = s.concat(settingsCheck.steps())
+        // The check's toasts would cover the panel in its screenshots (the
+        // docs' settings.png is the paper one).
+        s.push(function () { Notify.toasts.clear() })
         var settingsShots = [["terminal", "skills"], ["paper", "appearance"], ["pixel", "provider"]]
         for (var k = 0; k < settingsShots.length; k++) {
             s.push(themeStep(settingsShots[k][0]))

@@ -75,7 +75,7 @@ Ask for a change and it reads your project, edits files, runs commands and check
 <a href="#what-it-is"><img src="https://img.shields.io/badge/API%20keys-none-ff7b72?style=flat-square" alt="API keys"></a>
 <a href="https://github.com/siddarth1872004/CloseNI/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-bc8cff?style=flat-square" alt="License"></a></p>
 <p><a href="https://siddarth1872004.github.io/CloseNI/"><strong>Site</strong></a> · <a href="#how-it-works"><strong>How it works</strong></a> · <a href="#architecture"><strong>Architecture</strong></a> · <a href="#the-browser-native-layer"><strong>Browser layer</strong></a> · <a href="#research"><strong>Research</strong></a> · <a href="#getting-started"><strong>Get started</strong></a> · <a href="#current-limitations"><strong>Limitations</strong></a></p>
-<img src="assets/stats.svg" alt="1902 unit tests, 192 end-to-end tests, 206 browser checks, twelve languages, eleven themes, zero API keys" width="100%"></div><hr>
+<img src="assets/stats.svg" alt="2111 unit tests, 13 native test suites, 197 verify checks, twelve languages, eleven themes, zero API keys" width="100%"></div><hr>
 <h2 id="what-it-is">What it is</h2>
 <p>Every other coding agent bills per token through an API key. CloseNI does not have one.</p>
 <p>It opens a real Chromium window and uses the session you are already signed into. It types the prompt into the page, waits for the answer to finish streaming, and reads it back out. From the model&#39;s side it is a person typing. From your side it is a coding agent working in your project folder.</p>
@@ -138,7 +138,7 @@ Ask for a change and it reads your project, edits files, runs commands and check
 <p>Also: <a href="https://github.com/siddarth1872004/CloseNI/blob/main/CHANGELOG.md">CHANGELOG</a> · <a href="https://github.com/siddarth1872004/CloseNI/blob/main/docs/RELEASING.md">Release process</a> · <a href="https://github.com/siddarth1872004/CloseNI/blob/main/docs/ROADMAP.md">Roadmap</a> · <a href="https://github.com/siddarth1872004/CloseNI/blob/main/docs/architecture/browser-research.md">Browser layer design</a> · <a href="https://github.com/siddarth1872004/CloseNI/blob/main/docs/testing/browser-test-report.md">Browser test report</a></p>
 <hr>
 <h2 id="the-coding-agent">The coding agent</h2>
-<img src="screenshots/code.png" alt="The Code panel in the Terminal theme: a search, a read, an edit shown as a diff, a todo list, and a command waiting for permission" width="100%"><p>A chat site has no tool-calling API, so tools are a convention written into the conversation. The agent&#39;s first message teaches the model to answer with fenced blocks whose first line names a tool. Write and edit put their payload after a <code>---</code> line, and edits use <code>SEARCH</code>/<code>REPLACE</code> sections, a format models already know. CloseNI runs each call and sends the results back as the next message. A reply with no tool blocks is the answer. Code blocks are the one thing every provider renders and returns verbatim, which is why they carry the calls (<code>local-agent/src/agent/protocol.ts</code>).</p>
+<img src="screenshots/code.png" alt="The Code panel in the Terminal theme: a request, a read, and an edit shown as a diff waiting for permission" width="100%"><p>A chat site has no tool-calling API, so tools are a convention written into the conversation. The agent&#39;s first message teaches the model to answer with fenced blocks whose first line names a tool. Write and edit put their payload after a <code>---</code> line, and edits use <code>SEARCH</code>/<code>REPLACE</code> sections, a format models already know. CloseNI runs each call and sends the results back as the next message. A reply with no tool blocks is the answer. Code blocks are the one thing every provider renders and returns verbatim, which is why they carry the calls (<code>local-agent/src/agent/protocol.ts</code>).</p>
 <table>
 <thead>
 <tr>
@@ -511,7 +511,7 @@ Ask for a change and it reads your project, edits files, runs commands and check
 <td width="50%"><img src="screenshots/chat.png" alt="The Chat panel, where a plan is proposed and reviewed before any file is written"></td>
 </tr>
 <tr>
-<td width="50%"><img src="screenshots/builder.png" alt="The Builder panel in the Pixel theme: the flow bar with Build in progress, step list on the left, unified diff for the running step"></td>
+<td width="50%"><img src="screenshots/builder.png" alt="The Builder panel in the Pixel theme: a finished build, the step list on the left, and the selected step's timings, detail and diff"></td>
 <td width="50%" valign="top"><p><strong>03 · Build.</strong> Watch it happen, step by step.</p>
 <p>Live step status, and the exact diff for the running step. <strong>Suggest a change to this step</strong> steers a single step without restarting. The Console drawer holds two logs: <strong>Agent</strong> is the story (<code>step 4/7: API routes</code>), and <strong>Project</strong> is the evidence (<code>CHECK_RESULT: PASS</code>).</p>
 </td>
@@ -523,7 +523,7 @@ Ask for a change and it reads your project, edits files, runs commands and check
 <td width="50%"><img src="screenshots/test.png" alt="The Test panel: resolved run command, per-check pass and fail results, and a chat about this run"></td>
 </tr>
 <tr>
-<td width="50%"><img src="screenshots/ship.png" alt="The Ship panel in the Blueprint theme: GitHub token entry, git init and commit, push to origin, and Actions run status"></td>
+<td width="50%"><img src="screenshots/ship.png" alt="The Ship panel in the Paper theme: GitHub account and repository, git init and commit, push to origin, export the build to a branch, and Actions run status"></td>
 <td width="50%" valign="top"><p><strong>06 · Ship.</strong> Commit, push, and watch CI.</p>
 <p><code>git init</code>, status, commit-all and push, plus a live list of GitHub Actions runs and a button to dispatch a workflow. The token is encrypted at rest and never written into the repository.</p>
 </td>
@@ -677,7 +677,7 @@ Ask for a change and it reads your project, edits files, runs commands and check
 <h2 id="tests-and-verification">Tests and verification</h2>
 <pre><code class="language-mermaid">flowchart LR
     subgraph unit[&quot;npm test · no browser&quot;]
-        U1[&quot;1902 unit tests&lt;br/&gt;including the web layer&#39;s pure logic&quot;]
+        U1[&quot;2111 unit tests&lt;br/&gt;including the web layer&#39;s pure logic&quot;]
     end
     subgraph browser[&quot;real Chromium&quot;]
         E2E[&quot;npm run test:e2e&lt;br/&gt;192 tests against a mock chat site&quot;]

@@ -252,7 +252,22 @@ export function writeCheckpoint(workspace: string, checkpoint: Checkpoint | null
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, checkpointName(checkpoint.step)),
       JSON.stringify(sealCheckpoint(checkpoint, afters), null, 2) + "\n");
+    ignoreBuildStateDir(workspace);
   } catch { /* see above */ }
+}
+
+/**
+ * Make .closeni ignore itself, as the app does when it saves build.json
+ * (native/src/BuildStore.cpp): a .gitignore inside it matching everything.
+ *
+ * An untracked .closeni made a committed project look dirty to git, so the
+ * export refused to run and a Commit swept the checkpoints into the project's
+ * history. This covers a headless build, which writes no build.json. Never
+ * the project's own .gitignore, and never rewritten once it exists.
+ */
+export function ignoreBuildStateDir(workspace: string): void {
+  const file = path.join(workspace, BUILD_STATE_DIR, ".gitignore");
+  if (!fs.existsSync(file)) fs.writeFileSync(file, "# CloseNI's build state and checkpoints: not project history.\n*\n");
 }
 
 /**
