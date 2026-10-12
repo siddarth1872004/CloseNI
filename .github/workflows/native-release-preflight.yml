@@ -1,0 +1,82 @@
+# Native release preflight
+name: native-release-preflight
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/release.yml"
+      - "docs/RELEASING.md"
+      - "package.json"
+      - "package-lock.json"
+      - "local-agent/**"
+      - "shared/**"
+      - "native/**"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/release.yml"
+      - "docs/RELEASING.md"
+      - "package.json"
+      - "package-lock.json"
+      - "local-agent/**"
+      - "shared/**"
+      - "native/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-release-preflight-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  preflight:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Verify shared versions agree
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const paths = ['package.json', 'local-agent/package.json', 'shared/package.json'];
+          const versions = paths.map(path => ({
+            path,
+            version: JSON.parse(fs.readFileSync(path, 'utf8')).version
+          }));
+          console.log(versions.map(x => `${x.path}: ${x.version}`).join('\n'));
+          const distinct = new Set(versions.map(x => x.version));
+          if (distinct.size !== 1) {
+            console.error('Package versions differ; align them before tagging a release.');
+            process.exit(1);
+          }
+          NODE
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build agent workspaces
+        run: npm run build
+
+      - name: Install Chromium dependencies
+        run: npx playwright install --with-deps chromium
+
+      - name: Unit tests
+        run: node local-agent/test/run-tests.cjs
+
+      - name: Configure native app
+        run: cmake -S native -B build-native -G Ninja
+
+      - name: Build native app
+        run: cmake --build build-native --parallel 2
+
+      - name: Native tests
+        run: ctest --test-dir build-native --output-on-failure
