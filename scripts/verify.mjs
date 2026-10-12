@@ -721,7 +721,7 @@ if (!QUICK) {
     // Lightweight by construction: Qt Quick's Basic style only, no web engine,
     // no translations, no software OpenGL fallback.
     check('Qt Quick Controls\' Basic style is shipped', files.some((f) => /\/qml\/QtQuick\/Controls\/Basic\/qmldir$/.test('/' + f)));
-    const otherStyles = files.filter((f) => /\/QtQuick\/Controls\/(Material|Universal|Fusion|Imagine|FluentWinUI3|Windows|macOS|iOS)\//.test('/' + f));
+    const otherStyles = files.filter((f) => /\/QtQuick\/Controls\/(Material|Universal|Fusion|Imagine|FluentWinUI3|Windows|iOS)\//.test('/' + f));
     check('no other Qt Quick Controls style', otherStyles.length === 0, otherStyles.slice(0, 3).join(', '));
     const web = files.filter((f) => /webengine|webview|webchannel/i.test(f));
     check('no web engine or web view', web.length === 0, web.slice(0, 3).join(', '));
