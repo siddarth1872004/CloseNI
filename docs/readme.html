@@ -77,14 +77,14 @@ Ask for a change and it reads your project, edits files, runs commands and check
 </div><hr>
 <h2 id="what-it-is">What it is</h2>
 <p>CloseNI opens a real Chromium window with the chat site you are already signed into. It types the prompt, waits for the reply to finish streaming and reads it back. From the site&#39;s side it is a person typing. From yours it is a coding agent working in your project folder.</p>
-<p>The app itself is native: Qt Quick on Windows, macOS and Linux, with no web view anywhere. The agent beside it is a Node and Playwright process.</p>
+<p>The app itself is native: Qt Quick on Windows and Linux, with no web view anywhere. The agent beside it is a Node and Playwright process.</p>
 <blockquote>
 <p><strong>Where it stands.</strong></p>
 <ul>
 <li><strong>DeepSeek</strong> is driven end to end, including long sessions.</li>
 <li><strong>Qwen Studio</strong> and <strong>GLM</strong> can be selected, as <strong>experimental</strong>.</li>
 <li><strong>Ollama</strong> is local and <strong>chat-only</strong>.</li>
-<li>Installers are <strong>unsigned</strong>, so SmartScreen and Gatekeeper warn on first launch.</li>
+<li>Installers are <strong>unsigned</strong>, so Windows SmartScreen may warn on first launch.</li>
 </ul>
 </blockquote>
 <h2 id="the-coding-agent">The coding agent</h2>
@@ -289,7 +289,7 @@ Ask for a change and it reads your project, edits files, runs commands and check
 <td><code>CloseNI-&lt;version&gt;.AppImage</code>, <code>closeni_&lt;version&gt;_amd64.deb</code></td>
 </tr>
 </tbody></table>
-<p>They bundle Qt, Node and the agent. Chromium (about 650 MB) is downloaded on first run. They are unsigned: on macOS, allow the app under System Settings → Privacy &amp; Security the first time it is blocked.</p>
+<p>The Windows and Linux packages bundle Qt, Node and the agent. Chromium (about 650 MB) is downloaded on first run. The Windows installer is unsigned, so SmartScreen may warn on first launch.</p>
 <p><strong>From source</strong> (Node 22.12+, Qt 6.8+, CMake 3.21+ and Ninja):</p>
 <pre><code class="language-bash">git clone https://github.com/siddarth1872004/CloseNI.git &amp;&amp; cd CloseNI
 npm install &amp;&amp; npm run build
@@ -298,7 +298,7 @@ cmake -S native -B build-native -G Ninja &amp;&amp; cmake --build build-native
 npm start
 </code></pre>
 <p><strong>First run.</strong> Pick a project folder, choose a provider, install Chromium and sign in once in the browser window. A checklist above the chat walks through it.</p>
-<p>The GitHub token is kept in the OS keyring: DPAPI on Windows, the keychain on macOS, the Secret Service on Linux. Without a keyring CloseNI still runs, but asks you to sign in to GitHub each launch.</p>
+<p>The GitHub token is kept in the OS keyring: DPAPI on Windows and the Secret Service on Linux. Without a keyring CloseNI still runs, but asks you to sign in to GitHub each launch.</p>
 <h2 id="development">Development</h2>
 <pre><code class="language-bash">npm test                        # unit suite, no browser
 npm run test:e2e                # real Chromium against a mock chat site
