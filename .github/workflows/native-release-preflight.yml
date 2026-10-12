@@ -6,6 +6,7 @@ on:
   pull_request:
     paths:
       - ".github/workflows/release.yml"
+      - ".github/workflows/native-release-preflight.yml"
       - "docs/RELEASING.md"
       - "package.json"
       - "package-lock.json"
@@ -17,6 +18,7 @@ on:
       - main
     paths:
       - ".github/workflows/release.yml"
+      - ".github/workflows/native-release-preflight.yml"
       - "docs/RELEASING.md"
       - "package.json"
       - "package-lock.json"
@@ -41,6 +43,19 @@ jobs:
         with:
           node-version: "22"
           cache: npm
+
+      # Match the Qt version used by the actual cross-platform release workflow.
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.10.*"
+          cache: true
+
+      - name: Install Linux native build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build patchelf libgl1-mesa-dev libxkbcommon-x11-0 libxcb-cursor0 \
+            libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0 \
+            libxcb-xinerama0 libxcb-xkb1
 
       - name: Verify shared versions agree
         shell: bash
