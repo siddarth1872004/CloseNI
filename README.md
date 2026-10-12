@@ -23,13 +23,13 @@ Ask for a change and it reads your project, edits files, runs commands and check
 
 CloseNI opens a real Chromium window with the chat site you are already signed into. It types the prompt, waits for the reply to finish streaming and reads it back. From the site's side it is a person typing. From yours it is a coding agent working in your project folder.
 
-The app itself is native: Qt Quick on Windows, macOS and Linux, with no web view anywhere. The agent beside it is a Node and Playwright process.
+The app itself is native: Qt Quick on Windows and Linux, with no web view anywhere. The agent beside it is a Node and Playwright process.
 
 > **Where it stands.**
 > - **DeepSeek** is driven end to end, including long sessions.
 > - **Qwen Studio** and **GLM** can be selected, as **experimental**.
 > - **Ollama** is local and **chat-only**.
-> - Installers are **unsigned**, so SmartScreen and Gatekeeper warn on first launch.
+> - Installers are **unsigned**, so Windows SmartScreen may warn on first launch.
 
 ## The coding agent
 
@@ -145,10 +145,9 @@ The command list reads the command's text, so it is a floor, not a sandbox: a sc
 | System | File |
 |---|---|
 | Windows 10+ x64 | `CloseNI-Setup-<version>.exe` |
-| macOS (Apple silicon, Intel) | `CloseNI-<version>-arm64.dmg`, `CloseNI-<version>-x64.dmg` |
 | Linux x64 | `CloseNI-<version>.AppImage`, `closeni_<version>_amd64.deb` |
 
-They bundle Qt, Node and the agent. Chromium (about 650 MB) is downloaded on first run. They are unsigned: on macOS, allow the app under System Settings → Privacy & Security the first time it is blocked.
+The Windows and Linux packages bundle Qt, Node and the agent. Chromium (about 650 MB) is downloaded on first run. The Windows installer is unsigned, so SmartScreen may warn on first launch.
 
 **From source** (Node 22.12+, Qt 6.8+, CMake 3.21+ and Ninja):
 
@@ -162,7 +161,7 @@ npm start
 
 **First run.** Pick a project folder, choose a provider, install Chromium and sign in once in the browser window. A checklist above the chat walks through it.
 
-The GitHub token is kept in the OS keyring: DPAPI on Windows, the keychain on macOS, the Secret Service on Linux. Without a keyring CloseNI still runs, but asks you to sign in to GitHub each launch.
+The GitHub token is kept in the OS keyring: DPAPI on Windows and the Secret Service on Linux. Without a keyring CloseNI still runs, but asks you to sign in to GitHub each launch.
 
 ## Development
 
