@@ -77,12 +77,6 @@ jobs:
             os: ubuntu-22.04
           - target: win-x64
             os: windows-latest
-          # Qt for macOS is universal, so both architectures build on Apple
-          # silicon; the x64 app is thinned to x86_64 when it is staged.
-          - target: mac-arm64
-            os: macos-15
-          - target: mac-x64
-            os: macos-15
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -144,7 +138,6 @@ jobs:
             dist/native/out/*.exe
             dist/native/out/*.AppImage
             dist/native/out/*.deb
-            dist/native/out/*.dmg
           if-no-files-found: error
           retention-days: 30
 
