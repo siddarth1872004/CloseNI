@@ -8,7 +8,7 @@ All notable changes to CloseNI are recorded here.
 
 - Windows x64 and Linux x64 are the supported installer targets.
 - The release workflow builds the Windows installer, Linux AppImage and Debian package, and a SHA-256 checksum file.
-- Removed the broken macOS packaging path so it no longer blocks Windows and Linux releases.
+- Simplified the release pipeline to build only the supported Windows and Linux targets.
 
 ## [0.1] — 2026-10-10
 
