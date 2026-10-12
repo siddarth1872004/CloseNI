@@ -2,24 +2,31 @@
 
 All notable changes to CloseNI are recorded here.
 
+## [0.1.1] — 2026-10-12
+
+### Release packaging
+
+- Windows x64 and Linux x64 are the supported installer targets.
+- The release workflow builds the Windows installer, Linux AppImage and Debian package, and a SHA-256 checksum file.
+- Simplified the release pipeline to build only the supported Windows and Linux targets.
+
 ## [0.1] — 2026-10-10
 
 The first release of CloseNI as a native app.
 
 ### The app
 
-- **Native on Windows, macOS and Linux.** Every screen is Qt Quick, with no
+- **Native on Windows and Linux.** Every screen is Qt Quick, with no
   web view anywhere. The agent is a Node and Playwright process the app starts
   beside it. The unpacked Linux app is about 234 MB and holds about 95 MB of
   memory at idle; Chromium is downloaded on first use.
-- **Installers** are built by CI from the tag: a Windows `.exe`, macOS disk
-  images for Apple silicon and Intel, and a Linux AppImage and `.deb`. They
-  bundle Qt, Node 22 and the agent. They are unsigned, so SmartScreen and
-  Gatekeeper warn on first launch.
+- **Installers** are built by CI from the tag: a Windows `.exe`, a Linux
+  AppImage and a `.deb`. They bundle Qt, Node 22 and the agent. The Windows
+  installer is unsigned, so SmartScreen may warn on first launch.
 - **Running a project** opens a native console for its output, and **Open in
   browser** hands a web project's address to your system browser.
 - **The GitHub token** is kept in the OS keyring: DPAPI on Windows, the
-  keychain on macOS and the Secret Service on Linux.
+  Secret Service on Linux.
 
 ### The agent
 

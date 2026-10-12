@@ -1,13 +1,12 @@
 #!/usr/bin/env node
 /*
- * Makes the Windows and macOS icons from build/icon.png, the 512x512 PNG
+ * Makes the Windows icon from build/icon.png, the 512x512 PNG
  * scripts/make-icon.mjs rasterises from build/icon.svg.
  *
  *   node native/package/icons.mjs
  *
- * Writes native/package/closeni.ico and closeni.icns. Both are committed,
- * because CMake embeds them at build time (the .ico through closeni.rc, the
- * .icns into the bundle) and a build must not need this script to have run.
+ * Writes native/package/closeni.ico, committed because CMake embeds it
+ * through closeni.rc and a build must not need this script to have run.
  * Rerun it after changing build/icon.png.
  *
  * No image library: the icon is pixel art on a 32-unit grid, so downscaling is
@@ -132,7 +131,7 @@ function scale(img, size) {
   return { width: size, height: size, rgba: out };
 }
 
-// ---------------------------------------------------------- ICO and ICNS ----
+// ------------------------------------------------------------------ ICO ----
 
 /** An .ico whose entries are PNGs (Windows Vista and later read these). */
 function ico(images) {
@@ -149,18 +148,6 @@ function ico(images) {
   return Buffer.concat([head, ...images.map((i) => i.png)]);
 }
 
-/** An .icns of PNG entries, keyed by the OSType each pixel size uses. */
-function icns(entries) {
-  const parts = entries.map(([type, png]) => {
-    const h = Buffer.alloc(8);
-    h.write(type, 0, 'latin1'); h.writeUInt32BE(png.length + 8, 4);
-    return Buffer.concat([h, png]);
-  });
-  const body = Buffer.concat(parts);
-  const h = Buffer.alloc(8);
-  h.write('icns', 0, 'latin1'); h.writeUInt32BE(body.length + 8, 4);
-  return Buffer.concat([h, body]);
-}
 
 const src = decodePng(readFileSync(join(ROOT, 'build/icon.png')));
 if (src.width !== 512 || src.height !== 512) throw new Error(`build/icon.png is ${src.width}x${src.height}, expected 512x512`);
@@ -168,8 +155,4 @@ const png = {};
 for (const size of [16, 24, 32, 48, 64, 128, 256, 512]) png[size] = encodePng(scale(src, size));
 
 writeFileSync(join(HERE, 'closeni.ico'), ico([16, 24, 32, 48, 64, 128, 256].map((size) => ({ size, png: png[size] }))));
-writeFileSync(join(HERE, 'closeni.icns'), icns([
-  ['icp4', png[16]], ['icp5', png[32]], ['icp6', png[64]], ['ic07', png[128]], ['ic08', png[256]], ['ic09', png[512]],
-  ['ic11', png[32]], ['ic12', png[64]], ['ic13', png[256]], ['ic14', png[512]],
-]));
-console.log('wrote native/package/closeni.ico and closeni.icns');
+console.log('wrote native/package/closeni.ico');

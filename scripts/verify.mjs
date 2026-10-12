@@ -599,7 +599,7 @@ check('linux deb has a maintainer', /^[^<>]+ <[^@\s<>]+@[^\s<>]+>$/.test(appMeta
 // stronger check.
 check('the bundled Node is a 22 LTS pinned by checksum for every target',
   /^22\.\d+\.\d+$/.test(appMeta.node?.version || '') &&
-  ['linux-x64.tar.gz', 'win-x64.zip', 'darwin-arm64.tar.gz', 'darwin-x64.tar.gz']
+  ['linux-x64.tar.gz', 'win-x64.zip']
     .every((k) => /^[0-9a-f]{64}$/.test(appMeta.node?.sha256?.[k] || '')), appMeta.node?.version);
 check('packaging tools are downloaded over https and pinned by checksum',
   Object.values(appMeta.tools || {}).length > 0 &&
@@ -610,8 +610,9 @@ const wf = read('.github/workflows/release.yml');
 const jobs = Object.fromEntries((wf.split(/^jobs:\n/m)[1] || '').split(/^(?=  [a-z][\w-]*:\n)/m)
   .map((j) => [(j.match(/^  ([a-z][\w-]*):/) || [])[1], j]).filter(([k]) => k));
 check('release workflow checks the tag against package.json', /does not match package.json version/.test(wf));
-check('installers are built for windows, linux and both macs',
-  ['linux-x64', 'win-x64', 'mac-arm64', 'mac-x64'].every((t) => new RegExp(`target: ${t}\\b`).test(jobs.package || '')));
+check('installers are built for Windows and Linux',
+  ['linux-x64', 'win-x64'].every((t) => new RegExp(`target: ${t}\\b`).test(jobs.package || '')) &&
+  !/mac-arm64|mac-x64|macos-/.test(jobs.package || ''));
 // The build jobs only upload artifacts and one job publishes after them all,
 // so no two jobs race to create the release.
 check('one job publishes, after every installer is built',
@@ -679,7 +680,7 @@ if (!QUICK) {
     check('artifact contains the app', existsSync(join(ROOT, m.executable)), m.executable);
     check('artifact contains Node', existsSync(join(ROOT, m.node.path)), m.node.path);
     check('the bundled Node is 22', /^22\./.test(m.node.version) && m.node.version === appMeta.node.version, m.node.version);
-    const host = { linux: 'linux-x64', win32: 'win-x64', darwin: process.arch === 'arm64' ? 'mac-arm64' : 'mac-x64' }[process.platform];
+    const host = { linux: 'linux-x64', win32: 'win-x64' }[process.platform];
     if (m.target === host) {
       let said = '';
       try { said = sh(join(ROOT, m.node.path), ['--version']).trim(); } catch (e) { said = String(e.message).slice(0, 100); }
@@ -720,13 +721,13 @@ if (!QUICK) {
     // Lightweight by construction: Qt Quick's Basic style only, no web engine,
     // no translations, no software OpenGL fallback.
     check('Qt Quick Controls\' Basic style is shipped', files.some((f) => /\/qml\/QtQuick\/Controls\/Basic\/qmldir$/.test('/' + f)));
-    const otherStyles = files.filter((f) => /\/QtQuick\/Controls\/(Material|Universal|Fusion|Imagine|FluentWinUI3|Windows|macOS|iOS)\//.test('/' + f));
+    const otherStyles = files.filter((f) => /\/QtQuick\/Controls\/(Material|Universal|Fusion|Imagine|FluentWinUI3|Windows|iOS)\//.test('/' + f));
     check('no other Qt Quick Controls style', otherStyles.length === 0, otherStyles.slice(0, 3).join(', '));
     const web = files.filter((f) => /webengine|webview|webchannel/i.test(f));
     check('no web engine or web view', web.length === 0, web.slice(0, 3).join(', '));
     check('no translations', !files.some((f) => /\.qm$/.test(f) || /(^|\/)translations\//.test(f)));
     check('no software OpenGL', !files.some((f) => /opengl32sw\.dll$/i.test(f)));
-    check('a platform plugin is shipped', files.some((f) => /platforms\/(libqxcb\.so|qwindows\.dll|libqcocoa\.dylib)$/.test(f)));
+    check('a platform plugin is shipped', files.some((f) => /platforms\/(libqxcb\.so|qwindows\.dll)$/.test(f)));
     // The file and folder pickers (QtQuick.Dialogs) load these at run time;
     // without them a dialog fails only when someone opens it. The qml/assets
     // textures need no check: they are compiled into the executable.
@@ -759,10 +760,9 @@ console.log(`
 ${'-'.repeat(W)}
   NOT covered by this script, and still unverified:
 
-    · The Windows installer and the macOS disk images. No Windows or Mac
-      here; the first .exe and .dmg the release workflow builds are
-      unverified until someone installs them. The packaging audit above
-      covers only the stage built on this machine.
+    · The Windows installer. No Windows environment here; the first .exe
+      the release workflow builds is unverified until someone installs it.
+      The packaging audit above covers only the stage built on this machine.
     · Qwen and GLM are selectable as experimental, not verified. Qwen's 300s
       completion wait has not been re-run live with a build-sized prompt;
       GLM's live site declined the build prompts when last tried. Only

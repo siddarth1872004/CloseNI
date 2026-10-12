@@ -42,8 +42,6 @@ endif()
 # Platform code for the secret store (src/platform/), one file per system.
 if(WIN32)
     set(CLOSENI_PLATFORM_SOURCES src/platform/SecretStore_win.cpp)
-elseif(APPLE)
-    set(CLOSENI_PLATFORM_SOURCES src/platform/SecretStore_mac.cpp)
 else()
     set(CLOSENI_PLATFORM_SOURCES src/platform/SecretStore_linux.cpp)
 endif()
@@ -53,13 +51,10 @@ foreach(f ${CLOSENI_PLATFORM_SOURCES})
     endif()
 endforeach()
 
-# The app icon (made from build/icon.png by package/icons.mjs): embedded in the
-# .exe through a resource script, and copied into the macOS bundle.
+# The app icon (made from build/icon.png by package/icons.mjs) is embedded
+# in the Windows executable through a resource script.
 if(WIN32)
     set(CLOSENI_ICON package/closeni.rc)
-elseif(APPLE)
-    set(CLOSENI_ICON package/closeni.icns)
-    set_source_files_properties(package/closeni.icns PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
 endif()
 
 qt_add_executable(closeni
@@ -81,12 +76,6 @@ qt_add_qml_module(closeni
 set_target_properties(closeni PROPERTIES
     OUTPUT_NAME CloseNI
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
-    MACOSX_BUNDLE TRUE
-    MACOSX_BUNDLE_GUI_IDENTIFIER com.siddarth.closeni
-    MACOSX_BUNDLE_BUNDLE_NAME CloseNI
-    MACOSX_BUNDLE_ICON_FILE closeni.icns
-    MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
-    MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION}
     WIN32_EXECUTABLE TRUE
 )
 
@@ -107,8 +96,6 @@ target_link_libraries(closeni PRIVATE
 
 if(WIN32)
     target_link_libraries(closeni PRIVATE crypt32)
-elseif(APPLE)
-    target_link_libraries(closeni PRIVATE "-framework Security" "-framework CoreFoundation")
 else()
     # libsecret is opened at run time, so it is not a build dependency.
     target_link_libraries(closeni PRIVATE ${CMAKE_DL_LIBS})

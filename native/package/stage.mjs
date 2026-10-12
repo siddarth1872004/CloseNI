@@ -7,16 +7,16 @@
  *   node native/package/stage.mjs --installers    and make the installers
  *
  * Options:
- *   --target linux-x64 | win-x64 | mac-arm64 | mac-x64   (default: this machine)
+ *   --target linux-x64 | win-x64   (default: this machine)
  *   --exe PATH    package this built executable (or .app) instead of building
  *
  * Output, all under dist/native/ (gitignored):
  *   build-<target>/   the CMake build
- *   <target>/         the staged app: Linux AppDir/, Windows CloseNI/, macOS CloseNI.app
+ *   <target>/         the staged app: Linux AppDir/ or Windows CloseNI/
  *   downloads/        Node and the Linux packaging tools, each checked against
  *                     the SHA-256 pinned in app.json
  *   out/              CloseNI-<v>.AppImage, closeni_<v>_amd64.deb,
- *                     CloseNI-Setup-<v>.exe, CloseNI-<v>-<arch>.dmg
+ *                     CloseNI-Setup-<v>.exe
  *   stage.json        what was staged, for scripts/verify.mjs to audit
  *
  * What a package holds, and why so little:
@@ -32,8 +32,8 @@
  *   - Not Chromium. The app downloads it on first run into
  *     <storage>/browsers, which AgentService points PLAYWRIGHT_BROWSERS_PATH at.
  *
- * Paths.cpp looks for node/ and local-agent/ in the resources directory: next
- * to the executable on Windows and Linux, Contents/Resources on macOS.
+ * Paths.cpp looks for node/ and local-agent/ in the resources directory next
+ * to the executable on Windows and Linux.
  */
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -57,12 +57,12 @@ const OUT = join(ROOT, 'dist', 'native');
 const args = process.argv.slice(2);
 const opt = (name) => { const i = args.indexOf(name); return i === -1 ? undefined : args[i + 1]; };
 const INSTALLERS = args.includes('--installers');
-const HOST_TARGET = { linux: 'linux-x64', win32: 'win-x64', darwin: process.arch === 'arm64' ? 'mac-arm64' : 'mac-x64' }[process.platform];
+const HOST_TARGET = { linux: 'linux-x64', win32: 'win-x64' }[process.platform];
 const TARGET = opt('--target') || HOST_TARGET;
 const OS = TARGET.split('-')[0];
 const ARCH = TARGET.split('-')[1];
-if (!['linux-x64', 'win-x64', 'mac-arm64', 'mac-x64'].includes(TARGET)) die(`unknown target ${TARGET}`);
-if (OS !== { linux: 'linux', win32: 'win', darwin: 'mac' }[process.platform]) die(`${TARGET} has to be packaged on its own system`);
+if (!['linux-x64', 'win-x64'].includes(TARGET)) die(`unknown target ${TARGET}`);
+if (OS !== { linux: 'linux', win32: 'win' }[process.platform]) die(`${TARGET} has to be packaged on its own system`);
 
 // -------------------------------------------------------------- helpers ----
 
@@ -204,7 +204,7 @@ function unzip(buf, wanted) {
  */
 async function stageNode(res) {
   const v = APP.node.version;
-  const plat = { 'linux-x64': 'linux-x64.tar.gz', 'win-x64': 'win-x64.zip', 'mac-arm64': 'darwin-arm64.tar.gz', 'mac-x64': 'darwin-x64.tar.gz' }[TARGET];
+  const plat = { 'linux-x64': 'linux-x64.tar.gz', 'win-x64': 'win-x64.zip' }[TARGET];
   const name = `node-v${v}-${plat}`;
   const file = await fetchPinned(`https://nodejs.org/dist/v${v}/${name}`, APP.node.sha256[plat]);
   const sums = join(OUT, 'downloads', `node-v${v}-SHASUMS256.txt`);
@@ -222,9 +222,7 @@ async function stageNode(res) {
   mkdirSync(dirname(exe), { recursive: true });
   writeFileSync(exe, entries[bin].data);
   chmodSync(exe, 0o755);
-  // The Linux build carries its symbol table (17 MB). Its dynamic symbols,
-  // which native addons link against, stay. The macOS binary is left alone
-  // because stripping would break Node's own signature.
+  // Keep Node's dynamic symbols, which native addons link against.
   if (OS === 'linux') run('strip', ['--strip-unneeded', exe]);
   writeFileSync(join(dest, 'LICENSE'), entries[`${top}/LICENSE`].data);
   return exe;
@@ -255,8 +253,7 @@ function build() {
   const cache = readFileSync(join(dir, 'CMakeCache.txt'), 'utf8');
   const cmakeVersion = (cache.match(/^CMAKE_PROJECT_VERSION:STATIC=(.*)$/m) || [])[1];
   if (cmakeVersion !== VERSION) die(`CMake built ${cmakeVersion}, package.json says ${VERSION}`);
-  const candidates = OS === 'win' ? [join(dir, 'bin', 'Release', 'CloseNI.exe'), join(dir, 'bin', 'CloseNI.exe')]
-    : OS === 'mac' ? [join(dir, 'bin', 'CloseNI.app')] : [join(dir, 'bin', 'CloseNI')];
+  const candidates = OS === 'win' ? [join(dir, 'bin', 'Release', 'CloseNI.exe'), join(dir, 'bin', 'CloseNI.exe')] : [join(dir, 'bin', 'CloseNI')];
   const exe = candidates.find((p) => existsSync(p));
   if (!exe) die(`the build produced none of ${candidates.join(', ')}`);
   return exe;
@@ -766,80 +763,6 @@ function nsis(dir) {
   return file;
 }
 
-// ---------------------------------------------------------------- macOS ----
-
-async function deployMac(appPath, stageRoot, qt) {
-  const app = join(stageRoot, 'CloseNI.app');
-  run('ditto', [appPath, app]);
-  const macdeployqt = join(qt.QT_INSTALL_BINS, 'macdeployqt');
-  run(macdeployqt, [app, `-qmldir=${join(ROOT, 'native', 'qml')}`, '-always-overwrite']);
-  const contents = join(app, 'Contents');
-  const modules = qmlModules(qt.QT_INSTALL_QML);
-  pruneQml(join(contents, 'Resources', 'qml'), modules);
-  prunePlugins(join(contents, 'PlugIns'));
-  removeTranslations(contents);
-
-  // Frameworks nothing links to (the other styles', Pdf, ...) go.
-  const fw = join(contents, 'Frameworks');
-  const binaries = () => walk(contents).filter((p) => magic(p) === 'macho' && !p.includes(`${sep}Frameworks${sep}`));
-  const keep = new Set();
-  const queue = binaries();
-  while (queue.length) {
-    for (const line of out('otool', ['-L', queue.shift()]).split('\n').slice(1)) {
-      const m = line.trim().match(/^(?:@rpath|@executable_path\/\.\.\/Frameworks|@loader_path\/\.\.\/\.\.\/\.\.\/Frameworks)\/([^/]+\.(framework|dylib))/);
-      if (!m || keep.has(m[1])) continue;
-      keep.add(m[1]);
-      const bin = m[2] === 'framework' ? join(fw, m[1], m[1].replace(/\.framework$/, '')) : join(fw, m[1]);
-      if (existsSync(bin)) queue.push(bin);
-    }
-  }
-  if (existsSync(fw)) for (const f of readdirSync(fw)) if (!keep.has(f)) { console.log(`drop ${f}`); rmSync(join(fw, f), { recursive: true }); }
-
-  // Qt's macOS binaries are universal; keep the target's half.
-  const arch = ARCH === 'arm64' ? 'arm64' : 'x86_64';
-  for (const f of walk(contents).filter((p) => magic(p) === 'macho' && !lstatSync(p).isSymbolicLink())) {
-    const archs = out('lipo', ['-archs', f]).trim().split(/\s+/);
-    if (archs.length > 1) run('lipo', ['-thin', arch, '-output', f, f]);
-    else if (archs[0] !== arch) die(`${relative(app, f)} is ${archs[0]}, not ${arch}`);
-  }
-  return { res: join(contents, 'Resources'), exe: join(contents, 'MacOS', 'CloseNI'), app, modules };
-}
-
-/*
- * Ad-hoc signing: not notarised, so Gatekeeper still asks on first open, but
- * Apple silicon refuses to run unsigned code at all. Inside out: each
- * library and framework, then the bundle. Node keeps its official signature.
- */
-function signMac(app, node) {
-  const contents = join(app, 'Contents');
-  for (const f of walk(contents).filter((p) => magic(p) === 'macho' && p !== node && !lstatSync(p).isSymbolicLink() && !p.includes('.framework'))) {
-    run('codesign', ['--force', '--sign', '-', f]);
-  }
-  const fw = join(contents, 'Frameworks');
-  if (existsSync(fw)) for (const f of readdirSync(fw).filter((n) => n.endsWith('.framework'))) run('codesign', ['--force', '--sign', '-', join(fw, f)]);
-  run('codesign', ['--force', '--sign', '-', app]);
-  run('codesign', ['--verify', '--deep', '--strict', app]);
-}
-
-function dmg(app) {
-  const tmp = join(OUT, 'tmp', 'dmg');
-  rmSync(tmp, { recursive: true, force: true });
-  mkdirSync(tmp, { recursive: true });
-  run('ditto', [app, join(tmp, 'CloseNI.app')]);
-  symlinkSync('/Applications', join(tmp, 'Applications'));
-  const file = join(OUT, 'out', `CloseNI-${VERSION}-${ARCH}.dmg`);
-  rmSync(file, { force: true });
-  // hdiutil fails now and then with "Resource busy" on CI machines.
-  for (let attempt = 1; ; attempt++) {
-    const r = spawnSync('hdiutil', ['create', '-volname', 'CloseNI', '-srcfolder', tmp, '-fs', 'HFS+', '-format', 'ULMO', '-ov', file], { stdio: 'inherit' });
-    if (r.status === 0) break;
-    if (attempt === 3) die('hdiutil create failed three times');
-    spawnSync('sleep', ['5']);
-  }
-  rmSync(tmp, { recursive: true, force: true });
-  return file;
-}
-
 // ----------------------------------------------------------------- main ----
 
 async function main() {
@@ -854,8 +777,7 @@ async function main() {
   mkdirSync(join(OUT, 'out'), { recursive: true });
 
   step('deploy Qt');
-  const deployed = OS === 'linux' ? await deployLinux(exe, stageRoot, qt)
-    : OS === 'win' ? await deployWindows(exe, stageRoot, qt) : await deployMac(exe, stageRoot, qt);
+  const deployed = OS === 'linux' ? await deployLinux(exe, stageRoot, qt) : await deployWindows(exe, stageRoot, qt);
 
   step('agent and Node');
   const nodeModules = stageAgent(deployed.res);
@@ -866,10 +788,9 @@ async function main() {
     step('check libraries');
     systemLibs = checkLinuxLibs(deployed.appDir);
   }
-  if (OS === 'mac') { step('sign'); signMac(deployed.app, node); }
 
   // The executable reports the version CMake read from package.json.
-  if (OS === 'linux' || (OS === 'mac' && HOST_TARGET === TARGET)) {
+  if (OS === 'linux') {
     const said = out(deployed.exe, ['--version'], { env: { ...process.env, QT_QPA_PLATFORM: 'offscreen' } }).trim();
     if (said !== `CloseNI ${VERSION}`) die(`the staged app says "${said}", expected "CloseNI ${VERSION}"`);
   }
@@ -879,10 +800,9 @@ async function main() {
     step('installers');
     if (OS === 'linux') installers.push(await appImage(deployed.appDir), deb(deployed.appDir, systemLibs));
     if (OS === 'win') installers.push(nsis(deployed.res));
-    if (OS === 'mac') installers.push(dmg(deployed.app));
   }
 
-  const stageDir = deployed.appDir || deployed.app || deployed.res;
+  const stageDir = deployed.appDir || deployed.res;
   const manifest = {
     version: VERSION,
     target: TARGET,

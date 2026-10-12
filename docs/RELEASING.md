@@ -2,9 +2,10 @@
 
 CloseNI's native Qt installers are built by
 [release.yml](../.github/workflows/release.yml) when a version tag is pushed.
-The workflow builds Windows x64, Linux x64, and macOS arm64/x64 packages,
-tests the built agent, smoke-tests the packaged Linux AppImage, then creates
-or updates a **draft GitHub Release** with all installers and SHA-256 checksums.
+Only Windows x64 and Linux x64 are release targets. The workflow tests the
+agent, builds each platform package, smoke-tests the packaged Linux AppImage,
+and creates or updates a **draft GitHub Release** with the installers and
+SHA-256 checksums.
 
 ## Before choosing the release version
 
@@ -52,8 +53,8 @@ Run `npm run verify` against a staged package when testing a packaging change.
 3. Push a versioned tag that exactly matches the root package version, e.g.
    `vX.Y.Z`. The tag is immutable release input; do not retarget it to fix a
    broken build. Use a new version instead.
-4. Wait for the `release` workflow to complete. It must build all four targets
-   and pass the Linux packaged smoke test before the publish job runs.
+4. Wait for the `release` workflow to complete. It must build both platform
+   targets and pass the Linux packaged smoke test before the publish job runs.
 5. Review the draft release, open the installers on the target systems, compare
    `SHA256SUMS.txt`, add the relevant changelog notes and publish manually.
 
@@ -70,14 +71,12 @@ git push origin vX.Y.Z
 | Windows x64 | `CloseNI-Setup-<version>.exe` |
 | Linux x64 | `CloseNI-<version>.AppImage` |
 | Linux x64 | `closeni_<version>_amd64.deb` |
-| macOS Apple silicon | `CloseNI-<version>-arm64.dmg` |
-| macOS Intel | `CloseNI-<version>-x64.dmg` |
 | Integrity | `SHA256SUMS.txt` |
 
 The packages bundle the Qt modules used by the application, Node 22, and the
 compiled local agent. Chromium downloads on first use and is not included in
-installers. Installers are unsigned; Windows SmartScreen and macOS Gatekeeper
-may warn or block first launch. Do not describe them as signed or notarised.
+installers. Windows installers are unsigned, so SmartScreen may warn on first
+launch. Do not describe them as signed.
 
 Linux is built on Ubuntu 22.04 for a glibc 2.35 baseline. CI keeps installer
 artifacts for 30 days in addition to attaching them to the draft release.
@@ -91,6 +90,6 @@ artifacts for 30 days in addition to attaching them to the draft release.
   already correct.
 - Confirm each expected file exists before publishing, and confirm the
   checksum file includes every installer exactly once.
-- Windows and macOS installers are not considered fully verified until they
-  have been installed and launched on their respective platforms. Record
-  install/upgrade/uninstall testing separately from “installer built”.
+- Windows installers are not considered fully verified until they have been
+  installed and launched on Windows. Record install/upgrade/uninstall testing
+  separately from “installer built”.
