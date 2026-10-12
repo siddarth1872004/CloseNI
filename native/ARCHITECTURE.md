@@ -53,7 +53,7 @@ native/
   src/Js.h              Js::reply(this, callback, result)
   src/<X>Service.*      one QML singleton per service (table below)
   src/Prefs.*           the app's settings, in native-prefs.json
-  src/platform/         SecretStore_{win,mac,linux}.cpp (picked by CMake)
+  src/platform/         SecretStore_{win,linux}.cpp (picked by CMake)
   qml/Main.qml          the window: rail, top bar, panels, console, toasts, modals
   qml/singletons/*.qml  QML singletons (Theme, stores); CMake marks them automatically
   qml/components/*.qml  shared controls styled from Theme
