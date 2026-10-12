@@ -45,7 +45,7 @@ export function renderLanding(readme, pkg) {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>CloseNI</title>
-<meta name="description" content="Free web AI chats, turned into a coding agent. No API keys: it drives a chat site in a real browser. Native desktop app for Windows, macOS and Linux.">
+<meta name="description" content="Free web AI chats, turned into a coding agent. No API keys: it drives a chat site in a real browser. Native desktop app for Windows and Linux.">
 <meta property="og:title" content="CloseNI">
 <meta property="og:description" content="Free web AI chats, turned into a coding agent. No API keys.">
 <meta property="og:image" content="screenshots/code.png">
@@ -149,7 +149,7 @@ footer .sp{flex:1}
     <a class="btn primary" id="dl-main" href="${RELEASES}">Download for your system</a>
     <a class="btn" href="readme.html">Read the docs</a>
   </div>
-  <p class="sub" id="dl-sub">Windows · macOS · Linux · native, no web view · unsigned</p>
+  <p class="sub" id="dl-sub">Windows · Linux · native, no web view · unsigned</p>
   <div class="shot"><div class="chrome"><span></span><span></span><span></span></div><img src="screenshots/code.png" alt="The Code panel: a request, a read, and an edit shown as a diff waiting for permission"></div>
 </div></header>
 
@@ -201,8 +201,6 @@ ${shots}
   <div class="dl">
     <div class="card" id="card-win"><h3>Windows</h3><p>NSIS installer; you choose the folder. Windows 10 or later.</p>
       <a class="btn primary" href="${RELEASES}">Download the .exe</a></div>
-    <div class="card" id="card-mac"><h3>macOS</h3><p>Disk images for Apple silicon and Intel.</p>
-      <a class="btn primary" href="${RELEASES}">Download the .dmg</a></div>
     <div class="card" id="card-linux"><h3>Linux</h3><p>An AppImage that runs anywhere, or a .deb for Debian and Ubuntu.</p>
       <a class="btn primary" href="${RELEASES}">Download AppImage or .deb</a></div>
     <div class="card src"><h3>From source</h3><p>Node 22, Qt 6.8 or later, CMake and Ninja.</p>
@@ -212,7 +210,7 @@ npx playwright install chromium
 cmake -S native -B build-native -G Ninja
 cmake --build build-native &amp;&amp; npm start</code></pre></div>
   </div>
-  <div class="note"><b>The installers are unsigned.</b> Windows SmartScreen and macOS Gatekeeper will warn the first time; that warning is accurate. The first run asks you to install Chromium and sign in to a provider once.</div>
+  <div class="note"><b>The installers are unsigned.</b> Windows SmartScreen may warn on first launch. The first run asks you to install Chromium and sign in to a provider once.</div>
 </section>
 </main>
 
@@ -230,10 +228,9 @@ cmake --build build-native &amp;&amp; npm start</code></pre></div>
 // without this; it only changes the label and highlights the matching card.
 (function () {
   var ua = navigator.userAgent || '';
-  var os = /Windows/i.test(ua) ? 'win' : /Macintosh|Mac OS X/i.test(ua) && !/iPhone|iPad/i.test(ua) ? 'mac'
-    : /Linux|X11/i.test(ua) && !/Android/i.test(ua) ? 'linux' : '';
+  var os = /Windows/i.test(ua) ? 'win' : /Linux|X11/i.test(ua) && !/Android/i.test(ua) ? 'linux' : '';
   if (!os) return;
-  var label = 'Download for ' + { win: 'Windows', mac: 'macOS', linux: 'Linux' }[os];
+  var label = 'Download for ' + { win: 'Windows', linux: 'Linux' }[os];
   var btn = document.getElementById('dl-main');
   if (btn) btn.textContent = label;
   var card = document.getElementById('card-' + os);
