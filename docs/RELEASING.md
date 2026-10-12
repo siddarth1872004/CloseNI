@@ -1,125 +1,96 @@
 # Releasing CloseNI
 
-The release is driven by a tag. Everything else is automated by
-[`.github/workflows/release.yml`](../.github/workflows/release.yml), which
-builds the native Qt app's installers with
-[`native/package/stage.mjs`](../native/package/stage.mjs).
+CloseNI's native Qt installers are built by
+[release.yml](../.github/workflows/release.yml) when a version tag is pushed.
+The workflow builds Windows x64, Linux x64, and macOS arm64/x64 packages,
+tests the built agent, smoke-tests the packaged Linux AppImage, then creates
+or updates a **draft GitHub Release** with all installers and SHA-256 checksums.
 
-## Cutting a release
+## Before choosing the release version
+
+Check the branch, tag, and version together. The current release workflow
+packages the Qt/C++ application in `native/`; do not use an old Electron
+release branch or its build instructions for these installers.
 
 ```bash
-# 1. Everything green locally
+git switch main
+git pull --ff-only
+node -p "require('./package.json').version"
+git tag --list 'v*' --sort=-version:refname | head
+```
+
+Pick the intended version from the changelog and release plan. Do not create a
+tag until the release commit's root, `local-agent/`, and `shared/` package
+versions agree and the changelog entry is complete.
+
+## Preflight on the release commit
+
+Use Node 22 and install dependencies from the committed lockfile:
+
+```bash
+npm ci
 npm run build
-node local-agent/test/run-tests.cjs      # ~15s
-node local-agent/test/run-e2e.cjs        # ~20min, drives a real browser
-cmake -S native -B build-native -G Ninja && cmake --build build-native
-ctest --test-dir build-native
-node native/e2e-build.cjs                # the app runs a build, mock provider
-node native/tests/code-e2e.cjs           # the Code panel, mock provider
-node native/tests/chats-e2e.cjs          # the rail's conversations, mock provider
-
-# 2. Write the release into CHANGELOG.md before tagging.
-#    The tag is what people land on; an empty changelog entry is permanent.
-
-# 3. Set the version in package.json, local-agent/package.json and
-#    shared/package.json (the unit suite checks they agree), then refresh the
-#    lock file. CMake reads the version from package.json, so the app reports
-#    the same one.
-npm install --package-lock-only --ignore-scripts
-git commit -am "Release 0.2"
-
-# 4. Tag it with the same version and push both
-git tag v0.2
-git push && git push origin v0.2
+node local-agent/test/run-tests.cjs
+node local-agent/test/run-e2e.cjs
+cmake -S native -B build-native -G Ninja
+cmake --build build-native
+ctest --test-dir build-native --output-on-failure
+node native/e2e-build.cjs
+node native/tests/code-e2e.cjs
+node native/tests/chats-e2e.cjs
 ```
 
-The workflow runs the unit suite, builds each system's installers on that
-system, and publishes one **draft** release with all of them attached, plus
-`SHA256SUMS.txt`. Review it, paste the changelog entry in as the release notes,
-and publish.
+The browser E2E suite can take around twenty minutes. Packaging also needs Qt
+6.8+ (CI installs Qt 6.10), CMake 3.21+, Ninja, and target-specific tooling.
+Run `npm run verify` against a staged package when testing a packaging change.
 
-## What the workflow guards
+## Tag and build the release
 
-- **The tag must match `package.json`.** A `v0.2` tag on a `0.1`
-  `package.json` produces installers named `0.1`, which is only ever noticed
-  after publishing. The job fails instead, and `stage.mjs` also checks that
-  the built app reports the `package.json` version.
-- **Unit tests run before packaging**, so a broken build never produces an
-  artifact.
-- **One job publishes**, after every installer is built. The build jobs only
-  upload workflow artifacts; they cannot write to the repository. A re-run
-  replaces the files on the draft it already made.
-- **The Linux AppImage is smoke-tested as shipped**: bundled Node and agent,
-  Chromium in the storage directory, a Code session against the mock provider
-  (`node native/smoke.cjs --packaged <AppImage>`).
-- **Installers are also kept as workflow artifacts** for 30 days, so a draft
-  deleted by accident does not mean rebuilding from the tag.
-- **Every download is pinned.** Node and the AppImage tools are fetched by
-  `stage.mjs` and checked against SHA-256 sums in
-  [`native/package/app.json`](../native/package/app.json); Node is also checked
-  against its release's `SHASUMS256.txt`.
-
-## Artifacts
-
-| Platform | File | Built on |
-|---|---|---|
-| Windows x64 | `CloseNI-Setup-<version>.exe` (NSIS, per user) | `windows-latest` |
-| Linux x64 | `CloseNI-<version>.AppImage` | `ubuntu-22.04` |
-| Linux x64 | `closeni_<version>_amd64.deb` | `ubuntu-22.04` |
-| macOS Apple silicon | `CloseNI-<version>-arm64.dmg` | `macos-15` |
-| macOS Intel | `CloseNI-<version>-x64.dmg` | `macos-15` |
-
-Linux is built on the oldest supported runner so the AppImage and the .deb run
-on any distribution with glibc 2.35 or newer.
-
-Each package holds the app, the Qt it uses (Qt Quick with the Basic style, no
-web engine, no translations), Node 22 and the compiled agent with the one
-package it needs at run time (Playwright). Chromium is not bundled: the app
-downloads it into `<storage>/browsers` on first use.
-
-Installers are **unsigned**. Windows SmartScreen warns about an unrecognised
-publisher, and macOS Gatekeeper refuses to open an app from an unidentified
-developer until it is allowed in System Settings > Privacy & Security (the
-.app is signed ad hoc, which is all an unsigned build can be). Say so in the
-release notes rather than leaving people to guess.
-
-## Building locally
+1. Update all three package versions, refresh the npm lockfile, and write the
+   complete entry at the top of `CHANGELOG.md`.
+2. Commit and review the release commit. Confirm the version fields agree.
+3. Push a versioned tag that exactly matches the root package version, e.g.
+   `vX.Y.Z`. The tag is immutable release input; do not retarget it to fix a
+   broken build. Use a new version instead.
+4. Wait for the `release` workflow to complete. It must build all four targets
+   and pass the Linux packaged smoke test before the publish job runs.
+5. Review the draft release, open the installers on the target systems, compare
+   `SHA256SUMS.txt`, add the relevant changelog notes and publish manually.
 
 ```bash
-npm run build    # the agent, which every package bundles
-npm run pack     # stage the app into dist/native/ (no installers)
-npm run dist     # stage it and build this system's installers
+# Only after the release commit is approved and all checks pass:
+git push origin main
+git push origin vX.Y.Z
 ```
 
-Both need Qt 6.8 or newer (`qtpaths` on PATH, or `QT_ROOT_DIR`), CMake, and on
-Linux `patchelf`; on Windows NSIS (`choco install nsis`). The header of `stage.mjs`
-lists the options; `--exe <built CloseNI>` stages an existing build instead of
-building one. Each system's installers can only be built on that system.
+## Native release artifacts
 
-## Verifying a build before publishing
+| Platform | Asset |
+|---|---|
+| Windows x64 | `CloseNI-Setup-<version>.exe` |
+| Linux x64 | `CloseNI-<version>.AppImage` |
+| Linux x64 | `closeni_<version>_amd64.deb` |
+| macOS Apple silicon | `CloseNI-<version>-arm64.dmg` |
+| macOS Intel | `CloseNI-<version>-x64.dmg` |
+| Integrity | `SHA256SUMS.txt` |
 
-`npm run verify` audits the staged app (`dist/native/stage.json` and the
-directory it names): no session data, `.env` or `.git`; the agent's dist,
-config and exactly its run-time packages; Node 22; the Basic style only; no
-web engine, translations or software OpenGL.
+The packages bundle the Qt modules used by the application, Node 22, and the
+compiled local agent. Chromium downloads on first use and is not included in
+installers. Installers are unsigned; Windows SmartScreen and macOS Gatekeeper
+may warn or block first launch. Do not describe them as signed or notarised.
 
-Then run the packaged app the way a user gets it, against the mock provider:
+Linux is built on Ubuntu 22.04 for a glibc 2.35 baseline. CI keeps installer
+artifacts for 30 days in addition to attaching them to the draft release.
 
-```bash
-CLOSENI_SMOKE_BROWSERS=~/.cache/ms-playwright \
-  node native/smoke.cjs --packaged dist/native/out/CloseNI-<version>.AppImage
-```
+## If a release fails
 
-Without `CLOSENI_SMOKE_BROWSERS` the app downloads Chromium itself, as a first
-run does.
-
-## Status of the native packages
-
-| Check | Linux | Windows | macOS |
-|---|---|---|---|
-| Installer builds | verified locally | CI only | CI only |
-| Staged app passes the audit | verified | not yet | not yet |
-| Packaged app runs a Code session | verified (AppImage and .deb payload) | not yet | not yet |
-| Installer installs, upgrades, uninstalls | n/a (AppImage); .deb not installed | **not yet** | **not yet** |
-
-Windows and macOS stay unverified until someone installs the first CI build.
+- Fix the cause on a new commit and build a new version/tag; never move an
+  existing public tag.
+- A failed package job must not result in a published release. Fix the job and
+  rerun it for the same tag only when the source at that immutable tag is
+  already correct.
+- Confirm each expected file exists before publishing, and confirm the
+  checksum file includes every installer exactly once.
+- Windows and macOS installers are not considered fully verified until they
+  have been installed and launched on their respective platforms. Record
+  install/upgrade/uninstall testing separately from “installer built”.
