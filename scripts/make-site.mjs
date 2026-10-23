@@ -2,7 +2,7 @@
 // Generates the Pages site from README.md and package.json.
 //
 //   docs/index.html   the landing page: what it is, screenshots, downloads
-//   docs/readme.html  the README, rendered the way GitHub renders it
+//   docs/readme.html  the README, in the same theme as the landing page
 //
 // A hand-written site drifted from the README for months, so neither page
 // carries a fact of its own. The landing page takes its version from
@@ -17,7 +17,7 @@
 //   node scripts/make-site.mjs
 
 import { readFileSync, writeFileSync } from 'node:fs';
-import { renderLanding } from './make-landing.mjs';
+import { renderLanding, THEME_CSS, FAVICON, wordmark } from './make-landing.mjs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Marked } from 'marked';
@@ -44,6 +44,17 @@ function sitePath(url) {
   return REPO + (url.endsWith('/') ? '/tree/main/' : '/blob/main/') + url;
 }
 
+// shields.io badges are GitHub's idiom, not the app's. On the site each one
+// becomes the app's status readout: "ready" and the like get a lamp, the
+// header's label-value badges plain micro text.
+const LAMP = { 'ready': 'ok', 'chat-only': 'dim', 'coming soon': 'mut' };
+function badge(spec) {
+  // "--" is a literal dash in a shields path, "-" the separator.
+  const [label, msg] = spec.split('?')[0].replace(/--/g, '\0').split('-').map((p) => decodeURIComponent(p.replace(/\0/g, '-')));
+  const lamp = LAMP[msg];
+  return lamp ? `<span class="st ${lamp}">${esc(msg)}</span>` : `<span class="micro badge">${esc(label)} ${esc(msg)}</span>`;
+}
+
 const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 export function renderSite(readme) {
@@ -58,7 +69,8 @@ export function renderSite(readme) {
   });
   // Raw HTML blocks (the centred art, the screenshot tables) carry their own
   // src attributes, so the rewrite runs over the finished HTML, not the tokens.
-  const body = marked.parse(readme).replace(/\b(src|href)="([^"]+)"/g, (_, a, u) => `${a}="${sitePath(u)}"`);
+  const body = marked.parse(readme).replace(/\b(src|href)="([^"]+)"/g, (_, a, u) => `${a}="${sitePath(u)}"`)
+    .replace(/<img src="https:\/\/img\.shields\.io\/badge\/([^"]+)"[^>]*>/g, (_, b) => badge(b));
   const tagline = (readme.match(/^\*\*(.+?)\*\*/m) || [, 'CloseNI'])[1];
   return `<!DOCTYPE html>
 <!-- Generated from README.md by scripts/make-site.mjs. Edit the README, then run npm run site. -->
@@ -72,62 +84,49 @@ export function renderSite(readme) {
 <meta property="og:description" content="${esc(tagline)}">
 <meta property="og:image" content="screenshots/code.png">
 <meta name="twitter:card" content="summary_large_image">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><path d='M7 6 H13 V26 H7' fill='none' stroke='%23e8e8ea' stroke-width='2.8'/><path d='M25 6 H19 V26 H25' fill='none' stroke='%23e8e8ea' stroke-width='2.8'/></svg>">
-<style>
-/* GitHub's README look. The art is drawn for a dark page, so dark is the default. */
-:root{
-  --bg:#0d1117; --box:#0d1117; --fg:#e6edf3; --dim:#9198a1; --line:#3d444d; --line-soft:#3d444db3;
-  --link:#4493f8; --code-bg:#656c7633; --pre-bg:#151b23; --quote:#9198a1; --row:#151b23; --bar:#010409;
-}
-@media (prefers-color-scheme: light){
-  :root{
-    --bg:#f6f8fa; --box:#ffffff; --fg:#1f2328; --dim:#59636e; --line:#d1d9e0; --line-soft:#d1d9e0b3;
-    --link:#0969da; --code-bg:#818b981f; --pre-bg:#f6f8fa; --quote:#59636e; --row:#f6f8fa; --bar:#f6f8fa;
-  }
-}
-*{box-sizing:border-box}
+${FAVICON}
+<style>${THEME_CSS}
+/* The README, in the app's own type: the same tokens as the landing page. */
 html{scroll-padding-top:64px}
-body{margin:0;background:var(--bg);color:var(--fg);
-  font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans",Helvetica,Arial,sans-serif;word-wrap:break-word}
-.bar{position:sticky;top:0;z-index:1;background:var(--bar);border-bottom:1px solid var(--line);
-  display:flex;align-items:center;gap:16px;padding:12px 16px;font-size:14px}
-.bar b{font-size:16px}
-.bar .home{margin:0;border:0;padding:0}
-.bar .dim{color:var(--dim)}
-.bar a:last-child{margin-left:auto}
-.bar a{color:var(--fg);text-decoration:none;border:1px solid var(--line);border-radius:6px;padding:4px 12px}
-.bar a:hover{border-color:var(--dim)}
-main{max-width:1012px;margin:24px auto 48px;padding:0 16px}
-article{background:var(--box);border:1px solid var(--line);border-radius:6px;padding:32px}
-@media (max-width:600px){main{margin-top:16px;padding:0 8px}article{padding:16px}}
-a{color:var(--link);text-decoration:none}
-a:hover{text-decoration:underline}
-h1,h2,h3,h4,h5,h6{margin:24px 0 16px;font-weight:600;line-height:1.25}
-h1{font-size:2em;padding-bottom:.3em;border-bottom:1px solid var(--line-soft)}
-h2{font-size:1.5em;padding-bottom:.3em;border-bottom:1px solid var(--line-soft)}
-h3{font-size:1.25em} h4{font-size:1em}
+body{word-wrap:break-word}
+.bar{position:sticky;top:0;z-index:1;background:var(--panel);border-bottom:1px solid var(--line)}
+.bar div{max-width:960px;margin:0 auto;padding:0 16px;height:48px;display:flex;align-items:center;gap:16px}
+.bar .micro span{color:var(--line2);margin-right:6px}
+.bar .sp{flex:1}
+main{max-width:960px;margin:0 auto;padding:40px 16px 96px}
+h1,h2,h3,h4,h5,h6{margin:40px 0 14px;font-weight:600;line-height:1.3}
+h1{font-size:26px}
+h2{font-size:19px;padding-top:28px;border-top:1px solid var(--line)}
+h3{font-size:15px} h4{font-size:14px;color:var(--dim)}
+main>:first-child{margin-top:0}
 p,blockquote,ul,ol,table,pre,details{margin:0 0 16px}
-ul,ol{padding-left:2em}
-li+li{margin-top:.25em}
-hr{height:.25em;padding:0;margin:24px 0;background:var(--line);border:0}
-img{max-width:100%;height:auto;border-style:none;box-sizing:content-box}
-blockquote{padding:0 1em;color:var(--quote);border-left:.25em solid var(--line)}
+p,li,td{color:var(--dim)}
+strong,b,th{color:var(--txt);font-weight:600}
+ul,ol{padding-left:2ch}
+li+li{margin-top:.3em}
+li::marker{color:var(--mut)}
+hr{height:1px;margin:40px 0;background:var(--line);border:0}
+hr+h2{margin-top:0;padding-top:0;border-top:0}
+img{max-width:100%;height:auto;border-style:none}
+p>img{vertical-align:middle}
+blockquote{margin-left:0;padding:10px 14px;border-left:2px solid var(--warn);background:var(--panel)}
 blockquote>:last-child{margin-bottom:0}
-code,pre{font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;font-size:85%}
-code{padding:.2em .4em;background:var(--code-bg);border-radius:6px;white-space:break-spaces}
-pre{padding:16px;overflow:auto;line-height:1.45;background:var(--pre-bg);border-radius:6px}
-pre code{padding:0;background:none;font-size:100%;white-space:pre;border-radius:0}
-table{display:block;width:max-content;max-width:100%;overflow:auto;border-spacing:0;border-collapse:collapse}
-th,td{padding:6px 13px;border:1px solid var(--line)}
-th{font-weight:600}
-tr:nth-child(2n){background:var(--row)}
-td img{background:transparent}
+code{font:inherit;font-size:92%;padding:1px 5px;color:var(--txt);background:var(--raised);border-radius:2px;white-space:break-spaces}
+pre{padding:12px 14px;overflow:auto;font-size:12.5px;line-height:1.7;background:var(--sunken);border:1px solid var(--line);border-radius:2px}
+pre code{padding:0;background:none;font-size:100%;white-space:pre}
+table{display:block;width:max-content;max-width:100%;overflow:auto;border-collapse:collapse;border-top:1px solid var(--line2);font-size:13px}
+th,td{padding:8px 16px 8px 0;text-align:left;vertical-align:top;border-bottom:1px solid var(--line)}
+th{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--mut);font-weight:400}
+td img{border:1px solid var(--line);border-radius:3px}
+.badge{display:inline-block;margin-right:14px;color:var(--dim)}
+a:has(>.badge){text-decoration:none}
+@media (max-width:640px){.bar .micro{display:none}main{padding-top:24px}}
 </style>
 </head>
 <body>
-<header class="bar"><b><a class="home" href="./">CloseNI</a></b><span class="dim">Documentation</span><a href="${REPO}">View on GitHub</a></header>
-<main><article>
-${body}</article></main>
+<header class="bar"><div>${wordmark('./')}<span class="micro"><span>06</span>Documentation</span><span class="sp"></span><a class="btn small" href="./">Home</a><a class="btn small" href="${REPO}">GitHub</a></div></header>
+<main>
+${body}</main>
 </body>
 </html>
 `;
