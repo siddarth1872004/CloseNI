@@ -1,0 +1,298 @@
+{
+  "deepseek": {
+    "provider": "deepseek",
+    "at": "2026-10-02T05:30:05.400Z",
+    "machine": "archlinux (linux)",
+    "state": {
+      "state": "CHAT_READY",
+      "evidence": [
+        "composer visible and enabled"
+      ],
+      "url": "https://chat.deepseek.com/",
+      "navigation": {
+        "ok": true,
+        "status": 200,
+        "finalUrl": "https://chat.deepseek.com/"
+      }
+    },
+    "rows": [
+      {
+        "capability": "Browser launch",
+        "status": "PASS",
+        "detail": "persistent profile deepseek"
+      },
+      {
+        "capability": "UI detection",
+        "status": "PASS",
+        "detail": "CHAT_READY: composer visible and enabled"
+      },
+      {
+        "capability": "Prompt submission",
+        "status": "PASS",
+        "detail": ""
+      },
+      {
+        "capability": "Response detection",
+        "status": "PASS",
+        "detail": "signal stream-closed in 2094ms"
+      },
+      {
+        "capability": "Streaming capture",
+        "status": "PASS",
+        "detail": "2 partials"
+      },
+      {
+        "capability": "Instruction following",
+        "status": "PASS",
+        "detail": "\"CLOSENI-R3XYIT\""
+      },
+      {
+        "capability": "Reasoning",
+        "status": "PASS",
+        "detail": "391 (no reasoning section seen)"
+      },
+      {
+        "capability": "Code extraction",
+        "status": "PASS",
+        "detail": "python via Copy control"
+      },
+      {
+        "capability": "JSON generation",
+        "status": "PASS",
+        "detail": "parsed"
+      },
+      {
+        "capability": "Markdown extraction",
+        "status": "PASS",
+        "detail": "1. Place the eggs in a saucepan and cover them with cold water by about an inch."
+      },
+      {
+        "capability": "Tables",
+        "status": "PASS",
+        "detail": "1 table(s)"
+      },
+      {
+        "capability": "Links/citations",
+        "status": "PASS",
+        "detail": "2 link(s)"
+      },
+      {
+        "capability": "Long response",
+        "status": "PASS",
+        "detail": "2291 chars, signal stream-closed"
+      },
+      {
+        "capability": "Large context",
+        "status": "PASS",
+        "detail": "~15k-char prompt; ZEBRA-91"
+      },
+      {
+        "capability": "Long-running conversation",
+        "status": "FAIL",
+        "detail": "recall across turns"
+      },
+      {
+        "capability": "Selector health",
+        "status": "PASS",
+        "detail": "CHAT_READY; nothing matches: newChat; not present in this state: copy"
+      }
+    ],
+    "durationMs": 36506
+  },
+  "qwen": {
+    "provider": "qwen",
+    "at": "2026-10-22T10:25:06.249Z",
+    "machine": "archlinux (linux)",
+    "state": {
+      "state": "CHAT_READY",
+      "evidence": [
+        "composer visible and enabled (a login control is also shown - guest mode or optional login)"
+      ],
+      "url": "https://chat.qwen.ai/",
+      "navigation": {
+        "ok": true,
+        "status": 200,
+        "finalUrl": "https://chat.qwen.ai/"
+      }
+    },
+    "rows": [
+      {
+        "capability": "Browser launch",
+        "status": "PASS",
+        "detail": "persistent profile qwen-studio"
+      },
+      {
+        "capability": "UI detection",
+        "status": "PASS",
+        "detail": "CHAT_READY: composer visible and enabled (a login control is also shown - guest mode or optional login)"
+      },
+      {
+        "capability": "Prompt submission",
+        "status": "FAIL",
+        "detail": "assistant found by fallback heuristic=last-assistant-block; prompt was not sent: AUTH_REQUIRED: a login dialog is open over the composer"
+      },
+      {
+        "capability": "Response detection",
+        "status": "PARTIAL",
+        "detail": "signal failed in 0ms"
+      },
+      {
+        "capability": "Streaming capture",
+        "status": "PARTIAL",
+        "detail": "0 partials"
+      },
+      {
+        "capability": "Instruction following",
+        "status": "AUTH_REQUIRED",
+        "detail": "AUTH_REQUIRED: a login dialog is open over the composer"
+      },
+      {
+        "capability": "Reasoning",
+        "status": "AUTH_REQUIRED",
+        "detail": "stopped: AUTH_REQUIRED"
+      },
+      {
+        "capability": "Code extraction",
+        "status": "AUTH_REQUIRED",
+        "detail": "stopped: AUTH_REQUIRED"
+      },
+      {
+        "capability": "JSON generation",
+        "status": "AUTH_REQUIRED",
+        "detail": "stopped: AUTH_REQUIRED"
+      },
+      {
+        "capability": "Markdown extraction",
+        "status": "AUTH_REQUIRED",
+        "detail": "stopped: AUTH_REQUIRED"
+      },
+      {
+        "capability": "Tables",
+        "status": "AUTH_REQUIRED",
+        "detail": "stopped: AUTH_REQUIRED"
+      },
+      {
+        "capability": "Links/citations",
+        "status": "AUTH_REQUIRED",
+        "detail": "stopped: AUTH_REQUIRED"
+      },
+      {
+        "capability": "Long response",
+        "status": "AUTH_REQUIRED",
+        "detail": "stopped: AUTH_REQUIRED"
+      },
+      {
+        "capability": "Large context",
+        "status": "AUTH_REQUIRED",
+        "detail": "stopped: AUTH_REQUIRED"
+      },
+      {
+        "capability": "Long-running conversation",
+        "status": "AUTH_REQUIRED",
+        "detail": "stopped: AUTH_REQUIRED"
+      },
+      {
+        "capability": "Selector health",
+        "status": "FAIL",
+        "detail": "AUTH_REQUIRED; on fallback: send, assistant; not present in this state: stop"
+      }
+    ],
+    "durationMs": 8426
+  },
+  "glm": {
+    "provider": "glm",
+    "at": "2026-09-29T04:24:19.599Z",
+    "machine": "vm (linux)",
+    "state": {
+      "state": "ERROR",
+      "evidence": [
+        "navigation failed: blocked - page.goto: net::ERR_TUNNEL_CONNECTION_FAILED at https://chat.z.ai/"
+      ],
+      "url": "https://chat.z.ai/",
+      "navigation": {
+        "ok": false,
+        "errorKind": "blocked",
+        "error": "page.goto: net::ERR_TUNNEL_CONNECTION_FAILED at https://chat.z.ai/",
+        "finalUrl": "about:blank"
+      }
+    },
+    "rows": [
+      {
+        "capability": "Browser launch",
+        "status": "PASS",
+        "detail": "persistent profile glm"
+      },
+      {
+        "capability": "UI detection",
+        "status": "BLOCKED",
+        "detail": "ERROR: navigation failed: blocked - page.goto: net::ERR_TUNNEL_CONNECTION_FAILED at https://chat.z.ai/ (blocked)"
+      },
+      {
+        "capability": "Prompt submission",
+        "status": "BLOCKED",
+        "detail": "ERROR: navigation failed: blocked - page.goto: net::ERR_TUNNEL_CONNECTION_FAILED at https://chat.z.ai/ (blocked)"
+      },
+      {
+        "capability": "Response detection",
+        "status": "BLOCKED",
+        "detail": "ERROR: navigation failed: blocked - page.goto: net::ERR_TUNNEL_CONNECTION_FAILED at https://chat.z.ai/ (blocked)"
+      },
+      {
+        "capability": "Streaming capture",
+        "status": "BLOCKED",
+        "detail": "ERROR: navigation failed: blocked - page.goto: net::ERR_TUNNEL_CONNECTION_FAILED at https://chat.z.ai/ (blocked)"
+      },
+      {
+        "capability": "Instruction following",
+        "status": "BLOCKED",
+        "detail": "ERROR: navigation failed: blocked - page.goto: net::ERR_TUNNEL_CONNECTION_FAILED at https://chat.z.ai/ (blocked)"
+      },
+      {
+        "capability": "Reasoning",
+        "status": "BLOCKED",
+        "detail": "ERROR: navigation failed: blocked - page.goto: net::ERR_TUNNEL_CONNECTION_FAILED at https://chat.z.ai/ (blocked)"
+      },
+      {
+        "capability": "Code extraction",
+        "status": "BLOCKED",
+        "detail": "ERROR: navigation failed: blocked - page.goto: net::ERR_TUNNEL_CONNECTION_FAILED at https://chat.z.ai/ (blocked)"
+      },
+      {
+        "capability": "JSON generation",
+        "status": "BLOCKED",
+        "detail": "ERROR: navigation failed: blocked - page.goto: net::ERR_TUNNEL_CONNECTION_FAILED at https://chat.z.ai/ (blocked)"
+      },
+      {
+        "capability": "Markdown extraction",
+        "status": "BLOCKED",
+        "detail": "ERROR: navigation failed: blocked - page.goto: net::ERR_TUNNEL_CONNECTION_FAILED at https://chat.z.ai/ (blocked)"
+      },
+      {
+        "capability": "Tables",
+        "status": "BLOCKED",
+        "detail": "ERROR: navigation failed: blocked - page.goto: net::ERR_TUNNEL_CONNECTION_FAILED at https://chat.z.ai/ (blocked)"
+      },
+      {
+        "capability": "Links/citations",
+        "status": "BLOCKED",
+        "detail": "ERROR: navigation failed: blocked - page.goto: net::ERR_TUNNEL_CONNECTION_FAILED at https://chat.z.ai/ (blocked)"
+      },
+      {
+        "capability": "Long response",
+        "status": "BLOCKED",
+        "detail": "ERROR: navigation failed: blocked - page.goto: net::ERR_TUNNEL_CONNECTION_FAILED at https://chat.z.ai/ (blocked)"
+      },
+      {
+        "capability": "Large context",
+        "status": "BLOCKED",
+        "detail": "ERROR: navigation failed: blocked - page.goto: net::ERR_TUNNEL_CONNECTION_FAILED at https://chat.z.ai/ (blocked)"
+      },
+      {
+        "capability": "Long-running conversation",
+        "status": "BLOCKED",
+        "detail": "ERROR: navigation failed: blocked - page.goto: net::ERR_TUNNEL_CONNECTION_FAILED at https://chat.z.ai/ (blocked)"
+      }
+    ],
+    "durationMs": 464
+  }
+}

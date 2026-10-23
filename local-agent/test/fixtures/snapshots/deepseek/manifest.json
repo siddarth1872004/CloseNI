@@ -1,0 +1,61 @@
+{
+  "version": 1,
+  "provider": "deepseek",
+  "_note": "Saved DeepSeek pages, one per state, for testing state detection and reply reading without the live site (provider-unit.cjs, testSnapshots). Built from the page structure measured live and recorded in config/providers/deepseek.json (the conversation list, .ds-message turns, the reasoning header, the notice rows with no .ds-message, and since 14 October 2026 the second list of sent prompts). done.html holds the real reply captured in ../../replay/deepseek-reply.html. No account data: the prompts are made up. A page is served at its url, so the URL rules (signed out) apply to it.",
+  "pages": [
+    {
+      "file": "idle.html",
+      "url": "https://ds.test/",
+      "expect": {
+        "status": "READY",
+        "messages": 0
+      }
+    },
+    {
+      "file": "generating.html",
+      "url": "https://ds.test/a/chat/s/snapshot",
+      "expect": {
+        "status": "GENERATING"
+      }
+    },
+    {
+      "file": "done.html",
+      "url": "https://ds.test/a/chat/s/snapshot",
+      "expect": {
+        "status": "READY",
+        "messages": 1,
+        "reply": "A slug is a URL-friendly"
+      }
+    },
+    {
+      "file": "rate-limited.html",
+      "url": "https://ds.test/a/chat/s/snapshot",
+      "expect": {
+        "status": "RATE_LIMITED"
+      }
+    },
+    {
+      "file": "busy.html",
+      "url": "https://ds.test/a/chat/s/snapshot",
+      "expect": {
+        "status": "NETWORK_ERROR"
+      }
+    },
+    {
+      "file": "login-wall.html",
+      "url": "https://ds.test/sign_in",
+      "expect": {
+        "status": "AUTH_REQUIRED"
+      }
+    },
+    {
+      "file": "prompt-quotes-rate-limit.html",
+      "url": "https://ds.test/a/chat/s/snapshot",
+      "expect": {
+        "status": "READY",
+        "messages": 1,
+        "reply": "The download worked"
+      }
+    }
+  ]
+}

@@ -1,0 +1,84 @@
+{
+  "id": "glm",
+  "name": "GLM (Z.ai)",
+  "configVersion": 1,
+  "baseUrl": "https://chat.z.ai/",
+  "termsUrl": "https://docs.z.ai/legal-agreement/terms-of-use",
+  "pacing": { "minGapMs": 3000 },
+  "enabled": true,
+  "comingSoon": true,
+  "selectors": {
+    "chatInput": "textarea, div[contenteditable=\"true\"]",
+    "sendButton": "#send-message-button, button[type=\"submit\"]",
+    "stopButton": "button[aria-label=\"Stop\"]",
+    "signedOutMarker": "button[aria-label=\"Sign in\"]",
+    "assistantMessage": ".chat-assistant"
+  },
+  "_selectorsNote": "Checked against the live page on 2026-10-22 as a guest: input, #send-message-button, the Stop button (button[aria-label=Stop], shown while a reply generates) and the .chat-assistant reply container. The reply text itself was not seen - a guest send raises an Aliyun slider CAPTCHA.",
+  "replyErrors": {
+    "challenge": "#aliyunCaptcha-window-popup:visible"
+  },
+  "completionRules": {
+    "waitForStopButtonDisappear": true,
+    "maxWaitMs": 300000,
+    "_maxWaitNote": "Raised from 120s. A reasoning model on a plan- or build-sized prompt was still thinking when the old wait expired, so a partial response got extracted and then failed to parse. The wait ends as soon as the reply is complete, so a longer ceiling costs nothing on fast answers."
+  },
+  "_controlsNote": "Radix UI. Options carry data-value and data-selected. The casing of data-value is inconsistent in GLM's own markup - copy these values verbatim, do not derive them from the labels. Search / Advanced Search is not wired: its trigger was not captured.",
+  "controls": [
+    {
+      "id": "model",
+      "label": "Model",
+      "kind": "select",
+      "default": "glm-5.2",
+      "options": [
+        {
+          "value": "glm-5.2",
+          "label": "GLM-5.2"
+        },
+        {
+          "value": "GLM-5.1",
+          "label": "GLM-5.1"
+        },
+        {
+          "value": "GLM-5-Turbo",
+          "label": "GLM-5-Turbo"
+        },
+        {
+          "value": "GLM-5v-Turbo",
+          "label": "GLM-5V-Turbo"
+        },
+        {
+          "value": "glm-4.7",
+          "label": "GLM-4.7"
+        }
+      ]
+    },
+    {
+      "id": "thinking",
+      "label": "Deep Think",
+      "kind": "select",
+      "default": "Max",
+      "options": [
+        {
+          "value": "High",
+          "label": "High"
+        },
+        {
+          "value": "Max",
+          "label": "Max"
+        }
+      ]
+    }
+  ],
+  "controlSelectors": {
+    "modelTrigger": "button[aria-label=\"Select a model\"]",
+    "modelOption": "[aria-label=\"model-item\"][data-value=\"{value}\"]",
+    "thinkingTrigger": "[data-dropdown-menu-trigger]",
+    "thinkingTriggerText": "Deep Think",
+    "thinkingOption": "[data-selected]"
+  },
+  "profileDir": "local-agent/storage/browser-profiles/glm",
+  "_comingSoonReason": "Gated again on 2026-10-23: the selectors match the live page (checked 2026-10-22), but a guest send raises an Aliyun slider CAPTCHA and no signed-in reply has been read yet. It stays listed, not selectable, until a signed-in smoke test passes.",
+  "contextBudgetChars": 150000,
+  "_contextBudgetNote": "Roughly how much conversation this provider will hold before a build should continue in a new thread, in characters. A deliberately conservative guess - nothing can read the real window, and being wrong in this direction costs one seeded prompt while being wrong the other way loses a step fifteen deep. Counted from what we send and the replies we receive, never from the page."
+}

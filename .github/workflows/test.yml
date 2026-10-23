@@ -1,0 +1,92 @@
+# Runs the fast suites on every push and pull request. The end-to-end suite
+# drives a real browser for around fifteen minutes, so it runs on pull requests
+# and by hand, not on every push (roadmap 0.4, D11).
+name: test
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push to the same branch makes the running check moot.
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      # test:web drives Playwright's own Chromium, which npm ci does not
+      # download.
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Compile the agent
+        run: npm run build
+
+      - name: Unit tests
+        run: npm test
+
+      # verify audits the packaged app for session data, so there must be one:
+      # the native app, staged by native/package/stage.mjs, which needs Qt and
+      # the libraries of the xcb platform plugin it bundles.
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.10.*"
+          cache: true
+
+      - name: Packaging tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build patchelf libgl1-mesa-dev libxkbcommon-x11-0 libxcb-cursor0 \
+            libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0 \
+            libxcb-xinerama0 libxcb-xkb1
+
+      - name: Package
+        run: npm run pack
+
+      - name: Verify
+        run: npm run verify
+
+      # The browser session manager may open a headed window, so give it a
+      # display.
+      - name: Browser tests
+        run: xvfb-run -a npm run test:web
+
+  e2e:
+    if: github.event_name != 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Compile the agent
+        run: npm run build
+
+      - name: End-to-end tests
+        run: xvfb-run -a npm run test:e2e

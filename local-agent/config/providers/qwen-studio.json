@@ -1,0 +1,90 @@
+{
+  "id": "qwen-studio",
+  "name": "Qwen Studio",
+  "configVersion": 1,
+  "baseUrl": "https://chat.qwen.ai/",
+  "termsUrl": "https://chat.qwen.ai/legal-agreement/terms-of-use",
+  "pacing": { "minGapMs": 3000 },
+  "enabled": true,
+  "comingSoon": true,
+  "selectors": {
+    "chatInput": "textarea, div[contenteditable=\"true\"]",
+    "sendButton": "button[aria-label=\"Send\"], .send-button",
+    "stopButton": "button[class*=\"stop\"]",
+    "signedOutMarker": ".header-right-auth-button",
+    "assistantMessage": "[class*=\"assistant\"], .markdown-body"
+  },
+  "completionRules": {
+    "waitForStopButtonDisappear": true,
+    "maxWaitMs": 300000,
+    "_maxWaitNote": "Raised from 120s. A reasoning model on a plan- or build-sized prompt was still thinking when the old wait expired, so a partial response got extracted and then failed to parse. The wait ends as soon as the reply is complete, so a longer ceiling costs nothing on fast answers."
+  },
+  "_controlsNote": "Ant Design comboboxes. The trigger's visible text is the current value; options only exist once the menu is open. Only aria-label and qwen-* classes are stable - the index-module__* classes are CSS-module hashes that change every deploy.",
+  "controls": [
+    {
+      "id": "model",
+      "label": "Model",
+      "kind": "select",
+      "default": "Qwen3.8-Max",
+      "options": [
+        {
+          "value": "Qwen3.8-Max",
+          "label": "Qwen3.8-Max"
+        },
+        {
+          "value": "Qwen3.7-Plus",
+          "label": "Qwen3.7-Plus"
+        },
+        {
+          "value": "Qwen3.7-Max",
+          "label": "Qwen3.7-Max"
+        },
+        {
+          "value": "Qwen3.8-Max-Preview",
+          "label": "Qwen3.8-Max-Preview"
+        },
+        {
+          "value": "Qwen3.6-Plus",
+          "label": "Qwen3.6-Plus"
+        },
+        {
+          "value": "Qwen3.6-Max-Preview",
+          "label": "Qwen3.6-Max-Preview"
+        }
+      ]
+    },
+    {
+      "id": "thinking",
+      "label": "Thinking",
+      "kind": "select",
+      "default": "Thinking",
+      "options": [
+        {
+          "value": "Auto",
+          "label": "Auto"
+        },
+        {
+          "value": "Thinking",
+          "label": "Thinking"
+        },
+        {
+          "value": "Fast",
+          "label": "Fast"
+        }
+      ]
+    }
+  ],
+  "controlSelectors": {
+    "modelTrigger": "[aria-label=\"Select Model\"]",
+    "modelOption": "[role=\"option\"], .ant-select-item, [role=\"menuitem\"]",
+    "modelOptionTitle": "[class*=\"title\"], [class*=\"name\"]",
+    "modelExpand": "text=Expand more models",
+    "thinkingTrigger": "[aria-label=\"Thinking\"]",
+    "thinkingOption": "[role=\"option\"], .ant-select-item",
+    "thinkingOptionTitle": ""
+  },
+  "profileDir": "local-agent/storage/browser-profiles/qwen-studio",
+  "_comingSoonReason": "Gated again on 2026-10-23: the composer and Send button match the live page (checked 2026-10-22), but a guest send opens a log-in dialog and no signed-in reply has been read yet; the Stop button and reply selectors are unconfirmed. It stays listed, not selectable, until a signed-in smoke test passes.",
+  "contextBudgetChars": 150000,
+  "_contextBudgetNote": "Roughly how much conversation this provider will hold before a build should continue in a new thread, in characters. A deliberately conservative guess - nothing can read the real window, and being wrong in this direction costs one seeded prompt while being wrong the other way loses a step fifteen deep. Counted from what we send and the replies we receive, never from the page."
+}

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none"
+     stroke="currentColor" stroke-width="2.8" stroke-linecap="square">
+  <!-- Two brackets facing inward: closing. Coordinates sit on whole units of
+       the 32-grid so the shape stays crisp rasterised down to 16px. -->
+  <path d="M7 6 H13 V26 H7"/>
+  <path d="M25 6 H19 V26 H25"/>
+</svg>

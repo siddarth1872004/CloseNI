@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=CloseNI
+Comment=Drive web AI chats as a build pipeline
+Exec=CloseNI
+Icon=closeni
+Terminal=false
+Categories=Development;
+StartupWMClass=CloseNI

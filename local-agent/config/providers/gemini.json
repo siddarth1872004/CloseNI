@@ -1,0 +1,25 @@
+{
+  "id": "gemini",
+  "name": "Gemini",
+  "configVersion": 1,
+  "baseUrl": "https://gemini.google.com/app",
+  "termsUrl": "https://policies.google.com/terms",
+  "pacing": {
+    "minGapMs": 3000
+  },
+  "enabled": true,
+  "comingSoon": true,
+  "_comingSoonReason": "Gated: Google's consumer terms restrict automated use of the Gemini chat app, and CloseNI does not use paid APIs or keys. Its selectors are a best guess that has never been checked against the live site. It is listed so it is clear it is planned rather than missing; it cannot be selected and the agent refuses it.",
+  "selectors": {
+    "chatInput": "rich-textarea div[contenteditable=\"true\"]",
+    "sendButton": "button.send-button",
+    "stopButton": "button[aria-label=\"Stop response\"]",
+    "assistantMessage": "message-content"
+  },
+  "completionRules": {
+    "waitForStopButtonDisappear": true,
+    "maxWaitMs": 300000
+  },
+  "profileDir": "local-agent/storage/browser-profiles/gemini",
+  "contextBudgetChars": 150000
+}

@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<!-- Generated from README.md by scripts/make-site.mjs. Edit the README, then run npm run site. -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CloseNI</title>
+<meta name="description" content="Free web AI chats, turned into a coding agent.">
+<meta property="og:title" content="CloseNI">
+<meta property="og:description" content="Free web AI chats, turned into a coding agent.">
+<meta property="og:image" content="screenshots/code.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><path d='M7 6 H13 V26 H7' fill='none' stroke='%23e8e8ea' stroke-width='2.8'/><path d='M25 6 H19 V26 H25' fill='none' stroke='%23e8e8ea' stroke-width='2.8'/></svg>">
+<style>
+/* GitHub's README look. The art is drawn for a dark page, so dark is the default. */
+:root{
+  --bg:#0d1117; --box:#0d1117; --fg:#e6edf3; --dim:#9198a1; --line:#3d444d; --line-soft:#3d444db3;
+  --link:#4493f8; --code-bg:#656c7633; --pre-bg:#151b23; --quote:#9198a1; --row:#151b23; --bar:#010409;
+}
+@media (prefers-color-scheme: light){
+  :root{
+    --bg:#f6f8fa; --box:#ffffff; --fg:#1f2328; --dim:#59636e; --line:#d1d9e0; --line-soft:#d1d9e0b3;
+    --link:#0969da; --code-bg:#818b981f; --pre-bg:#f6f8fa; --quote:#59636e; --row:#f6f8fa; --bar:#f6f8fa;
+  }
+}
+*{box-sizing:border-box}
+html{scroll-padding-top:64px}
+body{margin:0;background:var(--bg);color:var(--fg);
+  font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans",Helvetica,Arial,sans-serif;word-wrap:break-word}
+.bar{position:sticky;top:0;z-index:1;background:var(--bar);border-bottom:1px solid var(--line);
+  display:flex;align-items:center;gap:16px;padding:12px 16px;font-size:14px}
+.bar b{font-size:16px}
+.bar .home{margin:0;border:0;padding:0}
+.bar .dim{color:var(--dim)}
+.bar a:last-child{margin-left:auto}
+.bar a{color:var(--fg);text-decoration:none;border:1px solid var(--line);border-radius:6px;padding:4px 12px}
+.bar a:hover{border-color:var(--dim)}
+main{max-width:1012px;margin:24px auto 48px;padding:0 16px}
+article{background:var(--box);border:1px solid var(--line);border-radius:6px;padding:32px}
+@media (max-width:600px){main{margin-top:16px;padding:0 8px}article{padding:16px}}
+a{color:var(--link);text-decoration:none}
+a:hover{text-decoration:underline}
+h1,h2,h3,h4,h5,h6{margin:24px 0 16px;font-weight:600;line-height:1.25}
+h1{font-size:2em;padding-bottom:.3em;border-bottom:1px solid var(--line-soft)}
+h2{font-size:1.5em;padding-bottom:.3em;border-bottom:1px solid var(--line-soft)}
+h3{font-size:1.25em} h4{font-size:1em}
+p,blockquote,ul,ol,table,pre,details{margin:0 0 16px}
+ul,ol{padding-left:2em}
+li+li{margin-top:.25em}
+hr{height:.25em;padding:0;margin:24px 0;background:var(--line);border:0}
+img{max-width:100%;height:auto;border-style:none;box-sizing:content-box}
+blockquote{padding:0 1em;color:var(--quote);border-left:.25em solid var(--line)}
+blockquote>:last-child{margin-bottom:0}
+code,pre{font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;font-size:85%}
+code{padding:.2em .4em;background:var(--code-bg);border-radius:6px;white-space:break-spaces}
+pre{padding:16px;overflow:auto;line-height:1.45;background:var(--pre-bg);border-radius:6px}
+pre code{padding:0;background:none;font-size:100%;white-space:pre;border-radius:0}
+table{display:block;width:max-content;max-width:100%;overflow:auto;border-spacing:0;border-collapse:collapse}
+th,td{padding:6px 13px;border:1px solid var(--line)}
+th{font-weight:600}
+tr:nth-child(2n){background:var(--row)}
+td img{background:transparent}
+</style>
+</head>
+<body>
+<header class="bar"><b><a class="home" href="./">CloseNI</a></b><span class="dim">Documentation</span><a href="https://github.com/siddarth1872004/CloseNI">View on GitHub</a></header>
+<main><article>
+<div align="center"><img src="assets/hero.svg" alt="CloseNI: a pixel-art logo boots up over a CRT screen, above the eight providers and their status" width="100%"><h1 id="closeni">CloseNI</h1>
+<p><strong>Free web AI chats, turned into a coding agent.</strong><br>
+Ask for a change and it reads your project, edits files, runs commands and checks its work, asking before anything it should. The model is a chat site driven in a real browser, so there is no API key and no per-token bill.</p>
+<p><a href="https://www.qt.io/"><img src="https://img.shields.io/badge/Qt-6.10-41CD52?style=flat-square&amp;logo=qt&amp;logoColor=white" alt="Qt"></a>
+<a href="https://www.typescriptlang.org/"><img src="https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&amp;logo=typescript&amp;logoColor=white" alt="TypeScript"></a>
+<a href="https://playwright.dev/"><img src="https://img.shields.io/badge/Playwright-1.62-2EAD33?style=flat-square&amp;logo=playwright&amp;logoColor=white" alt="Playwright"></a>
+<a href="#what-it-is"><img src="https://img.shields.io/badge/API%20keys-none-ff7b72?style=flat-square" alt="API keys"></a>
+<a href="https://github.com/siddarth1872004/CloseNI/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-bc8cff?style=flat-square" alt="License"></a></p>
+<p><a href="https://github.com/siddarth1872004/CloseNI/releases/latest"><strong>Download</strong></a> · <a href="https://siddarth1872004.github.io/CloseNI/"><strong>Site</strong></a> · <a href="#get-started"><strong>Get started</strong></a> · <a href="#limitations"><strong>Limitations</strong></a> · <a href="https://github.com/siddarth1872004/CloseNI/blob/main/CHANGELOG.md"><strong>Changelog</strong></a></p>
+</div><hr>
+<h2 id="what-it-is">What it is</h2>
+<p>CloseNI opens a real Chromium window with the chat site you are already signed into. It types the prompt, waits for the reply to finish streaming and reads it back. From the site&#39;s side it is a person typing. From yours it is a coding agent working in your project folder.</p>
+<p>The app itself is native: Qt Quick on Windows and Linux, with no web view anywhere. The agent beside it is a Node and Playwright process.</p>
+<blockquote>
+<p><strong>Where it stands.</strong></p>
+<ul>
+<li><strong>DeepSeek</strong> is driven end to end, including long sessions.</li>
+<li><strong>Ollama</strong> is local and <strong>chat-only</strong>.</li>
+<li><strong>Qwen Studio</strong>, <strong>GLM</strong>, <strong>ChatGPT</strong>, <strong>Gemini</strong>, <strong>Claude</strong> and <strong>Grok</strong> are listed as <strong>coming soon</strong> and cannot be selected.</li>
+<li>Installers are <strong>unsigned</strong>, so Windows SmartScreen may warn on first launch.</li>
+</ul>
+</blockquote>
+<h2 id="the-coding-agent">The coding agent</h2>
+<img src="screenshots/code.png" alt="The Code panel in the Terminal theme: a request, a read, and an edit shown as a diff waiting for permission" width="100%"><p>Ask in plain words: &quot;fix the failing test&quot;, &quot;add pagination to the list endpoint&quot;, &quot;explain @src/app.py&quot;. A chat site has no tool-calling API, so the tools are a convention: the model answers with fenced blocks that name a tool, CloseNI runs them and sends the results back as the next message.</p>
+<table>
+<thead>
+<tr>
+<th>Tool</th>
+<th>Does</th>
+<th>Asks first?</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>read</code>, <code>glob</code>, <code>grep</code>, <code>ls</code></td>
+<td>read and search the project (a file read again in the same chat comes back as just what changed)</td>
+<td>only for secret files such as <code>.env</code> or a private key</td>
+</tr>
+<tr>
+<td><code>edit</code>, <code>write</code></td>
+<td>change or create a file, shown as a diff</td>
+<td>in default mode</td>
+</tr>
+<tr>
+<td><code>bash</code></td>
+<td>run a command in the project folder</td>
+<td>unless you said &quot;don&#39;t ask again&quot; for it</td>
+</tr>
+<tr>
+<td><code>todo</code></td>
+<td>the agent&#39;s own task list</td>
+<td>never</td>
+</tr>
+</tbody></table>
+<p><strong>Modes</strong> are the buttons under the prompt, or shift+tab to cycle them. <strong>Ask</strong> asks before edits and commands, <strong>Accept edits</strong> asks only before commands, <strong>Plan</strong> is read-only until you approve its plan, and <strong>Auto</strong> runs everything. <strong>Build</strong>, <strong>Test</strong> and <strong>Ship</strong> give the agent a job (build it end to end, work on the tests, review and commit), and <strong>Research</strong> searches the web and GitHub without touching the project. To stop being asked in every session, set Settings &gt; Permissions to auto-approve. <code>sudo</code>, package managers, recursive deletes and the rest of the <a href="#safety">safety list</a> ask in every mode.</p>
+<p>Also: <code>@path</code> attaches a file, <code>/rewind</code> undoes the last turn&#39;s file changes, <code>/init</code> writes a <code>CLOSENI.md</code> of project instructions, <code>/resume</code> continues a turn cut off by a restart or a provider error, <code>/route manual</code> sends prompts by copy and paste when the chat page is unusable, and Esc stops the agent after the current reply. From a terminal: <code>npm run agent -- &quot;fix the failing test&quot; ./project deepseek</code>.</p>
+<h2 id="planned-builds">Planned builds</h2>
+<p>For a whole project there is the planned build (<code>/build</code>, or the Plan and Build panels). It plans the project as steps, you revise the plan, and nothing is written until you approve it.</p>
+<div align="center">
+<img src="assets/pipeline.svg" alt="A prompt travels from you to CloseNI, to a chat site, to files on your disk, and back to you for review" width="100%">
+</div><p>Each step is built in the same conversation, written inside the workspace with a backup first, and then checked with the project&#39;s real compiler. A failing check sends the compiler&#39;s own error back to the model. <strong>Two attempts</strong>, then the step is marked failed and the build stops and explains. A build that stopped halfway resumes at the first unfinished step. The finished project gets a <code>closeni.run.json</code>, <code>run.sh</code> and <code>run.bat</code>, so it runs without CloseNI.</p>
+<p><strong>Twelve languages</strong> are checked against their real toolchains:</p>
+<table>
+<thead>
+<tr>
+<th>Language</th>
+<th>With a manifest</th>
+<th>Per file</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Rust</td>
+<td><code>cargo check</code></td>
+<td><code>rustc --emit=metadata</code></td>
+</tr>
+<tr>
+<td>Go</td>
+<td><code>go build ./...</code></td>
+<td><code>gofmt -e</code></td>
+</tr>
+<tr>
+<td>TypeScript</td>
+<td><code>tsc --noEmit</code></td>
+<td><code>tsc</code></td>
+</tr>
+<tr>
+<td>Java</td>
+<td><code>mvn -q compile</code> or <code>gradle compileJava -q</code></td>
+<td><code>javac</code></td>
+</tr>
+<tr>
+<td>C#</td>
+<td><code>dotnet build</code></td>
+<td>—</td>
+</tr>
+<tr>
+<td>C, C++</td>
+<td><code>make -n</code></td>
+<td><code>gcc</code> / <code>g++ -fsyntax-only</code></td>
+</tr>
+<tr>
+<td>Python, JavaScript, Ruby, PHP, Shell</td>
+<td>—</td>
+<td><code>py_compile</code>, <code>node --check</code>, <code>ruby -c</code>, <code>php -l</code>, <code>bash -n</code></td>
+</tr>
+</tbody></table>
+<p>The checker also knows 16 more languages (Kotlin, Scala, Swift, Dart, Zig, Elixir and others), which have not been run against their real toolchains yet.</p>
+<h2 id="conversations">Conversations</h2>
+<p>Chat, planning and building continue <strong>one conversation</strong> on the provider&#39;s site, so a step prompt can be a short instruction instead of re-explaining the project. The cost is that steps run one at a time; the <a href="https://github.com/siddarth1872004/CloseNI/blob/main/docs/ROADMAP.md">roadmap</a> records why.</p>
+<p>The rail lists every chat in the project, newest first, named after its first message. Open one to get its messages and plan back, rename it, or remove it from the list. <strong>New Chat</strong> starts a fresh one. Messages are saved on disk and come back after a restart. Nothing switches while a reply, a build or a Code turn is using the thread.</p>
+<h2 id="providers">Providers</h2>
+<table>
+<thead>
+<tr>
+<th>Provider</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>DeepSeek Chat</strong></td>
+<td><img src="https://img.shields.io/badge/-ready-57d38c?style=flat-square" alt="ready"> Chat, plan, build and the coding agent. Busy, rate-limited, cut and full replies are recognised and handled.</td>
+</tr>
+<tr>
+<td><strong>Qwen Studio</strong></td>
+<td><img src="https://img.shields.io/badge/-coming%20soon-8b949e?style=flat-square" alt="coming soon"> Gated until a signed-in reply is checked live. Its composer and Send button were checked on 22 Oct 2026; a guest send opens a log-in dialog. Listed, not selectable.</td>
+</tr>
+<tr>
+<td><strong>GLM (Z.ai)</strong></td>
+<td><img src="https://img.shields.io/badge/-coming%20soon-8b949e?style=flat-square" alt="coming soon"> Gated until a signed-in reply is checked live. Its selectors were checked on 22 Oct 2026; a guest send raises a slider CAPTCHA, which CloseNI hands to you and never solves. Listed, not selectable.</td>
+</tr>
+<tr>
+<td><strong>Ollama (local)</strong></td>
+<td><img src="https://img.shields.io/badge/-chat--only-79c0ff?style=flat-square" alt="chat-only"> Local HTTP, no login. Chat only; plan and build need a browser provider.</td>
+</tr>
+<tr>
+<td><strong>ChatGPT</strong></td>
+<td><img src="https://img.shields.io/badge/-coming%20soon-8b949e?style=flat-square" alt="coming soon"> Gated: its consumer terms restrict automated use of the chat app, and its selectors are unconfirmed. Listed, not selectable.</td>
+</tr>
+<tr>
+<td><strong>Gemini</strong></td>
+<td><img src="https://img.shields.io/badge/-coming%20soon-8b949e?style=flat-square" alt="coming soon"> Gated: its consumer terms restrict automated use of the chat app, and its selectors are unconfirmed. Listed, not selectable.</td>
+</tr>
+<tr>
+<td><strong>Claude</strong></td>
+<td><img src="https://img.shields.io/badge/-coming%20soon-8b949e?style=flat-square" alt="coming soon"> Gated: its consumer terms restrict automated use of the chat app, and its selectors are unconfirmed. Listed, not selectable.</td>
+</tr>
+<tr>
+<td><strong>Grok</strong></td>
+<td><img src="https://img.shields.io/badge/-coming%20soon-8b949e?style=flat-square" alt="coming soon"> Gated: its consumer terms restrict automated use of the chat app, and its selectors are unconfirmed. Listed, not selectable.</td>
+</tr>
+</tbody></table>
+<p>Each provider is a JSON file in <a href="https://github.com/siddarth1872004/CloseNI/tree/main/local-agent/config/providers/"><code>local-agent/config/providers/</code></a>, read at runtime, so fixing a selector is a text edit, not a rebuild.</p>
+<h2 id="research">Research</h2>
+<p>The <strong>Research panel</strong> asks the provider with its own web search turned on (DeepSeek&#39;s Smart Search) and lists the sources it cited. Alongside, it searches GitHub repositories with your signed-in token. Any result can be cloned or used as a reference for the next plan. It runs in a conversation of its own.</p>
+<h2 id="the-app">The app</h2>
+<table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody><tr>
+<td><img src="screenshots/chat.png" alt="The Chat panel, where a plan is proposed and reviewed before any file is written"></td>
+<td><img src="screenshots/builder.png" alt="The Builder panel in the Pixel theme: a finished build, the step list on the left, and the diff for the selected step"></td>
+</tr>
+<tr>
+<td><strong>Chat and Plan.</strong> Describe it, then read and revise the plan.</td>
+<td><strong>Build.</strong> Live step status and the diff for each step.</td>
+</tr>
+<tr>
+<td><img src="screenshots/test.png" alt="The Test panel: resolved run command, per-check pass and fail results, and a chat about the results"></td>
+<td><img src="screenshots/ship.png" alt="The Ship panel in the Paper theme: GitHub account and repository, git init and commit, push, and Actions runs"></td>
+</tr>
+<tr>
+<td><strong>Test.</strong> Run the project and its own tests. A missing runner is reported as not run, never as a pass.</td>
+<td><strong>Ship.</strong> Commit, push and watch GitHub Actions.</td>
+</tr>
+</tbody></table>
+<p><strong>Settings</strong> covers the provider and sign-in, autonomy, skills and personas, and appearance. Sign-in happens in a real browser window, and the profile persists.</p>
+<img src="screenshots/settings.png" alt="The Settings panel, Appearance tab, showing all eleven theme swatches" width="100%"><h2 id="eleven-themes">Eleven themes</h2>
+<div align="center">
+<img src="assets/themes-strip.svg" alt="The eleven themes side by side" width="100%">
+</div><table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody><tr>
+<td><img src="screenshots/theme-paper.png" alt="Paper theme, full light mode"></td>
+<td><img src="screenshots/theme-phosphor.png" alt="Phosphor theme, green CRT with scanlines"></td>
+<td><img src="screenshots/theme-cassette.png" alt="Cassette theme, retro-futurist palette"></td>
+</tr>
+<tr>
+<td><strong>Paper</strong></td>
+<td><strong>Phosphor</strong></td>
+<td><strong>Cassette</strong></td>
+</tr>
+</tbody></table>
+<p>Themes style CloseNI itself and never touch a project built with it.</p>
+<h2 id="architecture">Architecture</h2>
+<div align="center">
+<img src="assets/architecture.svg" alt="Architecture: the native app spawns the local agent, which drives Chromium, writes to the workspace, and has the src/web layer beside it for research and live tests" width="100%">
+</div><ul>
+<li><strong><code>native/</code></strong> is the app: QML for the window, C++ services for the agent and run processes, git, GitHub, files and the keyring. Pure logic (scheduling, themes, diffs, entry points) is plain ES modules in <code>native/qml/js/</code>, loaded by QML and unit-tested by Node. See <a href="https://github.com/siddarth1872004/CloseNI/blob/main/native/ARCHITECTURE.md">native/ARCHITECTURE.md</a>.</li>
+<li><strong><code>local-agent/</code></strong> is the TypeScript core: page control per provider, reply parsing, contained file writes, check planning and the command policy.</li>
+<li><strong><code>local-agent/src/web/</code></strong> is a newer browser layer with research and cited sources. It passes against fixture pages and is not yet used by builds.</li>
+</ul>
+<h2 id="safety">Safety</h2>
+<ul>
+<li><strong>Commands that can do damage always ask</strong>: <code>sudo</code>, package managers, recursive deletes in any spelling, <code>curl … | sh</code>, <code>git push --force</code>, <code>git reset --hard</code> and more. &quot;Don&#39;t ask again&quot; is never offered for them.</li>
+<li><strong>Writes stay in the workspace.</strong> A path that escapes it is refused, symlinks included, nothing inside <code>.git</code> is written, and overwrites are backed up.</li>
+<li><strong>Secret files ask first</strong> in every mode, because whatever the agent reads is typed into a chat site.</li>
+<li><strong>Git never goes through a shell</strong>, and the GitHub token is kept in the OS keyring and redacted from every log.</li>
+</ul>
+<p>The command list reads the command&#39;s text, so it is a floor, not a sandbox: a script the model writes and then runs gets past it. <a href="https://github.com/siddarth1872004/CloseNI/blob/main/docs/SAFETY.md">docs/SAFETY.md</a> lists what holds and what doesn&#39;t.</p>
+<h2 id="get-started">Get started</h2>
+<p><strong>Download</strong> the installer for your system from the <a href="https://github.com/siddarth1872004/CloseNI/releases/latest">latest release</a>:</p>
+<table>
+<thead>
+<tr>
+<th>System</th>
+<th>File</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Windows 10+ x64</td>
+<td><code>CloseNI-Setup-&lt;version&gt;.exe</code></td>
+</tr>
+<tr>
+<td>Linux x64</td>
+<td><code>CloseNI-&lt;version&gt;.AppImage</code>, <code>closeni_&lt;version&gt;_amd64.deb</code></td>
+</tr>
+</tbody></table>
+<p>The Windows and Linux packages bundle Qt, Node and the agent. Chromium (about 650 MB) is downloaded on first run. The Windows installer is unsigned, so SmartScreen may warn on first launch.</p>
+<p><strong>From source</strong> (Node 22.12+, Qt 6.8+, CMake 3.21+ and Ninja):</p>
+<pre><code class="language-bash">git clone https://github.com/siddarth1872004/CloseNI.git &amp;&amp; cd CloseNI
+npm install &amp;&amp; npm run build
+npx playwright install chromium
+cmake -S native -B build-native -G Ninja &amp;&amp; cmake --build build-native
+npm start
+</code></pre>
+<p><strong>First run.</strong> Pick a project folder, choose a provider, install Chromium and sign in once in the browser window. A checklist above the chat walks through it.</p>
+<p>The GitHub token is kept in the OS keyring: DPAPI on Windows and the Secret Service on Linux. Without a keyring CloseNI still runs, but asks you to sign in to GitHub each launch.</p>
+<h2 id="development">Development</h2>
+<pre><code class="language-bash">npm test                        # unit suite, no browser
+npm run test:e2e                # real Chromium against a mock chat site
+npm run test:web                # the browser layer against provider-shaped fixtures
+ctest --test-dir build-native   # the native app&#39;s C++ and QML tests
+npm run verify                  # the docs, assets and packaging still match the code
+npm run dist                    # stage the app and build this system&#39;s installers
+</code></pre>
+<p>Releases are built by CI from a version tag; see <a href="https://github.com/siddarth1872004/CloseNI/blob/main/docs/RELEASING.md">docs/RELEASING.md</a>. Report bugs with the <a href="https://github.com/siddarth1872004/CloseNI/issues/new/choose">issue form</a>, including the last lines of the Console drawer.</p>
+<h2 id="limitations">Limitations</h2>
+<ul>
+<li><strong>One provider is proven.</strong> Qwen Studio and GLM are gated until a signed-in reply is checked live, and chat sites change: a redesign can break page control until the selectors are updated.</li>
+<li><strong>Checks prove it compiles, not that it is right.</strong> A project can pass every check and still be wrong.</li>
+<li><strong>Large projects are untested.</strong> Builds of a few dozen steps behave well; beyond that is unknown.</li>
+<li><strong>The installers are unsigned</strong>, and the browser layer in <code>local-agent/src/web/</code> has not yet run against the live sites. See the <a href="https://github.com/siddarth1872004/CloseNI/blob/main/docs/ROADMAP.md">roadmap</a>.</li>
+<li><strong>Terms of service are your responsibility.</strong> Automating a web interface may conflict with a provider&#39;s terms.</li>
+</ul>
+<h2 id="license">License</h2>
+<p>MIT. See <a href="https://github.com/siddarth1872004/CloseNI/blob/main/LICENSE">LICENSE</a>. Packaged builds bundle Qt (LGPL-3.0), Node.js and Playwright, each under its own licence. Chromium is downloaded at first run, not bundled.</p>
+</article></main>
+</body>
+</html>

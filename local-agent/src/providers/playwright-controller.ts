@@ -1,0 +1,1879 @@
+import { chromium, BrowserContext, Page } from "playwright";
+import * as path from "path";
+import * as fs from "fs";
+import { readSessions, writeSessions, resetBuildRun, getBuildLedger, setBuildLedger, BuildLedger, describeThread, getConversationSize, setConversationSize } from "../session-store.js";
+import { isComplete, endedWithoutReply, ReplyDropped } from "./completion.js";
+import { applyProviderControls } from "./controls/index.js";
+import { parseDesiredControls } from "./controls/decisions.js";
+import { formatResults } from "./controls/helpers.js";
+import { storagePaths } from "../storage-paths.js";
+import { describeStreamFailure } from "./stream-status.js";
+import { replyStreamTap } from "./stream-tap.js";
+import { ReplyErrorRules, ReplySignals, Trouble, classifyTrouble, backoffFor, describeTrouble, ProviderTrouble } from "./reply-trouble.js";
+import { ProviderStatus, StatusTracker, statusForTrouble, mayRetry } from "./provider-status.js";
+import { Pacer, PacingRules, BudgetSpent, parseBudget } from "./pacing.js";
+import { TargetTier, tiersFor, findNow, findWithin } from "./locate.js";
+import { saveSnapshot } from "./dom-snapshot.js";
+
+export interface ProviderConfig {
+  id: string;
+  name: string;
+  baseUrl: string;
+  enabled: boolean;
+  /**
+   * Listed in the UI but not selectable, and refused if one is requested
+   * anyway. Distinct from `enabled: false`, which hides a provider outright -
+   * these are ones people should know are planned, shown as "coming soon"
+   * rather than quietly missing. The reason lives in _comingSoonReason in the
+   * JSON, next to the selectors someone will need in order to finish it.
+   */
+  comingSoon?: boolean;
+  /**
+   * Optional. The version of this file's selectors, raised whenever they are
+   * re-measured, so a log or a page snapshot says which ones were in use.
+   */
+  configVersion?: number;
+  /**
+   * Optional. Better-surviving ways to find a control than its CSS selector:
+   * its ARIA role and name, then its visible text (locate.ts). Tried before
+   * the `selectors` entry of the same name, which stays the last resort.
+   */
+  locate?: Partial<Record<"chatInput" | "sendButton" | "stopButton", TargetTier[]>>;
+  /** Optional. A gap between prompts (pacing.ts). The daily budget is the person's, set in Settings. */
+  pacing?: PacingRules;
+  selectors: {
+    chatInput: string;
+    sendButton: string;
+    /** Optional. With waitForStopButtonDisappear, ends a wait the moment the
+     *  provider's own stop button vanishes instead of waiting out stability. */
+    stopButton?: string;
+    /** Optional. Shown only to a signed-out visitor, for sites that let guests type. */
+    signedOutMarker?: string;
+    /**
+     * Optional. Patterns read from the ENDED reply stream (stream-tap.ts):
+     * `status` captures the reply's final message status, `notice` the data
+     * of an error notice event. Classified by `replyErrors`.
+     */
+    replySignals?: { status?: string; notice?: string };
+    /**
+     * Optional. A pattern matching the request the page streams its reply over.
+     *
+     * Used only to know when a reply has ENDED - deliberately not to read the
+     * text. Knowing the stream closed needs no understanding of the provider's
+     * chunk format, so this works without reverse-engineering a wire protocol,
+     * and the reply still comes from the page where it is already read
+     * correctly. An explicit end beats "the text has not changed for 8 seconds"
+     * and is immune to the DOM problems entirely: a build step once sat at
+     * "messages=3, chars=9019" for a full 300s wait because the element being
+     * watched was the previous answer.
+     */
+    streamUrlPattern?: string;
+    /**
+     * Optional. The provider's own "Copy" control on a code block.
+     *
+     * When present, the code in a reply is read from the clipboard rather than
+     * scraped out of highlighted markup. Purely an upgrade: anything wrong with
+     * it falls back to reading the DOM.
+     */
+    copyButton?: string;
+    /**
+     * Optional. A citation badge inside a reply (DeepSeek's search sources).
+     * Read as text it is "-15" in the middle of a sentence, so the structured
+     * reader leaves it out.
+     */
+    citation?: string;
+    /**
+     * Optional. The container a thinking model writes its reasoning into.
+     *
+     * Two jobs. The reply is never read from inside it: DeepSeek renders its
+     * reasoning as a .ds-markdown too, so without the exclusion the last match
+     * during the thinking phase is the reasoning, and a pause in it reads as a
+     * finished reply. And it is what the reasoning is relayed from while the
+     * model thinks.
+     */
+    thinking?: string;
+    /** Optional. One turn of the conversation, so reasoning is read from the
+     *  newest turn only and never from an earlier answer's. */
+    turn?: string;
+    /**
+     * Optional. The header that collapses and expands the reasoning, found by
+     * `thinkingHeaderText`. A collapsed reasoning block is not hidden but
+     * removed from the page, so it is expanded before it can be read.
+     */
+    thinkingHeader?: string;
+    /**
+     * Optional. The row of actions (copy, regenerate, rate) a provider draws
+     * under a reply once it is finished. When set, a reply is not complete
+     * until one is under the newest turn.
+     */
+    messageToolbar?: string;
+    assistantMessage: string;
+  };
+  /** A pattern for the reasoning header's text ("Thought for 3 seconds"). */
+  thinkingHeaderText?: string;
+  /** Optional. The header's text while the model is still reasoning ("Thinking"): a reply under way. */
+  thinkingActiveText?: string;
+  completionRules: {
+    waitForStopButtonDisappear: boolean;
+    maxWaitMs: number;
+  };
+  /**
+   * Optional. Roughly how much conversation this provider will hold, in
+   * characters, before a build should continue in a new thread.
+   *
+   * A guess, and marked as one in the config. Nothing can read a provider's
+   * real window, and getting it wrong in the safe direction costs one seeded
+   * prompt - so it is set well below whatever the true limit is likely to be.
+   * Absent falls back to DEFAULT_BUDGET_CHARS.
+   */
+  contextBudgetChars?: number;
+  /**
+   * Optional. What the provider shows instead of a reply when it cannot
+   * answer - busy, rate limited, conversation full, signed out - and how long
+   * to wait before sending again. See reply-trouble.ts.
+   */
+  replyErrors?: ReplyErrorRules;
+  /** What this provider's UI offers. Read by the desktop settings panel; the
+   *  agent only needs the selectors below. Absent means no controls. */
+  controls?: Array<{
+    id: string;
+    label: string;
+    kind: "select" | "toggle";
+    default?: string | boolean;
+    options?: Array<{ value: string; label: string }>;
+  }>;
+  /** Selectors live in config because they rot fastest — a provider renaming a
+   *  class should be a text edit, not a recompile. */
+  controlSelectors?: Record<string, string>;
+  profileDir: string;
+}
+
+const FENCE = "\`\`\`";
+const FALLBACK_SELECTORS = [
+  'div[class*="ds-markdown"]',
+  'div[class*="markdown-body"]',
+  'div[class*="markdown"]',
+  'div[class*="assistant"]',
+];
+
+/** The conversation id in a chat URL (".../a/chat/s/<id>"), or "" when there is none. */
+export function chatId(url: string): string {
+  const m = /\/s\/([^/?#]+)/.exec(url || "");
+  return m ? m[1] : "";
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+/**
+ * Page calls that have no timeout of their own - evaluate, count, all - wait
+ * forever on a page that stops answering, and the reply reader is the last
+ * thing between a finished reply and the agent. Its callers already treat an
+ * error as "nothing read", so a stalled call becomes that instead of a hang.
+ */
+const PAGE_CALL_MS = 15000;
+function bounded<T>(p: Promise<T>, what: string, ms: number = PAGE_CALL_MS): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => {
+      console.log("Reading the reply: " + what + " did not answer in " + Math.round(ms / 1000) + "s - skipping it.");
+      reject(new Error(what + " timed out"));
+    }, ms);
+    p.then((v) => { clearTimeout(t); resolve(v); }, (e) => { clearTimeout(t); reject(e); });
+  });
+}
+
+/**
+ * Chromium's "start the request again" failures: the network, or the
+ * certificate verifier, changed while the request was in flight. Seen live on
+ * 8 October 2026 as ERR_CERT_VERIFIER_CHANGED on a headed browser's first
+ * navigation, while its certificate store was still loading - which failed the
+ * whole session before a prompt had been sent. Nothing is wrong with the page,
+ * so the navigation is simply made again.
+ */
+const RETRYABLE_NAVIGATION = /net::ERR_(?:CERT_VERIFIER_CHANGED|NETWORK_CHANGED)\b/;
+const NAVIGATION_ATTEMPTS = 3;
+
+const DEFAULT_MAX_WAIT_MS = 120000;
+const POLL_INTERVAL_MS = 2000;
+// How long the reply length must hold steady before it counts as finished.
+// Deliberately not read from completionRules.stableMs: the configured 3s is
+// short enough that a model pausing mid-answer reads as done and the reply
+// gets truncated.
+const STABLE_TICKS = 4;
+// Elapsed seconds drift off multiples of ten at a 2s poll, so counting ticks
+// keeps the "still waiting" line on a predictable cadence.
+const THINKING_LOG_EVERY_TICKS = 5;
+/** Ticks of total stillness before the assistant selector is re-resolved. */
+const FROZEN_TICKS = 15;
+/** Polls after the reply stream closed with nothing on the page before the reply counts as dropped. */
+const DROPPED_TICKS = 3;
+
+/** Ceiling on the soft extension given to a model that is still writing. */
+const MAX_GRACE_MS = 180000;
+
+/**
+ * What the browser is doing right now, for the interface to show.
+ *
+ * Every one of these is emitted at the point the corresponding condition has
+ * actually been observed on the page - a composer that exists, a stop button
+ * that is visible, an assistant message whose text changed. None of them are
+ * inferred from "we sent a prompt, so it is probably generating": a status
+ * light that guesses is worse than none, because it keeps claiming progress
+ * while a run is wedged.
+ *
+ * Repeats are dropped so the poll loop does not emit the same phase every two
+ * seconds.
+ */
+let lastPhase = "";
+let phaseName = "idle";
+let phaseDetail = "";
+// The provider's status (provider-status.ts), carried on every phase line.
+let phaseStatus: ProviderStatus = "READY";
+function phase(name: string, detail?: string): void {
+  phaseName = name;
+  phaseDetail = detail || "";
+  const line = name + "|" + phaseDetail + "|" + phaseStatus;
+  if (line === lastPhase) return;
+  lastPhase = line;
+  console.log("PHASE:" + JSON.stringify({ phase: name, detail: phaseDetail, status: phaseStatus }));
+}
+/** Set the status on the phase line; also for a refusal made before any browser opens. */
+export function statusChanged(status: ProviderStatus, detail: string): void {
+  phaseStatus = status;
+  console.log("Provider status: " + status + (detail ? " (" + detail + ")" : ""));
+  phase(phaseName, phaseDetail);
+}
+
+export class PlaywrightController {
+  private context: BrowserContext | null = null;
+  private page: Page | null = null;
+  private pickedSelector: string | null = null;
+  private sessionStoreFile: string = "";
+  private workspace: string = "";
+  private isHeaded: boolean = false;
+  // Build steps share a thread that is tracked separately from the Chat/Plan
+  // thread, so the two never overwrite each other in sessions.json.
+  /**
+   * "worker" is a parallel build worker: it holds its own transient thread and
+   * persists nothing. Without it, every worker would overwrite the workspace's
+   * activeBuildThread with its own, and a resumed build would reopen whichever
+   * worker happened to finish last instead of the main thread.
+   */
+  private threadKind: "chat" | "worker" = "chat";
+  // Held from launch() so controls can be applied wherever a conversation
+  // opens, without threading the config through every navigation path.
+  private launchedConfig: ProviderConfig | null = null;
+  // Resolved once in the constructor: packaged it comes from CLOSENI_STORAGE,
+  // otherwise from the provider config, which is what the tests rely on.
+  private profilePath: string = "";
+  /** Workers share the launcher's context and must not close it. */
+  private ownsContext: boolean = true;
+
+  /** Which provider this controller drives - a saved thread belongs to one. */
+  private providerId: string = "";
+
+  /** The re-capture hint is printed once per process, not per conversation. */
+  private static candidatesReported = false;
+
+  /** Streams seen since the last reset: how many opened, how many closed. */
+  private streamsOpened = 0;
+  private streamsClosed = 0;
+  /** HTTP status of the most recent reply request, 0 until one is seen. */
+  private lastStreamStatus = 0;
+  /** What the ended reply stream said about itself (replySignals), null until it ends. */
+  private replySignals: ReplySignals | null = null;
+  /** What sendPrompt last sent, so a dropped reply can be asked for again. */
+  private lastPrompt: string | null = null;
+  private status = new StatusTracker(statusChanged);
+  private pacer: Pacer | null = null;
+  private storageRoot: string = "";
+  private streamWatchInstalled = false;
+
+  constructor(config: ProviderConfig) {
+    const paths = storagePaths(process.env.CLOSENI_STORAGE, config);
+    if (!fs.existsSync(paths.root)) fs.mkdirSync(paths.root, { recursive: true });
+    this.sessionStoreFile = paths.sessionsFile;
+    this.profilePath = paths.profileDir;
+    this.storageRoot = paths.root;
+    this.providerId = config.id;
+    // The budget is the person's (Settings, passed down as AGENT_DAILY_BUDGET);
+    // the gap is the provider's.
+    this.pacer = new Pacer(Pacer.fileFor(paths.root, config.id), config.pacing || {},
+      parseBudget(process.env.AGENT_DAILY_BUDGET), sleep);
+    this.isHeaded = process.env.AGENT_HEADED === "1";
+  }
+
+  /** Where the provider stands (provider-status.ts). */
+  getStatus(): ProviderStatus {
+    return this.status.status;
+  }
+
+  /**
+   * A scrubbed copy of the page under the storage directory's diagnostics/,
+   * for working out which selector a redesign broke. "" when there is no page
+   * or it could not be saved.
+   */
+  async snapshotPage(reason: string): Promise<string> {
+    if (!this.page) return "";
+    try {
+      const html = await bounded(this.page.content(), "page snapshot");
+      const file = saveSnapshot(this.storageRoot, this.providerId, reason, html);
+      if (file) console.log("Saved a page snapshot (text and personal data removed): " + file);
+      return file;
+    } catch {
+      return "";
+    }
+  }
+
+  /**
+   * Startup health check: is the composer there to type into? Run before the
+   * first prompt, so a redesigned page is reported as one at once instead of
+   * as a 15-second wait inside the first send. Null when it is; otherwise
+   * what to tell the person, with the status set to PAGE_CHANGED.
+   */
+  async checkPage(config: ProviderConfig): Promise<string | null> {
+    if (!this.page) return "Browser not launched";
+    const t = await this.pageTrouble(config);
+    if (t) return describeTrouble(t, 1, config.name);
+    const found = await findWithin(this.page, tiersFor(config.locate?.chatInput, config.selectors.chatInput), 15000);
+    if (found) {
+      console.log("Page check: the composer is there (found by its " + found.tier + ").");
+      this.status.set("READY");
+      return null;
+    }
+    return await this.pageChanged(config, "no composer at startup");
+  }
+
+  /**
+   * What the page shows right now, as a status, read the way the live wait
+   * reads it: the URL and any human check, a notice in the conversation, the
+   * reply stream and the page's own "still answering" signs, then whether the
+   * composer is there. READY with no messages is an idle chat; with some, a
+   * finished one. Run against saved pages by the offline tests.
+   */
+  async readPageState(config: ProviderConfig): Promise<{ status: ProviderStatus; detail: string; messages: number }> {
+    const messages = await this.countMessages(config);
+    const as = (status: ProviderStatus, detail: string) => ({ status: status, detail: detail, messages: messages });
+    if (!this.page) return as("PAUSED", "no page");
+    const t = (await this.pageTrouble(config)) || (await this.replyTrouble(config, true));
+    if (t) return as(statusForTrouble(t.kind), t.detail);
+    if (this.streamsOpened > this.streamsClosed) return as("GENERATING", "the reply stream is open");
+    if (await this.stopButtonVisible(config)) return as("GENERATING", "the stop button is showing");
+    if (messages > 0 && (await this.toolbarUnderReply(config)) === false) return as("GENERATING", "the newest reply has no toolbar yet");
+    if (await this.stillThinking(config)) return as("GENERATING", "the model is still reasoning");
+    if (!(await findNow(this.page, tiersFor(config.locate?.chatInput, config.selectors.chatInput)))) return as("PAGE_CHANGED", "no composer");
+    return as("READY", messages ? "a finished reply" : "an empty chat");
+  }
+
+  /** Whether the newest turn's reasoning header still says the model is thinking. */
+  private async stillThinking(config: ProviderConfig): Promise<boolean> {
+    const s = config.selectors;
+    if (!this.page || !s.turn || !s.thinkingHeader || !config.thinkingActiveText) return false;
+    try {
+      return await this.page.evaluate((arg: { turn: string; header: string; text: string }) => {
+        const turns = (globalThis as any).document.querySelectorAll(arg.turn);
+        const last = turns[turns.length - 1];
+        if (!last) return false;
+        const re = new RegExp(arg.text, "i");
+        return Array.from(last.querySelectorAll(arg.header) as ArrayLike<any>).some((h: any) => re.test(String(h.textContent || "").trim()));
+      }, { turn: s.turn, header: s.thinkingHeader, text: config.thinkingActiveText });
+    } catch {
+      return false;
+    }
+  }
+
+  /** The composer is gone: snapshot, PAGE_CHANGED, and the words for the person. */
+  private async pageChanged(config: ProviderConfig, reason: string): Promise<string> {
+    const file = await this.snapshotPage(reason);
+    this.status.set("PAGE_CHANGED", reason);
+    return config.name + "'s page has changed: " + reason + " (selectors v" + (config.configVersion || 1) + ")." +
+      " Its selectors in local-agent/config/providers/" + config.id + ".json need updating" +
+      (file ? "; a snapshot of the page is in " + file : "") + ".";
+  }
+
+  setWorkspace(ws: string) {
+    this.workspace = ws;
+  }
+
+  private loadSessions(): any {
+    return readSessions(this.sessionStoreFile);
+  }
+
+  private saveSessions(sessions: any) {
+    writeSessions(this.sessionStoreFile, sessions);
+  }
+
+  setThreadKind(kind: "chat" | "worker") {
+    this.threadKind = kind;
+  }
+
+  /** Thread and ledger belong to the same run and are cleared together. */
+  resetBuildRunForWorkspace() {
+    resetBuildRun(this.sessionStoreFile, this.workspace);
+  }
+
+  getLedger(): BuildLedger {
+    return getBuildLedger(this.sessionStoreFile, this.workspace);
+  }
+
+  saveLedger(ledger: BuildLedger) {
+    setBuildLedger(this.sessionStoreFile, this.workspace, ledger);
+  }
+
+  /** Reply streams seen since the last send, for the smoke report. */
+  streamStats(): { opened: number; closed: number; status: number } {
+    return { opened: this.streamsOpened, closed: this.streamsClosed, status: this.lastStreamStatus };
+  }
+
+  getConversationSize(): { chars: number; turns: number } {
+    return getConversationSize(this.sessionStoreFile, this.workspace);
+  }
+
+  saveConversationSize(size: { chars: number; turns: number }) {
+    setConversationSize(this.sessionStoreFile, this.workspace, size);
+  }
+
+  /**
+   * Abandon this conversation and open an empty one.
+   *
+   * For a build that has outgrown its thread. The ledger and the size counter
+   * go with it: both describe what the OLD conversation had been shown, and
+   * carrying either across would have the next step compute its delta against
+   * a thread that no longer exists.
+   */
+  async startFreshConversation(config: ProviderConfig): Promise<void> {
+    this.resetBuildRunForWorkspace();
+    // The old thread is no longer this workspace's. Left saved, a restart
+    // before the new chat's first message resumed the FULL old thread with its
+    // size counted as zero. A worker's
+    // thread was never saved, so there is nothing of it to clear.
+    if (this.threadKind !== "worker") this.createNewChat(this.workspace);
+    await this.navigateFresh(config);
+  }
+
+  /**
+   * The saved thread, but only if it belongs to the provider now running.
+   *
+   * Threads are stored per workspace, not per provider. While every mode forced
+   * a fresh chat that never mattered; now that they resume, handing a
+   * chat.deepseek.com URL to a different provider's browser would either waste
+   * a 30s navigation or - worse - quietly load DeepSeek inside the other
+   * provider's profile and send the prompt there.
+   *
+   * A thread saved before this field existed has no provider recorded. Those
+   * are treated as belonging to whoever asks, because the only provider that
+   * could have written one is the only one that has ever been usable.
+   */
+  getChatUrlForWorkspace(workspace: string): string | null {
+    if (!workspace) return null;
+    const sessions = this.loadSessions();
+    const entry = sessions[workspace];
+    if (!entry || !entry.activeChat) return null;
+    if (entry.activeChatProvider && this.providerId &&
+        entry.activeChatProvider !== this.providerId) {
+      console.log("Saved thread belongs to " + entry.activeChatProvider + "; starting a new one.");
+      return null;
+    }
+    return entry.activeChat;
+  }
+
+  /**
+   * The saved conversation, described for the interface.
+   *
+   * Returns the full URL as well as a short label, because the panel needs the
+   * URL to offer "open this conversation in your browser" - the whole point of
+   * the thread being a real one on the provider's site. The label is what gets
+   * displayed and logged; the URL is only ever handed to the shell.
+   */
+  describeSavedThread(workspace: string): { label: string; url: string } | null {
+    const url = this.getChatUrlForWorkspace(workspace);
+    if (!url) return null;
+    return { label: describeThread(url) || "thread", url: url };
+  }
+
+  setChatUrlForWorkspace(workspace: string, url: string, title?: string) {
+    if (!workspace) return;
+    // A worker's thread is transient by design: recording it would clobber the
+    // main build thread that a resume depends on.
+    if (this.threadKind === "worker") return;
+    const sessions = this.loadSessions();
+    if (!sessions[workspace]) sessions[workspace] = { chats: [], activeChat: null };
+    sessions[workspace].activeChat = url;
+    sessions[workspace].activeChatProvider = this.providerId;
+    // Every thread goes in the list, titled or not: the app's chat list is
+    // read from here, and recording only titled ones left it always empty.
+    // The app renames an untitled one after its first message.
+    if (!sessions[workspace].chats.find((c: any) => c.url === url)) {
+      sessions[workspace].chats.push({
+        url: url,
+        title: title || "",
+        createdAt: new Date().toISOString(),
+        provider: this.providerId || undefined,
+      });
+    }
+    this.saveSessions(sessions);
+  }
+
+  createNewChat(workspace: string) {
+    if (!workspace) return;
+    const sessions = this.loadSessions();
+    if (!sessions[workspace]) sessions[workspace] = { chats: [], activeChat: null };
+    sessions[workspace].activeChat = null;
+    this.saveSessions(sessions);
+  }
+
+  async launch(config: ProviderConfig): Promise<void> {
+    const profilePath = this.profilePath;
+    if (!fs.existsSync(profilePath)) fs.mkdirSync(profilePath, { recursive: true });
+    const isHeadless = !this.isHeaded;
+    console.log("Launching browser (" + (isHeadless ? "headless" : "HEADED - watch me!") + ") for " + config.name + "...");
+    this.context = await chromium.launchPersistentContext(profilePath, {
+      // The full Chromium in headless mode too, not Playwright's separate
+      // headless shell: the app downloads only the full one (hasChromium), so
+      // a bundled headless run failed with "Executable doesn't exist".
+      channel: "chromium",
+      headless: isHeadless,
+      viewport: { width: 1280, height: 900 },
+      args: ["--disable-blink-features=AutomationControlled"],
+    });
+    this.page = this.context.pages()[0] || (await this.context.newPage());
+    // Needed to read back what a provider's own Copy button puts on the
+    // clipboard. Granted to the provider's origin only, and failure is
+    // survivable - extraction falls back to reading the DOM.
+    try {
+      await this.context.grantPermissions(["clipboard-read", "clipboard-write"],
+        { origin: new URL(config.baseUrl).origin });
+    } catch { /* older browser, or an origin that will not take it */ }
+    this.launchedConfig = config;
+  }
+
+  /** The context this controller launched, for workers to attach to. */
+  /**
+   * Put the provider's UI into the state the user asked for.
+   *
+   * These settings do not survive a new chat — the owner confirmed they reset —
+   * and builds open a fresh thread per run, so this runs every time a
+   * conversation opens rather than once at sign-in. It is called from
+   * waitForLogin, which is the one thing every path that opens a conversation
+   * already does after the chat input appears.
+   */
+  private async applyControls(): Promise<void> {
+    const config = this.launchedConfig;
+    if (!this.page || !config) return;
+    const desired = parseDesiredControls(process.env.AGENT_CONTROLS);
+    if (Object.keys(desired).length === 0) return;
+    const results = await applyProviderControls(this.page, config.id, config.controlSelectors, desired);
+    if (!results.length) return;
+    // A control that is simply not on the page is reported once, quietly. It
+    // repeats on every conversation open, and a provider redesign would
+    // otherwise bury the run log in identical lines.
+    const acted = results.filter((r) => r.action !== "unavailable");
+    const missing = results.filter((r) => r.action === "unavailable");
+    if (acted.length) {
+      console.log("Provider controls:");
+      for (const line of formatResults(config.id, acted)) console.log(line);
+    }
+    if (missing.length) {
+      console.log("Provider controls not found on this page: " +
+        missing.map((r) => r.id).join(", ") + " (selectors may need re-capturing)");
+      await this.reportToggleCandidates();
+    }
+  }
+
+  /**
+   * List the pressable controls the page actually has, once, when one we wanted
+   * was missing.
+   *
+   * Re-capturing a selector otherwise means installing the app, signing in,
+   * opening devtools and hunting - and the person who has to do it is usually
+   * not the person who can read the run log. Printing the candidates turns the
+   * next ordinary run into the diagnostic. Labels and ARIA state only; no page
+   * text, no URLs.
+   */
+  private async reportToggleCandidates(): Promise<void> {
+    if (!this.page) return;
+    // Once per run. A build opens a conversation per worker and the list is the
+    // same every time; repeating it buries the step log it is meant to help.
+    if (PlaywrightController.candidatesReported) return;
+    PlaywrightController.candidatesReported = true;
+    try {
+      // This body runs in the page, where DOM globals exist. The agent compiles
+      // without the "dom" lib, so it is written untyped rather than dragging
+      // browser typings into a Node build for one diagnostic.
+      const found: string[] = await this.page.evaluate(() => {
+        const doc: any = (globalThis as any).document;
+        const out: string[] = [];
+        const seen: Record<string, boolean> = {};
+        const nodes: any[] = Array.prototype.slice.call(doc.querySelectorAll(
+          '[aria-pressed],[role="switch"],[role="radio"],[role="checkbox"],button,[role="button"]'), 0, 400);
+        for (const el of nodes) {
+          const label = String(el.innerText || el.getAttribute("aria-label") || "")
+            .trim().replace(/\s+/g, " ");
+          if (!label || label.length > 40) continue;
+          const cls = String(el.getAttribute("class") || "").split(/\s+/).slice(0, 3).join(".");
+          const pressed = el.getAttribute("aria-pressed") || el.getAttribute("aria-checked");
+          const key = label + "|" + cls;
+          if (seen[key]) continue;
+          seen[key] = true;
+          out.push("      " + JSON.stringify(label) +
+            "  <" + String(el.tagName).toLowerCase() + (cls ? "." + cls : "") + ">" +
+            (pressed === null ? "" : "  aria-pressed/checked=" + pressed));
+          if (out.length >= 12) break;
+        }
+        return out;
+      });
+      if (found.length) {
+        console.log("    pressable controls on this page (for re-capturing):");
+        for (const line of found) console.log(line);
+      }
+    } catch {
+      /* diagnostics must never break a run */
+    }
+  }
+
+  /**
+   * Resume this workspace's conversation. Returns true when the saved thread
+   * actually loaded, so callers know whether the model still has the earlier
+   * messages in front of it.
+   */
+  async navigateToChat(config: ProviderConfig): Promise<boolean> {
+    if (!this.page) throw new Error("Browser not launched");
+    const savedUrl = this.getChatUrlForWorkspace(this.workspace);
+    if (savedUrl) {
+      console.log("Resuming session chat " + describeThread(savedUrl) + " (same conversation as before).");
+      await this.goto(savedUrl);
+      try {
+        // 5s was too tight for a cold profile: the thread had loaded but the
+        // composer had not mounted yet, so a perfectly good conversation was
+        // abandoned and every message became a new one.
+        await this.page.waitForSelector(config.selectors.chatInput, { timeout: 15000, state: "visible" });
+        console.log("Session chat loaded successfully");
+        return true;
+      } catch {
+        console.log("Session chat URL invalid, starting new chat...");
+      }
+    }
+    console.log("Starting new chat for workspace: " + this.workspace);
+    await this.goto(config.baseUrl);
+    return false;
+  }
+
+  async navigateFresh(config: ProviderConfig): Promise<void> {
+    if (!this.page) throw new Error("Browser not launched");
+    phase("opening", "new conversation");
+    console.log("Starting fresh chat (no saved thread)...");
+    await this.goto(config.baseUrl);
+  }
+
+  /** page.goto, made again when Chromium says to (RETRYABLE_NAVIGATION). */
+  private async goto(url: string): Promise<void> {
+    for (let attempt = 1; ; attempt++) {
+      try {
+        await this.page!.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
+        return;
+      } catch (e) {
+        const m = String(e).match(RETRYABLE_NAVIGATION);
+        if (!m || attempt >= NAVIGATION_ATTEMPTS) throw e;
+        console.log("Navigation interrupted (" + m[0] + "), trying again...");
+        await sleep(1000);
+      }
+    }
+  }
+
+  /**
+   * Watch the request the page streams its reply over.
+   *
+   * The page's own fetch is wrapped and the body tee'd, so the site behaves
+   * exactly as before and we get told when the stream opens and closes. Only
+   * the open/close events are used; the bytes are counted and discarded.
+   *
+   * Everything here is best-effort. A provider with no pattern configured, a
+   * page that uses XHR instead, a binding that fails to install - all of it
+   * simply leaves the old text-stability path in charge.
+   */
+  private async watchReplyStream(config: ProviderConfig): Promise<void> {
+    const pattern = config.selectors.streamUrlPattern;
+    if (!this.page || !pattern) return;
+
+    // The wrapper lives in stream-tap.ts, shared with the browser-native layer
+    // so the two cannot drift. It is installed two ways, below.
+    const tap = replyStreamTap;
+    const signals = config.selectors.replySignals;
+    const tapArg = signals && (signals.status || signals.notice) ? { pattern: pattern, status: signals.status, notice: signals.notice } : pattern;
+
+    try {
+      if (!this.streamWatchInstalled) {
+        await this.page.exposeBinding("__closeniStream", (_src: any, ev: string, status?: any, notices?: any) => {
+          if (ev === "signal") {
+            this.replySignals = { status: typeof status === "string" ? status : "", notices: Array.isArray(notices) ? notices.map(String).slice(0, 10) : [] };
+          } else if (ev === "open") {
+            this.streamsOpened++;
+            // Kept so the wait can stop early on a request that will never
+            // answer. A 429 today means five minutes of polling and then a
+            // report that the model was slow; it was never asked.
+            this.lastStreamStatus = typeof status === "number" ? status : 0;
+          } else if (ev === "close") this.streamsClosed++;
+        });
+        // For any page loaded from here on.
+        await this.page.addInitScript(tap, tapArg);
+        this.streamWatchInstalled = true;
+      }
+      // And for the document already open: addInitScript only runs on documents
+      // loaded after it is added, so without this the tap is never installed on
+      // the conversation the app is currently sitting in - which is every
+      // conversation, because the watcher is armed when a prompt is sent. The
+      // wrapper no-ops if it is already in place.
+      await this.page.evaluate(tap, tapArg);
+    } catch {
+      /* no stream watching; text stability still decides */
+    }
+  }
+
+  async waitForLogin(timeoutMs: number = 120000): Promise<boolean> {
+    if (!this.page) throw new Error("Browser not launched");
+    // A login cannot happen in a window nobody can see, so a headless run gives
+    // up quickly and names the fix instead of waiting out the full timeout.
+    const effective = this.isHeaded ? timeoutMs : Math.min(timeoutMs, 15000);
+    phase("connecting", "waiting for the composer");
+    console.log("Waiting for chat input (" + Math.round(effective / 1000) + "s)...");
+    try {
+      const started = Date.now();
+      await this.page.waitForSelector('textarea, div[contenteditable="true"]', { timeout: effective, state: "visible" });
+      if (!(await this.guestMarkerGone(effective - (Date.now() - started)))) {
+        console.log("The page is open but signed out (its sign-in button is showing).");
+        return false;
+      }
+      console.log("Chat input ready.");
+      await this.applyControls();
+      return true;
+    } catch {
+      console.log(this.isHeaded
+        ? "No chat input appeared."
+        : "No chat input appeared. If this provider needs a login, use Sign in first.");
+      return false;
+    }
+  }
+
+  /**
+   * Qwen and GLM let guests type, so a composer proves nothing there; their own
+   * sign-in button does. It can mount a moment after the composer, so give it
+   * a few seconds to show before calling the page signed in. Headed, wait for
+   * the person to finish signing in.
+   */
+  private async guestMarkerGone(remainingMs: number): Promise<boolean> {
+    const sel = this.launchedConfig && this.launchedConfig.selectors.signedOutMarker;
+    if (!sel || !this.page) return true;
+    const marker = this.page.locator(sel).first();
+    try { await marker.waitFor({ state: "visible", timeout: 3000 }); } catch { return true; }
+    if (!this.isHeaded) return false;
+    try { await marker.waitFor({ state: "hidden", timeout: Math.max(remainingMs, 1000) }); return true; } catch { return false; }
+  }
+
+  async sendPrompt(prompt: string, config: ProviderConfig): Promise<void> {
+    if (!this.page) throw new Error("Browser not launched");
+    this.lastPrompt = prompt;
+    // Signed out, there is no composer to find: say so now rather than after
+    // the 15s wait for one, and in words that say what to do. The same for a
+    // human check, which only the person can clear.
+    this.throwIfSignedOut(config);
+    await this.throwIfChallenged(config);
+    this.status.set("READY");
+    // Never type into a composer the provider has disabled because it is still
+    // answering. The re-ask after a timeout used to fire immediately, so the
+    // "reply" it then waited for was the tail of the previous answer rather
+    // than the JSON it had just asked for.
+    await this.waitUntilIdle(config);
+    await this.watchReplyStream(config);
+    // Per exchange: the counts answer "did a reply stream open and close since
+    // this prompt", which is meaningless if earlier ones are still counted.
+    this.streamsOpened = 0;
+    this.streamsClosed = 0;
+    this.lastStreamStatus = 0;
+    this.replySignals = null;
+    // The gap and the daily budget, last before typing so the wait is not
+    // spent before the checks above.
+    if (this.pacer) {
+      try {
+        await this.pacer.beforeSend((ms) => {
+          console.log("Pacing: waiting " + Math.round(ms / 1000) + "s before the next prompt.");
+          phase("waiting", "pacing - " + Math.round(ms / 1000) + "s");
+        });
+      } catch (e) {
+        if (e instanceof BudgetSpent) this.status.set("PAUSED", "daily budget used up");
+        throw e;
+      }
+    }
+    phase("sending", prompt.length + " chars");
+    console.log("Typing prompt into chat (length: " + prompt.length + ")...");
+    const found = await findWithin(this.page, tiersFor(config.locate?.chatInput, config.selectors.chatInput), 15000);
+    if (!found) {
+      console.log("ERROR: Could not find chat input after 15 seconds");
+      this.throwIfSignedOut(config);
+      await this.throwIfChallenged(config);
+      throw new Error("Chat input not found. " + await this.pageChanged(config, "no composer"));
+    }
+    if (found.tier !== "css") console.log("Found the composer by its " + found.tier + ".");
+    const input = found.locator;
+    await input.click();
+    const sentFrom = this.page.url();
+
+    if (prompt.length > 5000) {
+      console.log("Long prompt - setting the composer directly...");
+      // Through the NATIVE value setter, not el.value.
+      //
+      // DeepSeek's composer is React-controlled, and React keeps its own copy of
+      // the value. Assigning el.value updates the DOM but not that copy, so
+      // React's tracker sees no change and swallows the input event: the text is
+      // visible, React still believes the box is empty, the send control stays
+      // disabled, and Enter does nothing.
+      //
+      // That is exactly what happened the first time a conversation rolled over
+      // in a real build - a 6384-character seeded prompt went in, nothing was
+      // sent, and the step sat at "messages=0" until its 300s timeout. The bug
+      // was invisible until then because few prompts are long enough to take
+      // this branch.
+      await this.page.evaluate((text: string) => {
+        const doc = (globalThis as any).document;
+        const w = globalThis as any;
+        const el = doc.querySelector('textarea, div[contenteditable="true"]');
+        if (!el) return;
+        if (el.tagName === "TEXTAREA") {
+          const desc = Object.getOwnPropertyDescriptor(w.HTMLTextAreaElement.prototype, "value");
+          if (desc && desc.set) desc.set.call(el, text);
+          else el.value = text;
+        } else {
+          el.textContent = text;
+        }
+        el.dispatchEvent(new Event("input", { bubbles: true }));
+      }, prompt);
+      await this.page.waitForTimeout(500);
+    } else {
+      await input.fill(prompt);
+    }
+
+    // Verify the composer actually holds the prompt before trying to send it.
+    //
+    // Defence that does not depend on knowing which framework the page uses: if
+    // the text is not there, pressing Enter sends nothing and the step waits out
+    // its whole timeout with no way to tell why. Playwright's fill() goes through
+    // the browser's own input pipeline, so it is the fallback that works when a
+    // hand-rolled write does not.
+    const seen = await this.page.evaluate(() => {
+      const doc = (globalThis as any).document;
+      const el = doc.querySelector('textarea, div[contenteditable="true"]');
+      if (!el) return -1;
+      return (el.tagName === "TEXTAREA" ? el.value : el.textContent || "").length;
+    });
+    if (seen < Math.min(prompt.length, 40)) {
+      console.log("The composer did not take the prompt (" + seen + " of " +
+        prompt.length + " characters) - retyping it.");
+      await input.fill(prompt);
+      await this.page.waitForTimeout(500);
+    }
+    await this.page.waitForTimeout(1000);
+
+    try {
+      // A provider with no send selector sends with Enter by design (DeepSeek).
+      const sendTiers = tiersFor(config.locate?.sendButton, config.selectors.sendButton);
+      const sendBtn = sendTiers.length ? await findNow(this.page, sendTiers) : null;
+      if (sendBtn) {
+        console.log("Clicking send button...");
+        await sendBtn.locator.click();
+      } else if (!sendTiers.length) {
+        console.log("Sending with Enter...");
+        await input.press("Enter");
+      } else {
+        console.log("No send button found, pressing Enter...");
+        await input.press("Enter");
+      }
+    } catch (e) {
+      console.log("Send button click failed, pressing Enter: " + e);
+      await input.press("Enter");
+    }
+    console.log("Prompt sent!");
+    this.status.set("GENERATING");
+
+    const currentUrl = this.page.url();
+    // DeepSeek sends a message to a NEW chat by itself once the thread is past
+    // its length limit ("Length limit exceeded. Your message will be sent to a
+    // new chat."). That chat has none of the conversation, so carrying on in
+    // it would lose the conversation silently. Say the thread is full instead.
+    const movedFrom = chatId(sentFrom), movedTo = chatId(currentUrl);
+    if (config.replyErrors && movedFrom && movedTo && movedFrom !== movedTo) {
+      const t: Trouble = { kind: "full", detail: "the message went to a new chat" };
+      console.log(config.name + " moved the message to a new chat - the thread is past its length limit.");
+      throw new ProviderTrouble(t, describeTrouble(t, 1, config.name));
+    }
+    if (currentUrl && currentUrl !== config.baseUrl && !currentUrl.endsWith("/")) {
+      this.setChatUrlForWorkspace(this.workspace, currentUrl);
+    } else {
+      await sleep(2000);
+      const updatedUrl = this.page.url();
+      if (updatedUrl && updatedUrl !== config.baseUrl) {
+        this.setChatUrlForWorkspace(this.workspace, updatedUrl);
+      }
+    }
+  }
+
+  /**
+   * Block until the provider is not mid-answer, or the ceiling passes.
+   *
+   * Only meaningful for providers that expose a stop button; for the rest this
+   * returns immediately and behaviour is unchanged.
+   */
+  private async waitUntilIdle(config: ProviderConfig, ceilingMs: number = MAX_GRACE_MS): Promise<void> {
+    if (!this.page) return;
+    if (!config.completionRules?.waitForStopButtonDisappear || !config.selectors.stopButton) return;
+    if (!(await this.stopButtonVisible(config))) return;
+    console.log("Provider is still answering - waiting for it to finish before sending.");
+    const start = Date.now();
+    while (Date.now() - start < ceilingMs) {
+      await this.page.waitForTimeout(POLL_INTERVAL_MS);
+      if (!(await this.stopButtonVisible(config))) {
+        console.log("Provider idle after " + Math.round((Date.now() - start) / 1000) + "s - sending now.");
+        return;
+      }
+    }
+    console.log("Provider still busy after " + Math.round(ceilingMs / 1000) + "s - sending anyway.");
+  }
+
+  private async stopButtonVisible(config: ProviderConfig): Promise<boolean> {
+    if (!this.page || !config.selectors.stopButton) return false;
+    // Visible, not merely present (findNow checks): a provider that hides its
+    // stop button with CSS rather than removing it from the DOM would otherwise
+    // read as permanently generating, and the signal would never fire.
+    return !!(await findNow(this.page, tiersFor(config.locate?.stopButton, config.selectors.stopButton)));
+  }
+
+  /**
+   * Whether the provider's message toolbar (copy, regenerate) is drawn after
+   * the newest reply - drawn once a reply is finished. Null when no toolbar
+   * selector is configured, or the page cannot be read: nothing to wait on.
+   */
+  private async toolbarUnderReply(config: ProviderConfig): Promise<boolean | null> {
+    const bar = config.selectors.messageToolbar;
+    if (!this.page || !bar) return null;
+    const sel = await this.assistantSelector(config);
+    try {
+      return await this.page.evaluate(([msgSel, barSel]) => {
+        const doc: any = (globalThis as any).document;
+        const msgs = doc.querySelectorAll(msgSel);
+        const last = msgs[msgs.length - 1];
+        if (!last) return false;
+        // 4 is Node.DOCUMENT_POSITION_FOLLOWING: the toolbar comes after it.
+        return Array.from(doc.querySelectorAll(barSel) as ArrayLike<any>).some((b: any) =>
+          last.contains(b) || !!(last.compareDocumentPosition(b) & 4));
+      }, [sel, bar] as const);
+    } catch {
+      return null;
+    }
+  }
+
+  private async assistantSelector(config: ProviderConfig): Promise<string> {
+    if (this.pickedSelector) return this.pickedSelector;
+    if (!this.page) return config.selectors.assistantMessage;
+    // The fallbacks too: in a new chat whose first reply is still thinking the
+    // configured selector matches nothing, and a bare ds-markdown fallback
+    // would match the reasoning and be cached for the rest of the session.
+    const think = config.selectors.thinking;
+    const candidates = [config.selectors.assistantMessage].concat(FALLBACK_SELECTORS)
+      .map((sel) => think ? ":is(" + sel + "):not(" + think + " *)" : sel);
+    for (const sel of candidates) {
+      try {
+        const n = await this.page.locator(sel).count();
+        if (n > 0) { this.pickedSelector = sel; return sel; }
+      } catch {}
+    }
+    return candidates[0];
+  }
+
+  /**
+   * How many nodes each configured selector matches, right now.
+   *
+   * Counting only - what the numbers mean is judged in selector-health, which
+   * is a pure function and therefore testable without a browser.
+   *
+   * Every count is independently guarded. A selector with invalid CSS throws
+   * inside Playwright, and one bad selector must not stop the probe from
+   * reporting on the other six; a health check that dies on the first problem
+   * is the least useful moment for it to die.
+   */
+  async probeSelectors(config: ProviderConfig): Promise<Record<string, number>> {
+    const out: Record<string, number> = {};
+    if (!this.page) return out;
+    const sels: Record<string, string | undefined> = {
+      chatInput: config.selectors.chatInput,
+      sendButton: config.selectors.sendButton,
+      assistantMessage: await this.assistantSelector(config).catch(() => config.selectors.assistantMessage),
+      copyButton: config.selectors.copyButton,
+      stopButton: config.selectors.stopButton,
+    };
+    for (const key of Object.keys(sels)) {
+      const sel = sels[key];
+      if (!sel) continue;
+      try {
+        out[key] = await this.page.locator(sel).count();
+      } catch {
+        // An unmatched selector and an invalid one both mean "found nothing
+        // usable", which is what the caller acts on either way.
+        out[key] = 0;
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Point this controller at a page somebody else opened.
+   *
+   * A test seam, and the only one. It exists so the replay harness can run the
+   * REAL extractors against recorded provider markup rather than a copy of them
+   * - a copy would keep passing after the original broke, which is the mistake
+   * the smoke test was built to avoid.
+   *
+   * Deliberately not the removed `attachTo`: that shared a browser context
+   * between parallel build workers and went with the one-conversation decision.
+   * This takes a page and does nothing else - no context, no thread, no
+   * session state.
+   */
+  attachPageForReplay(page: Page): void {
+    this.page = page;
+    this.ownsContext = false;
+    // Another page: its reply selector is picked again.
+    this.pickedSelector = null;
+  }
+
+  async countMessages(config: ProviderConfig): Promise<number> {
+    if (!this.page) return 0;
+    try {
+      const sel = await this.assistantSelector(config);
+      return await this.page.locator(sel).count();
+    } catch {
+      return 0;
+    }
+  }
+
+  async getLastMessageText(config: ProviderConfig): Promise<string> {
+    if (!this.page) return "";
+    try {
+      const sel = await this.assistantSelector(config);
+      const locs = await this.page.locator(sel).all();
+      if (locs.length === 0) return "";
+      return (await locs[locs.length - 1].textContent()) || "";
+    } catch {
+      return "";
+    }
+  }
+
+  async getLastMessageInnerText(config: ProviderConfig): Promise<string> {
+    if (!this.page) return "";
+    try {
+      const sel = await this.assistantSelector(config);
+      const locs = await this.page.locator(sel).all();
+      if (locs.length === 0) return "";
+      return (await locs[locs.length - 1].innerText()) || "";
+    } catch {
+      return "";
+    }
+  }
+
+  /**
+   * What each poll of the wait loop saw.
+   *
+   * Optional, and used only by the smoke test. It exists so that test can watch
+   * the REAL wait rather than a reimplementation of it - a copy would keep
+   * passing after the original broke, which is the one thing a smoke test must
+   * not do.
+   *
+   * `onThinking` is handed the newest turn's reasoning each time it changes,
+   * and once more just before the reply is read so its end is not lost.
+   */
+  async waitForResponse(
+    config: ProviderConfig,
+    prevCount: number,
+    prevContent: string,
+    observe?: (tick: { messages: number; chars: number; stopVisible: boolean }) => void,
+    onThinking?: (text: string) => void,
+  ): Promise<string> {
+    let count = prevCount;
+    let content = prevContent;
+    let dropped = false;
+    let tries = 1;
+    let attempt = 0;
+    for (;;) {
+      try {
+        return await this.waitOnce(config, count, content, observe, onThinking);
+      } catch (e) {
+        if (this.lastPrompt === null) throw e;
+        if (e instanceof ReplyDropped) this.status.set("RESPONSE_INCOMPLETE", "the reply was dropped");
+        if (e instanceof ReplyDropped && !dropped) {
+          // A reply the provider dropped before writing any of it was never
+          // read, so the same prompt can go again. Once: a second drop is the
+          // provider's state, not a hiccup, and the caller hears about it.
+          dropped = true;
+          console.log(e.message + " Sending the prompt again.");
+          await sleep(3000);
+        } else if (e instanceof ProviderTrouble) {
+          // Busy, rate limited, or filtered: the provider said so instead of
+          // answering. Wait as configured and send again; once the waits run
+          // out, the person hears the provider's own words and how often it
+          // was asked. Signed out and full are never retried here.
+          const ms = mayRetry(statusForTrouble(e.kind)) ? backoffFor(e.kind, attempt++, config.replyErrors) : null;
+          if (ms === null) throw tries > 1 ? new ProviderTrouble(e.trouble, describeTrouble(e.trouble, tries, config.name)) : e;
+          console.log(config.name + " did not answer (" + e.trouble.detail + "). Sending the prompt again in " + Math.round(ms / 1000) + "s.");
+          phase("waiting", config.name + " is " + (e.kind === "rate-limit" ? "rate limiting" : "busy") + " - retrying in " + Math.round(ms / 1000) + "s");
+          await sleep(ms);
+        } else {
+          throw e;
+        }
+        count = await this.countMessages(config);
+        content = await this.getLastMessageText(config);
+        await this.sendPrompt(this.lastPrompt, config);
+        tries++;
+      }
+    }
+  }
+
+  /** Signed out: the page went to the provider's sign-in URL. */
+  private throwIfSignedOut(config: ProviderConfig): void {
+    const rules = config.replyErrors;
+    if (!rules || !rules.signedOutUrl || !this.page) return;
+    const t = classifyTrouble({ url: this.page.url() }, { signedOutUrl: rules.signedOutUrl });
+    if (t) {
+      console.log("The page is at " + this.page.url() + " - signed out.");
+      this.status.set(statusForTrouble(t.kind), t.detail);
+      throw new ProviderTrouble(t, describeTrouble(t, 1, config.name));
+    }
+  }
+
+  /** A human check on the page, by URL or element: the person clears it. */
+  private async pageTrouble(config: ProviderConfig): Promise<Trouble | null> {
+    const rules = config.replyErrors;
+    if (!rules || !this.page) return null;
+    return classifyTrouble({ url: this.page.url(), challengeShown: await this.challengeShown(config) },
+      { signedOutUrl: rules.signedOutUrl, challengeUrl: rules.challengeUrl });
+  }
+
+  private async challengeShown(config: ProviderConfig): Promise<boolean> {
+    const sel = config.replyErrors && config.replyErrors.challenge;
+    if (!sel || !this.page) return false;
+    try { return (await this.page.locator(sel).count()) > 0; } catch { return false; }
+  }
+
+  private async throwIfChallenged(config: ProviderConfig): Promise<void> {
+    const t = await this.pageTrouble(config);
+    if (!t || t.kind !== "challenge") return;
+    console.log(config.name + " is showing a human check (" + t.detail + ").");
+    this.status.set("CHALLENGE_REQUIRED", t.detail);
+    throw new ProviderTrouble(t, describeTrouble(t, 1, config.name));
+  }
+
+  /**
+   * Why no reply is coming, when the provider said: the URL, the reply
+   * request's status, what the ended stream said and - with `readPage` - the
+   * text in the conversation's newest item. Null when nothing is wrong, and
+   * always for a provider with no `replyErrors`.
+   */
+  private async replyTrouble(config: ProviderConfig, readPage: boolean): Promise<Trouble | null> {
+    const rules = config.replyErrors;
+    if (!rules || !this.page) return null;
+    let pageNotice = "";
+    if (readPage && rules.notice) {
+      try {
+        pageNotice = await this.page.evaluate((q: { sel: string; ex: string }) => {
+          const all = (globalThis as any).document.querySelectorAll(q.sel);
+          const el = all[all.length - 1];
+          if (!el) return "";
+          const c = el.cloneNode(true);
+          if (q.ex) c.querySelectorAll(q.ex).forEach((n: any) => n.remove());
+          return String(c.textContent || "").trim().slice(0, 500);
+        }, { sel: rules.notice, ex: rules.noticeExclude || "" });
+      } catch { /* unreadable: the stream's word stands */ }
+    }
+    return classifyTrouble({ url: this.page.url(), challengeShown: await this.challengeShown(config), httpStatus: this.lastStreamStatus, signals: this.replySignals || undefined, pageNotice: pageNotice, sentPrompt: this.lastPrompt || undefined }, rules);
+  }
+
+  private async throwIfTrouble(config: ProviderConfig, readPage: boolean): Promise<void> {
+    const t = await this.replyTrouble(config, readPage);
+    if (!t) return;
+    const msg = describeTrouble(t, 1, config.name);
+    console.log("No reply: " + msg);
+    this.status.set(statusForTrouble(t.kind), t.detail);
+    throw new ProviderTrouble(t, msg);
+  }
+
+  private async waitOnce(
+    config: ProviderConfig,
+    prevCount: number,
+    prevContent: string,
+    observe?: (tick: { messages: number; chars: number; stopVisible: boolean }) => void,
+    onThinking?: (text: string) => void,
+  ): Promise<string> {
+    if (!this.page) throw new Error("Browser not launched");
+    const maxWait = config.completionRules?.maxWaitMs || DEFAULT_MAX_WAIT_MS;
+    console.log("Waiting for AI response (" + Math.round(maxWait / 1000) + "s timeout)...");
+    const start = Date.now();
+    await this.page.waitForTimeout(3000);
+
+    let lastThinking = "";
+    const relayThinking = async (): Promise<void> => {
+      if (!onThinking) return;
+      const t = (await this.getLastThinking(config)).trim();
+      if (!t || t === lastThinking) return;
+      lastThinking = t;
+      // A listener that throws must not end the wait it is watching.
+      try { onThinking(t); } catch {}
+    };
+    const finish = async (): Promise<string> => {
+      await relayThinking();
+      // A half-written answer under "Server busy" is not the reply.
+      await this.throwIfTrouble(config, true);
+      const reply = await this.extractWithRetry(config);
+      this.status.set("READY");
+      return reply;
+    };
+
+    let started = false;
+    let lastText: string | null = null;
+    let stableCount = 0;
+    let waitingTicks = 0;
+    let closedTicks = 0;
+    let reresolved = false;
+    let stopSeen = false;
+    let stopGone = false;
+    const useStopButton = !!(config.completionRules?.waitForStopButtonDisappear && config.selectors.stopButton);
+
+    while (Date.now() - start < maxWait) {
+      await this.page.waitForTimeout(POLL_INTERVAL_MS);
+      await relayThinking();
+      const count = await this.countMessages(config);
+      const text = await this.getLastMessageText(config);
+
+      let stopVisibleNow = false;
+      if (useStopButton) {
+        const visible = await this.stopButtonVisible(config);
+        stopVisibleNow = visible;
+        if (visible) { stopSeen = true; stopGone = false; }
+        else if (stopSeen) stopGone = true;
+      }
+      // Never allowed to break the wait: an observer that throws would turn a
+      // diagnostic into the failure it was added to diagnose.
+      if (observe) {
+        try { observe({ messages: count, chars: (text || "").length, stopVisible: stopVisibleNow }); } catch {}
+      }
+
+      // Stop early when the reply request itself failed.
+      //
+      // The status is already known - the tap reads it when headers arrive, for
+      // free, from a request it is watching anyway. Without this, a 429 means
+      // five minutes of polling an element that will never change, and then a
+      // report that the model was slow. It was never asked.
+      //
+      // Only the status is read. No payload is inspected and no message is
+      // pattern-matched, because a rate limit is a 429 whatever the body says -
+      // and guessing at a body nobody here has seen is how this project's every
+      // serious bug started.
+      // With replyErrors, the provider's own account first: busy, rate
+      // limited, signed out or full each have their own answer.
+      await this.throwIfTrouble(config, false);
+      const streamFailure = describeStreamFailure(this.lastStreamStatus);
+      if (streamFailure && streamFailure.fatal) {
+        console.log("The provider's reply request failed: " + streamFailure.message);
+        throw new Error(streamFailure.message);
+      }
+
+      // A reply to a follow-up is usually SHORTER than the answer before it, so
+      // "grew by 50 characters" never fires and the whole wait is spent thinking
+      // about a reply that already arrived. Compare against the baseline text
+      // instead: anything that is not still the previous message counts as new.
+      const isNew = count > prevCount || (text.length > 0 && text !== prevContent);
+
+      if (!started) {
+        if (isNew) {
+          phase("writing", "reply started");
+          console.log("Response started!");
+          started = true;
+          lastText = text;
+          stableCount = 0;
+        } else {
+          waitingTicks++;
+          const elapsed = Math.round((Date.now() - start) / 1000);
+          // Nothing moving at all is a broken watch, not a slow model.
+          //
+          // The picker caches the first selector that matches anything, and a
+          // selector can match three real nodes while matching nothing that a
+          // new reply is rendered into. When that happens the count and the
+          // character total sit perfectly still - observed frozen at
+          // "messages=3, chars=9019" for the whole 300s wait. Re-resolving lets
+          // a later candidate take over instead of waiting out the clock.
+          if (waitingTicks === FROZEN_TICKS && count === prevCount && text.length === prevContent.length) {
+            console.log("Nothing has changed in " +
+              Math.round((FROZEN_TICKS * POLL_INTERVAL_MS) / 1000) +
+              "s - re-resolving which element holds the reply.");
+            this.pickedSelector = null;
+          }
+          closedTicks = this.streamsOpened > 0 && this.streamsClosed >= this.streamsOpened ? closedTicks + 1 : 0;
+          // A notice in place of a reply ("Server busy") adds no message, so
+          // nothing above moves. The page says why.
+          if (closedTicks === 1 || waitingTicks % THINKING_LOG_EVERY_TICKS === 0) await this.throwIfTrouble(config, true);
+          if (endedWithoutReply({ started: started, streamsOpened: this.streamsOpened, streamsClosed: this.streamsClosed, ticksSinceClosed: closedTicks }, DROPPED_TICKS)) {
+            // Once more on a freshly resolved selector first: a watch on the
+            // wrong node also sees nothing, and that reply is not lost.
+            if (!reresolved) {
+              reresolved = true;
+              closedTicks = 0;
+              this.pickedSelector = null;
+              continue;
+            }
+            const secs = Math.round((Date.now() - start) / 1000);
+            console.log("The reply stream closed with nothing on the page after " + secs + "s - the provider dropped the reply.");
+            throw new ReplyDropped(config.name + " ended its reply without writing anything (the reply stream closed after " + secs + "s).");
+          }
+          // The provider's own stop button is the difference between a model
+          // that is composing and one that has not begun.
+          phase(stopSeen && !stopGone ? "generating" : "thinking", elapsed + "s");
+          if (waitingTicks % THINKING_LOG_EVERY_TICKS === 0) {
+            // Say what is being watched, not just that we are waiting.
+            //
+            // "AI is thinking" for five minutes is indistinguishable from
+            // detection that never fires, and the two need completely different
+            // fixes. The selector in use and what it currently sees separate
+            // them: a count that never moves and text that never changes means
+            // we are watching the wrong node, not a slow model.
+            const sel = await this.assistantSelector(config);
+            console.log("AI is thinking... (" + elapsed + "s elapsed of " + Math.round(maxWait / 1000) + "s)" +
+              " [watching " + JSON.stringify(sel.length > 60 ? sel.slice(0, 57) + "..." : sel) +
+              ", messages=" + count + " (was " + prevCount + ")" +
+              ", chars=" + text.length + (stopSeen ? ", stop button seen" : "") + "]");
+          }
+        }
+        continue;
+      }
+
+      // Stability is judged on the text alone, deliberately not on `isNew`.
+      //
+      // isNew means "this differs from the message that was there before the
+      // prompt". Once a reply has started that is the wrong question, and it
+      // has one catastrophic answer: a re-ask usually makes the model resend
+      // almost exactly what it sent last time, and DeepSeek renders its
+      // messages in a ds-virtual-list, so countMessages does not reliably grow
+      // either. Both halves of isNew then read false, stableCount never
+      // increments, and a reply that finished in seconds is waited out for the
+      // full five minutes. Observed twice in one run, on the re-ask after a
+      // plan failed to parse.
+      if (text === lastText) stableCount++;
+      else { stableCount = 0; lastText = text; }
+      phase("writing", text.length + " chars");
+
+      // A closed stream means no more data is coming - but not necessarily that
+      // the page has finished painting it. A provider that fetches a whole
+      // reply and then renders it would be read mid-render, and truncating a
+      // reply is worse than waiting a little longer for it. So the stream is
+      // used to SHORTEN the stability window rather than to skip it: one quiet
+      // tick instead of four. When the DOM is unreadable the text never changes
+      // at all, so that tick passes immediately and the frozen-selector case
+      // still ends in seconds rather than at the timeout.
+      const streamDone = this.streamsOpened > 0 && this.streamsClosed >= this.streamsOpened;
+      const state = {
+        started: started, stopSeen: stopSeen, stopGone: stopGone,
+        stableTicks: stableCount, stableMs: stableCount * POLL_INTERVAL_MS,
+        toolbar: stableCount > 0 ? await this.toolbarUnderReply(config) : null,
+      };
+      if (streamDone && isComplete(state, false, 1)) {
+        console.log("Response complete (the page's reply stream closed)!");
+        return await finish();
+      }
+
+      if (isComplete(state, useStopButton, STABLE_TICKS)) {
+        console.log(useStopButton && stopSeen && stopGone
+          ? "Response complete (stop button disappeared)!"
+          : "Response complete (stable for " + (STABLE_TICKS * POLL_INTERVAL_MS) / 1000 + "s)!");
+        return await finish();
+      }
+    }
+
+    // Hitting the ceiling is not the same as the model having stalled. When the
+    // provider's own stop button is still on screen it is demonstrably still
+    // writing, and extracting there yields a half-finished answer that fails to
+    // parse - which then burns a retry re-asking for JSON the model was already
+    // in the middle of producing. A 15-step build died exactly that way: 300s of
+    // thinking, a partial extract, "No changes parsed", and every step blocked.
+    //
+    // So the ceiling becomes soft while the provider says it is busy, up to a
+    // bounded grace period. A model that has genuinely hung shows no stop button
+    // and still fails fast.
+    if (useStopButton && await this.stopButtonVisible(config)) {
+      const graceMs = Math.min(maxWait, MAX_GRACE_MS);
+      console.log("Reached " + Math.round(maxWait / 1000) + "s but the model is still writing" +
+        " - waiting up to " + Math.round(graceMs / 1000) + "s more.");
+      const graceStart = Date.now();
+      while (Date.now() - graceStart < graceMs) {
+        await this.page.waitForTimeout(POLL_INTERVAL_MS);
+        if (!(await this.stopButtonVisible(config))) {
+          console.log("Response complete (finished during grace period)!");
+          return await finish();
+        }
+        const waited = Math.round((Date.now() - graceStart) / 1000);
+        if (waited % 30 < POLL_INTERVAL_MS / 1000) {
+          console.log("Still writing... (" + waited + "s into grace)");
+        }
+      }
+      console.log("Still writing after the grace period - extracting what there is.");
+    } else if (this.streamsOpened > this.streamsClosed) {
+      // No stop button, but the reply stream is still open: the provider is
+      // still sending (a long answer, a long think). The same bounded grace.
+      const graceMs = Math.min(maxWait, MAX_GRACE_MS);
+      console.log("Reached " + Math.round(maxWait / 1000) + "s but the reply is still streaming" +
+        " - waiting up to " + Math.round(graceMs / 1000) + "s more.");
+      const graceStart = Date.now();
+      let prev: string | null = null;
+      while (Date.now() - graceStart < graceMs) {
+        await this.page.waitForTimeout(POLL_INTERVAL_MS);
+        await relayThinking();
+        await this.throwIfTrouble(config, false);
+        const count = await this.countMessages(config);
+        const text = await this.getLastMessageText(config);
+        if (!started && (count > prevCount || (text.length > 0 && text !== prevContent))) started = true;
+        if (this.streamsClosed >= this.streamsOpened && text === prev) {
+          console.log("Response complete (finished during grace period)!");
+          break;
+        }
+        prev = text;
+      }
+    } else {
+      console.log("Timeout after " + Math.round(maxWait / 1000) + "s - extracting partial response.");
+    }
+    // Nothing new on the page means there is no reply to read: extracting
+    // here returned the PREVIOUS answer as if it were this one.
+    if (!started) {
+      const secs = Math.round((Date.now() - start) / 1000);
+      await this.throwIfTrouble(config, true);
+      throw new Error(config.name + " did not start a reply in " + secs + "s, so nothing was read." +
+        " Send your message again; if it keeps happening, start a new chat.");
+    }
+    return await finish();
+  }
+
+  private async extractWithRetry(config: ProviderConfig): Promise<string> {
+    phase("reading", "extracting the reply");
+    let result = "";
+    for (let i = 0; i < 5; i++) {
+      result = await this.extractLatestResponse(config);
+      if (result.trim().length > 1) return result;
+      await sleep(1500);
+    }
+    return result;
+  }
+
+  /**
+   * The code blocks as the provider itself would copy them.
+   *
+   * Reading <pre><code> out of the DOM is a guess about someone else's markup:
+   * syntax highlighting shreds a line into spans, toolbars put "Copy Download"
+   * inside the message, and a virtualised list can render only part of a long
+   * block. The site's own Copy button has none of those problems - it is the
+   * provider's answer to "what is the raw text of this block".
+   *
+   * Used to correct the DOM reading rather than replace it, because the
+   * clipboard only ever holds code: the prose between blocks is what tells us
+   * which file a block belongs to, and that still has to come from the page.
+   *
+   * Returns null whenever anything is off, so the caller keeps what it had.
+   */
+  /**
+   * The code blocks of the last reply, read through the provider's own Copy
+   * control. Public only so the smoke test can check that path directly; the
+   * build path reaches it through extraction, where it corrects the DOM.
+   */
+  async readCodeViaCopy(config: ProviderConfig): Promise<string[] | null> {
+    return this.copiedCodeBlocks(config);
+  }
+
+  private async copiedCodeBlocks(config: ProviderConfig): Promise<string[] | null> {
+    const sel = config.selectors.copyButton;
+    if (!this.page || !sel) return null;
+    try {
+      const assistant = await this.assistantSelector(config);
+      const message = this.page.locator(assistant).last();
+      // Text-filtered: the same markup renders Download beside Copy.
+      const buttons = message.locator(sel).filter({ hasText: /^\s*copy\s*$/i });
+      const n = await bounded(buttons.count(), "counting Copy buttons");
+      if (!n) return null;
+
+      const out: string[] = [];
+      for (let i = 0; i < n; i++) {
+        const btn = buttons.nth(i);
+        try { await btn.scrollIntoViewIfNeeded({ timeout: 2000 }); } catch { /* fine */ }
+        await btn.click({ timeout: 3000 });
+        await sleep(120);
+        const text: string = await bounded(this.page.evaluate(
+          () => (globalThis as any).navigator.clipboard.readText()), "reading the clipboard", 5000);
+        if (typeof text !== "string" || !text.trim()) return null;
+        out.push(text.replace(/\n$/, ""));
+      }
+      return out;
+    } catch {
+      return null;
+    }
+  }
+
+  async extractLatestResponse(config: ProviderConfig): Promise<string> {
+    if (!this.page) throw new Error("Browser not launched");
+    try {
+      const sel = await this.assistantSelector(config);
+      const messageLocators = await bounded(this.page.locator(sel).all(), "finding the reply");
+      if (messageLocators.length === 0) return "";
+      const lastMessageLocator = messageLocators[messageLocators.length - 1];
+
+      // Scope code blocks to the newest message. Querying the whole page would also
+      // pick up earlier replies, so a re-ask would return the stale answer glued to
+      // the new one and the parser would read the wrong JSON.
+      // Blocks WITH the prose around them, in document order.
+      //
+      // This used to return the code blocks alone, concatenated and relabelled
+      // as json - correct while JSON was the only accepted answer, since the
+      // prose really was noise. It is wrong now that a reply may be one code
+      // block per file: the path often lives in the sentence or heading above
+      // the block, and dropping it means the file cannot be attributed to
+      // anything and is silently skipped. A ten-step trial build lost three
+      // files exactly that way.
+      //
+      // The language is kept on the fence too, because sites carry it as a
+      // class on <code> and a path can ride there.
+      const parts: string[] = await bounded(lastMessageLocator.evaluateAll((els: any[]) => {
+        const root = els[els.length - 1];
+        if (!root) return [];
+        const out: string[] = [];
+        // "Copy Download" and friends are toolbar buttons, not content.
+        const JUNK = /^(?:[\w#+.-]+\s+)?(?:Copy\s+Download|Copy|Download)$/i;
+        const LANG_WORD = /^[a-z][a-z0-9+#.-]{0,15}$/i;
+        // tr so a table reads row by row rather than as every cell glued together.
+        const BLOCKS = "p,div,section,article,ul,ol,li,pre,table,tr,blockquote,h1,h2,h3,h4,h5,h6,hr,figure,details,dl";
+        const tagOf = (el: any): string => String(el.tagName || "").toLowerCase();
+        const isControl = (el: any): boolean => {
+          const role = String(el.getAttribute && el.getAttribute("role") || "");
+          return tagOf(el) === "button" || role === "button" || role === "toolbar" || role === "menu";
+        };
+        const isBlock = (el: any): boolean => el.matches(BLOCKS) || !!el.querySelector(BLOCKS);
+        const pushFence = (pre: any, label: string): void => {
+          const code = pre.querySelector("code") || pre;
+          const cls = String(code.getAttribute && code.getAttribute("class") || "");
+          const lang = (cls.match(/language-([\w+#-]+)/) || [])[1] || label;
+          const text = String(code.textContent || "").replace(/\n$/, "");
+          // Longer than any backtick run inside, so a README's own ``` blocks
+          // do not close this one.
+          let run = 2;
+          for (const r of text.match(/`+/g) || []) run = Math.max(run, r.length);
+          const fence = "`".repeat(run + 1);
+          if (text.trim()) out.push(fence + lang + "\n" + text + "\n" + fence);
+        };
+        // A code-block wrapper: one <pre> plus, at most, a banner naming the
+        // language and some controls (web/semantic/blocks.ts codeWrapper).
+        // Walking it as prose puts a stray "python" line above the block.
+        const wrapped = (el: any): { pre: any; label: string } | null => {
+          const pres: any[] = [];
+          const other: string[] = [];
+          const scan = (x: any): void => {
+            for (const n of x.childNodes) {
+              if (n.nodeType === 3) { const t = String(n.textContent || "").trim(); if (t) other.push(t); continue; }
+              if (n.nodeType !== 1 || isControl(n)) continue;
+              // A paragraph is prose even when it is one word; a banner never is one.
+              if (/^(p|li|h[1-6]|blockquote)$/.test(tagOf(n)) && String(n.textContent || "").trim()) other.push("\n");
+              else if (tagOf(n) === "pre") pres.push(n); else scan(n);
+            }
+          };
+          scan(el);
+          const words = other.filter((t) => !JUNK.test(t));
+          if (pres.length !== 1) return null;
+          if (words.length === 0) return { pre: pres[0], label: "" };
+          if (words.length === 1 && LANG_WORD.test(words[0])) return { pre: pres[0], label: words[0] };
+          return null;
+        };
+        // Inline content - text nodes and elements with no block inside - is
+        // read as one run, so "Now I'll edit <code>x.py</code>:" keeps its words.
+        // Inline code keeps its backticks: "Create `src/app.py`:" is how the
+        // fenced-file reader tells which file the next block is.
+        const inline = (nodes: any[]): string => nodes.map((n: any): string => {
+          // Newlines stay, as the structured reader keeps them: a renderer
+          // leaves a soft line break in the text, and "Step 1: ..." lines are
+          // what the plan rescue splits on.
+          if (n.nodeType === 3) return String(n.textContent || "").replace(/[ \t\f\v\r]+/g, " ");
+          if (n.nodeType !== 1 || isControl(n)) return "";
+          const tag = tagOf(n);
+          if (tag === "br") return "\n";
+          if (tag === "code") {
+            const t = String(n.textContent || "");
+            return !t ? "" : t.includes("`") ? "`` " + t + " ``" : "`" + t + "`";
+          }
+          if (tag === "td" || tag === "th") return "| " + inline(Array.from(n.childNodes)) + " ";
+          return inline(Array.from(n.childNodes));
+        }).join("");
+        const walk = (el: any): void => {
+          if (tagOf(el) === "pre") { pushFence(el, ""); return; }
+          const w = wrapped(el);
+          if (w) { pushFence(w.pre, w.label); return; }
+          let run: any[] = [];
+          const flush = (): void => {
+            const t = inline(run).replace(/[ \t]*\n[ \t]*/g, "\n").trim();
+            if (t && !JUNK.test(t)) out.push(t);
+            run = [];
+          };
+          for (const n of el.childNodes) {
+            if (n.nodeType === 1 && isBlock(n)) { flush(); walk(n); } else run.push(n);
+          }
+          flush();
+        };
+        walk(root);
+        return out;
+      }), "reading the reply's text");
+
+      // Upgrade the code with what the provider itself would copy, keeping the
+      // prose the DOM gave us. Only when the counts agree - a mismatch means
+      // the two views disagree about how many blocks there are, and guessing an
+      // alignment would put one file's code under another file's heading.
+      const FENCED = /^(\u0060{3,})([^\n]*)/;
+      let blocks = parts.filter((t) => FENCED.test(t));
+      if (blocks.length) {
+        const copied = await this.copiedCodeBlocks(config);
+        if (copied && copied.length === blocks.length) {
+          let i = 0;
+          for (let k = 0; k < parts.length; k++) {
+            const m = FENCED.exec(parts[k]);
+            if (!m) continue;
+            let run = 2;
+            for (const r of copied[i].match(/`+/g) || []) run = Math.max(run, r.length);
+            const fence = "`".repeat(run + 1);
+            parts[k] = fence + m[2] + "\n" + copied[i] + "\n" + fence;
+            i++;
+          }
+          console.log("Read " + copied.length + " code block(s) from the provider's own Copy button.");
+        }
+      }
+
+      const joined = (parts || []).join("\n\n").trim();
+      if (joined) return joined;
+      return (await lastMessageLocator.textContent({ timeout: PAGE_CALL_MS })) || "";
+    } catch {
+      return "";
+    }
+  }
+
+  async getLastMessageStructured(config: ProviderConfig): Promise<string> {
+    if (!this.page) return "";
+    return this.structuredMarkdown(await this.assistantSelector(config), config.selectors.citation || "", "");
+  }
+
+  /**
+   * The newest turn's reasoning as markdown, or "" when it has none.
+   *
+   * Scoped to the last `turn` so an earlier answer's reasoning is never shown
+   * as this one's: before the new reply's turn exists the last turn is the
+   * prompt just sent, which has none. A collapsed block is gone from the page
+   * rather than hidden, so when the header is there and the content is not,
+   * the header is clicked and the content read on the next call.
+   */
+  async getLastThinking(config: ProviderConfig): Promise<string> {
+    const s = config.selectors;
+    if (!this.page || !s.thinking || !s.turn) return "";
+    try {
+      const collapsed = await bounded(this.page.evaluate(function (arg: { turn: string; thinking: string; header: string; text: string }) {
+        const doc = (globalThis as any).document;
+        const turns = doc.querySelectorAll(arg.turn);
+        const last = turns[turns.length - 1];
+        if (!last || last.querySelector(arg.thinking) || !arg.header || !arg.text) return false;
+        const re = new RegExp(arg.text, "i");
+        const heads = last.querySelectorAll(arg.header);
+        for (let i = 0; i < heads.length; i++) {
+          if (re.test((heads[i].textContent || "").trim())) { heads[i].click(); return true; }
+        }
+        return false;
+      }, { turn: s.turn, thinking: s.thinking, header: s.thinkingHeader || "", text: config.thinkingHeaderText || "" }), "expanding the reasoning");
+      if (collapsed) await this.page.waitForTimeout(400);
+    } catch {
+      return "";
+    }
+    return this.structuredMarkdown(s.thinking, s.citation || "", s.turn);
+  }
+
+  /**
+   * Markdown from the last node matching `selector`, or, given `turn`, from
+   * the first match inside the last turn.
+   */
+  private async structuredMarkdown(sel: string, cite: string, turn: string): Promise<string> {
+    if (!this.page) return "";
+    try {
+      return await this.page.evaluate(function (arg: { selector: string; cite: string; turn: string }) {
+        const selector = arg.selector;
+        const doc = (globalThis as any).document;
+        let root: any = null;
+        if (arg.turn) {
+          const turns = doc.querySelectorAll(arg.turn);
+          root = turns.length ? turns[turns.length - 1].querySelector(selector) : null;
+        } else {
+          const nodes = doc.querySelectorAll(selector);
+          root = nodes.length ? nodes[nodes.length - 1] : null;
+        }
+        if (!root) return "";
+        function isJunk(t: string): boolean {
+          return /^(?:[\w#+.-]+\s+)?(?:Copy\s+Download|Copy|Download)$/i.test(t);
+        }
+        // A code-block wrapper: one <pre> plus a banner naming the language and
+        // some controls. DeepSeek's banner otherwise leaves a stray "tool" line
+        // above every block, and the label belongs on the fence - a ```tool
+        // block is read more leniently than an unlabelled one.
+        function codeLabel(el: any): string | null {
+          const pres: any[] = [];
+          const words: string[] = [];
+          (function scan(x: any): void {
+            for (let i = 0; i < x.childNodes.length; i++) {
+              const n = x.childNodes[i];
+              if (n.nodeType === 3) { const t = (n.textContent || "").trim(); if (t) words.push(t); continue; }
+              if (n.nodeType !== 1) continue;
+              const t = (n.tagName || "").toLowerCase();
+              const role = n.getAttribute("role") || "";
+              if (t === "button" || role === "button" || role === "toolbar" || role === "menu") continue;
+              if (/^(p|li|h[1-6]|blockquote)$/.test(t) && (n.textContent || "").trim()) words.push("\n");
+              else if (t === "pre") pres.push(n); else scan(n);
+            }
+          })(el);
+          const rest = words.filter(function (t: string) { return !isJunk(t); });
+          if (pres.length !== 1) return null;
+          if (rest.length === 0) return "";
+          return rest.length === 1 && /^[a-z][a-z0-9+#.-]{0,15}$/i.test(rest[0]) ? rest[0] : null;
+        }
+        // Longer than any backtick run inside, so a README's own ``` blocks
+        // do not close this one.
+        function fenced(pre: any, label: string): string {
+          const code = pre.querySelector("code") || pre;
+          const lang = ((code.getAttribute("class") || "").match(/language-([\w+#-]+)/) || [])[1] || label;
+          const text = (code.textContent || "").replace(/\n$/, "");
+          let run = 2;
+          const runs = text.match(/`+/g) || [];
+          for (let i = 0; i < runs.length; i++) run = Math.max(run, runs[i].length);
+          const fence = new Array(run + 2).join("`");
+          return "\n" + fence + lang + "\n" + text + "\n" + fence + "\n";
+        }
+        function isControl(n: any): boolean {
+          const role = n.getAttribute("role") || "";
+          return (n.tagName || "").toLowerCase() === "button" || role === "button" || role === "toolbar" || role === "menu";
+        }
+        // Inline code keeps its backticks: "Create `src/app.py`:" is how the
+        // fenced-file reader tells which file the next block is.
+        function inl(n: any): string {
+          if (n.nodeType === 3) return n.textContent || "";
+          if (n.nodeType !== 1 || isControl(n)) return "";
+          if (arg.cite && n.matches(arg.cite)) return "";
+          const t = (n.tagName || "").toLowerCase();
+          if (t === "br") return "\n";
+          if (t === "code") {
+            const c = n.textContent || "";
+            return !c ? "" : c.indexOf("`") !== -1 ? "`` " + c + " ``" : "`" + c + "`";
+          }
+          let o = "";
+          for (let i = 0; i < n.childNodes.length; i++) o += inl(n.childNodes[i]);
+          return o;
+        }
+        const BLOCK = "p,div,section,article,ul,ol,li,pre,table,blockquote,h1,h2,h3,h4,h5,h6,hr,figure,details,dl";
+        // Text beside blocks - "Create x.py:" then its <pre> inside one <li>, or
+        // bare text in a <div> - is read in document order rather than dropped
+        // or flattened into the code.
+        function mixed(el: any): string {
+          let o = "";
+          let run = "";
+          const flush = function (): void {
+            const t = run.replace(/[ \t]+/g, " ").replace(/ ?\n ?/g, "\n").trim();
+            if (t && !isJunk(t)) o += t + "\n\n";
+            run = "";
+          };
+          for (let i = 0; i < el.childNodes.length; i++) {
+            const n = el.childNodes[i];
+            if (n.nodeType === 1 && (n.matches(BLOCK) || n.querySelector(BLOCK))) { flush(); o += walk(n); }
+            else run += inl(n);
+          }
+          flush();
+          return o;
+        }
+        function walk(el: any): string {
+          const tag = (el.tagName || "").toLowerCase();
+          if (tag === "pre") return fenced(el, "");
+          const label = el.querySelector("pre") ? codeLabel(el) : null;
+          if (label !== null) return fenced(el.querySelector("pre"), label);
+          if (/^h[1-6]$/.test(tag)) return "\n### " + inl(el).trim() + "\n";
+          if (tag === "ul" || tag === "ol") { let o = "\n"; for (let i = 0; i < el.children.length; i++) o += walk(el.children[i]); return o; }
+          if (tag === "li") {
+            if (!el.querySelector(BLOCK)) return "- " + inl(el).replace(/\s+/g, " ").trim() + "\n";
+            return "- " + mixed(el);
+          }
+          if (tag === "p") { const t = inl(el).trim(); return (t && !isJunk(t)) ? t + "\n\n" : ""; }
+          if (tag === "table") {
+            let o = "";
+            const rows = el.querySelectorAll("tr");
+            for (let r = 0; r < rows.length; r++) {
+              const cells: string[] = [];
+              for (let c = 0; c < rows[r].children.length; c++) cells.push(inl(rows[r].children[c]).replace(/\s+/g, " ").trim());
+              o += "| " + cells.join(" | ") + " |\n";
+            }
+            return o + "\n";
+          }
+          if (tag === "div" || tag === "section" || tag === "article" || tag === "blockquote") {
+            if (el.children.length === 0) { const t = (el.textContent || "").trim(); return (t && !isJunk(t)) ? t + "\n\n" : ""; }
+            return mixed(el);
+          }
+          const t = inl(el).trim();
+          return (t && !isJunk(t)) ? t + " " : "";
+        }
+        let md = "";
+        if (root.children.length === 0) md = root.innerText || root.textContent || "";
+        else md = mixed(root);
+        // Stray toolbar and language-banner lines - but never inside a block,
+        // where "json" or "Copy" on a line of its own is somebody's code.
+        let open = 0;
+        return md.split("\n").filter(function (l: string) {
+          const f = l.match(/^(`{3,})/);
+          if (f) {
+            if (!open) open = f[1].length;
+            else if (f[1].length >= open && /^`+\s*$/.test(l)) open = 0;
+            return true;
+          }
+          if (open) return true;
+          const t = l.trim();
+          return !/^(?:copy|download)$/i.test(t) && !/^(?:json|javascript|js|typescript|ts|python|py|bash|sh|shell|css|html|txt|text|plaintext)$/i.test(t);
+        }).join("\n");
+      }, { selector: sel, cite: cite, turn: turn });
+    } catch {
+      return "";
+    }
+  }
+
+  async takeScreenshot(savePath: string): Promise<void> {
+    if (this.page) {
+      await this.page.screenshot({ path: savePath, fullPage: true });
+      console.log("Screenshot saved: " + savePath);
+    }
+  }
+
+  // The agent runs as a one-shot CLI process, so nothing survives to reuse this
+  // context. Leaving it open keeps the Chromium child (and the persistent-profile
+  // lock) alive, which blocks the next launch on the same profile.
+  async close(): Promise<void> {
+    if (!this.context) return;
+    // A worker borrowed the launcher's context. Closing it would take the
+    // browser out from under every other worker still mid-step.
+    if (!this.ownsContext) {
+      if (this.page) { await this.page.close().catch(() => {}); }
+      this.page = null;
+      this.context = null;
+      this.pickedSelector = null;
+      return;
+    }
+    try {
+      await this.context.close();
+    } catch (e) {
+      console.log("Browser close failed: " + String(e));
+    } finally {
+      this.context = null;
+      this.page = null;
+      this.pickedSelector = null;
+    }
+  }
+}

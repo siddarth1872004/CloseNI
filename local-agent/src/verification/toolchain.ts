@@ -1,0 +1,106 @@
+/**
+ * Is this tool installed here, and under what name?
+ *
+ * Generalises what resolvePythonCommand did for one interpreter. Guessing wrong
+ * is not a harmless mistake: every check for that language fails with "not
+ * found" and the model spends its self-heal retries on a machine problem it
+ * cannot fix. That already cost one whole build, with `python` vs `python3`.
+ */
+import { spawnSync } from "child_process";
+
+/**
+ * Candidate names per tool, in the order to try.
+ *
+ * Plain names only. In WSL, `gcc.exe` resolves to a Windows binary that cannot
+ * read a /tmp path, so probing .exe fallbacks would find a compiler that then
+ * fails on every file. Windows resolves `gcc` to `gcc.exe` on its own.
+ */
+export const TOOL_CANDIDATES: Record<string, string[]> = {
+  python: process.platform === "win32" ? ["python", "py -3", "python3"] : ["python3", "python"],
+  node: ["node"],
+  gcc: ["gcc", "cc"],
+  // Keyed `gxx` rather than `g++`: the key names a candidate list, and a `+`
+  // in it reads as part of a command. The resolved command is still `g++`.
+  gxx: ["g++", "c++"],
+  rustc: ["rustc"],
+  cargo: ["cargo"],
+  javac: ["javac"],
+  make: ["make", "mingw32-make"],
+  mvn: ["mvn"],
+  gradle: ["gradle"],
+  go: ["go"],
+  gofmt: ["gofmt"],
+  tsc: ["tsc", "npx tsc"],
+  ruby: ["ruby"],
+  php: ["php"],
+  dotnet: ["dotnet"],
+  bash: ["bash", "sh"],
+  // Distributions ship Lua's compiler under its version.
+  luac: ["luac", "luac5.4", "luac5.3", "luac5.1"],
+  rscript: ["Rscript"],
+  // `python -m mypy` second: mypy is very often installed into a virtualenv
+  // without its console script on PATH, and a bare `mypy` misses it. Probing
+  // both means a project whose venv has mypy gets type-checked rather than
+  // silently skipped.
+  mypy: process.platform === "win32"
+    ? ["mypy", "python -m mypy", "py -3 -m mypy"]
+    : ["mypy", "python3 -m mypy", "python -m mypy"],
+};
+
+/**
+ * What to append to a candidate to prove it runs. `--version` everywhere except
+ * where it is not a flag at all.
+ *
+ * Go has no `--version`: `go --version` exits 2 with "flag provided but not
+ * defined", and gofmt has no version flag of any kind. Probing both that way
+ * resolved Go as not installed on every machine that had it, so every Go check
+ * was skipped - silently, and reported as "no go found" beside a working
+ * compiler. `go version` is the real subcommand; gofmt with no arguments
+ * formats an empty stdin and exits 0.
+ */
+export const TOOL_PROBES: Record<string, string> = {
+  go: " version",
+  gofmt: "",
+  // The same for these: a version subcommand, or a flag other than --version.
+  zig: " version",
+  lein: " version",
+  rebar3: " version",
+  luac: " -v",
+  // --version starts sbt's whole server; this only asks the launcher.
+  sbt: " --script-version",
+};
+
+/** The command that proves `candidate` works as tool `name`. */
+export function probeCommand(name: string, candidate: string): string {
+  const args = Object.prototype.hasOwnProperty.call(TOOL_PROBES, name) ? TOOL_PROBES[name] : " --version";
+  return candidate + args;
+}
+
+const cache = new Map<string, string | null>();
+
+/** Test seam: the cache is per-process and would otherwise outlive a test. */
+export function resetToolCache(): void {
+  cache.clear();
+}
+
+export function resolveTool(name: string): string | null {
+  const hit = cache.get(name);
+  if (hit !== undefined) return hit;
+
+  const candidates = TOOL_CANDIDATES[name] || [name];
+  for (const candidate of candidates) {
+    try {
+      // stdio "ignore" hands the probe an empty stdin, which is what lets a bare
+      // `gofmt` finish instead of waiting for input.
+      if (spawnSync(probeCommand(name, candidate), { shell: true, stdio: "ignore", timeout: 10000 }).status === 0) {
+        cache.set(name, candidate);
+        return candidate;
+      }
+    } catch {
+      /* try the next candidate */
+    }
+  }
+  console.log("No " + name + " found; checks needing it are skipped.");
+  cache.set(name, null);
+  return null;
+}
