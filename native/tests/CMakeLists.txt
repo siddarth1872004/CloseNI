@@ -37,7 +37,7 @@ find_package(Qt6 REQUIRED COMPONENTS Test)
 set(CLOSENI_DATA_SOURCES
     BuildRules BuildStore FilesService GitHubApi GitHubAuth GitHubSafe
     GitHubService GitRunner GitService LibraryService McpClient
-    NodeCompat Paths Prefs SkillStore)
+    NodeCompat Paths Prefs SkillStore UpdateService)
 set(CLOSENI_DATA_FILES)
 foreach(name ${CLOSENI_DATA_SOURCES})
     list(APPEND CLOSENI_DATA_FILES ../src/${name}.cpp ../src/${name}.h)
@@ -61,7 +61,7 @@ if(NOT MSVC)
     target_compile_options(closeni_data_test PRIVATE -Wall -Wextra)
 endif()
 
-foreach(suite buildstore files git github library secretstore)
+foreach(suite buildstore files git github library secretstore updates)
     qt_add_executable(tst_${suite} tst_${suite}.cpp data_harness.h)
     set_target_properties(tst_${suite} PROPERTIES AUTOMOC ON)
     target_link_libraries(tst_${suite} PRIVATE closeni_data_test)

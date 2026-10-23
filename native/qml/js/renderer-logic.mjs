@@ -579,8 +579,42 @@ function parseDailyBudget(raw) {
   return isFinite(n) && n > 0 ? Math.min(n, 100000) : 0;
 }
 
+// ------------------------------------------------------------------ updates
+
+/**
+ * The About section's update line, from the Updates service's state. `kind`
+ * is how this copy was installed; a source build is only told what is out.
+ */
+function updateLine(state, latest, version, kind, error, progress) {
+  switch (state) {
+    case "checking": return "Checking for a newer release...";
+    case "current": return "Version " + version + " is the latest release.";
+    case "available":
+      return kind === "source"
+        ? "Version " + latest + " is out. This is a source build: pull and rebuild to update."
+        : "Version " + latest + " is out. You have " + version + ".";
+    case "downloading": return "Downloading " + latest + "... " + Math.round((progress || 0) * 100) + "%";
+    case "ready":
+      if (kind === "installer") return "Version " + latest + " is downloaded and verified. The installer runs once CloseNI closes.";
+      if (kind === "deb") return "Version " + latest + " is downloaded and verified. Your software installer asks for your password to install it.";
+      return "Version " + latest + " is downloaded and verified. CloseNI restarts into it.";
+    case "failed": return error || "The update check failed.";
+    default: return "Version " + version + ".";
+  }
+}
+
+/** The button that moves an update on, or "" when there is nothing to press. */
+function updateAction(state, kind) {
+  if (state === "available") return kind === "source" ? "" : "Download";
+  if (state === "ready") return kind === "deb" ? "Open installer" : "Install and restart";
+  if (state === "checking" || state === "downloading") return "";
+  return "Check for updates";
+}
+
 export {
   MODE_TITLES,
+  updateLine,
+  updateAction,
   FLOW_MODES,
   unreadBadge,
   flowSnapshot,

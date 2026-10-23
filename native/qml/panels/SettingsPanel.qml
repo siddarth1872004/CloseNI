@@ -132,6 +132,23 @@ RowLayout {
         else Notify.toast("Nothing left to set up - every step is done")
     }
 
+    /**
+     * About's update button: check, download, or hand over. Installing quits
+     * the app, so it waits for anything that is using the provider.
+     */
+    function updateStep() {
+        var st = Updates.state
+        if (st === "available") { Updates.download(); return }
+        if (st !== "ready") { Updates.check(); return }
+        var why = AppState.chatBusyReason()
+        if (why) { Notify.toast(why, "err"); return }
+        if (Updates.kind === "deb") {
+            if (!App.openPath(Updates.file)) Notify.toast("Could not open " + Updates.file, "err")
+            return
+        }
+        if (!Updates.install()) Notify.toast(Updates.error || "The update could not start", "err")
+    }
+
     // ---- #settings-nav ----------------------------------------------------------
     ColumnLayout {
         Layout.preferredWidth: 150
@@ -495,7 +512,51 @@ RowLayout {
                             color: Theme.txt
                         }
                         Hint { text: "Drives web AI chats to plan and build software." }
+                        Hint { objectName: "settingsVersion"; text: "Version " + App.version }
                     }
+                }
+
+                Micro { Layout.topMargin: Theme.sp5; Layout.bottomMargin: 6; text: "Updates" }
+                Hint {
+                    objectName: "settingsUpdateLine"
+                    Layout.fillWidth: true
+                    text: R.updateLine(Updates.state, Updates.latest, App.version, Updates.kind, Updates.error, Updates.progress)
+                }
+                Progress {
+                    visible: Updates.state === "downloading"
+                    Layout.topMargin: Theme.sp2
+                    Layout.preferredWidth: 320
+                    value: Updates.progress
+                }
+                RowLayout {
+                    Layout.topMargin: Theme.sp3
+                    spacing: Theme.sp3
+                    Btn {
+                        objectName: "settingsUpdateAction"
+                        readonly property string step: R.updateAction(Updates.state, Updates.kind)
+                        visible: step !== ""
+                        small: true
+                        variant: Updates.state === "available" || Updates.state === "ready" ? "invert" : ""
+                        text: step
+                        onClicked: panel.updateStep()
+                    }
+                    Btn {
+                        visible: Updates.notesUrl !== "" && Updates.state !== "current"
+                        small: true
+                        text: "What's new"
+                        onClicked: App.openExternal(Updates.notesUrl)
+                    }
+                }
+                Check {
+                    objectName: "settingsUpdateCheck"
+                    Layout.topMargin: Theme.sp3
+                    text: "Check for updates at start"
+                    checked: Prefs.get("closeni.updateCheck", "on") !== "off"
+                    onToggled: Prefs.set("closeni.updateCheck", checked ? "on" : "off")
+                }
+                Hint {
+                    Layout.fillWidth: true
+                    text: "Asks GitHub for the latest release. Nothing is downloaded until you choose to, and a download that does not match the release's checksums is deleted."
                 }
                 Btn {
                     objectName: "settingsWelcomeReset"

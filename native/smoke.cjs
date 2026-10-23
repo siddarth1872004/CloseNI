@@ -255,6 +255,7 @@ async function main() {
   const env = Object.assign({}, process.env, {
     AGENT_PROVIDER_DIR: providers,
     CLOSENI_STORAGE: storage,
+    CLOSENI_NO_UPDATE_CHECK: "1",
     CLOSENI_NODE: process.execPath,
   });
   // No display needed unless one is asked for.

@@ -163,6 +163,8 @@ cmake -S native -B build-native -G Ninja && cmake --build build-native
 npm start
 ```
 
+**Updating.** CloseNI checks for a newer release when it starts (Settings > About can turn that off). The download is checked against the release's `SHA256SUMS.txt` before anything runs. On Windows the new installer then upgrades in place. The AppImage replaces itself and restarts. The `.deb` opens in your software installer. A source checkout is only told a release is out.
+
 **First run.** Pick a project folder, choose a provider, install Chromium and sign in once in the browser window. A checklist above the chat walks through it.
 
 The GitHub token is kept in the OS keyring: DPAPI on Windows and the Secret Service on Linux. Without a keyring CloseNI still runs, but asks you to sign in to GitHub each launch.

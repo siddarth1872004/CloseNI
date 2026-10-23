@@ -93,6 +93,7 @@ async function main() {
   const env = Object.assign({}, process.env, {
     AGENT_PROVIDER_DIR: providers,
     CLOSENI_STORAGE: storage,
+    CLOSENI_NO_UPDATE_CHECK: "1",
     CLOSENI_NODE: process.execPath,
     QT_FORCE_STDERR_LOGGING: "1",
     DBUS_SESSION_BUS_ADDRESS: "unix:path=/nonexistent/closeni-test-bus",

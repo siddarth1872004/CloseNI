@@ -72,6 +72,7 @@ async function main() {
   const env = Object.assign({}, process.env, {
     AGENT_PROVIDER_DIR: providers,
     CLOSENI_STORAGE: path.join(tmp, "storage"),
+    CLOSENI_NO_UPDATE_CHECK: "1",
     CLOSENI_NODE: process.execPath,
     CLOSENI_GITHUB_API: "http://127.0.0.1:" + github.address().port,
     QT_FORCE_STDERR_LOGGING: "1",

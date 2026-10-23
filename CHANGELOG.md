@@ -15,6 +15,12 @@ The first release of CloseNI.
 - **Installers** are built by CI from the tag: a Windows `.exe`, a Linux
   AppImage and a `.deb`, with a SHA-256 checksum file. They bundle Qt, Node 22
   and the agent. They are unsigned, so SmartScreen may warn on first launch.
+- **Updates from inside the app.** CloseNI checks GitHub for the latest
+  release at start, or from Settings > About, and shows an Update button in
+  the top bar when one is out. The download is checked against the release's
+  `SHA256SUMS.txt`, and a file that does not match is deleted. On Windows the
+  installer upgrades in place. The AppImage replaces itself and restarts. The
+  `.deb` opens in the system's software installer.
 - **Running a project** opens a native console for its output, and **Open in
   browser** hands a web project's address to your system browser.
 - **The GitHub token** is kept in the OS keyring: DPAPI on Windows, the

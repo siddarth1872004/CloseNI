@@ -72,6 +72,18 @@ Item {
         }
         Item { visible: !flow.visible; Layout.fillWidth: true }
 
+        // A newer release, once a check has found one.
+        Btn {
+            objectName: "topUpdate"
+            visible: (Updates.state === "available" || Updates.state === "downloading" || Updates.state === "ready")
+                     && AppState.mode !== "settings"
+            small: true
+            variant: "primary"
+            text: "Update " + Updates.latest
+            tip: "Settings > About"
+            onClicked: AppState.showUpdates()
+        }
+
         Text {
             Layout.maximumWidth: Math.max(80, top.width * 0.4)
             text: AppState.statusText

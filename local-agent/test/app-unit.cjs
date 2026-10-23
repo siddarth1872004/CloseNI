@@ -1298,6 +1298,17 @@ function testRendererLogic() {
   check("every rail mode has a title", Object.keys(R.MODE_TITLES).join(",") === "code,chat,build,test,research,push,settings");
   check("the flow bar shows in the build modes only", R.FLOW_MODES.build && !R.FLOW_MODES.code && !R.FLOW_MODES.settings);
   check("the unread badge", R.unreadBadge(0) === "" && R.unreadBadge(5) === "5" && R.unreadBadge(150) === "99+");
+  check("the update line",
+    R.updateLine("available", "0.2", "0.1", "installer") === "Version 0.2 is out. You have 0.1." &&
+    /pull and rebuild/.test(R.updateLine("available", "0.2", "0.1", "source")) &&
+    R.updateLine("downloading", "0.2", "0.1", "appimage", "", 0.456) === "Downloading 0.2... 46%" &&
+    /password/.test(R.updateLine("ready", "0.2", "0.1", "deb")) &&
+    R.updateLine("failed", "", "0.1", "installer", "rate limited") === "rate limited" &&
+    R.updateLine("idle", "", "0.1", "installer") === "Version 0.1.");
+  check("the update button",
+    R.updateAction("idle", "installer") === "Check for updates" && R.updateAction("available", "installer") === "Download" &&
+    R.updateAction("available", "source") === "" && R.updateAction("downloading", "deb") === "" &&
+    R.updateAction("ready", "deb") === "Open installer" && R.updateAction("ready", "appimage") === "Install and restart");
   const snap = R.flowSnapshot(2, true, { total: 4, done: 1, failed: 1, running: true }, { tested: true });
   check("the flow snapshot", snap.messages === 2 && snap.plan && snap.stepsTotal === 4 && snap.stepsFailed === 1 && snap.building && snap.tested && !snap.shipped);
   check("an empty flow snapshot", R.flowSnapshot(0, null, null, null).stepsTotal === 0);

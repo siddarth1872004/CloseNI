@@ -371,5 +371,25 @@ QtObject {
         if (initialWorkspace) openWorkspace(initialWorkspace)
         else if (recentWorkspaces.length) openWorkspace(recentWorkspaces[0])
         checkBrowser()
+        if (Updates.automatic && Prefs.get("closeni.updateCheck", "on") !== "off") _updateCheck.start()
+    }
+
+    // ---- Updates --------------------------------------------------------------
+    // One check a few seconds after launch, off the start-up path. A newer
+    // release shows as a button in the top bar; Settings > About installs it.
+    property Timer _updateCheck: Timer { interval: 4000; onTriggered: Updates.check() }
+    property Connections _updates: Connections {
+        target: Updates
+        function onChanged() {
+            if (Updates.state === "available" && Updates.latest !== state._toldVersion) {
+                state._toldVersion = Updates.latest
+                Notify.toast("CloseNI " + Updates.latest + " is out. Settings > About to update.")
+            }
+        }
+    }
+    property string _toldVersion: ""
+    function showUpdates() {
+        switchTab("settings")
+        SettingsStore.showSection("about")
     }
 }

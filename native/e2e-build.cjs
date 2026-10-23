@@ -99,6 +99,7 @@ async function main() {
   const env = Object.assign({}, process.env, {
     AGENT_PROVIDER_DIR: providers,
     CLOSENI_STORAGE: path.join(tmp, "storage"),
+    CLOSENI_NO_UPDATE_CHECK: "1",
     CLOSENI_NODE: process.execPath,
     QT_FORCE_STDERR_LOGGING: "1",
     // No session bus: nothing reaches the real keyring, and the desktop

@@ -365,6 +365,18 @@ QtObject {
         // ---- About ---------------------------------------------------------------
         s.push(section("about"))
         s.push(function () {
+            // Unattended, nothing has checked for a release, so only "Check for updates" is offered.
+            check.expect(!Updates.automatic && Updates.state === "idle", "an unattended run checked for updates: " + Updates.state)
+            var step = check.control("settingsUpdateAction")
+            check.expect(step && step.visible && step.text === "Check for updates", "the update button reads " + (step && step.text))
+            var auto = check.control("settingsUpdateCheck")
+            var was = Prefs.get("closeni.updateCheck", "on")
+            check.toggle(auto)
+            check.expect(Prefs.get("closeni.updateCheck", "") === (was === "off" ? "on" : "off"), "the update check setting was not saved")
+            check.toggle(auto)
+            check.expect(Prefs.get("closeni.updateCheck", "") === was, "the update check setting did not toggle back")
+        })
+        s.push(function () {
             check.click("settingsWelcomeReset")
             check.expect(AppState.mode === "chat" || !AppState.onboardingVisible, "the guide did not come back")
             AppState.switchTab("settings")

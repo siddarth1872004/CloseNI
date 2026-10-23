@@ -333,6 +333,7 @@ npx playwright install chromium
 cmake -S native -B build-native -G Ninja &amp;&amp; cmake --build build-native
 npm start
 </code></pre>
+<p><strong>Updating.</strong> CloseNI checks for a newer release when it starts (Settings &gt; About can turn that off). The download is checked against the release&#39;s <code>SHA256SUMS.txt</code> before anything runs. On Windows the new installer then upgrades in place. The AppImage replaces itself and restarts. The <code>.deb</code> opens in your software installer. A source checkout is only told a release is out.</p>
 <p><strong>First run.</strong> Pick a project folder, choose a provider, install Chromium and sign in once in the browser window. A checklist above the chat walks through it.</p>
 <p>The GitHub token is kept in the OS keyring: DPAPI on Windows and the Secret Service on Linux. Without a keyring CloseNI still runs, but asks you to sign in to GitHub each launch.</p>
 <h2 id="development">Development</h2>

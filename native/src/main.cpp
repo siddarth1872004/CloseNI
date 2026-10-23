@@ -1,5 +1,6 @@
 #include "AgentService.h"
 #include "Bridge.h"
+#include "UpdateService.h"
 
 #include <QCommandLineParser>
 #include <QDesktopServices>
@@ -180,6 +181,8 @@ int main(int argc, char *argv[])
         for (const QString scheme : {QStringLiteral("http"), QStringLiteral("https"), QStringLiteral("file")})
             QDesktopServices::setUrlHandler(scheme, stub, "open");
     }
+    // A run nobody is watching never asks GitHub for a newer release.
+    UpdateService::setUnattended(testing || scripted || parser.isSet(live) || parser.isSet(exitOnReady));
 
     QString liveScenario;
     if (parser.isSet(live)) {
