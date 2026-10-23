@@ -90,9 +90,8 @@ const STEPS = [
 // [status class, label] - the app's phase readout words.
 const PROVIDERS = [
   ['DeepSeek', 'ok', 'Ready', 'Chat, plan, build and the coding agent, including long sessions.'],
-  ['Ollama', 'dim', 'Chat only', 'Local HTTP, no login. Plan and build need a browser provider.'],
   ['Qwen Studio, GLM', 'mut', 'Coming soon', 'Selectors checked against the live sites; gated until a signed-in reply is.'],
-  ['ChatGPT, Gemini, Claude, Grok', 'mut', 'Coming soon', 'Listed, not selectable.'],
+  ['Ollama, ChatGPT, Gemini, Claude, Grok', 'mut', 'Coming soon', 'Listed, not selectable.'],
 ];
 
 // An illustrative Code turn, in the panel's own notation (see screenshots/code.png).

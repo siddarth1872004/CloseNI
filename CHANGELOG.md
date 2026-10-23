@@ -79,8 +79,7 @@ The first release of CloseNI.
   network, rate-limit, unfinished and refused replies are recognised; busy
   replies and rate limits are retried on a capped back-off, and anything else
   ends with a message that says what happened.
-- **Ollama** is local and chat-only.
-- **Qwen Studio, GLM, ChatGPT, Gemini, Claude and Grok** are listed as coming
+- **Ollama, Qwen Studio, GLM, ChatGPT, Gemini, Claude and Grok** are listed as coming
   soon and cannot be selected.
 - **A provider status you can act on.** The readout shows when a provider is
   rate limited, busy, signed out, showing a human check, full, or its page has

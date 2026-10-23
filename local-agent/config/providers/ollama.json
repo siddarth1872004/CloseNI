@@ -3,6 +3,8 @@
   "name": "Ollama (local)",
   "baseUrl": "http://127.0.0.1:11434",
   "enabled": true,
+  "comingSoon": true,
+  "_comingSoonReason": "Gated: only DeepSeek is offered in this release. The Ollama transport works for chat, but it has not been tested enough against small local models to ship it. It is listed so it is clear it is planned rather than missing; it cannot be selected and the agent refuses it.",
   "transport": "ollama",
   "_transportNote": "The first provider that is not a web page. No selectors, no completion heuristics, no login, no rate limit - and the conversation is ours, so nothing can virtualise or redesign it. Chat only for now: plan and build refuse this transport, because a small local model failing the strict JSON format would read as CloseNI being broken rather than the model being too small.",
   "endpoint": "http://127.0.0.1:11434",

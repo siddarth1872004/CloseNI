@@ -138,7 +138,8 @@ void FilesService::listProviders(QJSValue callback)
             const QJsonObject cfg = doc.object();
             // `controls` goes to the renderer so the sidebar can offer them. The
             // selectors stay here: the agent reads those, the UI never needs them.
-            // `termsUrl` is linked from the sign-in step.
+            // `termsUrl` is linked from the sign-in step. `comingSoon` greys a
+            // provider out in the picker and keeps it from being chosen at start.
             if (!NodeCompat::truthy(cfg.value(QStringLiteral("enabled"))) || !NodeCompat::truthy(cfg.value(QStringLiteral("id"))))
                 continue;
             const QJsonValue id = cfg.value(QStringLiteral("id"));
@@ -150,6 +151,7 @@ void FilesService::listProviders(QJSValue callback)
                 {QStringLiteral("name"), NodeCompat::truthy(name) ? name : id},
                 {QStringLiteral("controls"), NodeCompat::truthy(controls) ? controls : QJsonValue(QJsonArray())},
                 {QStringLiteral("termsUrl"), NodeCompat::truthy(terms) ? terms : QJsonValue(QString())},
+                {QStringLiteral("comingSoon"), NodeCompat::truthy(cfg.value(QStringLiteral("comingSoon")))},
             };
             out << NodeCompat::toVariant(provider);
         }

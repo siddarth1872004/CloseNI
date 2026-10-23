@@ -109,9 +109,12 @@ QtObject {
             check.expect(!SettingsStore.isSkillOn(check.temp), "a deleted skill came back ticked")
             check.expect(Providers.showBrowser, "Show Browser did not survive a restart")
             var picked = Prefs.get("closeni.selftest.provider", "")
-            if (picked) check.expect(Providers.current === picked, "the provider did not survive a restart: " + Providers.current)
+            var gated = Providers.list.some(function (p) { return p.id === picked && p.comingSoon })
+            // A provider gated since the last run is not restored: start falls back to a usable one.
+            if (gated) check.expect(Providers.current !== picked && !Providers.info.comingSoon, "a gated provider was restored: " + picked)
+            else if (picked) check.expect(Providers.current === picked, "the provider did not survive a restart: " + Providers.current)
             var saved = Prefs.get("closeni.selftest.controls", "")
-            if (saved) check.expect(JSON.stringify(Providers.desiredControls()) === saved,
+            if (saved && !gated) check.expect(JSON.stringify(Providers.desiredControls()) === saved,
                                     "provider controls did not survive a restart: " + JSON.stringify(Providers.desiredControls()))
             console.log("self-test: settings: verified the previous run")
             // Back to the defaults, so this run changes every one of them again.
@@ -143,6 +146,8 @@ QtObject {
             }
             // Pick another provider: a different one each run, so the restart
             // check sees a real change. Its controls are then the ones shown.
+            // With one usable provider there is nothing to switch to, so it is the one to restore.
+            Prefs.set("closeni.selftest.provider", Providers.current)
             for (var j = 0; j < Providers.list.length; j++) {
                 var other = Providers.list[j]
                 if (other.comingSoon || other.id === Providers.current) continue

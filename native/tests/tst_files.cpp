@@ -30,7 +30,7 @@ void TestFiles::initTestCase()
     // A stand-in agent checkout: dist/index.js beside config/providers.
     const QDir a(m_agent.path());
     writeAll(a.filePath("dist/index.js"), "// agent");
-    writeAll(a.filePath("config/providers/b.json"), R"({"id":"b","name":"Bee","enabled":true,"controls":[{"id":"think"}],"termsUrl":"https://b.test/terms","selectors":{"x":"y"}})");
+    writeAll(a.filePath("config/providers/b.json"), R"({"id":"b","name":"Bee","enabled":true,"controls":[{"id":"think"}],"termsUrl":"https://b.test/terms","comingSoon":true,"selectors":{"x":"y"}})");
     writeAll(a.filePath("config/providers/a.json"), R"({"id":"a","enabled":true})");
     writeAll(a.filePath("config/providers/off.json"), R"({"id":"off","enabled":false})");
     writeAll(a.filePath("config/providers/noid.json"), R"({"enabled":true})");
@@ -51,6 +51,8 @@ void TestFiles::listProviders()
     CHECK(list[1].toObject().value("name") == QStringLiteral("Bee"));
     CHECK2(!list[1].toObject().contains("selectors"), h.lastText);
     CHECK(list[1].toObject().value("termsUrl") == QStringLiteral("https://b.test/terms"));
+    // The picker greys a gated provider out, so the flag has to reach it.
+    CHECK2(list[0].toObject().value("comingSoon") == false && list[1].toObject().value("comingSoon") == true, h.lastText);
 }
 
 void TestFiles::listFiles()

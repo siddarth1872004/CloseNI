@@ -27,8 +27,7 @@ The app itself is native: Qt Quick on Windows and Linux, with no web view anywhe
 
 > **Where it stands.**
 > - **DeepSeek** is driven end to end, including long sessions.
-> - **Ollama** is local and **chat-only**.
-> - **Qwen Studio**, **GLM**, **ChatGPT**, **Gemini**, **Claude** and **Grok** are listed as **coming soon** and cannot be selected.
+> - **Ollama**, **Qwen Studio**, **GLM**, **ChatGPT**, **Gemini**, **Claude** and **Grok** are listed as **coming soon** and cannot be selected.
 > - Installers are **unsigned**, so Windows SmartScreen may warn on first launch.
 
 ## The coding agent
@@ -85,7 +84,7 @@ The rail lists every chat in the project, newest first, named after its first me
 | **DeepSeek Chat** | ![ready](https://img.shields.io/badge/-ready-57d38c?style=flat-square) Chat, plan, build and the coding agent. Busy, rate-limited, cut and full replies are recognised and handled. |
 | **Qwen Studio** | ![coming soon](https://img.shields.io/badge/-coming%20soon-8b949e?style=flat-square) Gated until a signed-in reply is checked live. Its composer and Send button were checked on 22 Oct 2026; a guest send opens a log-in dialog. Listed, not selectable. |
 | **GLM (Z.ai)** | ![coming soon](https://img.shields.io/badge/-coming%20soon-8b949e?style=flat-square) Gated until a signed-in reply is checked live. Its selectors were checked on 22 Oct 2026; a guest send raises a slider CAPTCHA, which CloseNI hands to you and never solves. Listed, not selectable. |
-| **Ollama (local)** | ![chat-only](https://img.shields.io/badge/-chat--only-79c0ff?style=flat-square) Local HTTP, no login. Chat only; plan and build need a browser provider. |
+| **Ollama (local)** | ![coming soon](https://img.shields.io/badge/-coming%20soon-8b949e?style=flat-square) Local HTTP, no login, chat only. Gated until it is tested against small local models. Listed, not selectable. |
 | **ChatGPT** | ![coming soon](https://img.shields.io/badge/-coming%20soon-8b949e?style=flat-square) Gated: its consumer terms restrict automated use of the chat app, and its selectors are unconfirmed. Listed, not selectable. |
 | **Gemini** | ![coming soon](https://img.shields.io/badge/-coming%20soon-8b949e?style=flat-square) Gated: its consumer terms restrict automated use of the chat app, and its selectors are unconfirmed. Listed, not selectable. |
 | **Claude** | ![coming soon](https://img.shields.io/badge/-coming%20soon-8b949e?style=flat-square) Gated: its consumer terms restrict automated use of the chat app, and its selectors are unconfirmed. Listed, not selectable. |
