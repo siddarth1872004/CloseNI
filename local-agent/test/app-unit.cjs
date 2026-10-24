@@ -1337,6 +1337,23 @@ function testRendererLogic() {
   check("a thread label is never the URL", R.threadLabel({ url: "https://x/a/secret", label: "…cret" }) === "thread …cret" && R.threadLabel(null) === "");
   const hl = R.healthLines({ summary: "2 ok", ok: false, findings: [{ selector: "input", health: "critical", matched: 0 }], resumed: false });
   check("the selector check prints every finding", hl.length === 3 && hl[1].tone === "err" && /read path was not checked/.test(hl[2].text));
+  const info = { success: true, chromium: "153.0.8010.12", playwright: "1.63.0", installed: true, profile: "/s/browser-profiles/deepseek" };
+  const bl = R.browserLines(info, "signed in", null, false);
+  const row = (rows, label) => rows.filter((x) => x.label === label)[0];
+  check("the browser readout names the versions, profile, sign-in and window",
+    row(bl, "Chromium").value === "153.0.8010.12" && row(bl, "Playwright").value === "1.63.0" &&
+    row(bl, "Profile").value === info.profile && row(bl, "Sign-in").value === "signed in" &&
+    row(bl, "Selectors").value === "not checked yet" && /hidden/.test(row(bl, "Window").value), JSON.stringify(bl));
+  check("and says when Chromium is still to download",
+    /not downloaded yet/.test(row(R.browserLines(Object.assign({}, info, { installed: false }), "", null, true), "Chromium").value));
+  check("a selector check that needs attention, or failed, is marked",
+    row(R.browserLines(info, "", { ok: false, summary: "input missing" }, true), "Selectors").tone === "err" &&
+    /failed: no browser/.test(row(R.browserLines(info, "", { error: "no browser" }, true), "Selectors").value) &&
+    row(R.browserLines(info, "", { ok: true, summary: "6 ok" }, true), "Selectors").value === "look right - 6 ok" &&
+    row(R.browserLines(info, "", null, true), "Window").value === "shown");
+  check("a readout still being read, or that failed, says so",
+    R.browserLines(null, "", null, false)[0].value === "reading…" &&
+    R.browserLines({ success: false, error: "no agent" }, "", null, false)[0].tone === "err");
 
   check("a recent workspace shows its tail", R.recentLabel("/home/me/code/proj") === "code/proj" && R.recentLabel("C:\\a\\b\\c") === "b/c");
   check("controls are saved per provider", R.controlsKey("deepseek") === "closeni.controls.deepseek");
@@ -1422,6 +1439,10 @@ function testRendererLogic() {
   check("a daily budget is a whole number of prompts, or none",
     R.parseDailyBudget("40") === 40 && R.parseDailyBudget("12.7") === 12 && R.parseDailyBudget("") === 0 &&
     R.parseDailyBudget("-1") === 0 && R.parseDailyBudget("lots") === 0 && R.parseDailyBudget(null) === 0);
+  check("a gap between prompts is whole seconds up to an hour, or the provider's",
+    R.parseMinGap("20") === 20 && R.parseMinGap("4.9") === 4 && R.parseMinGap("") === 0 && R.parseMinGap("-5") === 0 &&
+    R.parseMinGap("soon") === 0 && R.parseMinGap(null) === 0 && R.parseMinGap("99999") === R.MAX_MIN_GAP_S);
+  check("the Settings gap limit is the agent's", R.MAX_MIN_GAP_S * 1000 === require(path.join(DIST, "providers/pacing.js")).MAX_GAP_MS);
   check("a saved permission policy is kept", R.resolveAutonomy("never") === "never" && R.resolveAutonomy("auto") === "auto");
   check("an unknown or missing permission policy is ask",
     R.resolveAutonomy("yolo") === "ask" && R.resolveAutonomy("") === "ask" && R.resolveAutonomy(null) === "ask");

@@ -243,6 +243,47 @@ RowLayout {
             // Filled from the selected provider's config. A provider that
             // declares no controls shows nothing rather than an empty heading.
             ProviderControls { Layout.fillWidth: true }
+
+            // What is driving the provider's page, for when something goes
+            // wrong: read from disk, so opening Settings starts no browser.
+            Micro { Layout.topMargin: Theme.sp5; Layout.bottomMargin: 6; text: "Browser" }
+            Component.onCompleted: Providers.refreshBrowser()
+            Connections {
+                target: Providers
+                function onCurrentChanged() { Providers.refreshBrowser() }
+            }
+            Repeater {
+                objectName: "settingsBrowserRows"
+                model: R.browserLines(Providers.browser, Providers.acctText, Providers.lastHealth, Providers.showBrowser)
+                RowLayout {
+                    required property var modelData
+                    Layout.fillWidth: true
+                    spacing: Theme.sp3
+                    Body { Layout.preferredWidth: 90; Layout.alignment: Qt.AlignTop; text: modelData.label }
+                    Hint {
+                        Layout.fillWidth: true
+                        text: modelData.value
+                        color: modelData.tone === "err" ? Theme.err : Theme.mut
+                        wrapMode: Text.WrapAnywhere
+                    }
+                }
+            }
+            RowLayout {
+                spacing: Theme.sp3
+                Btn {
+                    objectName: "settingsCheckSelectors"
+                    small: true
+                    text: Providers.checkingSelectors ? "Checking..." : "Check selectors"
+                    enabled: !Providers.checkingSelectors
+                    onClicked: Providers.checkSelectors()
+                }
+                Btn {
+                    objectName: "settingsBrowserRefresh"
+                    small: true
+                    text: "Refresh"
+                    onClicked: { Providers.refreshBrowser(); Providers.refreshAccount(true) }
+                }
+            }
         }
     }
 
@@ -274,14 +315,32 @@ RowLayout {
                     Layout.preferredWidth: 90
                     placeholderText: "none"
                     inputMethodHints: Qt.ImhDigitsOnly
-                    validator: IntValidator { bottom: 0; top: 100000 }
+                    validator: IntValidator { bottom: 0; top: R.MAX_DAILY_BUDGET }
                     text: SettingsStore.dailyBudget > 0 ? String(SettingsStore.dailyBudget) : ""
                     onEditingFinished: SettingsStore.setDailyBudget(text)
                 }
             }
             Hint {
                 Layout.fillWidth: true
-                text: "The most prompts sent to a web provider in a day. When it is used up the agent stops and says so; it resets at midnight. Empty means no limit."
+                text: "The most prompts sent to a web provider in a day. Only prompts the page took are counted. When it is used up the agent stops and says so; it resets at midnight. Empty means no limit."
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+                Body { text: "Seconds between prompts" }
+                Field {
+                    objectName: "settingsMinGap"
+                    Layout.preferredWidth: 90
+                    placeholderText: "default"
+                    inputMethodHints: Qt.ImhDigitsOnly
+                    validator: IntValidator { bottom: 0; top: R.MAX_MIN_GAP_S }
+                    text: SettingsStore.minGap > 0 ? String(SettingsStore.minGap) : ""
+                    onEditingFinished: SettingsStore.setMinGap(text)
+                }
+            }
+            Hint {
+                Layout.fillWidth: true
+                text: "The least time between two prompts to a web provider, up to an hour. A provider's own minimum, a few seconds, still applies. Empty means just that."
             }
             // Show Browser: one setting, here and in the rail, kept in step and
             // saved. Unsaved, it was off again after every restart, so a window

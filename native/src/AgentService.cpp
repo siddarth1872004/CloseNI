@@ -270,6 +270,8 @@ QProcess *AgentService::spawnAgent(const QStringList &args, const Env &extraEnv,
     env.insert(QStringLiteral("CLOSENI_STORAGE"), Paths::storageRoot());
     if (m_dailyBudget > 0)
         env.insert(QStringLiteral("AGENT_DAILY_BUDGET"), QString::number(m_dailyBudget));
+    if (m_minGap > 0)
+        env.insert(QStringLiteral("AGENT_MIN_GAP_MS"), QString::number(qint64(m_minGap) * 1000));
     for (auto it = extraEnv.cbegin(); it != extraEnv.cend(); ++it)
         env.insert(it.key(), it.value());
     // Bundled, Playwright must look inside the storage directory. From a
@@ -289,6 +291,12 @@ QProcess *AgentService::spawnAgent(const QStringList &args, const Env &extraEnv,
 void AgentService::setDailyBudget(int prompts)
 {
     m_dailyBudget = qMax(0, prompts);
+}
+
+void AgentService::setMinGap(int seconds)
+{
+    // Capped by the agent (MAX_GAP_MS), so the limit lives in one place.
+    m_minGap = qMax(0, seconds);
 }
 
 /*
@@ -1147,6 +1155,33 @@ void AgentService::providerHealth(const QString &providerId, const QString &work
             over();
         });
     });
+}
+
+/*
+ * What the browser behind a provider is: Playwright and Chromium versions,
+ * whether Chromium is downloaded, and the profile folder.
+ *
+ * Not queued: the agent reads this from disk without opening a browser, so it
+ * cannot collide with a run holding the profile, and Settings can show it
+ * while one is going.
+ */
+void AgentService::browserInfo(const QString &providerId, QJSValue callback)
+{
+    const Reply done = replier(callback);
+    OneShot spec;
+    spec.args = {QStringLiteral("browser-info"), providerId.isEmpty() ? QStringLiteral("deepseek") : providerId};
+    spec.env = agentEnv(QStringLiteral("0"), QVariant(), QVariant());
+    spec.route = false;
+    spec.stderrMode = OneShot::ErrIgnore;
+    spec.holdsProfile = false;
+    spec.result = [](const QByteArray &output, const QString &startError) {
+        if (!startError.isEmpty())
+            return QVariantMap{{QStringLiteral("success"), false}, {QStringLiteral("error"), startError}};
+        if (auto r = outputBlock(output))
+            return *r;
+        return QVariantMap{{QStringLiteral("success"), false}, {QStringLiteral("error"), QStringLiteral("no answer from the agent")}};
+    };
+    runOneShot(spec, done);
 }
 
 /*

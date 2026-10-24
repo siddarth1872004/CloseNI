@@ -45,10 +45,22 @@ QtObject {
     // agent in the storage directory; the app only says what the limit is.
     property int dailyBudget: R.parseDailyBudget(Prefs.get("closeni.dailyBudget", ""))
     onDailyBudgetChanged: Agent.setDailyBudget(dailyBudget)
-    Component.onCompleted: Agent.setDailyBudget(dailyBudget)
+    Component.onCompleted: {
+        Agent.setDailyBudget(dailyBudget)
+        Agent.setMinGap(minGap)
+    }
     function setDailyBudget(value) {
         dailyBudget = R.parseDailyBudget(value)
         Prefs.set("closeni.dailyBudget", String(dailyBudget))
+    }
+
+    // Seconds to wait between prompts, 0 for the provider's own gap. The agent
+    // waits whichever of the two is longer.
+    property int minGap: R.parseMinGap(Prefs.get("closeni.minGap", ""))
+    onMinGapChanged: Agent.setMinGap(minGap)
+    function setMinGap(value) {
+        minGap = R.parseMinGap(value)
+        Prefs.set("closeni.minGap", String(minGap))
     }
 
     // ---- Persona and skills ---------------------------------------------------

@@ -1,5 +1,6 @@
 import QtQuick
 import CloseNI
+import "../js/renderer-logic.mjs" as R
 
 /*
  * The Settings part of --self-test: drives the panel's real controls - every
@@ -194,6 +195,19 @@ QtObject {
             if (controls.length) Prefs.set("closeni.selftest.controls", JSON.stringify(Providers.desiredControls()))
             else Prefs.remove("closeni.selftest.controls")
         })
+        // The browser readout: read from the agent, no browser opened.
+        s.push(function () { return Providers.browser !== null })
+        s.push(function () {
+            var rows = check.control("settingsBrowserRows")
+            var b = Providers.browser
+            if (!rows) return
+            check.expect(rows.count === R.browserLines(b, Providers.acctText, Providers.lastHealth, Providers.showBrowser).length,
+                         "the browser readout shows " + rows.count + " rows")
+            if (b.success) check.expect(!!b.playwright && !!b.profile && b.provider === Providers.current,
+                                        "the browser readout is missing its versions: " + JSON.stringify(b))
+            else console.log("self-test: settings: no browser readout (" + b.error + ")")
+            check.control("settingsCheckSelectors")
+        })
 
         // ---- Permissions ---------------------------------------------------------
         s.push(section("permissions"))
@@ -213,6 +227,14 @@ QtObject {
             budget.text = ""
             budget.editingFinished()
             check.expect(SettingsStore.dailyBudget === 0, "clearing the daily budget did not lift it")
+            var gap = check.control("settingsMinGap")
+            check.expect(gap && gap.text === "", "the gap between prompts starts set")
+            gap.text = "20"
+            gap.editingFinished()
+            check.expect(SettingsStore.minGap === 20 && Prefs.get("closeni.minGap", "") === "20", "the gap between prompts was not saved")
+            gap.text = ""
+            gap.editingFinished()
+            check.expect(SettingsStore.minGap === 0, "clearing the gap did not go back to the provider's")
         })
 
         // ---- Skills: the persona -----------------------------------------------

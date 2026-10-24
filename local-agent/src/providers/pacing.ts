@@ -2,11 +2,15 @@
  * How often prompts go to a provider.
  *
  * One prompt is in flight at a time already: the controller waits for the
- * composer to go idle before it types. This adds the two limits a person sets
- * on top of that - a fixed gap between prompts, and a daily budget - and keeps
+ * composer to go idle before it types. This adds two limits on top of that - a
+ * fixed gap between prompts, and a daily budget - and keeps
  * them in one file per provider in the storage directory, because every
  * one-shot run is its own process and a gap or a count held in memory would
  * start from nothing each time.
+ *
+ * The gap is the provider's (its config's pacing.minGapMs) or the person's
+ * (Settings, as AGENT_MIN_GAP_MS), whichever is longer: a setting can slow the
+ * prompts down, never send them faster than the provider's config allows.
  *
  * The decisions are pure (paceDecision) so they are tested without a clock or
  * a disk; Pacer is the thin part that reads the file, sleeps and writes.
@@ -45,6 +49,20 @@ export function parseBudget(raw: string | undefined): number {
   return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
+/** The longest gap a person can set: an hour. */
+export const MAX_GAP_MS = 3600000;
+
+/** The person's gap in ms; anything not a positive number means none of their own. */
+export function parseGap(raw: string | undefined): number {
+  const n = Math.floor(Number(raw));
+  return Number.isFinite(n) && n > 0 ? Math.min(n, MAX_GAP_MS) : 0;
+}
+
+/** The gap that applies: the provider's or the person's, whichever is longer. */
+export function effectiveGap(providerMs: number | undefined, personMs: number): number {
+  return Math.max(0, Math.floor(Number(providerMs)) || 0, personMs);
+}
+
 export function paceDecision(rec: PacingRecord | null, now: number, minGapMs: number, budget: number): PaceDecision {
   const today = dayOf(now);
   const count = rec && rec.day === today ? rec.count : 0;
@@ -78,7 +96,13 @@ export class Pacer {
     private budget: number,
     private sleep: (ms: number) => Promise<void>,
     private now: () => number = Date.now,
+    private personGapMs: number = 0,
   ) {}
+
+  /** The gap this pacer waits, in ms. */
+  gapMs(): number {
+    return effectiveGap(this.rules.minGapMs, this.personGapMs);
+  }
 
   /** The storage directory's pacing file for this provider. */
   static fileFor(storageRoot: string, providerId: string): string {
@@ -93,14 +117,22 @@ export class Pacer {
     return null;
   }
 
-  /** Wait out the gap, or throw BudgetSpent; then count this prompt. */
+  /**
+   * Wait out the gap, or throw BudgetSpent. Nothing is counted yet: a prompt
+   * that never leaves - no composer, a send the page ignored - must not use up
+   * the day's budget. sent() counts it once it has.
+   */
   async beforeSend(onWait?: (ms: number) => void): Promise<void> {
-    const d = paceDecision(this.read(), this.now(), Math.max(0, this.rules.minGapMs || 0), this.budget);
+    const d = paceDecision(this.read(), this.now(), this.gapMs(), this.budget);
     if (d.action === "stop") throw new BudgetSpent(d.reason);
     if (d.waitMs > 0) {
       if (onWait) onWait(d.waitMs);
       await this.sleep(d.waitMs);
     }
+  }
+
+  /** Count a prompt that went out, and start the gap from now. */
+  sent(): void {
     try {
       fs.writeFileSync(this.file, JSON.stringify(recordSend(this.read(), this.now())));
     } catch { /* a count that cannot be saved must not stop the prompt */ }

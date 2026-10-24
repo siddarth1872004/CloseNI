@@ -5,6 +5,9 @@
  * Split out of index.ts, which keeps the dispatcher.
  */
 import * as path from "path";
+import * as fs from "fs";
+import { chromium } from "playwright";
+import { storagePaths } from "../storage-paths.js";
 import { PlaywrightController } from "../providers/playwright-controller.js";
 import { ProviderRegistry } from "../providers/provider-registry.js";
 import { judgeSelectors } from "../health/selector-health.js";
@@ -213,6 +216,44 @@ export async function healthMode(providerId: string, workspace: string) {
   } finally {
     await controller.close();
   }
+}
+
+/**
+ * What the browser behind a provider is, for Settings: the Playwright and
+ * Chromium versions, whether Chromium is downloaded, the provider's profile
+ * folder and whether its window is shown. Read from disk, so it opens no
+ * browser and never touches the profile.
+ */
+export function browserInfo(config: { id: string; name: string; profileDir: string }, env: NodeJS.ProcessEnv = process.env) {
+  const version = (pkg: string): string => {
+    try { return String(require(pkg + "/package.json").version || ""); } catch { return ""; }
+  };
+  let chromiumVersion = "";
+  try {
+    const browsers = require(path.join(path.dirname(require.resolve("playwright-core/package.json")), "browsers.json")).browsers;
+    const entry = (browsers || []).find((b: any) => b && b.name === "chromium");
+    chromiumVersion = entry && entry.browserVersion ? String(entry.browserVersion) : "";
+  } catch { /* an unknown layout leaves it blank */ }
+  let executable = "";
+  try { executable = chromium.executablePath(); } catch { /* no browser for this platform */ }
+  return {
+    provider: config.id,
+    name: config.name,
+    playwright: version("playwright") || version("playwright-core"),
+    chromium: chromiumVersion,
+    installed: !!executable && fs.existsSync(executable),
+    executable: executable,
+    profile: storagePaths(env.CLOSENI_STORAGE, config).profileDir,
+    headed: env.AGENT_HEADED === "1",
+  };
+}
+
+export async function browserInfoMode(providerId: string) {
+  const registry = new ProviderRegistry();
+  registry.loadProviders();
+  const config = registry.getProvider(providerId);
+  if (!config) { emit({ success: false, error: "Provider not found: " + providerId }); return; }
+  emit(Object.assign({ success: true }, browserInfo(config)));
 }
 
 export async function authCheckMode(providerId: string, workspace: string) {

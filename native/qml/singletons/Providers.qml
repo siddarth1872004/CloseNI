@@ -36,6 +36,10 @@ QtObject {
     readonly property string threadText: R.threadLabel(thread)
     property bool signingIn: false
     property bool checkingSelectors: false
+    // The last selector check of the current provider, { ok, summary } or
+    // { error }, and its browser-info answer; null until each is read.
+    property var lastHealth: null
+    property var browser: null
 
     // The live phase readout: { name, label, kind (idle|busy|work), detail }.
     property var phase: R.phaseLabel(null)
@@ -99,7 +103,17 @@ QtObject {
         // one's status would be actively misleading.
         setAcct("unknown", "not checked")
         setThread(null)
+        lastHealth = null
+        browser = null
         refreshAccount(false)
+    }
+
+    /** Read the versions and profile behind the current provider. */
+    function refreshBrowser() {
+        var id = current
+        Agent.browserInfo(id, function (r) {
+            if (id === current) browser = r || { success: false, error: "no answer" }
+        })
     }
 
     /** What to ask the provider for on the next run; {} means "change nothing". */
@@ -163,8 +177,11 @@ QtObject {
     function checkSelectors() {
         if (checkingSelectors) return
         checkingSelectors = true
+        var id = current
         Agent.providerHealth(current, AppState.workspace, function (r) {
             checkingSelectors = false
+            if (id === current)
+                lastHealth = r && r.success ? { ok: !!r.ok, summary: r.summary } : { error: (r && r.error) || "no answer" }
             if (!r || !r.success) {
                 Notify.log("selector check failed: " + ((r && r.error) || "no answer"), "err")
                 Notify.toast((r && r.error) || "Could not check", "err")

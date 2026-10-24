@@ -219,6 +219,29 @@ function healthLines(r) {
   return out;
 }
 
+/**
+ * Settings' browser readout, as { label, value, tone } rows. `info` is the
+ * agent's browser-info answer (null while it is read), `health` the last
+ * selector check for this provider (null when none ran), `shown` whether Show
+ * Browser is on.
+ */
+function browserLines(info, acctText, health, shown) {
+  if (!info) return [{ label: "Browser", value: "reading…", tone: "" }];
+  if (!info.success) return [{ label: "Browser", value: info.error || "could not be read", tone: "err" }];
+  var rows = [
+    { label: "Chromium", value: (info.chromium || "unknown version") +
+        (info.installed ? "" : " - not downloaded yet; it is fetched the first time it is needed"), tone: "" },
+    { label: "Playwright", value: info.playwright || "unknown version", tone: "" },
+    { label: "Profile", value: info.profile || "unknown", tone: "" },
+    { label: "Sign-in", value: acctText || "not checked", tone: "" },
+  ];
+  if (!health) rows.push({ label: "Selectors", value: "not checked yet", tone: "" });
+  else if (health.error) rows.push({ label: "Selectors", value: "the check failed: " + health.error, tone: "err" });
+  else rows.push({ label: "Selectors", value: (health.ok ? "look right" : "need attention") + " - " + health.summary, tone: health.ok ? "" : "err" });
+  rows.push({ label: "Window", value: shown ? "shown" : "hidden (turn on Show Browser to watch it)", tone: "" });
+  return rows;
+}
+
 // ------------------------------------------------------------- workspace.js
 
 /**
@@ -572,11 +595,23 @@ function resolveAutonomy(saved) {
   return AUTONOMY_OPTIONS.some(function (o) { return o.value === saved; }) ? saved : "ask";
 }
 
+// The most the Settings fields take. The fields' validators use these too, and
+// MAX_MIN_GAP_S must match the agent's MAX_GAP_MS (app-unit checks it does).
+var MAX_DAILY_BUDGET = 100000;
+var MAX_MIN_GAP_S = 3600;
+
 // The daily prompt budget as typed or saved: a whole number of prompts, and
 // anything else - empty, negative, words - is no limit.
 function parseDailyBudget(raw) {
   var n = Math.floor(Number(raw));
-  return isFinite(n) && n > 0 ? Math.min(n, 100000) : 0;
+  return isFinite(n) && n > 0 ? Math.min(n, MAX_DAILY_BUDGET) : 0;
+}
+
+// The wait between prompts as typed or saved, in whole seconds up to an hour.
+// Anything else is none of the person's own, which leaves the provider's.
+function parseMinGap(raw) {
+  var n = Math.floor(Number(raw));
+  return isFinite(n) && n > 0 ? Math.min(n, MAX_MIN_GAP_S) : 0;
 }
 
 // ------------------------------------------------------------------ updates
@@ -666,5 +701,9 @@ export {
   composePreamble,
   AUTONOMY_OPTIONS,
   resolveAutonomy,
+  MAX_DAILY_BUDGET,
+  MAX_MIN_GAP_S,
   parseDailyBudget,
+  parseMinGap,
+  browserLines,
 };

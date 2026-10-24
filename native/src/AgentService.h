@@ -53,11 +53,15 @@ public:
     Q_INVOKABLE void signOutProvider(const QString &providerId, QJSValue callback);
     Q_INVOKABLE void openThread(const QString &url, QJSValue callback);
     Q_INVOKABLE void browserStatus(QJSValue callback);
+    Q_INVOKABLE void browserInfo(const QString &providerId, QJSValue callback);
     Q_INVOKABLE void installBrowser(QJSValue callback);
     Q_INVOKABLE void respondApproval(bool approved);
     /* Prompts a provider may be sent per day, 0 for no limit. Every agent run
      * after this call gets it as AGENT_DAILY_BUDGET. */
     Q_INVOKABLE void setDailyBudget(int prompts);
+    /* Seconds to wait between prompts, 0 for the provider's own gap. Every
+     * agent run after this call gets it as AGENT_MIN_GAP_MS. */
+    Q_INVOKABLE void setMinGap(int seconds);
 
 signals:
     void codeEvent(const QVariantMap &event);
@@ -109,6 +113,7 @@ private:
 
     /* The one-shot run (run-agent, suggest, ask-run, sign-in) holding the profile. */
     int m_dailyBudget = 0;
+    int m_minGap = 0;
     QProcess *m_agentProc = nullptr;
 
     /* The run queue: one task at a time, each after the Code session has yielded. */

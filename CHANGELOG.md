@@ -88,7 +88,14 @@ The first release of CloseNI.
 - **A startup page check** reports a moved composer as "page has changed"
   before the first prompt, and saves a scrubbed copy of the page in
   `diagnostics/`.
-- **Pacing.** At least 3 seconds between prompts, and an optional daily
-  prompt budget in Settings > Permissions.
+- **Pacing.** At least the provider's gap between prompts (3 seconds for
+  DeepSeek) or a longer one of your own, and an optional daily prompt budget,
+  both in Settings > Permissions. Only prompts the page took are counted.
+- **Sends that are checked.** A prompt goes into the composer that was found,
+  all of it, and is confirmed sent. A send the page ignores is pressed once
+  more, then reported, instead of waiting out the reply timeout.
+- **A browser readout** in Settings > Provider: the Chromium and Playwright
+  versions, the profile folder, sign-in, the last selector check, and whether
+  the window is shown.
 - **A reply counts as finished** only after its text has held still for at
   least 1.5s, once the stop button has gone.

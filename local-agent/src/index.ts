@@ -6,7 +6,7 @@ import { agentSessionMode, agentOnceMode } from "./modes/agent.js";
 import { buildSessionMode, buildMode } from "./modes/build.js";
 import { chatMode, planMode, askMode, revisePlanMode } from "./modes/chat-plan.js";
 import { behaviourMode, testAllMode } from "./modes/checks.js";
-import { webtestMode, smokeMode, healthMode, authCheckMode, signinMode, suggestMode } from "./modes/provider-checks.js";
+import { webtestMode, smokeMode, healthMode, authCheckMode, signinMode, suggestMode, browserInfoMode } from "./modes/provider-checks.js";
 import { researchMode } from "./modes/research.js";
 
 // The desktop app spills oversized arguments to a temp file to stay under the
@@ -70,6 +70,8 @@ async function main() {
     else if (mode === "signin") await signinMode(args[1] || "deepseek");
     // Positional layout: provider, workspace.
     else if (mode === "authcheck") await authCheckMode(args[1] || "deepseek", args[2] || "");
+    // Positional layout: provider.
+    else if (mode === "browser-info") await browserInfoMode(args[1] || "deepseek");
     else if (mode === "suggest") await suggestMode(args[1] || path.resolve(process.cwd()), args[2] || "deepseek", args[3] ? parseInt(args[3]) : 0, resolveArg(args[4]));
     // Positional layout: workspace, provider, mode (default|acceptEdits|plan|auto).
     else if (mode === "agent-session") await agentSessionMode(args[1] || path.resolve(process.cwd()), args[2] || "deepseek", args[3] || "default", args[4]);

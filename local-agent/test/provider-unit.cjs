@@ -851,6 +851,12 @@ function testResilience() {
   check("a day is the local calendar day", P.dayOf(noon) === "2026-10-14");
   check("a budget is a positive whole number or none",
     P.parseBudget("50") === 50 && P.parseBudget("0") === 0 && P.parseBudget("-3") === 0 && P.parseBudget("x") === 0 && P.parseBudget(undefined) === 0);
+  check("a gap is a positive whole number of ms, capped at an hour, or none",
+    P.parseGap("5000") === 5000 && P.parseGap("2500.7") === 2500 && P.parseGap("0") === 0 && P.parseGap("-1") === 0 &&
+    P.parseGap("x") === 0 && P.parseGap(undefined) === 0 && P.parseGap("99999999") === P.MAX_GAP_MS && P.MAX_GAP_MS === 3600000);
+  check("the gap is the provider's or the person's, whichever is longer",
+    P.effectiveGap(3000, 0) === 3000 && P.effectiveGap(3000, 10000) === 10000 && P.effectiveGap(3000, 1000) === 3000 &&
+    P.effectiveGap(undefined, 2000) === 2000 && P.effectiveGap(undefined, 0) === 0);
   check("the first prompt goes straight out", JSON.stringify(P.paceDecision(null, noon, 3000, 5)) === '{"action":"send","waitMs":0}');
   const rec = P.recordSend(null, noon);
   check("a send is counted", rec.count === 1 && rec.day === "2026-10-14" && rec.lastSentAt === noon);
@@ -895,15 +901,35 @@ function testResilience() {
   return (async () => {
     let clock = noon, slept = 0;
     const pacer = new P.Pacer(P.Pacer.fileFor(pRoot, "deep/seek"), { minGapMs: 3000 }, 2, async (ms) => { slept += ms; clock += ms; }, () => clock);
+    const countFile = path.join(pRoot, "pacing-deep_seek.json");
     await pacer.beforeSend();
+    check("a prompt is not counted before it goes out", !fs.existsSync(countFile));
+    pacer.sent();
     clock += 1000;
     let waited = 0;
     await pacer.beforeSend((ms) => { waited = ms; });
+    // This one never went out (a send the page ignored), so it is not counted.
+    await pacer.beforeSend();
+    pacer.sent();
     let stopped = null;
     try { await pacer.beforeSend(); } catch (e) { stopped = e; }
-    check("the pacer waits the gap, counts on disk and stops at the budget",
-      waited === 2000 && slept === 2000 && stopped instanceof P.BudgetSpent && JSON.parse(fs.readFileSync(path.join(pRoot, "pacing-deep_seek.json"), "utf8")).count === 2,
+    check("the pacer waits the gap, counts what went out on disk and stops at the budget",
+      waited === 2000 && slept === 2000 && stopped instanceof P.BudgetSpent && JSON.parse(fs.readFileSync(countFile, "utf8")).count === 2,
       waited + " " + slept + " " + stopped);
+    const again = new P.Pacer(P.Pacer.fileFor(pRoot, "deep/seek"), { minGapMs: 3000 }, 2, async () => {}, () => clock);
+    let restarted = null;
+    try { await again.beforeSend(); } catch (e) { restarted = e; }
+    check("the budget still holds after a restart", restarted instanceof P.BudgetSpent);
+
+    clock = noon;
+    const longer = new P.Pacer(P.Pacer.fileFor(pRoot, "gap"), { minGapMs: 3000 }, 0, async (ms) => { clock += ms; }, () => clock, 10000);
+    await longer.beforeSend();
+    longer.sent();
+    let gapWait = 0;
+    await longer.beforeSend((ms) => { gapWait = ms; });
+    check("a longer gap from Settings is waited", longer.gapMs() === 10000 && gapWait === 10000, String(gapWait));
+    const shorter = new P.Pacer(P.Pacer.fileFor(pRoot, "gap2"), { minGapMs: 3000 }, 0, async () => {}, () => clock, 1000);
+    check("a shorter one does not undercut the provider's", shorter.gapMs() === 3000);
     fs.rmSync(pRoot, { recursive: true, force: true });
   })();
 }
@@ -1011,7 +1037,7 @@ async function testReplyTroubleLive() {
   // As on 14 October 2026: a second list after the conversation holds the
   // prompts sent, as plain rows.
   const html = '<!doctype html><div class="ds-virtual-list-visible-items" id="list"></div><div class="ds-virtual-list-visible-items" id="sent"></div><textarea placeholder="Message"></textarea><script>' +
-    'const ta=document.querySelector("textarea"),list=document.getElementById("list");' +
+    'const ta=document.querySelector("textarea[placeholder]"),list=document.getElementById("list");' +
     'ta.addEventListener("keydown",e=>{if(e.key!=="Enter")return;e.preventDefault();const q=ta.value;ta.value="";' +
     'const u=document.createElement("div");u.innerHTML="<div class=\\"ds-message\\">"+q+"</div>";list.appendChild(u);' +
     'const sr=document.createElement("div");sr.textContent=q;document.getElementById("sent").appendChild(sr);' +
@@ -1021,7 +1047,7 @@ async function testReplyTroubleLive() {
     'list.appendChild(row);};x.send(q);});</script>';
   // One browser per config: the tap goes into a page once, with the signal
   // patterns of its first send.
-  const open = async (config, name) => {
+  const open = async (config, name, body = html) => {
     const ctl = new PlaywrightController(Object.assign({}, config, { profileDir: path.join(root, "profiles", name) }));
     ctl.setWorkspace(path.join(root, "ws"));
     await ctl.launch(config);
@@ -1031,7 +1057,7 @@ async function testReplyTroubleLive() {
         if (body === undefined) { held.push(route); return; }
         return route.fulfill({ status: 200, headers: { "content-type": "text/event-stream" }, body: body });
       }
-      return route.fulfill({ status: 200, contentType: "text/html", body: html });
+      return route.fulfill({ status: 200, contentType: "text/html", body: body });
     });
     await ctl.page.goto("https://ds.test/a/chat/s/one");
     return ctl;
@@ -1091,6 +1117,35 @@ async function testReplyTroubleLive() {
       err && /did not start a reply/.test(err.message), err ? err.message : "returned a reply");
     check("within the ceiling and its grace", Date.now() - t0 < 30000);
     for (const h of held.splice(0)) await h.abort().catch(() => {});
+
+    // The send itself: the composer that was found gets the prompt, a covered
+    // composer is still typed into, and a send the page ignores is reported
+    // instead of waited out, and not counted against the budget.
+    const long = "Long prompt. " + "x".repeat(6000) + " END";
+    const hidden = await open(cfg, "hidden", html.replace("<textarea", '<textarea style="display:none"></textarea><textarea'));
+    queue = [OK];
+    try { r = await ask(cfg, long, hidden); } finally { await hidden.close().catch(() => {}); }
+    check("a long prompt goes into the composer that was found, not an earlier hidden textarea", r === "PONG" && queue.length === 0, JSON.stringify(r));
+
+    const covered = await open(cfg, "covered", html.replace("<script>", '<div style="position:fixed;inset:0;z-index:9;background:rgba(0,0,0,.2)"></div><script>'));
+    queue = [OK];
+    try { r = await ask(cfg, "under a banner", covered); } finally { await covered.close().catch(() => {}); }
+    check("a composer covered by a banner is still typed into and sent", r === "PONG" && queue.length === 0, JSON.stringify(r));
+
+    const deaf = await open(cfg, "deaf", '<!doctype html><div class="ds-virtual-list-visible-items"></div><textarea placeholder="Message"></textarea>');
+    const counted = () => (deaf.pacer.read() || { count: 0 }).count;
+    const before = counted();
+    queue = [OK];
+    err = null;
+    const t2 = Date.now();
+    try { await deaf.sendPrompt("nobody hears this", cfg); } catch (e) { err = e; }
+    const took = Date.now() - t2;
+    const after = counted();
+    await deaf.close().catch(() => {});
+    check("a send the page ignores is pressed once more, then reported", err && /did not send the prompt/.test(err.message) && /twice/.test(err.message), err ? err.message : "no error");
+    check("without waiting out the reply ceiling", took < 30000, String(took));
+    check("and it is not counted against the day's budget", after === before && queue.length === 1, before + " -> " + after);
+    queue = [];
 
     await c.page.goto("https://ds.test/sign_in");
     err = null;

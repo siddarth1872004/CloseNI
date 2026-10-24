@@ -11,7 +11,7 @@ import { describeStreamFailure } from "./stream-status.js";
 import { replyStreamTap } from "./stream-tap.js";
 import { ReplyErrorRules, ReplySignals, Trouble, classifyTrouble, backoffFor, describeTrouble, ProviderTrouble } from "./reply-trouble.js";
 import { ProviderStatus, StatusTracker, statusForTrouble, mayRetry } from "./provider-status.js";
-import { Pacer, PacingRules, BudgetSpent, parseBudget } from "./pacing.js";
+import { Pacer, PacingRules, BudgetSpent, parseBudget, parseGap } from "./pacing.js";
 import { TargetTier, tiersFor, findNow, findWithin } from "./locate.js";
 import { saveSnapshot } from "./dom-snapshot.js";
 
@@ -211,6 +211,42 @@ const DROPPED_TICKS = 3;
 
 /** Ceiling on the soft extension given to a model that is still writing. */
 const MAX_GRACE_MS = 180000;
+// How long a click on the composer or the send button may wait for the page
+// before falling back (to focus, or to Enter). Playwright's default is 30s.
+const CLICK_TIMEOUT_MS = 5000;
+// How long after pressing send the page has to show it took the prompt.
+const SEND_CONFIRM_MS = 8000;
+
+// Characters that are not whitespace: editors normalise line breaks and
+// trailing spaces, so a composer that holds the whole prompt may not hold it
+// byte for byte.
+export function solidLength(text: string): number {
+  return text.replace(/\s+/g, "").length;
+}
+
+// Whether a composer's text is the whole prompt. null is a composer that has
+// gone from the page.
+export function holdsPrompt(text: string | null, prompt: string): boolean {
+  return text !== null && solidLength(text) >= solidLength(prompt);
+}
+
+// Whether a composer's text shows the prompt has left it: the composer has gone
+// (a new chat page replaced it), or less than half the prompt is still there.
+export function promptLeft(text: string | null, prompt: string): boolean {
+  return text === null || solidLength(text) < solidLength(prompt) / 2;
+}
+
+// The text in a composer, or null when it is no longer on the page.
+async function composerText(input: any): Promise<string | null> {
+  try {
+    return await input.evaluate((el: any) =>
+      el.isConnected === false ? null :
+        (el.tagName === "TEXTAREA" || el.tagName === "INPUT" ? el.value : el.innerText || el.textContent || ""),
+      undefined, { timeout: 2000 });
+  } catch (e) {
+    return null;
+  }
+}
 
 /**
  * What the browser is doing right now, for the interface to show.
@@ -298,9 +334,10 @@ export class PlaywrightController {
     this.storageRoot = paths.root;
     this.providerId = config.id;
     // The budget is the person's (Settings, passed down as AGENT_DAILY_BUDGET);
-    // the gap is the provider's.
+    // the gap is the provider's or the person's (AGENT_MIN_GAP_MS), whichever
+    // is longer.
     this.pacer = new Pacer(Pacer.fileFor(paths.root, config.id), config.pacing || {},
-      parseBudget(process.env.AGENT_DAILY_BUDGET), sleep);
+      parseBudget(process.env.AGENT_DAILY_BUDGET), sleep, Date.now, parseGap(process.env.AGENT_MIN_GAP_MS));
     this.isHeaded = process.env.AGENT_HEADED === "1";
   }
 
@@ -815,7 +852,13 @@ export class PlaywrightController {
     }
     if (found.tier !== "css") console.log("Found the composer by its " + found.tier + ".");
     const input = found.locator;
-    await input.click();
+    // A banner or dialog over the composer makes a click wait out its whole
+    // timeout and then throw. Focusing it needs no hit test, and typing into a
+    // focused composer works the same.
+    await input.click({ timeout: CLICK_TIMEOUT_MS }).catch(async () => {
+      console.log("The composer could not be clicked (something is over it?) - focusing it instead.");
+      await input.focus();
+    });
     const sentFrom = this.page.url();
 
     if (prompt.length > 5000) {
@@ -833,11 +876,11 @@ export class PlaywrightController {
       // sent, and the step sat at "messages=0" until its 300s timeout. The bug
       // was invisible until then because few prompts are long enough to take
       // this branch.
-      await this.page.evaluate((text: string) => {
-        const doc = (globalThis as any).document;
+      //
+      // Into the composer that was found, not the page's first textarea: a
+      // search box or an edit field earlier in the page took the prompt before.
+      await input.evaluate((el: any, text: string) => {
         const w = globalThis as any;
-        const el = doc.querySelector('textarea, div[contenteditable="true"]');
-        if (!el) return;
         if (el.tagName === "TEXTAREA") {
           const desc = Object.getOwnPropertyDescriptor(w.HTMLTextAreaElement.prototype, "value");
           if (desc && desc.set) desc.set.call(el, text);
@@ -858,39 +901,43 @@ export class PlaywrightController {
     // the text is not there, pressing Enter sends nothing and the step waits out
     // its whole timeout with no way to tell why. Playwright's fill() goes through
     // the browser's own input pipeline, so it is the fallback that works when a
-    // hand-rolled write does not.
-    const seen = await this.page.evaluate(() => {
-      const doc = (globalThis as any).document;
-      const el = doc.querySelector('textarea, div[contenteditable="true"]');
-      if (!el) return -1;
-      return (el.tagName === "TEXTAREA" ? el.value : el.textContent || "").length;
-    });
-    if (seen < Math.min(prompt.length, 40)) {
-      console.log("The composer did not take the prompt (" + seen + " of " +
-        prompt.length + " characters) - retyping it.");
+    // hand-rolled write does not. All of it is compared, not its first 40
+    // characters, so a prompt cut short is caught too.
+    if (!holdsPrompt(await composerText(input), prompt)) {
+      console.log("The composer did not take the prompt (" + solidLength(await composerText(input) || "") + " of " +
+        solidLength(prompt) + " characters) - retyping it.");
       await input.fill(prompt);
       await this.page.waitForTimeout(500);
+      const now = await composerText(input);
+      if (!holdsPrompt(now, prompt)) {
+        throw new Error("The composer did not take the prompt (" + solidLength(now || "") + " of " + solidLength(prompt) +
+          " characters), so it was not sent. " + await this.pageChanged(config, "composer refused the prompt"));
+      }
     }
     await this.page.waitForTimeout(1000);
 
-    try {
-      // A provider with no send selector sends with Enter by design (DeepSeek).
-      const sendTiers = tiersFor(config.locate?.sendButton, config.selectors.sendButton);
-      const sendBtn = sendTiers.length ? await findNow(this.page, sendTiers) : null;
-      if (sendBtn) {
-        console.log("Clicking send button...");
-        await sendBtn.locator.click();
-      } else if (!sendTiers.length) {
-        console.log("Sending with Enter...");
-        await input.press("Enter");
-      } else {
-        console.log("No send button found, pressing Enter...");
-        await input.press("Enter");
-      }
-    } catch (e) {
-      console.log("Send button click failed, pressing Enter: " + e);
-      await input.press("Enter");
+    await this.pressSend(input, config);
+    // Pressed is not sent: a send button the page has not enabled yet, or an
+    // Enter it swallowed, leaves the prompt sitting in the composer, and the
+    // reply wait then ran out its whole ceiling for a reply nobody asked for.
+    let sent = await this.confirmSent(input, prompt, sentFrom);
+    let presses = 1;
+    if (!sent && holdsPrompt(await composerText(input), prompt)) {
+      // Still holding all of it, so nothing went out and a second press
+      // cannot send it twice.
+      console.log("The prompt is still in the composer - pressing send again.");
+      await this.pressSend(input, config);
+      sent = await this.confirmSent(input, prompt, sentFrom);
+      presses++;
     }
+    if (!sent) {
+      this.throwIfSignedOut(config);
+      await this.throwIfChallenged(config);
+      throw new Error(config.name + " did not send the prompt: it was still in the composer " +
+        Math.round(SEND_CONFIRM_MS / 1000) + "s after pressing send" + (presses > 1 ? " twice" : "") + ". " +
+        await this.pageChanged(config, "send ignored"));
+    }
+    if (this.pacer) this.pacer.sent();
     console.log("Prompt sent!");
     this.status.set("GENERATING");
 
@@ -1131,6 +1178,45 @@ export class PlaywrightController {
         await this.sendPrompt(this.lastPrompt, config);
         tries++;
       }
+    }
+  }
+
+  /** Press send: the send button when the provider has one, else Enter. */
+  private async pressSend(input: any, config: ProviderConfig): Promise<void> {
+    try {
+      // A provider with no send selector sends with Enter by design (DeepSeek).
+      const sendTiers = tiersFor(config.locate?.sendButton, config.selectors.sendButton);
+      const sendBtn = sendTiers.length ? await findNow(this.page!, sendTiers) : null;
+      if (sendBtn) {
+        console.log("Clicking send button...");
+        await sendBtn.locator.click({ timeout: CLICK_TIMEOUT_MS });
+      } else if (!sendTiers.length) {
+        console.log("Sending with Enter...");
+        await input.press("Enter", { timeout: CLICK_TIMEOUT_MS });
+      } else {
+        console.log("No send button found, pressing Enter...");
+        await input.press("Enter", { timeout: CLICK_TIMEOUT_MS });
+      }
+    } catch (e) {
+      console.log("Send button click failed, pressing Enter: " + e);
+      await input.press("Enter", { timeout: CLICK_TIMEOUT_MS }).catch((err: any) =>
+        console.log("Enter failed too: " + err));
+    }
+  }
+
+  /**
+   * Whether the page took the prompt after send was pressed: the composer let
+   * go of it (cleared, or replaced by a new chat page), the reply stream
+   * opened, or the chat moved to its own address.
+   */
+  private async confirmSent(input: any, prompt: string, sentFrom: string): Promise<boolean> {
+    const until = Date.now() + SEND_CONFIRM_MS;
+    for (;;) {
+      if (this.streamsOpened > 0) return true;
+      if (this.page && this.page.url() !== sentFrom) return true;
+      if (promptLeft(await composerText(input), prompt)) return true;
+      if (Date.now() >= until) return false;
+      await sleep(250);
     }
   }
 
