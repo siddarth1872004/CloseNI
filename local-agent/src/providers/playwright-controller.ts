@@ -14,6 +14,12 @@ import { ProviderStatus, StatusTracker, statusForTrouble, mayRetry } from "./pro
 import { Pacer, PacingRules, BudgetSpent, parseBudget, parseGap } from "./pacing.js";
 import { TargetTier, tiersFor, findNow, findWithin } from "./locate.js";
 import { saveSnapshot } from "./dom-snapshot.js";
+import { getInitScript, patchWebDriver } from "../providers/patchwright/automation-mask.js";
+import { injectFingerprint, createContextOptions, buildFingerprint } from "../providers/patchwright/browser-fingerprint.js";
+import { applyNetworkRouting } from "../providers/patchwright/network-routing.js";
+import { sleepWithDelay, readingPause } from "../providers/patchwright/human-delays.js";
+import { DEFAULT_PATCHWRIGHT_CONFIG, type PatchwrightConfig } from "../providers/patchwright/types.js";
+import { setupPatchwright, PatchwrightContextMeta } from "../providers/patchwright/integration.js";
 
 export interface ProviderConfig {
   id: string;
@@ -146,6 +152,8 @@ export interface ProviderConfig {
    *  class should be a text edit, not a recompile. */
   controlSelectors?: Record<string, string>;
   profileDir: string;
+  /** Optional patchwright configuration for human-like browser behavior. */
+  patchwright?: Partial<PatchwrightConfig>;
 }
 
 const FENCE = "\`\`\`";
@@ -321,6 +329,8 @@ export class PlaywrightController {
   private replySignals: ReplySignals | null = null;
   /** What sendPrompt last sent, so a dropped reply can be asked for again. */
   private lastPrompt: string | null = null;
+  /** Patchwright context metadata (applied during launch). */
+  private patchwrightMeta: PatchwrightContextMeta | null = null;
   private status = new StatusTracker(statusChanged);
   private pacer: Pacer | null = null;
   private storageRoot: string = "";
@@ -575,6 +585,35 @@ export class PlaywrightController {
       args: ["--disable-blink-features=AutomationControlled"],
     });
     this.page = this.context.pages()[0] || (await this.context.newPage());
+
+    // Apply patchwright enhancements if enabled
+    if (config.patchwright?.enabled ?? DEFAULT_PATCHWRIGHT_CONFIG.enabled) {
+      console.log("Applying patchwright enhancements...");
+      try {
+        // Add init script to hide automation traces
+        await this.context.addInitScript(getInitScript());
+
+        // Inject browser fingerprint
+        await injectFingerprint(this.page, config.patchwright?.fingerprint);
+
+        // Apply network routing
+        await applyNetworkRouting(this.context, config.patchwright?.network);
+
+        // Patch the page for navigator.webdriver and cdc_ traces
+        await patchWebDriver(this.page);
+
+        // Store metadata
+        this.patchwrightMeta = {
+          config: (config.patchwright ?? DEFAULT_PATCHWRIGHT_CONFIG) as PatchwrightConfig,
+          fingerprint: createContextOptions(config.patchwright?.fingerprint),
+          patched: true,
+        };
+        console.log("Patchwright applied: webdriver hidden, fingerprint injected.");
+      } catch (err) {
+        console.log("Patchwright applied with warnings:", err);
+      }
+    }
+
     // Needed to read back what a provider's own Copy button puts on the
     // clipboard. Granted to the provider's origin only, and failure is
     // survivable - extraction falls back to reading the DOM.
@@ -1936,6 +1975,21 @@ export class PlaywrightController {
       await this.page.screenshot({ path: savePath, fullPage: true });
       console.log("Screenshot saved: " + savePath);
     }
+  }
+
+  /**
+   * Returns the patchwright context metadata, or null if patchwright
+   * has not been applied yet.
+   */
+  getPatchwrightMeta(): PatchwrightContextMeta | null {
+    return this.patchwrightMeta;
+  }
+
+  /**
+   * Check whether patchwright enhancements have been applied.
+   */
+  isPatchwrightEnabled(): boolean {
+    return this.patchwrightMeta?.patched ?? false;
   }
 
   // The agent runs as a one-shot CLI process, so nothing survives to reuse this
