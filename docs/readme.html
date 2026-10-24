@@ -110,6 +110,15 @@ Ask for a change and it reads your project, edits files, runs commands and check
 <li>Installers are <strong>unsigned</strong>, so Windows SmartScreen may warn on first launch.</li>
 </ul>
 </blockquote>
+<blockquote>
+<p><strong>Read this before you sign in.</strong></p>
+<ul>
+<li><strong>Use a throwaway account.</strong> Sign in with a dummy email made for CloseNI, never your main account.</li>
+<li><strong>Your account can be banned.</strong> Automated use can break a provider&#39;s terms, and the more prompts you send, the more likely the account is flagged or banned.</li>
+<li><strong>It breaks when the site changes.</strong> CloseNI drives the chat site&#39;s own page, so a redesign can stop it working until the selectors are updated.</li>
+<li><strong>Not recommended for production.</strong> CloseNI is an early release. Keep it away from production systems and from code you cannot afford to lose.</li>
+</ul>
+</blockquote>
 <h2 id="the-coding-agent">The coding agent</h2>
 <img src="screenshots/code.png" alt="The Code panel in the Terminal theme: a request, a read, and an edit shown as a diff waiting for permission" width="100%"><p>Ask in plain words: &quot;fix the failing test&quot;, &quot;add pagination to the list endpoint&quot;, &quot;explain @src/app.py&quot;. A chat site has no tool-calling API, so the tools are a convention: the model answers with fenced blocks that name a tool, CloseNI runs them and sends the results back as the next message.</p>
 <table>
@@ -333,7 +342,7 @@ cmake -S native -B build-native -G Ninja &amp;&amp; cmake --build build-native
 npm start
 </code></pre>
 <p><strong>Updating.</strong> CloseNI checks for a newer release when it starts (Settings &gt; About can turn that off). The download is checked against the release&#39;s <code>SHA256SUMS.txt</code> before anything runs. On Windows the new installer then upgrades in place. The AppImage replaces itself and restarts. The <code>.deb</code> opens in your software installer. A source checkout is only told a release is out.</p>
-<p><strong>First run.</strong> Pick a project folder, choose a provider, install Chromium and sign in once in the browser window. A checklist above the chat walks through it.</p>
+<p><strong>First run.</strong> Pick a project folder, choose a provider, install Chromium and sign in once in the browser window, with a throwaway account rather than your main one. A checklist above the chat walks through it.</p>
 <p>The GitHub token is kept in the OS keyring: DPAPI on Windows and the Secret Service on Linux. Without a keyring CloseNI still runs, but asks you to sign in to GitHub each launch.</p>
 <h2 id="development">Development</h2>
 <pre><code class="language-bash">npm test                        # unit suite, no browser
@@ -350,7 +359,8 @@ npm run dist                    # stage the app and build this system&#39;s inst
 <li><strong>Checks prove it compiles, not that it is right.</strong> A project can pass every check and still be wrong.</li>
 <li><strong>Large projects are untested.</strong> Builds of a few dozen steps behave well; beyond that is unknown.</li>
 <li><strong>The installers are unsigned</strong>, and the browser layer in <code>local-agent/src/web/</code> has not yet run against the live sites. See the <a href="https://github.com/siddarth1872004/CloseNI/blob/main/docs/ROADMAP.md">roadmap</a>.</li>
-<li><strong>Terms of service are your responsibility.</strong> Automating a web interface may conflict with a provider&#39;s terms.</li>
+<li><strong>Terms of service are your responsibility.</strong> Automating a web interface may conflict with a provider&#39;s terms, and heavy use is likely to get the account banned. Use a throwaway account.</li>
+<li><strong>Not for production.</strong> It is an early release; use it on projects you can afford to lose work in.</li>
 </ul>
 <h2 id="license">License</h2>
 <p>MIT. See <a href="https://github.com/siddarth1872004/CloseNI/blob/main/LICENSE">LICENSE</a>. Packaged builds bundle Qt (LGPL-3.0), Node.js and Playwright, each under its own licence. Chromium is downloaded at first run, not bundled.</p>

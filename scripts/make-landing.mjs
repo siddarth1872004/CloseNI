@@ -300,6 +300,7 @@ ${section('04', 'providers', 'Providers', 'Where it stands, plainly', '')}  <tab
 ${providers}
   </table>
   <p class="terms">You are using a site under its own terms. Check them before you sign in. <a href="readme.html#providers">Details</a>.</p>
+  <p class="note"><b>Use a throwaway account.</b> Sign in with a dummy email, never your main account: the more prompts you send, the more likely the account is banned. CloseNI can break when a site changes its page, and it is not recommended for production.</p>
 </section>
 
 ${section('05', 'download', 'Download', 'Get CloseNI', `Version ${v}. A native Qt app with Node and the agent bundled. Chromium is downloaded on first run.`)}  <div class="dl">
@@ -314,7 +315,7 @@ ${section('05', 'download', 'Download', 'Get CloseNI', `Version ${v}. A native Q
 <span class="p">$ </span>cmake -S native -B build-native -G Ninja
 <span class="p">$ </span>cmake --build build-native &amp;&amp; npm start</pre></div>
   </div>
-  <p class="note"><b>The installers are unsigned.</b> Windows SmartScreen may warn on first launch. The first run asks you to install Chromium and sign in to a provider once.</p>
+  <p class="note"><b>The installers are unsigned.</b> Windows SmartScreen may warn on first launch. The first run asks you to install Chromium and sign in to a provider once, with a throwaway account.</p>
 </section>
 </main>
 

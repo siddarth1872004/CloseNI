@@ -30,6 +30,12 @@ The app itself is native: Qt Quick on Windows and Linux, with no web view anywhe
 > - **Ollama**, **Qwen Studio**, **GLM**, **ChatGPT**, **Gemini**, **Claude** and **Grok** are listed as **coming soon** and cannot be selected.
 > - Installers are **unsigned**, so Windows SmartScreen may warn on first launch.
 
+> **Read this before you sign in.**
+> - **Use a throwaway account.** Sign in with a dummy email made for CloseNI, never your main account.
+> - **Your account can be banned.** Automated use can break a provider's terms, and the more prompts you send, the more likely the account is flagged or banned.
+> - **It breaks when the site changes.** CloseNI drives the chat site's own page, so a redesign can stop it working until the selectors are updated.
+> - **Not recommended for production.** CloseNI is an early release. Keep it away from production systems and from code you cannot afford to lose.
+
 ## The coding agent
 
 <img src="docs/screenshots/code.png" alt="The Code panel in the Terminal theme: a request, a read, and an edit shown as a diff waiting for permission" width="100%">
@@ -164,7 +170,7 @@ npm start
 
 **Updating.** CloseNI checks for a newer release when it starts (Settings > About can turn that off). The download is checked against the release's `SHA256SUMS.txt` before anything runs. On Windows the new installer then upgrades in place. The AppImage replaces itself and restarts. The `.deb` opens in your software installer. A source checkout is only told a release is out.
 
-**First run.** Pick a project folder, choose a provider, install Chromium and sign in once in the browser window. A checklist above the chat walks through it.
+**First run.** Pick a project folder, choose a provider, install Chromium and sign in once in the browser window, with a throwaway account rather than your main one. A checklist above the chat walks through it.
 
 The GitHub token is kept in the OS keyring: DPAPI on Windows and the Secret Service on Linux. Without a keyring CloseNI still runs, but asks you to sign in to GitHub each launch.
 
@@ -187,7 +193,8 @@ Releases are built by CI from a version tag; see [docs/RELEASING.md](docs/RELEAS
 - **Checks prove it compiles, not that it is right.** A project can pass every check and still be wrong.
 - **Large projects are untested.** Builds of a few dozen steps behave well; beyond that is unknown.
 - **The installers are unsigned**, and the browser layer in `local-agent/src/web/` has not yet run against the live sites. See the [roadmap](docs/ROADMAP.md).
-- **Terms of service are your responsibility.** Automating a web interface may conflict with a provider's terms.
+- **Terms of service are your responsibility.** Automating a web interface may conflict with a provider's terms, and heavy use is likely to get the account banned. Use a throwaway account.
+- **Not for production.** It is an early release; use it on projects you can afford to lose work in.
 
 ## License
 
