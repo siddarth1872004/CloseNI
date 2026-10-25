@@ -2,6 +2,16 @@
 
 All notable changes to CloseNI are recorded here.
 
+## [0.1.1] — 2026-10-25
+
+### Fixed
+
+- **Signed out after long tasks on Windows.** The app killed each agent run
+  150 ms after its result, while the agent could still be closing Chromium. On
+  Windows Chromium dies with the agent, so it was cut off before saving the
+  profile, and repeated runs lost the login. The app now lets the agent exit on
+  its own and kills it only if it is still running 10 s later.
+
 ## [0.1] — 2026-10-23
 
 The first release of CloseNI.

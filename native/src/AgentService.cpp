@@ -474,10 +474,13 @@ void AgentService::runOneShot(const OneShot &spec, const Reply &done)
             return;
         st->lines.feed(d, [&](const QString &line) {
             routeLine(line);
-            // The result is in; whatever the agent does after it (closing a
-            // browser that will not close) must not hold the queue.
+            // The result is in, but the agent may still be closing its browser.
+            // On Windows Chromium shares the agent's job object, so killing the
+            // agent mid-close kills Chromium before it has saved the profile -
+            // which signed people out. Let it exit on its own; kill it only if
+            // it hangs, so a browser that will not close cannot hold the queue.
             if (spec.runAgent && line == QStringLiteral("AGENT_OUTPUT_END"))
-                QTimer::singleShot(150, proc, [finish] { finish(true, QString()); });
+                QTimer::singleShot(10000, proc, [finish] { finish(true, QString()); });
         });
     };
     connect(proc, &QProcess::readyReadStandardOutput, this, readOut);

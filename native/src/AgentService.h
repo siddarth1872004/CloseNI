@@ -86,7 +86,7 @@ private:
         enum { ErrLog, ErrRoute, ErrIgnore } stderrMode = ErrRoute;
         /* Held as agentProc, the one-shot run approvals and sign-out look at. */
         bool holdsProfile = true;
-        /* run-agent: kill 150 ms after AGENT_OUTPUT_END, and clear the phase. */
+        /* run-agent: kill if still running 10 s after AGENT_OUTPUT_END, and clear the phase. */
         bool runAgent = false;
         /* The result from all of stdout, or from the reason the start failed. */
         std::function<QVariantMap(const QByteArray &output, const QString &startError)> result;
