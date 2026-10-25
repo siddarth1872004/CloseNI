@@ -10,262 +10,297 @@
 <meta property="og:description" content="Free web AI chats, turned into a coding agent. No API keys.">
 <meta property="og:image" content="screenshots/code.png">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="theme-color" content="#141414">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%23141414'/><path d='M7 6H13V26H7M25 6H19V26H25' fill='none' stroke='%23ebe9e5' stroke-width='2.8' stroke-linecap='square'/></svg>">
+<meta name="theme-color" content="#f4f0e8" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#121110" media="(prefers-color-scheme: dark)">
+<link rel="preload" href="assets/fonts/instrument-serif.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%23f4f0e8'/><path d='M7 6H13V26H7M25 6H19V26H25' fill='none' stroke='%23d9461c' stroke-width='2.8' stroke-linecap='square'/></svg>">
 <style>
+@font-face{font-family:"Instrument Serif";font-style:normal;font-weight:400;font-display:swap;src:url(assets/fonts/instrument-serif.woff2) format("woff2")}
+@font-face{font-family:"Instrument Serif";font-style:italic;font-weight:400;font-display:swap;src:url(assets/fonts/instrument-serif-italic.woff2) format("woff2")}
+@font-face{font-family:"Instrument Sans";font-style:normal;font-weight:400 600;font-display:swap;src:url(assets/fonts/instrument-sans.woff2) format("woff2")}
 :root{
-  color-scheme:dark;
-  --bg:#141414; --panel:#181818; --surface:#1b1b1b; --raised:#232323; --sunken:#101010;
-  --line:#262626; --line2:#3a3a3a; --txt:#ebe9e5; --dim:#a8a49d; --mut:#8a867e; --inverse:#141414;
-  --ok:#8ccf7e; --warn:#e5c07b; --err:#f07878; --accent:#e4e4e4; --focus:#d0d0d0;
+  color-scheme:light;
+  --bg:#f4f0e8; --panel:#fbf9f4; --surface:#fffdf8; --raised:#ebe5d8; --sunken:#ece6da;
+  --line:#ddd5c5; --line2:#c4baa6; --txt:#17150f; --dim:#4f4a40; --mut:#857e70; --inverse:#f4f0e8;
+  --ok:#2f6b3f; --warn:#efc23a; --err:#a3332a; --accent:#d9461c; --focus:#2b46d6;
+  --serif:"Instrument Serif",Georgia,"Times New Roman",serif;
+  --sans:"Instrument Sans",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
   --mono:ui-monospace,"SF Mono",Menlo,"Cascadia Mono",Consolas,"Liberation Mono",monospace;
 }
-@media (prefers-color-scheme: light){
+@media (prefers-color-scheme: dark){
   :root{
-    color-scheme:light;
-    --bg:#f7f7f5; --panel:#ffffff; --surface:#ffffff; --raised:#eeeee9; --sunken:#f0f0ec;
-    --line:#ddddd7; --line2:#c6c6bf; --txt:#1b1b1d; --dim:#55555a; --mut:#8a8a84; --inverse:#f7f7f5;
-    --ok:#2f6b45; --warn:#7a6520; --err:#9c2f38; --accent:#b3541e; --focus:#3b4fd8;
+    color-scheme:dark;
+    --bg:#121110; --panel:#191816; --surface:#1d1c19; --raised:#262420; --sunken:#0d0c0b;
+    --line:#2c2a26; --line2:#45423b; --txt:#efe9dd; --dim:#b0a999; --mut:#7f796c; --inverse:#121110;
+    --ok:#86c98f; --warn:#e9bd3a; --err:#f08070; --accent:#ff6b3d; --focus:#9fb0ff;
   }
 }
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.7 var(--mono);-webkit-text-size-adjust:100%}
-a{color:inherit;text-decoration:underline;text-decoration-color:var(--line2);text-underline-offset:3px}
+body{margin:0;background:var(--bg);color:var(--txt);font:16px/1.6 var(--sans);-webkit-text-size-adjust:100%;-webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration:underline;text-decoration-color:var(--line2);text-underline-offset:3px;text-decoration-thickness:1px}
 a:hover{text-decoration-color:currentColor}
-:focus-visible{outline:1px solid var(--focus);outline-offset:2px}
-.wm{display:inline-flex;align-items:center;gap:8px;text-decoration:none;font-size:15px;letter-spacing:1.2px;color:var(--txt)}
-.wm .mark{width:17px;height:17px;color:var(--accent)}
+:focus-visible{outline:2px solid var(--focus);outline-offset:3px}
+.wm{display:inline-flex;align-items:center;gap:8px;text-decoration:none;font:600 17px/1 var(--sans);letter-spacing:-.01em;color:var(--txt)}
+.wm .mark{width:18px;height:18px;color:var(--accent)}
 .wm b{font-weight:inherit;color:var(--accent)}
-.micro{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--mut)}
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:8px 14px;border:1px solid var(--line2);border-radius:2px;
-  font:11px/1.4 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--dim);background:transparent;text-decoration:none}
-.btn:hover{color:var(--txt);border-color:var(--txt)}
-.btn.invert{background:var(--txt);border-color:var(--txt);color:var(--inverse);font-weight:600}
-.btn.invert:hover{background:var(--accent);border-color:var(--accent)}
-.btn.small{padding:4px 8px;font-size:10px}
-/* A status readout, as the app's phase line draws it: filled for working, hollow for not yet. */
-.st{font-size:10px;letter-spacing:.14em;text-transform:uppercase;white-space:nowrap}
-.st::before{content:"";display:inline-block;width:7px;height:7px;margin-right:8px;vertical-align:0;border:1px solid currentColor}
-.st.ok{color:var(--ok)} .st.ok::before{background:currentColor}
-.st.dim{color:var(--dim)} .st.dim::before{background:currentColor}
-.st.mut{color:var(--mut)}
+.micro{font-size:13px;color:var(--mut)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:10px;padding:12px 20px;border:1px solid var(--txt);border-radius:999px;
+  font:500 15px/1.2 var(--sans);color:var(--txt);background:transparent;text-decoration:none;transition:background .15s,color .15s,border-color .15s}
+.btn:hover{background:var(--txt);color:var(--inverse)}
+.btn.invert{background:var(--txt);color:var(--inverse)}
+.btn.invert:hover{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.small{padding:6px 14px;font-size:14px}
 
-html{scroll-behavior:smooth;scroll-padding-top:64px}
-.wrap{max-width:1080px;margin:0 auto;padding:0 16px}
-nav{position:sticky;top:0;z-index:5;background:var(--panel);border-bottom:1px solid var(--line)}
-nav .wrap{display:flex;align-items:center;gap:20px;height:48px}
-nav .links{display:flex;gap:18px}
-nav .links a{text-decoration:none;color:var(--mut)}
+html{scroll-behavior:smooth}
+.wrap{max-width:1200px;margin:0 auto;padding:0 24px}
+h1,h2,h3{font-family:var(--serif);font-weight:400;margin:0}
+h2{font-size:clamp(40px,6vw,72px);line-height:1;letter-spacing:-.02em}
+h2 em,h1 em{font-style:italic;color:var(--accent)}
+.lede{font-size:19px;color:var(--dim);max-width:560px;margin:20px 0 0}
+
+nav .wrap{display:flex;align-items:center;gap:28px;height:76px}
+nav .links{display:flex;gap:26px;font-size:15px}
+nav .links a{text-decoration:none;color:var(--dim)}
 nav .links a:hover{color:var(--txt)}
-nav .links a span{color:var(--line2);margin-right:6px}
 nav .sp{flex:1}
 
-header.hero{padding:64px 0 0}
-.hero .grid{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:48px;align-items:start}
-.hero .tag{margin:0 0 20px}
-.hero .tag b{font-weight:inherit;color:var(--warn)}
-h1{font-size:clamp(26px,4.2vw,40px);line-height:1.18;font-weight:600;letter-spacing:-.01em;margin:0 0 20px}
-h1 span{color:var(--dim)}
-.hero p.intro{color:var(--dim);margin:0 0 28px;max-width:520px}
-.cta{display:flex;gap:8px;flex-wrap:wrap}
-.hero .facts{margin:20px 0 0;display:flex;flex-wrap:wrap;gap:4px 14px}
-.hero .facts span+span::before{content:"·";margin-right:14px;color:var(--line2)}
+.hero{padding:56px 0 0}
+.kicker{display:flex;align-items:center;gap:10px;margin:0 0 28px;font-size:14px;color:var(--dim)}
+.kicker i{width:8px;height:8px;border-radius:50%;background:var(--accent)}
+h1{font-size:clamp(52px,9.2vw,128px);line-height:.92;letter-spacing:-.03em;max-width:11.5em}
+.hero-foot{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:32px;align-items:end;margin:40px 0 0;padding:28px 0 0;border-top:1px solid var(--txt)}
+.hero-foot p{margin:0;max-width:560px;font-size:19px;color:var(--dim)}
+.cta{display:flex;align-items:center;gap:22px;flex-wrap:wrap}
+.cta a.more{font-size:15px}
 
-.panel{background:var(--panel);border:1px solid var(--line);border-radius:3px}
-.panel .head{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border-bottom:1px solid var(--line)}
-.panel .head .live{color:var(--ok)}
-.panel .head .live::before{content:"";display:inline-block;width:6px;height:6px;background:currentColor;margin-right:6px;vertical-align:1px}
-.turn{margin:0;padding:14px 14px 16px;font-size:12.5px;line-height:1.75;white-space:pre;overflow-x:auto;color:var(--dim)}
-.turn span{display:block;opacity:0;animation:line .01s linear forwards;animation-delay:calc(var(--i) * .55s + .3s)}
-.turn .you{color:var(--txt);background:var(--raised);border-left:2px solid var(--line2);padding:2px 8px;margin:0 0 10px}
-.turn .tool{color:var(--txt);margin-top:8px}
-.turn .tool b{font-weight:600}
-.turn .say{color:var(--txt);margin-top:8px}
-.turn .out{color:var(--mut)}
-.turn .del{color:var(--err)} .turn .add{color:var(--ok)}
-.turn .say:last-child::after{content:"";display:inline-block;width:7px;height:14px;margin-left:4px;background:var(--txt);vertical-align:-2px;animation:blink 1s steps(1) infinite}
-@keyframes line{to{opacity:1}}
-@keyframes blink{50%{opacity:0}}
-@media (prefers-reduced-motion: reduce){.turn span{animation:none;opacity:1}.turn .say:last-child::after{animation:none}}
+.plate{margin:64px auto 0}
+.frame{position:relative;border-radius:10px;overflow:hidden;background:#141414;box-shadow:0 1px 0 var(--line),0 30px 60px -30px rgba(23,21,15,.45)}
+.frame img{display:block;width:100%;height:auto}
+.pin{position:absolute;width:30px;height:30px;margin:-15px 0 0 -15px;border-radius:50%;background:var(--accent);color:#fff;
+  font:600 14px/30px var(--sans);text-align:center;box-shadow:0 0 0 4px rgba(217,70,28,.28)}
+.plate figcaption{display:grid;grid-template-columns:auto minmax(0,1fr);gap:24px;margin:20px 0 0;font-size:14px;color:var(--dim)}
+.plate figcaption b{font-weight:600;color:var(--txt)}
+.callouts{list-style:none;counter-reset:c;margin:0;padding:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:20px}
+.callouts li{counter-increment:c;position:relative;padding-left:30px}
+.callouts li::before{content:counter(c);position:absolute;left:0;top:1px;width:20px;height:20px;border-radius:50%;background:var(--accent);color:#fff;font:600 12px/20px var(--sans);text-align:center}
 
-.shot{margin:56px 0 0}
-.shot img{display:block;width:100%;height:auto}
+section{padding:140px 0 0}
+.quote{font-family:var(--serif);font-size:clamp(34px,5vw,64px);line-height:1.04;letter-spacing:-.02em;margin:0;max-width:16em}
+.quote span{color:var(--mut)}
+.flow{list-style:none;margin:64px 0 0;padding:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0}
+.flow li{position:relative;padding:22px 32px 0 0;border-top:1px solid var(--txt)}
+.flow li+li{padding-left:0}
+.flow li:not(:last-child)::after{content:"\2192";position:absolute;right:14px;top:16px;font:24px/1 var(--serif);color:var(--accent)}
+.flow h3{font-size:34px;line-height:1;margin:0 0 12px}
+.flow p{margin:0;color:var(--dim);font-size:15px;max-width:240px}
 
-section{padding:88px 0 0}
-.rule{display:flex;align-items:center;gap:10px;margin:0 0 18px}
-.rule span:first-child{color:var(--line2)}
-.rule i{flex:1;height:1px;background:var(--line)}
-h2{font-size:clamp(20px,2.6vw,26px);line-height:1.3;font-weight:600;margin:0 0 10px}
-.lede{color:var(--dim);max-width:640px;margin:0 0 32px}
+.split{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:48px}
+.split .side{position:sticky;top:32px;align-self:start}
+dl.features{margin:0}
+dl.features div{padding:22px 0;border-top:1px solid var(--line2)}
+dl.features div:last-child{border-bottom:1px solid var(--line2)}
+dl.features dt{font:400 30px/1.1 var(--serif);margin:0 0 8px}
+dl.features dd{margin:0;color:var(--dim);max-width:560px}
 
-.steps{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border-top:1px solid var(--line2)}
-.steps li{padding:16px 20px 0 0}
-.steps li+li{padding-left:20px;border-left:1px solid var(--line)}
-.steps .micro{color:var(--txt)}
-.steps p{margin:8px 0 0;color:var(--dim)}
+.gallery{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:48px 32px;margin:56px 0 0}
+.gallery figure{margin:0}
+.gallery img{display:block;width:100%;height:auto;border-radius:8px;border:1px solid var(--line)}
+.gallery figcaption{margin:14px 0 0;font-size:14px;color:var(--dim)}
+.gallery figcaption b{font-weight:600;color:var(--txt);margin-right:6px}
 
-dl.features{margin:0;border-top:1px solid var(--line)}
-dl.features div{display:grid;grid-template-columns:220px minmax(0,1fr);gap:24px;padding:14px 0;border-bottom:1px solid var(--line)}
-dl.features dt{color:var(--txt);font-weight:600}
-dl.features dd{margin:0;color:var(--dim)}
+.label{margin:0;background:var(--warn);color:#17150f;border:2px solid #17150f;border-radius:4px;overflow:hidden}
+.label .stripe{height:14px;background:repeating-linear-gradient(-45deg,#17150f 0 10px,transparent 10px 20px);border-bottom:2px solid #17150f}
+.label .body{display:grid;grid-template-columns:minmax(0,4fr) minmax(0,8fr);gap:40px;padding:36px 40px 40px}
+.label h2{font-size:clamp(36px,4.6vw,56px);color:#17150f}
+.label .sign{display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;margin:0 0 20px;border:2px solid #17150f;border-radius:50%;font:600 24px/1 var(--sans)}
+.label ol{margin:0;padding:0;list-style:none;counter-reset:w}
+.label li{counter-increment:w;display:grid;grid-template-columns:36px minmax(0,1fr);padding:14px 0;border-top:1.5px solid #17150f;font-size:16px}
+.label li::before{content:counter(w,decimal-leading-zero);font:600 13px/1.9 var(--sans)}
+.label li:last-child{border-bottom:1.5px solid #17150f}
+.label li b{font-weight:600}
+.label .fine{margin:18px 0 0;font-size:14px}
+.label .fine a{text-decoration-color:#17150f}
 
-.gallery{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px}
-figure{margin:0}
-figure img{display:block;width:100%;height:auto;border:1px solid var(--line);border-radius:3px}
-figcaption{padding:10px 0 0;color:var(--dim);font-size:13px}
-figcaption .micro{display:block;color:var(--txt);margin-bottom:2px}
+.providers{list-style:none;margin:48px 0 0;padding:0}
+.providers li{display:grid;grid-template-columns:minmax(0,5fr) 150px minmax(0,6fr);gap:24px;align-items:baseline;padding:22px 0;border-top:1px solid var(--line2)}
+.providers li:last-child{border-bottom:1px solid var(--line2)}
+.providers .name{font:400 30px/1.1 var(--serif)}
+.providers .note{color:var(--dim);font-size:15px}
+.st{display:inline-flex;align-items:center;gap:8px;font-size:14px;font-weight:500;white-space:nowrap}
+.st::before{content:"";width:9px;height:9px;border-radius:50%;border:1.5px solid currentColor}
+.st.ok{color:var(--ok)} .st.ok::before{background:currentColor}
+.st.soon{color:var(--mut)}
 
-table{width:100%;border-collapse:collapse;border-top:1px solid var(--line2)}
-th,td{padding:12px 16px 12px 0;text-align:left;vertical-align:top;border-bottom:1px solid var(--line)}
-th{font-weight:400}
-td:first-child{color:var(--txt);white-space:nowrap}
-td:last-child{color:var(--dim)}
-.terms{color:var(--mut);font-size:13px;margin:16px 0 0}
+.get{margin:140px 0 0;padding:120px 0 96px;background:var(--txt);color:var(--inverse)}
+.get h2{font-size:clamp(56px,10vw,140px);line-height:.9}
+.get h2 em{color:var(--accent)}
+.get .lede{color:var(--line2)}
+.rows{margin:56px 0 0;border-top:1px solid var(--mut)}
+.row{display:grid;grid-template-columns:minmax(0,4fr) minmax(0,7fr) auto;gap:24px;align-items:center;padding:26px 4px;border-bottom:1px solid var(--mut);
+  text-decoration:none;color:inherit;transition:padding .2s,background .2s}
+.row:hover{background:rgba(127,121,108,.12);padding-left:16px;padding-right:16px}
+.row .os{font:400 44px/1 var(--serif)}
+.row .what{color:var(--line2);font-size:15px}
+.row .arrow{font:28px/1 var(--serif);color:var(--accent)}
+.row .yours{display:none;margin-left:12px;padding:3px 10px;border:1px solid var(--accent);border-radius:999px;color:var(--accent);font:500 12px/1.4 var(--sans);vertical-align:middle}
+.row.rec .yours{display:inline-block}
+.source{display:grid;grid-template-columns:minmax(0,4fr) minmax(0,7fr);gap:24px;margin:56px 0 0}
+.source h3{font-size:30px}
+.source p{margin:6px 0 0;color:var(--line2);font-size:15px}
+.get pre{margin:0;min-width:0;overflow:auto;padding:18px 20px;border:1px solid var(--mut);border-radius:6px;font:13px/1.8 var(--mono);color:var(--inverse)}
+.get pre .p{color:var(--mut);user-select:none}
+.unsigned{margin:40px 0 0;font-size:14px;color:var(--line2);max-width:720px}
+.unsigned b{color:var(--inverse);font-weight:600}
 
-.dl{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));border:1px solid var(--line);border-radius:3px;background:var(--panel)}
-.dl > div{padding:20px;display:flex;flex-direction:column;gap:10px;align-items:flex-start}
-.dl > div+div{border-left:1px solid var(--line)}
-.dl h3{margin:0;font-size:14px;font-weight:600}
-.dl h3 .micro{margin-left:10px;color:var(--ok);display:none}
-.dl .rec h3 .micro{display:inline}
-.dl p{margin:0;color:var(--dim);flex:1}
-.dl .src{grid-column:1/-1;border-left:0;border-top:1px solid var(--line)}
-pre{margin:0;width:100%;padding:12px 14px;background:var(--sunken);border:1px solid var(--line);border-radius:2px;overflow:auto;font:12.5px/1.7 var(--mono);color:var(--txt)}
-pre .p{color:var(--mut);user-select:none}
-.note{margin:16px 0 0;padding:12px 14px;border-left:2px solid var(--warn);background:var(--panel);color:var(--dim);font-size:13px}
-.note b{color:var(--txt);font-weight:600}
-
-footer{margin-top:96px;border-top:1px solid var(--line);background:var(--panel)}
-footer .wrap{display:flex;flex-wrap:wrap;align-items:center;gap:8px 22px;padding:22px 16px 28px;color:var(--mut);font-size:12px}
-footer a{color:var(--dim)}
+footer .wrap{display:flex;flex-wrap:wrap;align-items:center;gap:10px 26px;padding:28px 24px 40px;font-size:14px;color:var(--mut)}
+footer a{color:var(--dim);text-decoration:none}
+footer a:hover{color:var(--txt)}
 footer .sp{flex:1}
 
-@media (max-width:860px){
-  .hero .grid{grid-template-columns:minmax(0,1fr);gap:36px}
-  .steps{grid-template-columns:repeat(2,minmax(0,1fr))}
-  .steps li:nth-child(3){padding-left:0;border-left:0}
-  dl.features div{grid-template-columns:minmax(0,1fr);gap:4px}
-  .gallery{grid-template-columns:minmax(0,1fr)}
+@media (max-width:960px){
+  .hero-foot,.split,.label .body{grid-template-columns:minmax(0,1fr)}
+  .split .side{position:static}
+  .callouts,.flow{grid-template-columns:repeat(2,minmax(0,1fr));gap:24px}
+  .flow li{padding-right:24px}
+  .flow li:not(:last-child)::after{display:none}
+  .plate figcaption{grid-template-columns:minmax(0,1fr);gap:12px}
+  .providers li{grid-template-columns:minmax(0,1fr) auto}
+  .providers .note{grid-column:1/-1}
+  .source{grid-template-columns:minmax(0,1fr);gap:16px}
 }
 @media (max-width:640px){
+  .wrap{padding:0 16px}
   nav .links{display:none}
-  header.hero{padding-top:40px}
-  section{padding-top:64px}
-  .steps{grid-template-columns:minmax(0,1fr)}
-  .steps li,.steps li+li{padding:14px 0;border-left:0;border-bottom:1px solid var(--line)}
-  .dl{grid-template-columns:minmax(0,1fr)}
-  .dl > div+div{border-left:0;border-top:1px solid var(--line)}
-  th:last-child,td:last-child{display:none}
-  td:first-child{white-space:normal}
+  .hero{padding-top:24px}
+  section{padding-top:96px}
+  .pin{width:20px;height:20px;margin:-10px 0 0 -10px;font-size:11px;line-height:20px;box-shadow:0 0 0 3px rgba(217,70,28,.28)}
+  .callouts,.flow,.gallery{grid-template-columns:minmax(0,1fr)}
+  .label .body{padding:24px 20px 28px;gap:16px}
+  .row{grid-template-columns:minmax(0,1fr) auto;gap:6px 16px}
+  .row .what{grid-column:1/2;grid-row:2}
+  .row .arrow{grid-row:1/3;grid-column:2}
+  .row .os{font-size:36px}
+  .get{margin-top:96px;padding:80px 0 64px}
 }
+@media (prefers-reduced-motion: reduce){html{scroll-behavior:auto}.btn,.row{transition:none}}
 </style>
 </head>
 <body>
 <nav><div class="wrap">
   <a class="wm" href="./"><svg class="mark" viewBox="0 0 32 32" aria-hidden="true"><path d="M7 6H13V26H7M25 6H19V26H25" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="square"/></svg><span>Close<b>NI</b></span></a>
-  <div class="links micro">
-    <a href="#how"><span>01</span>How it works</a>
-    <a href="#features"><span>02</span>Features</a>
-    <a href="#screens"><span>03</span>Screens</a>
-    <a href="#providers"><span>04</span>Providers</a>
-    <a href="#download"><span>05</span>Download</a>
-    <a href="readme.html"><span>06</span>Docs</a>
-  </div>
   <span class="sp"></span>
+  <div class="links">
+    <a href="#how">How it works</a>
+    <a href="#features">Features</a>
+    <a href="#before">Before you start</a>
+    <a href="readme.html">Docs</a>
+  </div>
   <a class="btn small" href="https://github.com/siddarth1872004/CloseNI">GitHub</a>
 </div></nav>
 
 <header class="hero"><div class="wrap">
-  <div class="grid">
-    <div>
-      <p class="tag micro">v0.1.1 · <b>early release</b> · DeepSeek driven end to end</p>
-      <h1>Free web AI chats, <span>turned into a coding agent.</span></h1>
-      <p class="intro">Ask for a change and it reads your project, edits files, runs commands and checks its work, asking before anything it should. The model is a chat site driven in a real browser. No API key, no per-token bill.</p>
-      <div class="cta">
-        <a class="btn invert" id="dl-main" href="https://github.com/siddarth1872004/CloseNI/releases/latest">Download for your system</a>
-        <a class="btn" href="readme.html">Read the docs</a>
-      </div>
-      <p class="facts micro" id="dl-sub"><span>Windows</span><span>Linux</span><span>Native Qt, no web view</span><span>Unsigned</span></p>
-    </div>
-    <div class="panel" role="img" aria-label="A Code turn: the agent reads calc.py, fixes a subtraction that should be an addition, and runs the tests, which pass.">
-      <div class="head micro"><span>Code</span><span class="live">DeepSeek</span></div>
-<pre class="turn"><span class="you" style="--i:0">&gt; fix the bug in calc.py</span><span class="say" style="--i:1">● Let me read it.</span><span class="tool" style="--i:2">● <b>Read</b>(calc.py)</span><span class="out" style="--i:3">  ⎿ Read 2 lines</span><span class="tool" style="--i:4">● <b>Update</b>(calc.py)</span><span class="del" style="--i:5">  ⎿ -    return a - b</span><span class="add" style="--i:6">     +    return a + b</span><span class="tool" style="--i:7">● <b>Bash</b>(python3 -m unittest)</span><span class="out" style="--i:8">  ⎿ Ran 3 tests · OK</span><span class="say" style="--i:9">● Fixed: add() subtracted. The tests pass.</span></pre>
+  <p class="kicker"><i></i>Version 0.1.1 · an early release for Windows and Linux</p>
+  <h1>Free web AI chats, <em>turned into a coding agent.</em></h1>
+  <div class="hero-foot">
+    <p>Ask for a change and it reads your project, edits files, runs commands and checks its work, asking before anything it should. The model is a chat site driven in a real browser: no API key, no per-token bill.</p>
+    <div class="cta">
+      <a class="btn invert" id="dl-main" href="https://github.com/siddarth1872004/CloseNI/releases/latest">Download CloseNI</a>
+      <a class="more" href="readme.html">Read the docs</a>
     </div>
   </div>
-  <div class="shot panel"><div class="head micro"><span>CloseNI · Terminal theme</span><span>v0.1.1</span></div><img src="screenshots/code.png" alt="The Code panel: a request, a read, and an edit shown as a diff waiting for permission"></div>
 </div></header>
 
-<main class="wrap">
-<section id="how">
-  <div class="rule micro"><span>01</span><span>How it works</span><i></i></div>
-  <h2>A person typing, from the site's side.</h2>
-  <p class="lede">A chat site has no tool-calling API, so tools are a convention written into the conversation. CloseNI teaches the model that convention and runs what comes back.</p>
-  <ol class="steps">
-<li><span class="micro">01 · Open</span><p>A Chromium window with your own session. You sign in once, in the real site.</p></li>
-<li><span class="micro">02 · Ask</span><p>Your request goes into the chat box, with the project's context and the tool conventions the model needs.</p></li>
-<li><span class="micro">03 · Read</span><p>It waits for the stream to end, parses the reply into tool calls, and runs the ones you allow.</p></li>
-<li><span class="micro">04 · Check</span><p>Tests, type checks and the build run on the result. A failure goes back to the model as the next prompt.</p></li>
-  </ol>
-</section>
+<figure class="plate wrap">
+  <div class="frame"><img src="screenshots/code.png" alt="The Code panel: a request, a read, and an edit shown as a diff waiting for permission" width="1280" height="800"><span class="pin" style="left:21%;top:22%">1</span><span class="pin" style="left:36%;top:29%">2</span><span class="pin" style="left:16.5%;top:39%">3</span><span class="pin" style="left:93%;top:52.5%">4</span></div>
+  <figcaption><b>Fig. 1</b><ol class="callouts">
+<li>The chat site it drives. You sign in once, in a real browser window.</li>
+<li>Ask in plain words: fix a bug, add a feature, explain a file.</li>
+<li>Every read, search and edit shows as it happens.</li>
+<li>File changes and commands wait for your yes, shown as a diff.</li>
+  </ol></figcaption>
+</figure>
 
-<section id="features">
-  <div class="rule micro"><span>02</span><span>Features</span><i></i></div>
-  <h2>What it does</h2>
-  <p class="lede">Everything here is covered by the test suites linked from the docs. Where something is not, the docs say so.</p>
+<main>
+<section id="how"><div class="wrap">
+  <p class="quote">From the site's side, it is a person typing. <span>From yours, it is a coding agent working in your project folder.</span></p>
+  <ol class="flow">
+<li><h3>Open</h3><p>A Chromium window with your own session. You sign in once, in the real site.</p></li>
+<li><h3>Ask</h3><p>Your request goes into the chat box, with the project's context and the tool conventions the model needs.</p></li>
+<li><h3>Read</h3><p>It waits for the stream to end, parses the reply into tool calls, and runs the ones you allow.</p></li>
+<li><h3>Check</h3><p>Tests, type checks and the build run on the result. A failure goes back to the model as the next prompt.</p></li>
+  </ol>
+</div></section>
+
+<section id="features"><div class="wrap split">
+  <div class="side">
+    <h2>What it <em>does</em></h2>
+    <p class="lede">A chat site has no tool-calling API, so the tools are a convention written into the conversation. CloseNI teaches the model that convention and runs what comes back.</p>
+  </div>
   <dl class="features">
-<div><dt>No API key</dt><dd>It opens a real Chromium window with the session you are signed into, types the prompt, waits for the reply to finish streaming and reads it back. From the site's side it is a person typing.</dd></div>
+<div><dt>No API key</dt><dd>It opens a real Chromium window with the session you are signed into, types the prompt, waits for the reply to finish streaming and reads it back.</dd></div>
 <div><dt>A coding agent</dt><dd>Reads and searches the project, edits files, runs commands and checks its work. File changes and commands ask first, as diffs you can read.</dd></div>
 <div><dt>Plan, build, repair</dt><dd>For a larger job it plans, you revise the plan, and each step is built, checked and repaired before the next one starts.</dd></div>
 <div><dt>Twelve languages</dt><dd>It picks the checks that fit the project: tests, type checks, a build, whichever the project actually has.</dd></div>
-<div><dt>Safe by default</dt><dd>Writes stay inside the workspace, secret files are never read without asking, and every command can be refused. Read the safety model before you give it autonomy.</dd></div>
-<div><dt>Eleven themes</dt><dd>Terminal, Paper, Cassette, Phosphor and seven more. This page wears Terminal, or Paper on a light system.</dd></div>
+<div><dt>Safe by default</dt><dd>Writes stay inside the workspace, secret files are never read without asking, and every command can be refused.</dd></div>
+<div><dt>Eleven themes</dt><dd>Terminal, Paper, Cassette, Phosphor and seven more, in a native Qt app with no web view anywhere.</dd></div>
   </dl>
-</section>
+</div></section>
 
-<section id="screens">
-  <div class="rule micro"><span>03</span><span>The app</span><i></i></div>
-  <h2>Screens</h2>
-  <p class="lede">Four of the panels, in a few of the themes.</p>
+<section id="screens"><div class="wrap">
+  <h2>Around <em>the app</em></h2>
   <div class="gallery">
-<figure><img src="screenshots/code.png" alt="The Code panel: Ask in plain words. Reads, searches and edits show as they happen; a command waits for your yes." loading="lazy"><figcaption><span class="micro">The Code panel</span>Ask in plain words. Reads, searches and edits show as they happen; a command waits for your yes.</figcaption></figure>
-<figure><img src="screenshots/builder.png" alt="The builder: A plan you can revise, then one step at a time, each checked before the next." loading="lazy"><figcaption><span class="micro">The builder</span>A plan you can revise, then one step at a time, each checked before the next.</figcaption></figure>
-<figure><img src="screenshots/test.png" alt="Test: The checks it ran for your project, and what they said." loading="lazy"><figcaption><span class="micro">Test</span>The checks it ran for your project, and what they said.</figcaption></figure>
-<figure><img src="screenshots/ship.png" alt="Ship: Commit and push from the app, with the diff in front of you." loading="lazy"><figcaption><span class="micro">Ship</span>Commit and push from the app, with the diff in front of you.</figcaption></figure>
+<figure><img src="screenshots/builder.png" alt="The builder: A plan you can revise, then one step at a time, each checked before the next." loading="lazy" width="1280" height="800"><figcaption><b>Fig. 2</b> The builder. A plan you can revise, then one step at a time, each checked before the next.</figcaption></figure>
+<figure><img src="screenshots/test.png" alt="Test: The checks it ran for your project, and what they said." loading="lazy" width="1280" height="800"><figcaption><b>Fig. 3</b> Test. The checks it ran for your project, and what they said.</figcaption></figure>
+<figure><img src="screenshots/ship.png" alt="Ship: Commit and push from the app, with the diff in front of you." loading="lazy" width="1280" height="800"><figcaption><b>Fig. 4</b> Ship. Commit and push from the app, with the diff in front of you.</figcaption></figure>
+<figure><img src="screenshots/theme-paper.png" alt="Paper: One of the eleven themes." loading="lazy" width="1280" height="800"><figcaption><b>Fig. 5</b> Paper. One of the eleven themes.</figcaption></figure>
   </div>
-</section>
+</div></section>
 
-<section id="providers">
-  <div class="rule micro"><span>04</span><span>Providers</span><i></i></div>
-  <h2>Where it stands, plainly</h2>
-  <table>
-    <tr><th class="micro">Provider</th><th class="micro">Status</th><th class="micro">Notes</th></tr>
-<tr><td>DeepSeek</td><td><span class="st ok">Ready</span></td><td>Chat, plan, build and the coding agent, including long sessions.</td></tr>
-<tr><td>Qwen Studio, GLM</td><td><span class="st mut">Coming soon</span></td><td>Selectors checked against the live sites; gated until a signed-in reply is.</td></tr>
-<tr><td>Ollama, ChatGPT, Gemini, Claude, Grok</td><td><span class="st mut">Coming soon</span></td><td>Listed, not selectable.</td></tr>
-  </table>
-  <p class="terms">You are using a site under its own terms. Check them before you sign in. <a href="readme.html#providers">Details</a>.</p>
-  <p class="note"><b>Use a throwaway account.</b> Sign in with a dummy email, never your main account: the more prompts you send, the more likely the account is banned. CloseNI can break when a site changes its page, and it is not recommended for production.</p>
-</section>
+<section id="before"><div class="wrap">
+  <div class="label">
+    <div class="stripe"></div>
+    <div class="body">
+      <div><span class="sign" aria-hidden="true">!</span><h2>Read this before you sign in</h2></div>
+      <div>
+        <ol>
+<li><span><b>Use a throwaway account.</b> Sign in with a dummy email made for CloseNI, never your main account.</span></li>
+<li><span><b>Your account can be banned.</b> Automated use can break a provider's terms. The more prompts you send, the more likely the account is flagged or banned.</span></li>
+<li><span><b>It breaks when the site changes.</b> CloseNI drives the chat site's own page, so a redesign can stop it working until the selectors are updated.</span></li>
+<li><span><b>Not recommended for production.</b> It is an early release. Keep it away from production systems and code you cannot afford to lose.</span></li>
+        </ol>
+        <p class="fine">You are using a site under its own terms. Check them before you sign in. <a href="readme.html#providers">Details</a>.</p>
+      </div>
+    </div>
+  </div>
+</div></section>
 
-<section id="download">
-  <div class="rule micro"><span>05</span><span>Download</span><i></i></div>
-  <h2>Get CloseNI</h2>
+<section id="providers"><div class="wrap">
+  <h2>Where it <em>stands</em></h2>
+  <ul class="providers">
+<li><span class="name">DeepSeek</span><span class="st ok">Ready</span><span class="note">Chat, plan, build and the coding agent, including long sessions.</span></li>
+<li><span class="name">Qwen Studio, GLM</span><span class="st soon">Coming soon</span><span class="note">Selectors checked against the live sites; gated until a signed-in reply is.</span></li>
+<li><span class="name">Ollama, ChatGPT, Gemini, Claude, Grok</span><span class="st soon">Coming soon</span><span class="note">Listed, not selectable.</span></li>
+  </ul>
+</div></section>
+</main>
+
+<section class="get" id="download"><div class="wrap">
+  <h2>Get <em>CloseNI.</em></h2>
   <p class="lede">Version 0.1.1. A native Qt app with Node and the agent bundled. Chromium is downloaded on first run.</p>
-  <div class="dl">
-    <div id="card-win"><h3>Windows<span class="micro">Your system</span></h3><p>NSIS installer; you choose the folder. Windows 10 or later.</p>
-      <a class="btn invert" href="https://github.com/siddarth1872004/CloseNI/releases/latest">Download the .exe</a></div>
-    <div id="card-linux"><h3>Linux<span class="micro">Your system</span></h3><p>An AppImage that runs anywhere, or a .deb for Debian and Ubuntu.</p>
-      <a class="btn invert" href="https://github.com/siddarth1872004/CloseNI/releases/latest">AppImage or .deb</a></div>
-    <div class="src"><h3>From source</h3><p>Node 22.12+, Qt 6.8+, CMake 3.21+ and Ninja.</p>
+  <div class="rows">
+    <a class="row" id="card-win" href="https://github.com/siddarth1872004/CloseNI/releases/latest"><span class="os">Windows<span class="yours">Your system</span></span><span class="what">An installer (.exe); you choose the folder. Windows 10 or later.</span><span class="arrow" aria-hidden="true">&#8595;</span></a>
+    <a class="row" id="card-linux" href="https://github.com/siddarth1872004/CloseNI/releases/latest"><span class="os">Linux<span class="yours">Your system</span></span><span class="what">An AppImage that runs anywhere, or a .deb for Debian and Ubuntu.</span><span class="arrow" aria-hidden="true">&#8595;</span></a>
+  </div>
+  <div class="source">
+    <div><h3>From source</h3><p>Node 22.12+, Qt 6.8+, CMake 3.21+ and Ninja.</p></div>
 <pre><span class="p">$ </span>git clone https://github.com/siddarth1872004/CloseNI.git &amp;&amp; cd CloseNI
 <span class="p">$ </span>npm install &amp;&amp; npm run build
 <span class="p">$ </span>npx playwright install chromium
 <span class="p">$ </span>cmake -S native -B build-native -G Ninja
-<span class="p">$ </span>cmake --build build-native &amp;&amp; npm start</pre></div>
+<span class="p">$ </span>cmake --build build-native &amp;&amp; npm start</pre>
   </div>
-  <p class="note"><b>The installers are unsigned.</b> Windows SmartScreen may warn on first launch. The first run asks you to install Chromium and sign in to a provider once, with a throwaway account.</p>
-</section>
-</main>
+  <p class="unsigned"><b>The installers are unsigned.</b> Windows SmartScreen may warn on first launch. The first run asks you to install Chromium and sign in to a provider once, with a throwaway account.</p>
+</div></section>
 
 <footer><div class="wrap">
   <a class="wm" href="./"><svg class="mark" viewBox="0 0 32 32" aria-hidden="true"><path d="M7 6H13V26H7M25 6H19V26H25" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="square"/></svg><span>Close<b>NI</b></span></a>
@@ -278,17 +313,16 @@ footer .sp{flex:1}
 </div></footer>
 
 <script>
-// Point the main button at the visitor's system. Both buttons already work
-// without this; it only changes the label and marks the matching column.
+// Point the main button at the visitor's system. Both rows already work
+// without this; it only changes the label and marks the matching row.
 (function () {
   var ua = navigator.userAgent || '';
   var os = /Windows/i.test(ua) ? 'win' : /Linux|X11/i.test(ua) && !/Android/i.test(ua) ? 'linux' : '';
   if (!os) return;
-  var label = 'Download for ' + { win: 'Windows', linux: 'Linux' }[os];
   var btn = document.getElementById('dl-main');
-  if (btn) btn.textContent = label;
-  var card = document.getElementById('card-' + os);
-  if (card) card.className += ' rec';
+  if (btn) btn.textContent = 'Download for ' + { win: 'Windows', linux: 'Linux' }[os];
+  var row = document.getElementById('card-' + os);
+  if (row) row.className += ' rec';
 })();
 </script>
 </body>

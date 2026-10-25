@@ -86,18 +86,19 @@ export function renderSite(readme) {
 <meta name="twitter:card" content="summary_large_image">
 ${FAVICON}
 <style>${THEME_CSS}
-/* The README, in the app's own type: the same tokens as the landing page. */
+/* The README, in the landing page's type and tokens. */
 html{scroll-padding-top:64px}
 body{word-wrap:break-word}
-.bar{position:sticky;top:0;z-index:1;background:var(--panel);border-bottom:1px solid var(--line)}
-.bar div{max-width:960px;margin:0 auto;padding:0 16px;height:48px;display:flex;align-items:center;gap:16px}
-.bar .micro span{color:var(--line2);margin-right:6px}
+.bar{position:sticky;top:0;z-index:1;background:var(--bg);border-bottom:1px solid var(--line)}
+.bar div{max-width:960px;margin:0 auto;padding:0 16px;height:60px;display:flex;align-items:center;gap:16px}
+.bar .micro{font-size:14px}
 .bar .sp{flex:1}
-main{max-width:960px;margin:0 auto;padding:40px 16px 96px}
+main{max-width:960px;margin:0 auto;padding:56px 16px 96px}
 h1,h2,h3,h4,h5,h6{margin:40px 0 14px;font-weight:600;line-height:1.3}
-h1{font-size:26px}
-h2{font-size:19px;padding-top:28px;border-top:1px solid var(--line)}
-h3{font-size:15px} h4{font-size:14px;color:var(--dim)}
+h1,h2,h3{font-family:var(--serif);font-weight:400;letter-spacing:-.015em;line-height:1.1}
+h1{font-size:56px}
+h2{font-size:38px;margin-top:56px;padding-top:32px;border-top:1px solid var(--line2)}
+h3{font-size:26px} h4{font-size:15px;color:var(--dim)}
 main>:first-child{margin-top:0}
 p,blockquote,ul,ol,table,pre,details{margin:0 0 16px}
 p,li,td{color:var(--dim)}
@@ -109,14 +110,14 @@ hr{height:1px;margin:40px 0;background:var(--line);border:0}
 hr+h2{margin-top:0;padding-top:0;border-top:0}
 img{max-width:100%;height:auto;border-style:none}
 p>img{vertical-align:middle}
-blockquote{margin-left:0;padding:10px 14px;border-left:2px solid var(--warn);background:var(--panel)}
+blockquote{margin-left:0;padding:14px 18px;border-left:3px solid var(--warn);background:var(--panel)}
 blockquote>:last-child{margin-bottom:0}
-code{font:inherit;font-size:92%;padding:1px 5px;color:var(--txt);background:var(--raised);border-radius:2px;white-space:break-spaces}
-pre{padding:12px 14px;overflow:auto;font-size:12.5px;line-height:1.7;background:var(--sunken);border:1px solid var(--line);border-radius:2px}
-pre code{padding:0;background:none;font-size:100%;white-space:pre}
+code{font-family:var(--mono);font-size:86%;padding:1px 5px;color:var(--txt);background:var(--raised);border-radius:2px;white-space:break-spaces}
+pre{padding:12px 14px;font-family:var(--mono);overflow:auto;font-size:12.5px;line-height:1.7;background:var(--sunken);border:1px solid var(--line);border-radius:2px}
+pre code{padding:0;background:none;font-size:100%;font-family:inherit;white-space:pre}
 table{display:block;width:max-content;max-width:100%;overflow:auto;border-collapse:collapse;border-top:1px solid var(--line2);font-size:13px}
 th,td{padding:8px 16px 8px 0;text-align:left;vertical-align:top;border-bottom:1px solid var(--line)}
-th{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--mut);font-weight:400}
+th{font-size:13px;color:var(--mut);font-weight:500}
 td img{border:1px solid var(--line);border-radius:3px}
 .badge{display:inline-block;margin-right:14px;color:var(--dim)}
 a:has(>.badge){text-decoration:none}
@@ -124,7 +125,7 @@ a:has(>.badge){text-decoration:none}
 </style>
 </head>
 <body>
-<header class="bar"><div>${wordmark('./')}<span class="micro"><span>06</span>Documentation</span><span class="sp"></span><a class="btn small" href="./">Home</a><a class="btn small" href="${REPO}">GitHub</a></div></header>
+<header class="bar"><div>${wordmark('./')}<span class="micro">Documentation</span><span class="sp"></span><a class="btn small" href="./">Home</a><a class="btn small" href="${REPO}">GitHub</a></div></header>
 <main>
 ${body}</main>
 </body>
