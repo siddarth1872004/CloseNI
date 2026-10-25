@@ -5,8 +5,10 @@
 // rather than to a file name that may not exist yet. The prose is the README's
 // own claims, shortened.
 //
-// The look is editorial rather than the app's: warm paper, Instrument Serif for
-// display, Instrument Sans for text, monospace only where something is code.
+// The colours are the app's: its default Terminal palette, and Paper when the
+// visitor's system is light (native/qml/singletons/Theme.qml). The type is
+// editorial: Instrument Serif for display, Instrument Sans for text, monospace
+// only where something is code.
 // The fonts are self-hosted in docs/assets/fonts (OFL, licences beside them),
 // so the page loads nothing from another origin. make-site.mjs takes THEME_CSS
 // and wordmark() from here so the two pages cannot drift apart.
@@ -19,49 +21,58 @@ const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replac
 // The "][" mark from BracketMark.qml: viewBox 32, stroke 2.8, square caps.
 const MARK = `<svg class="mark" viewBox="0 0 32 32" aria-hidden="true"><path d="M7 6H13V26H7M25 6H19V26H25" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="square"/></svg>`;
 
-export const FAVICON = `<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%23f4f0e8'/><path d='M7 6H13V26H7M25 6H19V26H25' fill='none' stroke='%23d9461c' stroke-width='2.8' stroke-linecap='square'/></svg>">`;
+export const FAVICON = `<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%23141414'/><path d='M7 6H13V26H7M25 6H19V26H25' fill='none' stroke='%23e8a06b' stroke-width='2.8' stroke-linecap='square'/></svg>">`;
 
 export function wordmark(href) {
   return `<a class="wm" href="${href}">${MARK}<span>Close<b>NI</b></span></a>`;
 }
 
-// Paper, then ink. The token names are the ones make-site.mjs styles with.
+// Terminal, then Paper, from Theme.qml. Terminal's own accent is near-white, so
+// the accent here is its warm langRs orange; Paper's is its own. The token
+// names are the ones make-site.mjs styles with.
 export const THEME_CSS = `
 @font-face{font-family:"Instrument Serif";font-style:normal;font-weight:400;font-display:swap;src:url(assets/fonts/instrument-serif.woff2) format("woff2")}
 @font-face{font-family:"Instrument Serif";font-style:italic;font-weight:400;font-display:swap;src:url(assets/fonts/instrument-serif-italic.woff2) format("woff2")}
 @font-face{font-family:"Instrument Sans";font-style:normal;font-weight:400 600;font-display:swap;src:url(assets/fonts/instrument-sans.woff2) format("woff2")}
 :root{
-  color-scheme:light;
-  --bg:#f4f0e8; --panel:#fbf9f4; --surface:#fffdf8; --raised:#ebe5d8; --sunken:#ece6da;
-  --line:#ddd5c5; --line2:#c4baa6; --txt:#17150f; --dim:#4f4a40; --mut:#857e70; --inverse:#f4f0e8;
-  --ok:#2f6b3f; --warn:#efc23a; --err:#a3332a; --accent:#d9461c; --focus:#2b46d6;
+  color-scheme:dark;
+  --bg:#141414; --panel:#181818; --surface:#1b1b1b; --raised:#232323; --sunken:#101010;
+  --line:#262626; --line2:#3a3a3a; --txt:#ebe9e5; --dim:#a8a49d; --mut:#8a867e; --inverse:#141414;
+  --ok:#8ccf7e; --warn:#e5c07b; --warnBg:#262011; --warnLine:#6b5a2a; --err:#f07878;
+  --accent:#e8a06b; --accentInk:#b3541e; --onAccent:#141414; --focus:#d0d0d0; --shadow:rgba(0,0,0,.8);
   --serif:"Instrument Serif",Georgia,"Times New Roman",serif;
   --sans:"Instrument Sans",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
   --mono:ui-monospace,"SF Mono",Menlo,"Cascadia Mono",Consolas,"Liberation Mono",monospace;
 }
-@media (prefers-color-scheme: dark){
+@media (prefers-color-scheme: light){
   :root{
-    color-scheme:dark;
-    --bg:#121110; --panel:#191816; --surface:#1d1c19; --raised:#262420; --sunken:#0d0c0b;
-    --line:#2c2a26; --line2:#45423b; --txt:#efe9dd; --dim:#b0a999; --mut:#7f796c; --inverse:#121110;
-    --ok:#86c98f; --warn:#e9bd3a; --err:#f08070; --accent:#ff6b3d; --focus:#9fb0ff;
+    color-scheme:light;
+    --bg:#f7f7f5; --panel:#ffffff; --surface:#ffffff; --raised:#eeeee9; --sunken:#f0f0ec;
+    --line:#ddddd7; --line2:#c6c6bf; --txt:#1b1b1d; --dim:#55555a; --mut:#8a8a84; --inverse:#f7f7f5;
+    --ok:#2f6b45; --warn:#7a6520; --warnBg:#faf5e2; --warnLine:#d8c98a; --err:#9c2f38;
+    --accent:#b3541e; --accentInk:#e8a06b; --onAccent:#ffffff; --focus:#3b4fd8; --shadow:rgba(40,40,38,.45);
   }
 }
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--txt);font:16px/1.6 var(--sans);-webkit-text-size-adjust:100%;-webkit-font-smoothing:antialiased}
 a{color:inherit;text-decoration:underline;text-decoration-color:var(--line2);text-underline-offset:3px;text-decoration-thickness:1px}
 a:hover{text-decoration-color:currentColor}
-:focus-visible{outline:2px solid var(--focus);outline-offset:3px}
+:focus-visible{outline:1px solid var(--focus);outline-offset:2px}
 .wm{display:inline-flex;align-items:center;gap:8px;text-decoration:none;font:600 17px/1 var(--sans);letter-spacing:-.01em;color:var(--txt)}
 .wm .mark{width:18px;height:18px;color:var(--accent)}
 .wm b{font-weight:inherit;color:var(--accent)}
 .micro{font-size:13px;color:var(--mut)}
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:10px;padding:12px 20px;border:1px solid var(--txt);border-radius:999px;
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:10px;padding:12px 20px;border:1px solid var(--line2);border-radius:3px;
   font:500 15px/1.2 var(--sans);color:var(--txt);background:transparent;text-decoration:none;transition:background .15s,color .15s,border-color .15s}
-.btn:hover{background:var(--txt);color:var(--inverse)}
-.btn.invert{background:var(--txt);color:var(--inverse)}
-.btn.invert:hover{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn:hover{border-color:var(--txt)}
+.btn.invert{background:var(--txt);border-color:var(--txt);color:var(--inverse)}
+.btn.invert:hover{background:var(--accent);border-color:var(--accent);color:var(--onAccent)}
 .btn.small{padding:6px 14px;font-size:14px}
+/* A status readout, as the app's phase line draws it: filled for working, hollow for not yet. */
+.st{display:inline-flex;align-items:center;gap:8px;font-size:14px;font-weight:500;white-space:nowrap}
+.st::before{content:"";width:8px;height:8px;border:1px solid currentColor}
+.st.ok{color:var(--ok)} .st.ok::before{background:currentColor}
+.st.soon{color:var(--mut)}
 `;
 
 // Pins on screenshots/code.png (1280x800), as percentages of its size.
@@ -131,8 +142,8 @@ export function renderLanding(readme, pkg) {
 <meta property="og:description" content="Free web AI chats, turned into a coding agent. No API keys.">
 <meta property="og:image" content="screenshots/code.png">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="theme-color" content="#f4f0e8" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#121110" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f7f7f5" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#141414" media="(prefers-color-scheme: dark)">
 <link rel="preload" href="assets/fonts/instrument-serif.woff2" as="font" type="font/woff2" crossorigin>
 ${FAVICON}
 <style>${THEME_CSS}
@@ -151,7 +162,8 @@ nav .sp{flex:1}
 
 .hero{padding:56px 0 0}
 .kicker{display:flex;align-items:center;gap:10px;margin:0 0 28px;font-size:14px;color:var(--dim)}
-.kicker i{width:8px;height:8px;border-radius:50%;background:var(--accent)}
+.kicker{font-family:var(--mono);font-size:13px}
+.kicker i{width:8px;height:8px;background:var(--ok)}
 h1{font-size:clamp(52px,9.2vw,128px);line-height:.92;letter-spacing:-.03em;max-width:11.5em}
 .hero-foot{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:32px;align-items:end;margin:40px 0 0;padding:28px 0 0;border-top:1px solid var(--txt)}
 .hero-foot p{margin:0;max-width:560px;font-size:19px;color:var(--dim)}
@@ -159,15 +171,15 @@ h1{font-size:clamp(52px,9.2vw,128px);line-height:.92;letter-spacing:-.03em;max-w
 .cta a.more{font-size:15px}
 
 .plate{margin:64px auto 0}
-.frame{position:relative;border-radius:10px;overflow:hidden;background:#141414;box-shadow:0 1px 0 var(--line),0 30px 60px -30px rgba(23,21,15,.45)}
+.frame{position:relative;border:1px solid var(--line2);border-radius:6px;overflow:hidden;background:#141414;box-shadow:0 30px 60px -30px var(--shadow)}
 .frame img{display:block;width:100%;height:auto}
-.pin{position:absolute;width:30px;height:30px;margin:-15px 0 0 -15px;border-radius:50%;background:var(--accent);color:#fff;
-  font:600 14px/30px var(--sans);text-align:center;box-shadow:0 0 0 4px rgba(217,70,28,.28)}
+.pin{position:absolute;width:28px;height:28px;margin:-14px 0 0 -14px;border-radius:3px;background:var(--accent);color:var(--onAccent);
+  font:600 13px/28px var(--mono);text-align:center;box-shadow:0 0 0 4px rgba(20,20,20,.55)}
 .plate figcaption{display:grid;grid-template-columns:auto minmax(0,1fr);gap:24px;margin:20px 0 0;font-size:14px;color:var(--dim)}
 .plate figcaption b{font-weight:600;color:var(--txt)}
 .callouts{list-style:none;counter-reset:c;margin:0;padding:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:20px}
 .callouts li{counter-increment:c;position:relative;padding-left:30px}
-.callouts li::before{content:counter(c);position:absolute;left:0;top:1px;width:20px;height:20px;border-radius:50%;background:var(--accent);color:#fff;font:600 12px/20px var(--sans);text-align:center}
+.callouts li::before{content:counter(c);position:absolute;left:0;top:1px;width:20px;height:20px;border-radius:2px;background:var(--accent);color:var(--onAccent);font:600 11px/20px var(--mono);text-align:center}
 
 section{padding:140px 0 0}
 .quote{font-family:var(--serif);font-size:clamp(34px,5vw,64px);line-height:1.04;letter-spacing:-.02em;margin:0;max-width:16em}
@@ -193,41 +205,37 @@ dl.features dd{margin:0;color:var(--dim);max-width:560px}
 .gallery figcaption{margin:14px 0 0;font-size:14px;color:var(--dim)}
 .gallery figcaption b{font-weight:600;color:var(--txt);margin-right:6px}
 
-.label{margin:0;background:var(--warn);color:#17150f;border:2px solid #17150f;border-radius:4px;overflow:hidden}
-.label .stripe{height:14px;background:repeating-linear-gradient(-45deg,#17150f 0 10px,transparent 10px 20px);border-bottom:2px solid #17150f}
+.label{margin:0;background:var(--warnBg);color:var(--txt);border:1px solid var(--warnLine);border-radius:6px;overflow:hidden}
+.label .stripe{height:12px;background:repeating-linear-gradient(-45deg,var(--warn) 0 10px,transparent 10px 20px);border-bottom:1px solid var(--warnLine)}
 .label .body{display:grid;grid-template-columns:minmax(0,4fr) minmax(0,8fr);gap:40px;padding:36px 40px 40px}
-.label h2{font-size:clamp(36px,4.6vw,56px);color:#17150f}
-.label .sign{display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;margin:0 0 20px;border:2px solid #17150f;border-radius:50%;font:600 24px/1 var(--sans)}
+.label h2{font-size:clamp(36px,4.6vw,56px)}
+.label .sign{display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;margin:0 0 20px;border:1px solid var(--warn);border-radius:3px;color:var(--warn);font:600 22px/1 var(--mono)}
 .label ol{margin:0;padding:0;list-style:none;counter-reset:w}
-.label li{counter-increment:w;display:grid;grid-template-columns:36px minmax(0,1fr);padding:14px 0;border-top:1.5px solid #17150f;font-size:16px}
-.label li::before{content:counter(w,decimal-leading-zero);font:600 13px/1.9 var(--sans)}
-.label li:last-child{border-bottom:1.5px solid #17150f}
-.label li b{font-weight:600}
-.label .fine{margin:18px 0 0;font-size:14px}
-.label .fine a{text-decoration-color:#17150f}
+.label li{counter-increment:w;display:grid;grid-template-columns:36px minmax(0,1fr);padding:14px 0;border-top:1px solid var(--warnLine);font-size:16px;color:var(--dim)}
+.label li::before{content:counter(w,decimal-leading-zero);font:600 12px/2 var(--mono);color:var(--warn)}
+.label li:last-child{border-bottom:1px solid var(--warnLine)}
+.label li b{font-weight:600;color:var(--txt)}
+.label .fine{margin:18px 0 0;font-size:14px;color:var(--dim)}
 
 .providers{list-style:none;margin:48px 0 0;padding:0}
 .providers li{display:grid;grid-template-columns:minmax(0,5fr) 150px minmax(0,6fr);gap:24px;align-items:baseline;padding:22px 0;border-top:1px solid var(--line2)}
 .providers li:last-child{border-bottom:1px solid var(--line2)}
 .providers .name{font:400 30px/1.1 var(--serif)}
 .providers .note{color:var(--dim);font-size:15px}
-.st{display:inline-flex;align-items:center;gap:8px;font-size:14px;font-weight:500;white-space:nowrap}
-.st::before{content:"";width:9px;height:9px;border-radius:50%;border:1.5px solid currentColor}
-.st.ok{color:var(--ok)} .st.ok::before{background:currentColor}
-.st.soon{color:var(--mut)}
 
-.get{margin:140px 0 0;padding:120px 0 96px;background:var(--txt);color:var(--inverse)}
+/* Drawn in the other palette's ink, so it takes that palette's accent too. */
+.get{--accent:var(--accentInk);margin:140px 0 0;padding:120px 0 96px;background:var(--txt);color:var(--inverse)}
 .get h2{font-size:clamp(56px,10vw,140px);line-height:.9}
 .get h2 em{color:var(--accent)}
 .get .lede{color:var(--line2)}
 .rows{margin:56px 0 0;border-top:1px solid var(--mut)}
 .row{display:grid;grid-template-columns:minmax(0,4fr) minmax(0,7fr) auto;gap:24px;align-items:center;padding:26px 4px;border-bottom:1px solid var(--mut);
   text-decoration:none;color:inherit;transition:padding .2s,background .2s}
-.row:hover{background:rgba(127,121,108,.12);padding-left:16px;padding-right:16px}
+.row:hover{background:rgba(138,134,126,.12);padding-left:16px;padding-right:16px}
 .row .os{font:400 44px/1 var(--serif)}
 .row .what{color:var(--line2);font-size:15px}
 .row .arrow{font:28px/1 var(--serif);color:var(--accent)}
-.row .yours{display:none;margin-left:12px;padding:3px 10px;border:1px solid var(--accent);border-radius:999px;color:var(--accent);font:500 12px/1.4 var(--sans);vertical-align:middle}
+.row .yours{display:none;margin-left:12px;padding:3px 10px;border:1px solid var(--accent);border-radius:2px;color:var(--accent);font:500 12px/1.4 var(--sans);vertical-align:middle}
 .row.rec .yours{display:inline-block}
 .source{display:grid;grid-template-columns:minmax(0,4fr) minmax(0,7fr);gap:24px;margin:56px 0 0}
 .source h3{font-size:30px}
@@ -258,7 +266,7 @@ footer .sp{flex:1}
   nav .links{display:none}
   .hero{padding-top:24px}
   section{padding-top:96px}
-  .pin{width:20px;height:20px;margin:-10px 0 0 -10px;font-size:11px;line-height:20px;box-shadow:0 0 0 3px rgba(217,70,28,.28)}
+  .pin{width:20px;height:20px;margin:-10px 0 0 -10px;font-size:11px;line-height:20px;box-shadow:0 0 0 3px rgba(20,20,20,.55)}
   .callouts,.flow,.gallery{grid-template-columns:minmax(0,1fr)}
   .label .body{padding:24px 20px 28px;gap:16px}
   .row{grid-template-columns:minmax(0,1fr) auto;gap:6px 16px}

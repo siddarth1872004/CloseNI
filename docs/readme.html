@@ -10,43 +10,50 @@
 <meta property="og:description" content="Free web AI chats, turned into a coding agent.">
 <meta property="og:image" content="screenshots/code.png">
 <meta name="twitter:card" content="summary_large_image">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%23f4f0e8'/><path d='M7 6H13V26H7M25 6H19V26H25' fill='none' stroke='%23d9461c' stroke-width='2.8' stroke-linecap='square'/></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%23141414'/><path d='M7 6H13V26H7M25 6H19V26H25' fill='none' stroke='%23e8a06b' stroke-width='2.8' stroke-linecap='square'/></svg>">
 <style>
 @font-face{font-family:"Instrument Serif";font-style:normal;font-weight:400;font-display:swap;src:url(assets/fonts/instrument-serif.woff2) format("woff2")}
 @font-face{font-family:"Instrument Serif";font-style:italic;font-weight:400;font-display:swap;src:url(assets/fonts/instrument-serif-italic.woff2) format("woff2")}
 @font-face{font-family:"Instrument Sans";font-style:normal;font-weight:400 600;font-display:swap;src:url(assets/fonts/instrument-sans.woff2) format("woff2")}
 :root{
-  color-scheme:light;
-  --bg:#f4f0e8; --panel:#fbf9f4; --surface:#fffdf8; --raised:#ebe5d8; --sunken:#ece6da;
-  --line:#ddd5c5; --line2:#c4baa6; --txt:#17150f; --dim:#4f4a40; --mut:#857e70; --inverse:#f4f0e8;
-  --ok:#2f6b3f; --warn:#efc23a; --err:#a3332a; --accent:#d9461c; --focus:#2b46d6;
+  color-scheme:dark;
+  --bg:#141414; --panel:#181818; --surface:#1b1b1b; --raised:#232323; --sunken:#101010;
+  --line:#262626; --line2:#3a3a3a; --txt:#ebe9e5; --dim:#a8a49d; --mut:#8a867e; --inverse:#141414;
+  --ok:#8ccf7e; --warn:#e5c07b; --warnBg:#262011; --warnLine:#6b5a2a; --err:#f07878;
+  --accent:#e8a06b; --accentInk:#b3541e; --onAccent:#141414; --focus:#d0d0d0; --shadow:rgba(0,0,0,.8);
   --serif:"Instrument Serif",Georgia,"Times New Roman",serif;
   --sans:"Instrument Sans",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
   --mono:ui-monospace,"SF Mono",Menlo,"Cascadia Mono",Consolas,"Liberation Mono",monospace;
 }
-@media (prefers-color-scheme: dark){
+@media (prefers-color-scheme: light){
   :root{
-    color-scheme:dark;
-    --bg:#121110; --panel:#191816; --surface:#1d1c19; --raised:#262420; --sunken:#0d0c0b;
-    --line:#2c2a26; --line2:#45423b; --txt:#efe9dd; --dim:#b0a999; --mut:#7f796c; --inverse:#121110;
-    --ok:#86c98f; --warn:#e9bd3a; --err:#f08070; --accent:#ff6b3d; --focus:#9fb0ff;
+    color-scheme:light;
+    --bg:#f7f7f5; --panel:#ffffff; --surface:#ffffff; --raised:#eeeee9; --sunken:#f0f0ec;
+    --line:#ddddd7; --line2:#c6c6bf; --txt:#1b1b1d; --dim:#55555a; --mut:#8a8a84; --inverse:#f7f7f5;
+    --ok:#2f6b45; --warn:#7a6520; --warnBg:#faf5e2; --warnLine:#d8c98a; --err:#9c2f38;
+    --accent:#b3541e; --accentInk:#e8a06b; --onAccent:#ffffff; --focus:#3b4fd8; --shadow:rgba(40,40,38,.45);
   }
 }
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--txt);font:16px/1.6 var(--sans);-webkit-text-size-adjust:100%;-webkit-font-smoothing:antialiased}
 a{color:inherit;text-decoration:underline;text-decoration-color:var(--line2);text-underline-offset:3px;text-decoration-thickness:1px}
 a:hover{text-decoration-color:currentColor}
-:focus-visible{outline:2px solid var(--focus);outline-offset:3px}
+:focus-visible{outline:1px solid var(--focus);outline-offset:2px}
 .wm{display:inline-flex;align-items:center;gap:8px;text-decoration:none;font:600 17px/1 var(--sans);letter-spacing:-.01em;color:var(--txt)}
 .wm .mark{width:18px;height:18px;color:var(--accent)}
 .wm b{font-weight:inherit;color:var(--accent)}
 .micro{font-size:13px;color:var(--mut)}
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:10px;padding:12px 20px;border:1px solid var(--txt);border-radius:999px;
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:10px;padding:12px 20px;border:1px solid var(--line2);border-radius:3px;
   font:500 15px/1.2 var(--sans);color:var(--txt);background:transparent;text-decoration:none;transition:background .15s,color .15s,border-color .15s}
-.btn:hover{background:var(--txt);color:var(--inverse)}
-.btn.invert{background:var(--txt);color:var(--inverse)}
-.btn.invert:hover{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn:hover{border-color:var(--txt)}
+.btn.invert{background:var(--txt);border-color:var(--txt);color:var(--inverse)}
+.btn.invert:hover{background:var(--accent);border-color:var(--accent);color:var(--onAccent)}
 .btn.small{padding:6px 14px;font-size:14px}
+/* A status readout, as the app's phase line draws it: filled for working, hollow for not yet. */
+.st{display:inline-flex;align-items:center;gap:8px;font-size:14px;font-weight:500;white-space:nowrap}
+.st::before{content:"";width:8px;height:8px;border:1px solid currentColor}
+.st.ok{color:var(--ok)} .st.ok::before{background:currentColor}
+.st.soon{color:var(--mut)}
 
 /* The README, in the landing page's type and tokens. */
 html{scroll-padding-top:64px}
