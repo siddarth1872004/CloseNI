@@ -19,17 +19,14 @@
  * share a login - the same rule storage-paths.ts enforces by keying profiles on
  * provider id.
  *
- * No launch argument here hides automation from the page. By default the layer
- * passes --disable-blink-features=AutomationControlled (and other anti-detection args)
- * either directly or via patchwright's extendLaunchOptions, mirroring the behaviour
- * of the PlaywrightController.
+ * No launch argument here hides automation from the page. The old controller
+ * passes --disable-blink-features=AutomationControlled; this layer does not,
+ * because the brief for it rules out working around bot protection.
  */
 import { chromium, Browser, BrowserContext, Page, Dialog, Download } from "playwright";
 import * as fs from "fs";
 import * as path from "path";
 import { Tracer, quietTracer } from "../trace.js";
-import { DEFAULT_PATCHWRIGHT_CONFIG } from "../../providers/patchwright/types.js";
-import { extendLaunchOptions } from "../../providers/patchwright/integration.js";
 
 export type ContextKind = "provider" | "research" | "temporary" | "isolated";
 
@@ -67,8 +64,6 @@ export interface SessionManagerOptions {
   executablePath?: string;
   /** Upper bound on live pages per context; the oldest non-main page is closed beyond it. */
   maxPagesPerContext?: number;
-  /** Optional patchwright configuration for human-like browser behavior. */
-  patchwright?: Partial<typeof DEFAULT_PATCHWRIGHT_CONFIG>;
 }
 
 const DEFAULT_VIEWPORT = { width: 1280, height: 900 };
@@ -248,21 +243,9 @@ export class BrowserSessionManager {
   }
 
   private launchOptions(): any {
-    const base: any = { headless: this.opts.headless !== false };
-    if (this.opts.executablePath) base.executablePath = this.opts.executablePath;
-    // Merge patchwright args into launch options
-    if (this.opts.patchwright) {
-      return extendLaunchOptions(base, this.opts.patchwright);
-    }
-    // Default args that hide automation (mirrors playwright-controller)
-    return {
-      ...base,
-      args: [
-        ...(base.args || []),
-        "--disable-blink-features=AutomationControlled",
-        "--disable-features=OptimizationGuideModelFetching,OptimizationGuideFeatureFetching,OptimizationTargetPrediction,OptimizationHelpfulness",
-      ],
-    };
+    const o: any = { headless: this.opts.headless !== false };
+    if (this.opts.executablePath) o.executablePath = this.opts.executablePath;
+    return o;
   }
 
   /** The shared non-persistent browser, relaunched if it died. */

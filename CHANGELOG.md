@@ -2,6 +2,16 @@
 
 All notable changes to CloseNI are recorded here.
 
+## [0.1.2] — 2026-10-29
+
+### Removed
+
+- **The stealth layer.** The fingerprint injection, automation masking,
+  network routing and simulated typing, mouse and delays added after 0.1 are
+  gone. The browser is plain Playwright again, as it was before them. This
+  does not make automated use acceptable to a provider: an account can still
+  be banned, so keep using a throwaway one.
+
 ## [0.1.1] — 2026-10-25
 
 ### Fixed
