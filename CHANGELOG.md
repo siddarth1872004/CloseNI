@@ -4,6 +4,15 @@ All notable changes to CloseNI are recorded here.
 
 ## [0.1.2] — 2026-10-29
 
+### Changed
+
+- **Long Code chats move to a new chat on their own.** Once a thread passes
+  the conversation budget, the next message first asks the old chat for a
+  summary, then starts a fresh one with it, the todo list and the files
+  changed, as `/compact` does. It happens only between turns, never partway
+  through one. A provider that calls the conversation full still ends the
+  turn with its message.
+
 ### Removed
 
 - **The stealth layer.** The fingerprint injection, automation masking,

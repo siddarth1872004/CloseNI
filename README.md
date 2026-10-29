@@ -81,7 +81,7 @@ The checker also knows 16 more languages (Kotlin, Scala, Swift, Dart, Zig, Elixi
 
 Chat, planning and building continue **one conversation** on the provider's site, so a step prompt can be a short instruction instead of re-explaining the project. The cost is that steps run one at a time; the [roadmap](docs/ROADMAP.md) records why.
 
-The rail lists every chat in the project, newest first, named after its first message. Open one to get its messages and plan back, rename it, or remove it from the list. **New Chat** starts a fresh one. Messages are saved on disk and come back after a restart. Nothing switches while a reply, a build or a Code turn is using the thread.
+The rail lists every chat in the project, newest first, named after its first message. Open one to get its messages and plan back, rename it, or remove it from the list. **New Chat** starts a fresh one. In the Code panel, a chat that grows past the conversation budget moves to a new one on its own before your next message, carrying a summary, the todo list and the files changed. Messages are saved on disk and come back after a restart. Nothing switches while a reply, a build or a Code turn is using the thread.
 
 ## Providers
 

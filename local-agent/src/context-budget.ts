@@ -7,10 +7,9 @@
  * it, and the provider re-reads all of it on every turn. A long build eventually
  * outgrows the window, and the failure arrives at step fifteen, an hour in.
  *
- * Nothing here shortens or replaces a conversation. It is the provider's, and
- * the thread stays as long as the user keeps it; a provider that calls it full
- * says so, and the user starts a new chat. This only measures it, for the size
- * /compact reports.
+ * Nothing here shortens a conversation. This measures it: the Code panel moves
+ * a thread past its budget to a new chat between turns, with a summary, and
+ * /compact reports the size.
  *
  * It counts our own traffic - what we sent, and the replies we already have
  * in full - rather than inspecting anything on their page. The budget is a

@@ -17,7 +17,7 @@ import { runTool, AgentOutcome, ToolContext, TodoItem, applyEdits, resolveInside
 import { decide, remember, SessionRules, emptyRules, Autonomy } from "./permissions.js";
 import { agentShell } from "../verification/command-runner.js";
 import { describeMachine } from "./machine.js";
-import { ConversationSize, emptySize, addTurn, describeSize } from "../context-budget.js";
+import { ConversationSize, emptySize, addTurn, describeSize, budgetFor } from "../context-budget.js";
 import { TurnLog, PendingTurn } from "./wal.js";
 
 /**
@@ -62,9 +62,8 @@ export interface LoopOptions {
    */
   checkFinal?: (reply: string) => Promise<string>;
   /**
-   * The provider's conversation size in characters, for the size /compact
-   * reports. Nothing rolls over on its own: the thread grows until the user
-   * starts a new chat.
+   * The provider's conversation size in characters. A thread past it moves to
+   * a new chat before the next message (see turn); /compact reports against it.
    */
   budgetChars?: number;
   /** Where each step of a turn is written down, so a restart can resume it. */
@@ -210,8 +209,8 @@ export class AgentLoop {
   }
 
   /**
-   * Continue in a new chat, from /compact, because the user asked. Nothing
-   * else calls this: a long thread stays where it is.
+   * Continue in a new chat, from /compact, because the user asked. A thread
+   * past its budget does the same on its own, between turns (see turn).
    *
    * Nothing shortens a provider's conversation, so this starts another. The
    * model first writes down where things stand; the new chat gets the
@@ -385,6 +384,12 @@ export class AgentLoop {
       },
     };
     this.o.emit({ type: "turn-start" });
+    // A thread past its budget moves to a new chat before this message, as
+    // /compact does: a long chat re-reads all of itself on every reply. Only
+    // between turns - partway through, a turn would lose what it has seen.
+    if (!resume && this.o.session.reset && this.size().chars >= budgetFor(this.o.budgetChars)) {
+      try { await this.rollOver(); } catch { /* carry on in this chat */ }
+    }
     if (!resume && log) log.begin(userText);
     // A restart lost the chat the turn was in. A first prompt that never got
     // its reply is simply composed again; anything later goes out with the
@@ -412,7 +417,7 @@ export class AgentLoop {
           const out = reopen ? this.reopened(userText, prompt, done) : prompt;
           reopen = false;
           // A full conversation (the provider's own count) ends the turn with
-          // its message, in this chat: starting another is the user's call.
+          // its message, in this chat: only the budget above rolls over.
           reply = await this.o.session.ask(out, { onThinking: (text) => this.o.emit({ type: "reasoning", step: step, text: text }) });
           if (log && reply && reply.trim()) log.reply(step, reply);
         }

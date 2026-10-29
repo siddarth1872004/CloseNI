@@ -577,16 +577,24 @@ async function run(check, section) {
   await h.l.turn("y");
   check("clear starts a new thread with the preamble again", s.resets === 1 && /You are CloseNI/.test(s.prompts[1]));
 
-  // A long thread stays where it is: only /compact starts a new chat.
+  // A thread past its budget moves to a new chat between turns, never mid-turn.
   const ws6 = tmp();
   fs.writeFileSync(path.join(ws6, "a.txt"), "alpha\n");
-  s = script([tool({ tool: "read", path: "a.txt" }), tool({ tool: "write", path: "b.txt" }, "beta"), "Done.", "Done again."]);
+  s = script([tool({ tool: "read", path: "a.txt" }), tool({ tool: "write", path: "b.txt" }, "beta"), "Done.", "SUMMARY: copied", "Done again."]);
   h = loop(s, { ws: ws6, budgetChars: 1000 });
   await h.l.turn("copy a to b");
+  check("a thread past its budget is not rolled over mid-turn", s.resets === 0 && s.prompts.length === 3 && type(h.events, "compacted").length === 0);
   await h.l.turn("and again");
-  check("a thread past its budget is not rolled over, mid-turn or between turns",
-    s.resets === 0 && type(h.events, "compacted").length === 0 && !s.prompts.some((p) => /too long to continue/.test(p)), s.prompts.length);
-  check("and both turns finish in it", type(h.events, "done").every((e) => e.reason === "complete") && fs.readFileSync(path.join(ws6, "b.txt"), "utf-8").trim() === "beta");
+  check("but before the next message it is, with a summary from the old chat",
+    s.resets === 1 && /too long to continue/.test(s.prompts[3]) && type(h.events, "compacted").pop().summary === true, s.prompts.length);
+  check("and the new chat gets the preamble, the summary and the request",
+    /You are CloseNI/.test(s.prompts[4]) && /SUMMARY: copied/.test(s.prompts[4]) && /Files you changed: b\.txt/.test(s.prompts[4]) && /User request:\nand again/.test(s.prompts[4]), s.prompts[4] && s.prompts[4].slice(-300));
+  check("and both turns finish", type(h.events, "done").every((e) => e.reason === "complete") && fs.readFileSync(path.join(ws6, "b.txt"), "utf-8").trim() === "beta");
+  s = script(["ok", "ok"]);
+  h = loop(s, { ws: ws6 });
+  await h.l.turn("one");
+  await h.l.turn("two");
+  check("a thread within its budget stays where it is", s.resets === 0 && s.prompts.length === 2);
   check("a transport with no new chat cannot compact", (await new AgentLoop({ session: { ask: async () => "x" }, workspace: ws6, emit: () => {}, askPermission: async () => ({ decision: "allow" }) }).compact()) === false);
 
   // /compact, asked for: a summary from the old thread seeds the new chat.
