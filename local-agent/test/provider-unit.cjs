@@ -1014,7 +1014,8 @@ async function testSnapshots() {
     }
   } finally {
     await ctl.close().catch(() => {});
-    fs.rmSync(root, { recursive: true, force: true });
+    // Chromium can still be writing to its profile just after close returns.
+    fs.rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
   }
 }
 
