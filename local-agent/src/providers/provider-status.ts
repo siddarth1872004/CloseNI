@@ -60,12 +60,12 @@ export function statusForTrouble(kind: TroubleKind): ProviderStatus {
 /**
  * Whether the controller may send the same prompt again on its own.
  *
- * Only recovery, and a reply that never came. A challenge or a sign-in page
- * waits for the person: sending into it again would at best do nothing and at
+ * Only a busy server, and a reply that never came. A rate limit, a challenge
+ * or a sign-in page waits for the person: sending into it again would at best do nothing and at
  * worst look like exactly the traffic the challenge is there to stop.
  */
 export function mayRetry(status: ProviderStatus): boolean {
-  return groupOf(status) === "recovery" || status === "RESPONSE_INCOMPLETE";
+  return status === "NETWORK_ERROR" || status === "RESPONSE_INCOMPLETE";
 }
 
 /**

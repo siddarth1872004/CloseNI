@@ -470,6 +470,16 @@ async function run(check, section) {
   await h.l.turn("ok");
   check("and the model hears about it next time", /reverted every file change/.test(s.prompts[0]));
 
+  const { MAX_ROUNDS } = require(path.join(DIST, "agent/loop.js"));
+  s = script([tool({ tool: "read", path: "calc.py" })]);
+  h = loop(s, { ws: ws2 });
+  await h.l.turn("keep reading");
+  check("a turn that never stops calling tools pauses at the round cap",
+    type(h.events, "done").pop().reason === "round-limit" && s.prompts.length === MAX_ROUNDS, s.prompts.length + " " + type(h.events, "done").pop().reason);
+  s.prompts.length = 0;
+  await h.l.turn("go on");
+  check("and the last results go out with the next message", /Tool results/.test(s.prompts[0]) && new RegExp("after " + MAX_ROUNDS + " rounds").test(s.prompts[0]));
+
   const ws3 = tmp();
   s = script([tool({ tool: "write", path: "a.txt" }, "A") + "\n" + tool({ tool: "write", path: "b.txt" }, "B"), "done"]);
   h = loop(s, { ws: ws3, answer: () => ({ decision: "deny", feedback: "use a single file" }) });
@@ -496,11 +506,11 @@ async function run(check, section) {
   check("switching mode is announced on the next message", /Plan mode is off/.test(s.prompts[2]));
   check("the mode change is an event", type(h.events, "mode").pop().mode === "default");
 
-  // No step limit: a long turn runs until the model is done.
+  // A long turn runs until the model is done; only a runaway one meets MAX_ROUNDS.
   s = script(Array(45).fill(tool({ tool: "ls" })).concat(["Done."]));
   h = loop(s, { ws: ws4 });
   await h.l.turn("keep going");
-  check("a turn has no step limit", type(h.events, "done").pop().reason === "complete" && s.prompts.length === 46, s.prompts.length);
+  check("a long turn is not cut short", type(h.events, "done").pop().reason === "complete" && s.prompts.length === 46, s.prompts.length);
 
   s = script([tool({ tool: "write", path: "i1.txt" }, "1") + "\n" + tool({ tool: "write", path: "i2.txt" }, "2"), "never"]);
   h = loop(s, { ws: ws4, answer: (req, l) => { l.interrupt(); return { decision: "allow" }; } });

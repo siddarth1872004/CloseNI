@@ -1173,6 +1173,7 @@ function testCodeLogic() {
     && C.permissionAnswerLabel("always") === "Yes, don't ask again" && C.permissionAnswerLabel("once") === "Yes");
 
   check("an interrupted turn says so", C.doneOutcome({ reason: "interrupted" }, "default").note === "Interrupted by user");
+  check("a turn paused at the round cap says how to go on", /Send a message/.test(C.doneOutcome({ reason: "round-limit" }, "default", true, false).note));
   check("a finished plan offers to build", C.doneOutcome({ reason: "complete" }, "plan", false, false).offer === "plan");
   check("a turn that changed files offers to run", C.doneOutcome({ reason: "complete" }, "default", true, false).offer === "run");
   check("so does a fix", C.doneOutcome({ reason: "complete" }, "default", false, true).offer === "run");

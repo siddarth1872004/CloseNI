@@ -94,9 +94,6 @@
       5000,
       20000,
       60000
-    ],
-    "rateLimitBackoffMs": [
-      60000
     ]
   },
   "_replyErrorsNote": "What DeepSeek shows instead of a reply, MEASURED 9 October 2026 by injecting each fault into a real page (scripts/deepseek-faults.mjs). The texts are DeepSeek's own strings from its bundle (main.3c07bbc8f6.js), English and Chinese. A busy, server-error or rate-limit reply is a row in .ds-virtual-list-visible-items with no .ds-message, so the message count never moves; a reply cut short by a busy server keeps its partial .ds-markdown and adds a bar with the notice and a Continue button beside it. CONTEXT_LENGTH_EXCEEDED shows nothing but the partial answer, so it is read from the stream. Signed out (an invalid token, code 40003), the page goes to /sign_in. 14 October 2026: the page has a second .ds-virtual-list-visible-items listing the prompts you sent (rows with no .ds-message), after the conversation, so the notice selector is held to the list that has messages. Busy is sent again after 5s, 20s and 60s, a rate limit once after 60s; a full conversation rolls over, and signed out stops with a 'sign in again' message."

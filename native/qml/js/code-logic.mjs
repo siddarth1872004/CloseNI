@@ -145,6 +145,7 @@ function permissionAnswerLabel(decision, feedback) {
 function doneOutcome(ev, mode, changed, fixing) {
   if (ev.reason === "interrupted") return { note: "Interrupted by user", tone: "err" };
   if (ev.reason === "denied") return { note: "Stopped. Tell CloseNI what to do instead.", tone: "dim" };
+  if (ev.reason === "round-limit") return { note: "Paused after many steps in one turn. Send a message to let it go on.", tone: "dim" };
   if (ev.reason === "error") return { note: ev.error || "Something went wrong", tone: "err" };
   if (ev.reason === "complete" && mode === "plan") return { offer: "plan" };
   if (ev.reason === "complete" && (changed || fixing)) return { offer: "run" };

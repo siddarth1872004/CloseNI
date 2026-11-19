@@ -26,6 +26,13 @@ import { TurnLog, PendingTurn } from "./wal.js";
  * every turn of a long session; the files changed are kept apart for /compact.
  */
 export const MAX_CHECKPOINTS = 20;
+/**
+ * Most prompts one turn sends before it stops and waits for the user. A model
+ * stuck calling tools in a loop would otherwise send them back to back with no
+ * end, which is the burst of traffic a provider flags an account for. Long
+ * real turns finish well inside this.
+ */
+export const MAX_ROUNDS = 100;
 /** Most calls a turn picked up in a new chat lists as done. */
 export const MAX_DONE = 60;
 
@@ -403,6 +410,7 @@ export class AgentLoop {
     let reason = "complete";
     let errorText = "";
     let nudged = false;
+    let rounds = 0;
     try {
       for (let step = resume ? resume.step : 0; ; step++) {
         const carried = resume && step === resume.step ? resume : null;
@@ -510,6 +518,12 @@ export class AgentLoop {
             ? "The user stopped you here and will say what to do instead."
             : "The user interrupted you here."));
           reason = halted;
+          break;
+        }
+        if (++rounds >= MAX_ROUNDS) {
+          // The results are not lost: they go out with the user's next message.
+          this.notes.push(formatResults(outcomes, "The turn stopped here after " + MAX_ROUNDS + " rounds; the user will say whether to go on."));
+          reason = "round-limit";
           break;
         }
         prompt = formatResults(outcomes);

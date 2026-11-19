@@ -2,6 +2,20 @@
 
 All notable changes to CloseNI are recorded here.
 
+## [0.1.3] — 2026-11-19
+
+### Changed
+
+- **A rate limit is no longer sent into again.** When a provider says the
+  account is rate limited, the turn ends with its message instead of sending
+  the same prompt again after a wait. Sending into a stated limit is the
+  traffic most likely to get an account flagged. A busy server is still
+  retried.
+- **A Code turn pauses after 100 rounds.** A model that kept calling tools
+  without finishing would send prompts back to back with no end. The turn now
+  stops there, and what it ran goes out with your next message; send one to
+  let it go on. Long turns that finish on their own are not affected.
+
 ## [0.1.2] — 2026-10-29
 
 ### Changed

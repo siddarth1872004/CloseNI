@@ -33,16 +33,13 @@ export interface ReplyErrorRules {
   challenge?: string;
   /** Waits before each resend of a busy or failed reply; its length is the retry count. */
   retryBackoffMs?: number[];
-  /** The same for a rate limit. */
-  rateLimitBackoffMs?: number[];
 }
 
 /**
  * The waits a provider without measured ones gets: doubling from 5s, capped
- * at a minute, three resends for busy and two for a rate limit.
+ * at a minute, three resends for busy.
  */
 export const DEFAULT_RETRY_BACKOFF_MS = cappedBackoff(5000, 60000, 3);
-export const DEFAULT_RATE_LIMIT_BACKOFF_MS = cappedBackoff(30000, 120000, 2);
 
 /** `tries` waits, doubling from `firstMs` and never above `capMs`. */
 export function cappedBackoff(firstMs: number, capMs: number, tries: number): number[] {
@@ -156,10 +153,11 @@ export function backoffFor(kind: TroubleKind, attempt: number, rules: ReplyError
   const r = rules || {};
   let plan: number[] = [];
   if (kind === "busy") plan = r.retryBackoffMs || DEFAULT_RETRY_BACKOFF_MS;
-  else if (kind === "rate-limit") plan = r.rateLimitBackoffMs || DEFAULT_RATE_LIMIT_BACKOFF_MS;
   // A filter can trip on a harmless prompt; once more, then it stands.
   else if (kind === "refused") plan = (r.retryBackoffMs || DEFAULT_RETRY_BACKOFF_MS).slice(0, 1);
-  // Signed out, a human check and a full conversation wait for the person.
+  // A rate limit, signed out, a human check and a full conversation wait for
+  // the person. Sending into a limit the provider has just stated is the
+  // traffic most likely to get an account flagged, so it is never resent.
   return attempt < plan.length ? plan[attempt] : null;
 }
 

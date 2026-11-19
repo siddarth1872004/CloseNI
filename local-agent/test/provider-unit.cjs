@@ -773,7 +773,7 @@ function testReplyTrouble() {
     R.classifyTrouble(sig("", [JSON.stringify({ type: "error", content: "You are sending messages too frequently. Please wait a moment before sending again." })]), rules).kind === "rate-limit");
   // The live toast (10 October): read as busy, it was resent three times into the limit.
   const rate = R.classifyTrouble(sig("", [JSON.stringify({ type: "error", content: "Messages too frequent. Try again later." })]), rules);
-  check("so is DeepSeek's live one, and it is not hammered", rate.kind === "rate-limit" && R.backoffFor("rate-limit", 0, rules) === 60000 && R.backoffFor("rate-limit", 1, rules) === null,
+  check("so is DeepSeek's live one, and it is not resent", rate.kind === "rate-limit" && R.backoffFor("rate-limit", 0, rules) === null,
     JSON.stringify(rate));
   check("CONTEXT_LENGTH_EXCEEDED means the conversation is full", R.classifyTrouble(sig("CONTEXT_LENGTH_EXCEEDED"), rules).kind === "full");
   check("CONTENT_FILTER is a refusal", R.classifyTrouble(sig("CONTENT_FILTER"), rules).kind === "refused");
@@ -795,7 +795,7 @@ function testReplyTrouble() {
 
   check("busy is sent again after 5s, 20s and 60s, then given up",
     R.backoffFor("busy", 0, rules) === 5000 && R.backoffFor("busy", 2, rules) === 60000 && R.backoffFor("busy", 3, rules) === null);
-  check("a rate limit once, after a minute", R.backoffFor("rate-limit", 0, rules) === 60000 && R.backoffFor("rate-limit", 1, rules) === null);
+  check("a rate limit is never resent", R.backoffFor("rate-limit", 0, rules) === null && R.backoffFor("rate-limit", 0, {}) === null);
   check("a refusal once", R.backoffFor("refused", 0, rules) === 5000 && R.backoffFor("refused", 1, rules) === null);
   check("full and signed out are never resent", R.backoffFor("full", 0, rules) === null && R.backoffFor("signed-out", 0, rules) === null);
 
@@ -821,7 +821,8 @@ function testResilience() {
   check("every trouble has a status",
     ["busy", "rate-limit", "full", "refused", "too-long", "signed-out", "challenge"].every((k) => typeof St.statusForTrouble(k) === "string"));
   check("a challenge asks the person", St.statusForTrouble("challenge") === "CHALLENGE_REQUIRED" && St.groupOf("CHALLENGE_REQUIRED") === "intervention");
-  check("a rate limit and a busy server are retried", St.mayRetry("RATE_LIMITED") && St.mayRetry("NETWORK_ERROR") && St.mayRetry("RESPONSE_INCOMPLETE"));
+  check("a busy server and a dropped reply are retried", St.mayRetry("NETWORK_ERROR") && St.mayRetry("RESPONSE_INCOMPLETE"));
+  check("a rate limit waits for the person", !St.mayRetry("RATE_LIMITED"));
   check("a challenge, a sign-in or a changed page never are",
     !St.mayRetry("CHALLENGE_REQUIRED") && !St.mayRetry("AUTH_REQUIRED") && !St.mayRetry("PAGE_CHANGED") && !St.mayRetry("CONTEXT_FULL"));
   check("leaving a challenge takes READY", !St.canMove("CHALLENGE_REQUIRED", "GENERATING") && St.canMove("CHALLENGE_REQUIRED", "READY"));
@@ -844,8 +845,7 @@ function testResilience() {
   check("its message says to finish it in the browser", /Show browser/.test(R.describeTrouble({ kind: "challenge", detail: "x" }, 1, "D")));
   check("backoff doubles to a cap", JSON.stringify(R.cappedBackoff(5000, 60000, 5)) === "[5000,10000,20000,40000,60000]");
   check("a provider with no backoff of its own gets the capped defaults",
-    R.backoffFor("busy", 0, {}) === 5000 && R.backoffFor("busy", 2, {}) === 20000 && R.backoffFor("busy", 3, {}) === null &&
-    R.backoffFor("rate-limit", 0, {}) === 30000 && R.backoffFor("rate-limit", 1, {}) === 60000 && R.backoffFor("rate-limit", 2, {}) === null);
+    R.backoffFor("busy", 0, {}) === 5000 && R.backoffFor("busy", 2, {}) === 20000 && R.backoffFor("busy", 3, {}) === null);
 
   const noon = new Date(2026, 9, 14, 12, 0, 0).getTime();
   check("a day is the local calendar day", P.dayOf(noon) === "2026-10-14");
@@ -1026,7 +1026,7 @@ async function testReplyTroubleLive() {
     baseUrl: "https://ds.test/",
     profileDir: path.join(root, "profiles", "ds"),
     completionRules: Object.assign({}, ds.completionRules, { maxWaitMs: 6000 }),
-    replyErrors: Object.assign({}, ds.replyErrors, { retryBackoffMs: [100], rateLimitBackoffMs: [] }),
+    replyErrors: Object.assign({}, ds.replyErrors, { retryBackoffMs: [100] }),
   });
   const sse = (...lines) => lines.join("\n\n") + "\n\n";
   const BUSY = sse("event: ready\ndata: {}", 'event: hint\ndata: {"type":"error","content":"Server busy, please try again later.","clear_response":true}', "event: close\ndata: {}");
